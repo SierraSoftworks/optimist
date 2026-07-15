@@ -1,6 +1,7 @@
 mod error;
 mod indradb;
 mod memory;
+mod memory_edges;
 mod repository;
 mod validation;
 

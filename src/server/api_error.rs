@@ -54,6 +54,23 @@ impl From<ProjectError> for ApiError {
                 "invalid_edge_id",
                 &["Use an edge ID returned by `optimist edge list`, such as `A-requires-B`."],
             ),
+            ProjectError::NotMeasurementEdge(_) => (
+                StatusCode::BAD_REQUEST,
+                "not_measurement_edge",
+                &["Choose a `measures` edge returned by `optimist edge list`."],
+            ),
+            ProjectError::ObservationUnitMismatch { .. } => (
+                StatusCode::BAD_REQUEST,
+                "observation_unit_mismatch",
+                &["Use the unit defined by the measurement edge's source metric."],
+            ),
+            ProjectError::Observation(_) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_observation",
+                &[
+                    "Check the value, RFC 3339 timestamp, source, unit, and measurement standard deviation.",
+                ],
+            ),
             ProjectError::Repository(RepositoryError::DuplicateName(_)) => (
                 StatusCode::CONFLICT,
                 "node_name_conflict",
@@ -84,6 +101,7 @@ impl From<ProjectError> for ApiError {
             ),
             ProjectError::IdentifierSpaceExhausted
             | ProjectError::RevisionSpaceExhausted(_)
+            | ProjectError::EdgeRevisionSpaceExhausted(_)
             | ProjectError::Repository(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "project_store_failure",

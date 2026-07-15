@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::{Edge, EdgeId, EntityId, Node, ProjectId};
 
+use super::memory_edges;
 use super::validation::{advance_entity_id, name_claims};
 use super::{GraphRepository, RepositoryError, RepositoryResult};
 
@@ -92,38 +93,7 @@ impl GraphRepository for InMemoryRepository {
     }
 
     fn create_edge(&mut self, edge: Edge) -> RepositoryResult<()> {
-        let source_kind = self
-            .nodes
-            .get(&edge.source)
-            .ok_or(RepositoryError::MissingEntity(edge.source))?
-            .kind();
-        let destination_kind = self
-            .nodes
-            .get(&edge.destination)
-            .ok_or(RepositoryError::MissingEntity(edge.destination))?
-            .kind();
-        for (id, actual, declared) in [
-            (edge.source, source_kind, edge.source_kind),
-            (edge.destination, destination_kind, edge.destination_kind),
-        ] {
-            if actual != declared {
-                return Err(RepositoryError::EndpointKindMismatch {
-                    id,
-                    actual,
-                    declared,
-                });
-            }
-        }
-
-        let revision = edge.revision;
-        let mut edge = Edge::new(
-            edge.source,
-            source_kind,
-            edge.destination,
-            destination_kind,
-            edge.payload,
-        )?;
-        edge.revision = revision;
+        let edge = memory_edges::validated(&self.nodes, edge)?;
         let id = edge.id();
         if self.edges.contains_key(&id) {
             return Err(RepositoryError::DuplicateEdge(id.to_string()));
@@ -138,6 +108,10 @@ impl GraphRepository for InMemoryRepository {
 
     fn list_edges(&self) -> RepositoryResult<Vec<Edge>> {
         Ok(self.edges.values().cloned().collect())
+    }
+
+    fn update_edge(&mut self, edge: Edge) -> RepositoryResult<()> {
+        memory_edges::update(&self.nodes, &mut self.edges, edge)
     }
 
     fn delete_edge(&mut self, id: &EdgeId) -> RepositoryResult<Edge> {
@@ -285,5 +259,27 @@ mod tests {
             repository.delete_edge(&edge.id()),
             Err(RepositoryError::MissingEdge(_))
         ));
+    }
+
+    #[test]
+    fn updates_existing_edge_payloads() {
+        let mut repository = repository("update_edge");
+        repository.create_node(metric(0, "Availability")).unwrap();
+        repository.create_node(factor(1, "Capacity")).unwrap();
+        let mut edge = Edge::new(
+            EntityId::new(0),
+            NodeKind::Metric,
+            EntityId::new(1),
+            NodeKind::Factor,
+            EdgePayload::Measures(Measurement {
+                polarity: MeasurementPolarity::HigherIsBetter,
+                observations: Vec::new(),
+            }),
+        )
+        .unwrap();
+        repository.create_edge(edge.clone()).unwrap();
+        edge.revision = 1;
+        repository.update_edge(edge.clone()).unwrap();
+        assert_eq!(repository.get_edge(&edge.id()).unwrap(), Some(edge));
     }
 }

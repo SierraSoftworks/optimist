@@ -3,6 +3,7 @@ mod edge_id;
 mod estimate;
 mod id;
 mod node;
+mod observation;
 
 pub use edge::{
     BlockingEffect, CausalEffect, Edge, EdgeError, EdgeId, EdgeKind, EdgePayload, Measurement,
@@ -18,3 +19,4 @@ pub use node::{
     CostEstimate, Evidence, Factor, Intervention, Metric, Node, NodeError, NodeKind, NodePayload,
     Outcome, OutcomeDirection, normalize_name,
 };
+pub use observation::{NewObservation, ObservationError};

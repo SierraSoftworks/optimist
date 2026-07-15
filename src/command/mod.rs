@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{Edge, EdgePayload, EntityId, Node, NodePayload};
+use crate::domain::{
+    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation,
+};
 
 /// One idempotent, revision-checked request to mutate a project graph.
 ///
@@ -61,6 +63,10 @@ pub enum GraphCommand {
     CreateNode(CreateNode),
     /// Validates stored endpoint kinds and inserts one canonical structural edge.
     CreateEdge(CreateEdge),
+    /// Appends a validated immutable reading to a `measures` edge.
+    AppendObservation(AppendObservation),
+    /// Appends a correction which supersedes one existing observation.
+    CorrectObservation(CorrectObservation),
 }
 
 /// Data required to construct a new structural node.
@@ -89,6 +95,26 @@ pub struct CreateEdge {
     pub payload: EdgePayload,
 }
 
+/// Data required to append a reading to an existing measurement edge.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AppendObservation {
+    /// Canonical ID of the `measures` edge which owns the observation series.
+    pub edge: EdgeId,
+    /// Unidentified reading; the edge allocates its local observation ID.
+    pub observation: NewObservation,
+}
+
+/// Data required to append an immutable correction to a measurement series.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CorrectObservation {
+    /// Canonical ID of the `measures` edge owning the original observation.
+    pub edge: EdgeId,
+    /// Edge-local ID of the unsuperseded observation being corrected.
+    pub observation_id: u64,
+    /// Finite corrected value; other provenance fields are copied from the original.
+    pub value: f64,
+}
+
 /// Durable result of a committed command, returned identically on retries.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CommandResult {
@@ -108,4 +134,18 @@ pub enum CommandOutcome {
     NodeCreated(Node),
     /// Complete canonical edge created by [`GraphCommand::CreateEdge`].
     EdgeCreated(Edge),
+    /// New immutable reading and updated owning measurement edge.
+    ObservationAppended {
+        /// Complete updated edge aggregate after persistence.
+        edge: Edge,
+        /// Observation allocated and appended by the measurement aggregate.
+        observation: Observation,
+    },
+    /// New correction record and updated owning measurement edge.
+    ObservationCorrected {
+        /// Complete updated edge aggregate after persistence.
+        edge: Edge,
+        /// Immutable correction whose `supersedes` points at its predecessor.
+        observation: Observation,
+    },
 }

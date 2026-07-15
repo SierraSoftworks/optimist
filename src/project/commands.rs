@@ -1,10 +1,10 @@
 use crate::{
-    command::{CommandOutcome, CommandRequest, CommandResult, GraphCommand},
+    command::{CommandRequest, CommandResult},
     domain::{Edge, EdgeId, EntityId, Node, ProjectId},
     store::GraphRepository,
 };
 
-use super::{ProjectCatalog, ProjectError};
+use super::{ProjectCatalog, ProjectError, apply};
 
 impl ProjectCatalog {
     /// Applies a typed graph command under project revision and idempotency checks.
@@ -31,38 +31,13 @@ impl ProjectCatalog {
             });
         }
 
-        let outcome = match request.command {
-            GraphCommand::CreateNode(command) => {
-                let id = entry.repository.next_entity_id()?;
-                let node = Node::new(id, command.name, command.title, command.payload)?;
-                entry.repository.create_node(node.clone())?;
-                CommandOutcome::NodeCreated(node)
-            }
-            GraphCommand::CreateEdge(command) => {
-                let source = entry
-                    .repository
-                    .get_node(command.source)?
-                    .ok_or(crate::store::RepositoryError::MissingEntity(command.source))?;
-                let destination = entry.repository.get_node(command.destination)?.ok_or(
-                    crate::store::RepositoryError::MissingEntity(command.destination),
-                )?;
-                let edge = Edge::new(
-                    command.source,
-                    source.kind(),
-                    command.destination,
-                    destination.kind(),
-                    command.payload,
-                )
-                .map_err(crate::store::RepositoryError::from)?;
-                entry.repository.create_edge(edge.clone())?;
-                CommandOutcome::EdgeCreated(edge)
-            }
-        };
-        entry.project.revision = entry
+        let next_revision = entry
             .project
             .revision
             .checked_add(1)
             .ok_or_else(|| ProjectError::RevisionSpaceExhausted(project_id.clone()))?;
+        let outcome = apply::command(entry, request.command)?;
+        entry.project.revision = next_revision;
         let result = CommandResult {
             request_id: request.request_id,
             project_revision: entry.project.revision,
@@ -104,8 +79,14 @@ impl ProjectCatalog {
 #[cfg(test)]
 mod tests {
     use crate::{
-        command::{CommandOutcome, CommandRequest, CreateEdge, CreateNode, GraphCommand},
-        domain::{EdgePayload, Factor, NodePayload, Requirement},
+        command::{
+            AppendObservation, CommandOutcome, CommandRequest, CorrectObservation, CreateEdge,
+            CreateNode, GraphCommand,
+        },
+        domain::{
+            EdgeId, EdgeKind, EdgePayload, Factor, Measurement, MeasurementPolarity, Metric,
+            NewObservation, NodePayload, Requirement,
+        },
     };
 
     use super::ProjectCatalog;
@@ -183,5 +164,103 @@ mod tests {
         assert_eq!(first, catalog.execute(&project.id, request).unwrap());
         assert!(matches!(first.outcome, CommandOutcome::EdgeCreated(_)));
         assert_eq!(catalog.list_edges(&project.id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn appends_and_corrects_measurement_observations() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        let metric = CommandRequest::new(
+            0,
+            GraphCommand::CreateNode(CreateNode {
+                name: "availability".to_owned(),
+                title: "Availability".to_owned(),
+                payload: NodePayload::Metric(Metric {
+                    unit: "ratio".to_owned(),
+                    aggregation: None,
+                }),
+            }),
+        );
+        catalog.execute(&project.id, metric).unwrap();
+        let factor = create_node(1);
+        catalog.execute(&project.id, factor).unwrap();
+        let edge_id = EdgeId {
+            source: crate::domain::EntityId::new(0),
+            kind: EdgeKind::Measures,
+            destination: crate::domain::EntityId::new(1),
+        };
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: edge_id.source,
+                        destination: edge_id.destination,
+                        payload: EdgePayload::Measures(Measurement {
+                            polarity: MeasurementPolarity::HigherIsBetter,
+                            observations: vec![],
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        let append = CommandRequest::new(
+            3,
+            GraphCommand::AppendObservation(AppendObservation {
+                edge: edge_id.clone(),
+                observation: NewObservation {
+                    value: 0.9,
+                    unit: "ratio".to_owned(),
+                    observed_at: "2026-07-15T12:00:00Z".to_owned(),
+                    source: "dashboard".to_owned(),
+                    measurement_standard_deviation: Some(0.02),
+                },
+            }),
+        );
+        let appended = catalog.execute(&project.id, append.clone()).unwrap();
+        assert_eq!(appended, catalog.execute(&project.id, append).unwrap());
+        let corrected = catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::CorrectObservation(CorrectObservation {
+                        edge: edge_id.clone(),
+                        observation_id: 0,
+                        value: 0.95,
+                    }),
+                ),
+            )
+            .unwrap();
+        assert!(matches!(
+            corrected.outcome,
+            CommandOutcome::ObservationCorrected { .. }
+        ));
+        let edge = catalog.get_edge(&project.id, &edge_id).unwrap().unwrap();
+        let EdgePayload::Measures(measurement) = edge.payload else {
+            panic!("expected measurement edge")
+        };
+        assert_eq!(measurement.observations.len(), 2);
+        assert_eq!(measurement.observations[1].supersedes, Some(0));
+
+        let invalid = CommandRequest::new(
+            5,
+            GraphCommand::AppendObservation(AppendObservation {
+                edge: edge_id,
+                observation: NewObservation {
+                    value: 90.0,
+                    unit: "percent".to_owned(),
+                    observed_at: "2026-07-15T13:00:00Z".to_owned(),
+                    source: "dashboard".to_owned(),
+                    measurement_standard_deviation: None,
+                },
+            }),
+        );
+        assert!(matches!(
+            catalog.execute(&project.id, invalid),
+            Err(ProjectError::ObservationUnitMismatch { .. })
+        ));
+        assert_eq!(catalog.get(&project.id).unwrap().revision, 5);
     }
 }

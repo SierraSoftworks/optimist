@@ -9,7 +9,9 @@ mod node;
 mod node_client;
 mod node_payload;
 mod observe;
+mod observe_client;
 mod output;
+mod output_table;
 mod project;
 mod scenario;
 mod server;
@@ -96,7 +98,9 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         Command::Project(args) => project::run(args, &server_url, output).await,
         Command::Node(args) => node::run(args, cli.project.as_ref(), &server_url, output).await,
         Command::Edge(args) => edge::run(args, cli.project.as_ref(), &server_url, output).await,
-        Command::Observe(args) => observe::run(args),
+        Command::Observe(args) => {
+            observe::run(args, cli.project.as_ref(), &server_url, output).await
+        }
         Command::Estimate(args) => estimate::run(args),
         Command::Scenario(args) => scenario::run(args),
         Command::Apply(args) => apply::run(args),

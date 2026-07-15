@@ -49,6 +49,12 @@ pub trait GraphRepository {
     /// Lists complete edge aggregates in deterministic canonical-key order.
     fn list_edges(&self) -> RepositoryResult<Vec<Edge>>;
 
+    /// Replaces the payload/revision of an existing edge without changing its identity.
+    ///
+    /// Implementations revalidate endpoint kinds against stored nodes and reject
+    /// updates when the canonical `(source, kind, destination)` key does not exist.
+    fn update_edge(&mut self, edge: Edge) -> RepositoryResult<()>;
+
     /// Removes and returns an edge, leaving both endpoint nodes intact.
     fn delete_edge(&mut self, id: &EdgeId) -> RepositoryResult<Edge>;
 }

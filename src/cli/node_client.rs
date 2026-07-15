@@ -38,8 +38,8 @@ impl ProjectClient {
         let result: CommandResult = decode(response).await?;
         match result.outcome {
             CommandOutcome::NodeCreated(node) => Ok(node),
-            CommandOutcome::EdgeCreated(_) => Err(human_errors::system(
-                "The Optimist server returned an edge result for a node command.",
+            _ => Err(human_errors::system(
+                "The Optimist server returned an unexpected result for a node command.",
                 &["Confirm the CLI and server versions match, then inspect the server logs."],
             )),
         }

@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    domain::{EdgeIdError, NodeError, ProjectId},
+    domain::{EdgeId, EdgeIdError, NodeError, ObservationError, ProjectId},
     store::RepositoryError,
 };
 
@@ -40,6 +40,23 @@ pub enum ProjectError {
     /// An external edge ID does not use the canonical tuple representation.
     #[error(transparent)]
     EdgeId(#[from] EdgeIdError),
+    /// The selected edge does not own a measurement observation series.
+    #[error("edge {0} is not a measurement edge")]
+    NotMeasurementEdge(EdgeId),
+    /// A reading's unit disagrees with the source metric definition.
+    #[error("observation unit {actual:?} does not match metric unit {expected:?}")]
+    ObservationUnitMismatch {
+        /// Unit declared by the source metric node.
+        expected: String,
+        /// Unit supplied with the new observation.
+        actual: String,
+    },
+    /// The edge aggregate cannot represent another revision.
+    #[error("edge {0} has exhausted its revision space")]
+    EdgeRevisionSpaceExhausted(EdgeId),
+    /// Observation validation or immutable correction semantics failed.
+    #[error(transparent)]
+    Observation(#[from] ObservationError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

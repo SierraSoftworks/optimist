@@ -59,7 +59,7 @@ impl EdgeKind {
 ///
 /// Edge uniqueness is the tuple `(source, kind, destination)`, rendered as a
 /// compact string such as `A-requires-B` for agent and Markdown references.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct EdgeId {
     /// Outbound entity from which the relationship originates.
     pub source: EntityId,

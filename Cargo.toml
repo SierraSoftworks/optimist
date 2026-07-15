@@ -9,6 +9,7 @@ rocksdb = ["indradb-lib/rocksdb-datastore"]
 
 [dependencies]
 axum = "0.8.4"
+chrono = { version = "0.4.41", default-features = false }
 clap = { version = "4.5.41", features = ["derive", "env"] }
 human-errors = { version = "0.2.4", features = ["pretty"] }
 indradb-lib = "5.0.0"

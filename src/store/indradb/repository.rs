@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 
-use indradb::{Database, Datastore, MemoryDatastore, SpecificEdgeQuery, SpecificVertexQuery};
+use indradb::MemoryDatastore;
+use indradb::{Database, Datastore, SpecificVertexQuery};
 
 use crate::domain::{Edge, EdgeId, EntityId, Node, ProjectId};
 
 use super::super::validation::{advance_entity_id, name_claims};
 use super::super::{GraphRepository, RepositoryError, RepositoryResult};
-use super::codec::{NORMALIZED_NAME_PROPERTY, edge_items, edge_key, identifier, node_items};
+use super::codec::{NORMALIZED_NAME_PROPERTY, identifier, node_items};
+use super::edges;
 use super::queries;
 
 /// [`GraphRepository`] implementation backed by an embedded IndraDB datastore.
@@ -122,28 +124,7 @@ impl<D: Datastore> GraphRepository for IndraDbRepository<D> {
     }
 
     fn create_edge(&mut self, edge: Edge) -> RepositoryResult<()> {
-        let source = self
-            .get_node(edge.source)?
-            .ok_or(RepositoryError::MissingEntity(edge.source))?;
-        let destination = self
-            .get_node(edge.destination)?
-            .ok_or(RepositoryError::MissingEntity(edge.destination))?;
-        let revision = edge.revision;
-        let mut edge = Edge::new(
-            edge.source,
-            source.kind(),
-            edge.destination,
-            destination.kind(),
-            edge.payload,
-        )?;
-        edge.revision = revision;
-        let id = edge.id();
-        if self.get_edge(&id)?.is_some() {
-            return Err(RepositoryError::DuplicateEdge(id.to_string()));
-        }
-        self.database
-            .bulk_insert(edge_items(&edge)?)
-            .map_err(queries::storage_error)
+        edges::create(&self.database, edge)
     }
 
     fn get_edge(&self, id: &EdgeId) -> RepositoryResult<Option<Edge>> {
@@ -154,14 +135,12 @@ impl<D: Datastore> GraphRepository for IndraDbRepository<D> {
         queries::list_edges(&self.database)
     }
 
+    fn update_edge(&mut self, edge: Edge) -> RepositoryResult<()> {
+        edges::update(&self.database, edge)
+    }
+
     fn delete_edge(&mut self, id: &EdgeId) -> RepositoryResult<Edge> {
-        let edge = self
-            .get_edge(id)?
-            .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
-        self.database
-            .delete(SpecificEdgeQuery::single(edge_key(id)?))
-            .map_err(queries::storage_error)?;
-        Ok(edge)
+        edges::delete(&self.database, id)
     }
 }
 
@@ -240,5 +219,31 @@ mod tests {
             .map(|node| node.id)
             .collect::<Vec<_>>();
         assert_eq!(ids, [EntityId::new(0), EntityId::new(1), EntityId::new(2)]);
+    }
+
+    #[test]
+    fn updates_existing_edge_payloads() {
+        let mut repository = repository();
+        repository.create_node(factor(0, "Actions")).unwrap();
+        repository.create_node(factor(1, "GitHub")).unwrap();
+        let mut edge = Edge::new(
+            EntityId::new(0),
+            NodeKind::Factor,
+            EntityId::new(1),
+            NodeKind::Factor,
+            EdgePayload::Requires(Requirement {
+                hard: true,
+                satisfaction_threshold: None,
+            }),
+        )
+        .unwrap();
+        repository.create_edge(edge.clone()).unwrap();
+        edge.revision = 1;
+        edge.payload = EdgePayload::Requires(Requirement {
+            hard: false,
+            satisfaction_threshold: Some(0.8),
+        });
+        repository.update_edge(edge.clone()).unwrap();
+        assert_eq!(repository.get_edge(&edge.id()).unwrap(), Some(edge));
     }
 }
