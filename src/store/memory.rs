@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::{Edge, EdgeId, EntityId, Node, ProjectId};
 
-use super::validation::name_claims;
+use super::validation::{advance_entity_id, name_claims};
 use super::{GraphRepository, RepositoryError, RepositoryResult};
 
 pub struct InMemoryRepository {
@@ -50,9 +50,7 @@ impl GraphRepository for InMemoryRepository {
             self.names.insert(claim, id);
         }
         self.nodes.insert(id, node);
-        if self.next_entity_id.is_some_and(|next| id.value() >= next) {
-            self.next_entity_id = id.value().checked_add(1);
-        }
+        advance_entity_id(&mut self.next_entity_id, id);
         Ok(())
     }
 

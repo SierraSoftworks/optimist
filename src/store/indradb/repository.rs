@@ -1,0 +1,210 @@
+use std::collections::BTreeMap;
+
+use indradb::{Database, Datastore, MemoryDatastore, SpecificEdgeQuery, SpecificVertexQuery};
+
+use crate::domain::{Edge, EdgeId, EntityId, Node, ProjectId};
+
+use super::super::validation::{advance_entity_id, name_claims};
+use super::super::{GraphRepository, RepositoryError, RepositoryResult};
+use super::codec::{NORMALIZED_NAME_PROPERTY, edge_items, edge_key, identifier, node_items};
+use super::queries;
+
+pub struct IndraDbRepository<D: Datastore> {
+    project_id: ProjectId,
+    database: Database<D>,
+    next_entity_id: Option<u64>,
+    names: BTreeMap<String, EntityId>,
+}
+
+impl IndraDbRepository<MemoryDatastore> {
+    pub fn memory(project_id: ProjectId) -> RepositoryResult<Self> {
+        Self::from_database(project_id, MemoryDatastore::new_db())
+    }
+}
+
+impl<D: Datastore> IndraDbRepository<D> {
+    pub fn from_database(project_id: ProjectId, database: Database<D>) -> RepositoryResult<Self> {
+        database
+            .index_property(identifier(NORMALIZED_NAME_PROPERTY)?)
+            .map_err(queries::storage_error)?;
+        let mut repository = Self {
+            project_id,
+            database,
+            next_entity_id: Some(0),
+            names: BTreeMap::new(),
+        };
+        for node in queries::list_nodes(&repository.database)? {
+            repository.index_node(&node)?;
+        }
+        Ok(repository)
+    }
+
+    fn index_node(&mut self, node: &Node) -> RepositoryResult<()> {
+        for claim in name_claims(node)? {
+            if self.names.insert(claim.clone(), node.id).is_some() {
+                return Err(RepositoryError::DuplicateName(claim));
+            }
+        }
+        advance_entity_id(&mut self.next_entity_id, node.id);
+        Ok(())
+    }
+}
+
+impl<D: Datastore> GraphRepository for IndraDbRepository<D> {
+    fn project_id(&self) -> &ProjectId {
+        &self.project_id
+    }
+
+    fn next_entity_id(&self) -> RepositoryResult<EntityId> {
+        self.next_entity_id
+            .map(EntityId::new)
+            .ok_or(RepositoryError::IdentifierSpaceExhausted)
+    }
+
+    fn create_node(&mut self, node: Node) -> RepositoryResult<()> {
+        if self.get_node(node.id)?.is_some() {
+            return Err(RepositoryError::DuplicateEntity(node.id));
+        }
+        let claims = name_claims(&node)?;
+        if let Some(claim) = claims.iter().find(|claim| self.names.contains_key(*claim)) {
+            return Err(RepositoryError::DuplicateName(claim.clone()));
+        }
+        self.database
+            .bulk_insert(node_items(&node)?)
+            .map_err(queries::storage_error)?;
+        self.index_node(&node)
+    }
+
+    fn get_node(&self, id: EntityId) -> RepositoryResult<Option<Node>> {
+        queries::get_node(&self.database, id)
+    }
+
+    fn list_nodes(&self) -> RepositoryResult<Vec<Node>> {
+        queries::list_nodes(&self.database)
+    }
+
+    fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node> {
+        if self
+            .list_edges()?
+            .iter()
+            .any(|edge| edge.source == id || edge.destination == id)
+        {
+            return Err(RepositoryError::EntityHasEdges(id));
+        }
+        let node = self
+            .get_node(id)?
+            .ok_or(RepositoryError::MissingEntity(id))?;
+        self.database
+            .delete(SpecificVertexQuery::single(id.to_indradb_uuid()))
+            .map_err(queries::storage_error)?;
+        for claim in name_claims(&node)? {
+            self.names.remove(&claim);
+        }
+        Ok(node)
+    }
+
+    fn create_edge(&mut self, edge: Edge) -> RepositoryResult<()> {
+        let source = self
+            .get_node(edge.source)?
+            .ok_or(RepositoryError::MissingEntity(edge.source))?;
+        let destination = self
+            .get_node(edge.destination)?
+            .ok_or(RepositoryError::MissingEntity(edge.destination))?;
+        let revision = edge.revision;
+        let mut edge = Edge::new(
+            edge.source,
+            source.kind(),
+            edge.destination,
+            destination.kind(),
+            edge.payload,
+        )?;
+        edge.revision = revision;
+        let id = edge.id();
+        if self.get_edge(&id)?.is_some() {
+            return Err(RepositoryError::DuplicateEdge(id.to_string()));
+        }
+        self.database
+            .bulk_insert(edge_items(&edge)?)
+            .map_err(queries::storage_error)
+    }
+
+    fn get_edge(&self, id: &EdgeId) -> RepositoryResult<Option<Edge>> {
+        queries::get_edge(&self.database, id)
+    }
+
+    fn list_edges(&self) -> RepositoryResult<Vec<Edge>> {
+        queries::list_edges(&self.database)
+    }
+
+    fn delete_edge(&mut self, id: &EdgeId) -> RepositoryResult<Edge> {
+        let edge = self
+            .get_edge(id)?
+            .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
+        self.database
+            .delete(SpecificEdgeQuery::single(edge_key(id)?))
+            .map_err(queries::storage_error)?;
+        Ok(edge)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::{
+        Edge, EdgePayload, EntityId, Factor, Node, NodeKind, NodePayload, ProjectId, Requirement,
+    };
+    use crate::store::{GraphRepository, IndraDbRepository, RepositoryError};
+
+    fn factor(id: u64, name: &str) -> Node {
+        Node::new(
+            EntityId::new(id),
+            name,
+            name,
+            NodePayload::Factor(Factor {
+                current: None,
+                desired: None,
+                controllable: true,
+                evidence: Vec::new(),
+            }),
+        )
+        .unwrap()
+    }
+
+    fn repository() -> IndraDbRepository<indradb::MemoryDatastore> {
+        IndraDbRepository::memory(ProjectId::new("indra").unwrap()).unwrap()
+    }
+
+    #[test]
+    fn round_trips_nodes_and_edges_through_indradb() {
+        let mut repository = repository();
+        repository.create_node(factor(0, "GitHub Actions")).unwrap();
+        repository.create_node(factor(1, "GitHub")).unwrap();
+        let edge = Edge::new(
+            EntityId::new(0),
+            NodeKind::Factor,
+            EntityId::new(1),
+            NodeKind::Factor,
+            EdgePayload::Requires(Requirement {
+                hard: true,
+                satisfaction_threshold: None,
+            }),
+        )
+        .unwrap();
+        repository.create_edge(edge.clone()).unwrap();
+
+        assert_eq!(
+            repository.get_node(EntityId::new(0)).unwrap(),
+            Some(factor(0, "GitHub Actions"))
+        );
+        assert_eq!(repository.get_edge(&edge.id()).unwrap(), Some(edge));
+    }
+
+    #[test]
+    fn enforces_name_uniqueness() {
+        let mut repository = repository();
+        repository.create_node(factor(0, "Reliability")).unwrap();
+        assert!(matches!(
+            repository.create_node(factor(1, " RELIABILITY ")),
+            Err(RepositoryError::DuplicateName(_))
+        ));
+    }
+}

@@ -34,6 +34,10 @@ pub enum RepositoryError {
     EntityHasEdges(EntityId),
     #[error("the project has exhausted its entity identifier space")]
     IdentifierSpaceExhausted,
+    #[error("the graph datastore failed: {0}")]
+    Datastore(String),
+    #[error("the graph contains an invalid serialized payload: {0}")]
+    InvalidPayload(String),
     #[error(transparent)]
     InvalidEdge(#[from] EdgeError),
 }

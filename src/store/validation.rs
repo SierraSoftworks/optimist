@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::domain::{Node, normalize_name};
+use crate::domain::{EntityId, Node, normalize_name};
 
 use super::{RepositoryError, RepositoryResult};
 
@@ -22,4 +22,10 @@ pub(super) fn name_claims(node: &Node) -> RepositoryResult<Vec<String>> {
         return Err(RepositoryError::InvalidNameClaim(node.id));
     }
     Ok(claims)
+}
+
+pub(super) fn advance_entity_id(next: &mut Option<u64>, id: EntityId) {
+    if next.is_some_and(|candidate| id.value() >= candidate) {
+        *next = id.value().checked_add(1);
+    }
 }
