@@ -1,4 +1,5 @@
 mod catalog;
+mod commands;
 mod error;
 mod model;
 

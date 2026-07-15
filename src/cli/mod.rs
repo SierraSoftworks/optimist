@@ -3,6 +3,8 @@ mod client;
 mod edge;
 mod estimate;
 mod node;
+mod node_client;
+mod node_payload;
 mod observe;
 mod output;
 mod project;
@@ -89,7 +91,7 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
     match cli.command {
         Command::Server(args) => server::run(args).await,
         Command::Project(args) => project::run(args, &server_url, output).await,
-        Command::Node(args) => node::run(args),
+        Command::Node(args) => node::run(args, cli.project.as_ref(), &server_url, output).await,
         Command::Edge(args) => edge::run(args),
         Command::Observe(args) => observe::run(args),
         Command::Estimate(args) => estimate::run(args),

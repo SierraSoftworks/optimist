@@ -1,5 +1,6 @@
 mod api_error;
 mod error;
+mod graph;
 mod projects;
 mod state;
 
@@ -57,6 +58,7 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
     Router::new()
         .route("/api/v1/health", get(health))
         .merge(projects::router())
+        .merge(graph::router())
         .with_state(AppState::new(catalog))
 }
 

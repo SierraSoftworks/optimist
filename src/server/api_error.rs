@@ -2,6 +2,7 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
 use crate::project::ProjectError;
+use crate::store::RepositoryError;
 
 pub(super) struct ApiError {
     status: StatusCode,
@@ -38,7 +39,29 @@ impl From<ProjectError> for ApiError {
                 "project_not_found",
                 &["List projects and retry with one of the returned project IDs."],
             ),
-            ProjectError::IdentifierSpaceExhausted | ProjectError::Repository(_) => (
+            ProjectError::RevisionConflict { .. } => (
+                StatusCode::CONFLICT,
+                "project_revision_conflict",
+                &["Refresh the project and rebuild the command against its current revision."],
+            ),
+            ProjectError::Node(_) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_node",
+                &["Provide a non-empty node name and title with fields valid for its node kind."],
+            ),
+            ProjectError::Repository(RepositoryError::DuplicateName(_)) => (
+                StatusCode::CONFLICT,
+                "node_name_conflict",
+                &["Choose a node name or alias which is not already used in this project."],
+            ),
+            ProjectError::Repository(RepositoryError::MissingEntity(_)) => (
+                StatusCode::NOT_FOUND,
+                "node_not_found",
+                &["List project nodes and retry with a returned entity ID."],
+            ),
+            ProjectError::IdentifierSpaceExhausted
+            | ProjectError::RevisionSpaceExhausted(_)
+            | ProjectError::Repository(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "project_store_failure",
                 &["Retry the request and inspect the server logs if the problem persists."],

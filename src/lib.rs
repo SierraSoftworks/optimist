@@ -9,6 +9,8 @@
 
 /// Command-line argument types and dispatch used by the `optimist` binary.
 pub mod cli;
+/// Revision-checked, idempotent graph mutation requests and outcomes.
+pub mod command;
 /// Strongly typed causal graph aggregates and embedded probabilistic values.
 pub mod domain;
 /// Project metadata and isolated graph lifecycle management.

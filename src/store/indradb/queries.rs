@@ -25,7 +25,9 @@ pub(super) fn list_nodes<D: Datastore>(database: &Database<D>) -> RepositoryResu
         .properties()
         .map_err(storage_error)?
         .name(identifier(NODE_PROPERTY)?);
-    decode_nodes(vertex_properties(database, query)?)
+    let mut nodes = decode_nodes(vertex_properties(database, query)?)?;
+    nodes.sort_by_key(|node| node.id);
+    Ok(nodes)
 }
 
 pub(super) fn get_edge<D: Datastore>(
@@ -44,7 +46,9 @@ pub(super) fn list_edges<D: Datastore>(database: &Database<D>) -> RepositoryResu
         .properties()
         .map_err(storage_error)?
         .name(identifier(EDGE_PROPERTY)?);
-    decode_edges(edge_properties(database, query)?)
+    let mut edges = decode_edges(edge_properties(database, query)?)?;
+    edges.sort_by_key(Edge::id);
+    Ok(edges)
 }
 
 fn vertex_properties<D: Datastore, Q: Into<indradb::Query>>(

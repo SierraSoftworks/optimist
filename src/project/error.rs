@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::{domain::ProjectId, store::RepositoryError};
+use crate::{
+    domain::{NodeError, ProjectId},
+    store::RepositoryError,
+};
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -20,6 +23,20 @@ pub enum ProjectError {
     /// The server's monotonic project-ID counter cannot allocate another value.
     #[error("the server has exhausted its project identifier space")]
     IdentifierSpaceExhausted,
+    /// A command was based on an older project revision than the current graph.
+    #[error("project revision conflict: expected {expected}, current {current}")]
+    RevisionConflict {
+        /// Revision supplied by the client before it prepared the mutation.
+        expected: u64,
+        /// Revision currently stored by the serialized project executor.
+        current: u64,
+    },
+    /// The project revision counter cannot represent another committed mutation.
+    #[error("project {0} has exhausted its revision space")]
+    RevisionSpaceExhausted(ProjectId),
+    /// The requested node aggregate failed local construction validation.
+    #[error(transparent)]
+    Node(#[from] NodeError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

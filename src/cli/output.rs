@@ -1,5 +1,6 @@
 use clap::ValueEnum;
 
+use crate::domain::{Node, NodeKind};
 use crate::project::Project;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -28,6 +29,25 @@ impl OutputFormat {
                 .map(|lines| lines.join("\n")),
         }
     }
+
+    pub(super) fn node(self, node: &Node) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(node_table(std::slice::from_ref(node))),
+            Self::Json | Self::Jsonl => serialize(node),
+        }
+    }
+
+    pub(super) fn nodes(self, nodes: &[Node]) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(node_table(nodes)),
+            Self::Json => serialize(nodes),
+            Self::Jsonl => nodes
+                .iter()
+                .map(serialize)
+                .collect::<Result<Vec<_>, _>>()
+                .map(|lines| lines.join("\n")),
+        }
+    }
 }
 
 fn table(projects: &[Project]) -> String {
@@ -42,6 +62,30 @@ fn table(projects: &[Project]) -> String {
         }))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn node_table(nodes: &[Node]) -> String {
+    std::iter::once("ID\tNAME\tKIND\tTITLE".to_owned())
+        .chain(nodes.iter().map(|node| {
+            format!(
+                "{}\t{}\t{}\t{}",
+                node.id,
+                node.name,
+                node_kind(node.kind()),
+                node.title.split_whitespace().collect::<Vec<_>>().join(" ")
+            )
+        }))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn node_kind(kind: NodeKind) -> &'static str {
+    match kind {
+        NodeKind::Outcome => "outcome",
+        NodeKind::Metric => "metric",
+        NodeKind::Factor => "factor",
+        NodeKind::Intervention => "intervention",
+    }
 }
 
 fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_errors::Error> {

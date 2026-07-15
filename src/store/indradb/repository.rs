@@ -225,4 +225,20 @@ mod tests {
             Err(RepositoryError::DuplicateName(_))
         ));
     }
+
+    #[test]
+    fn lists_nodes_by_project_local_entity_id() {
+        let mut repository = repository();
+        for (id, name) in [(2, "Reliability"), (0, "GitHub"), (1, "Actions")] {
+            repository.create_node(factor(id, name)).unwrap();
+        }
+
+        let ids = repository
+            .list_nodes()
+            .unwrap()
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, [EntityId::new(0), EntityId::new(1), EntityId::new(2)]);
+    }
 }

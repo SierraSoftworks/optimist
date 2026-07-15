@@ -1,11 +1,22 @@
 use clap::{Args, Subcommand, ValueEnum};
 
+use crate::domain::{EntityId, ProjectId};
+
+use super::{client::ProjectClient, node_payload, output::OutputFormat};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-enum NodeType {
+pub(super) enum NodeType {
     Outcome,
     Metric,
     Factor,
     Intervention,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(super) enum Direction {
+    Maximize,
+    Minimize,
+    TargetRange,
 }
 
 #[derive(Debug, Args)]
@@ -23,9 +34,17 @@ enum NodeCommand {
         name: String,
         #[arg(long)]
         title: String,
+        #[arg(long, value_enum)]
+        direction: Option<Direction>,
+        #[arg(long)]
+        unit: Option<String>,
+        #[arg(long)]
+        aggregation: Option<String>,
+        #[arg(long)]
+        controllable: bool,
     },
     Get {
-        id: String,
+        id: EntityId,
     },
     List,
     Delete {
@@ -33,11 +52,70 @@ enum NodeCommand {
     },
 }
 
-pub(super) fn run(_args: NodeArgs) -> Result<(), human_errors::Error> {
-    super::unavailable(
-        "Node editing is not available in this build yet.",
-        &[
-            "Use `optimist node --help` to verify the command syntax and retry after the graph API is implemented.",
-        ],
-    )
+pub(super) async fn run(
+    args: NodeArgs,
+    project: Option<&ProjectId>,
+    server_url: &str,
+    output: OutputFormat,
+) -> Result<(), human_errors::Error> {
+    let project = project.ok_or_else(|| {
+        human_errors::user(
+            "A project is required for node commands.",
+            &["Pass `--project <ID>` or set `OPTIMIST_PROJECT` after running `optimist project list`."],
+        )
+    })?;
+    let client = ProjectClient::new(server_url)?;
+    let rendered = match args.command {
+        NodeCommand::Create {
+            kind,
+            name,
+            title,
+            direction,
+            unit,
+            aggregation,
+            controllable,
+        } => {
+            let payload = node_payload::build(kind, direction, unit, aggregation, controllable)?;
+            output.node(&client.create_node(project, name, title, payload).await?)?
+        }
+        NodeCommand::Get { id } => output.node(&client.show_node(project, id).await?)?,
+        NodeCommand::List => output.nodes(&client.list_nodes(project).await?)?,
+        NodeCommand::Delete { .. } => {
+            return super::unavailable(
+                "Revision-checked node deletion is not available yet.",
+                &["Remove incident edges first once typed delete commands are implemented."],
+            );
+        }
+    };
+    println!("{rendered}");
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use crate::cli::Cli;
+
+    #[test]
+    fn parses_kind_specific_node_fields() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "node",
+                "create",
+                "--kind",
+                "metric",
+                "--name",
+                "availability",
+                "--title",
+                "Availability",
+                "--unit",
+                "ratio"
+            ])
+            .is_ok()
+        );
+    }
 }

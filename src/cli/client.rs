@@ -7,8 +7,8 @@ use crate::{
 };
 
 pub(super) struct ProjectClient {
-    base_url: Url,
-    client: Client,
+    pub(super) base_url: Url,
+    pub(super) client: Client,
 }
 
 impl ProjectClient {
@@ -67,7 +67,7 @@ impl ProjectClient {
             .map_err(network_error)
     }
 
-    fn endpoint(&self, path: &str) -> Result<Url, human_errors::Error> {
+    pub(super) fn endpoint(&self, path: &str) -> Result<Url, human_errors::Error> {
         self.base_url.join(path).map_err(|error| {
             human_errors::wrap_user(
                 error,
@@ -89,7 +89,7 @@ struct ErrorBody {
     message: String,
 }
 
-async fn decode<T: serde::de::DeserializeOwned>(
+pub(super) async fn decode<T: serde::de::DeserializeOwned>(
     response: Response,
 ) -> Result<T, human_errors::Error> {
     if response.status().is_success() {
@@ -131,6 +131,14 @@ fn advice(code: &str, status: reqwest::StatusCode) -> &'static [&'static str] {
         "project_not_found" => {
             &["Run `optimist project list` and retry with a returned project ID."]
         }
+        "project_revision_conflict" => {
+            &["Refresh the project and retry the command against its current revision."]
+        }
+        "invalid_node" => &["Provide the required fields for the selected node kind."],
+        "node_name_conflict" => {
+            &["Choose a node name or alias which is not already used in this project."]
+        }
+        "node_not_found" => &["Run `optimist node list` and retry with a returned entity ID."],
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]
         }

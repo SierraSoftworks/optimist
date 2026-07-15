@@ -8,10 +8,13 @@ use crate::{
 };
 
 use super::{Project, ProjectError};
+use crate::command::CommandResult;
+use uuid::Uuid;
 
-struct ProjectEntry {
-    project: Project,
-    repository: IndraDbRepository<MemoryDatastore>,
+pub(super) struct ProjectEntry {
+    pub(super) project: Project,
+    pub(super) repository: IndraDbRepository<MemoryDatastore>,
+    pub(super) results: BTreeMap<Uuid, CommandResult>,
 }
 
 /// Owns project metadata and one isolated graph repository per project.
@@ -30,7 +33,7 @@ struct ProjectEntry {
 /// ```
 pub struct ProjectCatalog {
     next_project_id: Option<u64>,
-    projects: BTreeMap<ProjectId, ProjectEntry>,
+    pub(super) projects: BTreeMap<ProjectId, ProjectEntry>,
     names: BTreeMap<String, ProjectId>,
 }
 
@@ -75,6 +78,7 @@ impl ProjectCatalog {
             ProjectEntry {
                 project: project.clone(),
                 repository,
+                results: BTreeMap::new(),
             },
         );
         Ok(project)
