@@ -1,10 +1,10 @@
 use clap::Args;
 
 #[derive(Debug, Args)]
-pub struct ApplyArgs {
-    pub command: String,
+pub(super) struct ApplyArgs {
+    command: String,
     #[arg(long)]
-    pub dry_run: bool,
+    dry_run: bool,
 }
 
 pub(super) fn run(_args: ApplyArgs) -> Result<(), human_errors::Error> {

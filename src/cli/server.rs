@@ -3,11 +3,11 @@ use std::{net::SocketAddr, path::PathBuf};
 use clap::Args;
 
 #[derive(Debug, Args)]
-pub struct ServerArgs {
+pub(super) struct ServerArgs {
     #[arg(long, default_value = ".optimist")]
-    pub data_dir: PathBuf,
+    data_dir: PathBuf,
     #[arg(long, default_value = "127.0.0.1:3000")]
-    pub bind: SocketAddr,
+    bind: SocketAddr,
 }
 
 pub(super) async fn run(args: ServerArgs) -> Result<(), human_errors::Error> {

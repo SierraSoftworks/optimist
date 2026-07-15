@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand, ValueEnum};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub enum NodeType {
+enum NodeType {
     Outcome,
     Metric,
     Factor,
@@ -9,13 +9,13 @@ pub enum NodeType {
 }
 
 #[derive(Debug, Args)]
-pub struct NodeArgs {
+pub(super) struct NodeArgs {
     #[command(subcommand)]
-    pub command: NodeCommand,
+    command: NodeCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum NodeCommand {
+enum NodeCommand {
     Create {
         #[arg(long, value_enum)]
         kind: NodeType,

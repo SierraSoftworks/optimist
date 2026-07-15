@@ -13,6 +13,6 @@ pub use estimate::{
 };
 pub use id::{EntityId, IdError, ProjectId};
 pub use node::{
-    CostEstimate, Evidence, Factor, Intervention, Metric, Node, NodeKind, NodePayload, Outcome,
-    OutcomeDirection, normalize_name,
+    CostEstimate, Evidence, Factor, Intervention, Metric, Node, NodeError, NodeKind, NodePayload,
+    Outcome, OutcomeDirection, normalize_name,
 };

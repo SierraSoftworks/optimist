@@ -5,6 +5,10 @@ use crate::domain::{Edge, EdgeId, EntityId, Node, ProjectId};
 use super::validation::{advance_entity_id, name_claims};
 use super::{GraphRepository, RepositoryError, RepositoryResult};
 
+/// Deterministic in-process repository used for fast domain and command tests.
+///
+/// This implementation enforces the same semantic contract as IndraDB without
+/// persistence. Each instance represents exactly one project.
 pub struct InMemoryRepository {
     project_id: ProjectId,
     next_entity_id: Option<u64>,
@@ -14,6 +18,13 @@ pub struct InMemoryRepository {
 }
 
 impl InMemoryRepository {
+    /// Creates an empty repository scoped to `project_id`.
+    ///
+    /// ```
+    /// use optimist::{domain::ProjectId, store::InMemoryRepository};
+    /// let repository = InMemoryRepository::new(ProjectId::new("delivery")?);
+    /// # Ok::<(), optimist::domain::IdError>(())
+    /// ```
     pub fn new(project_id: ProjectId) -> Self {
         Self {
             project_id,

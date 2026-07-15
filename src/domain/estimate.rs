@@ -5,11 +5,21 @@ use thiserror::Error;
 
 use super::EntityId;
 
+/// Identifies an estimate within its owning node or edge aggregate.
+///
+/// Estimate IDs are local because estimates are embedded values rather than graph
+/// vertices. A complete reference also includes the owning project and aggregate.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EstimateId(EntityId);
 
 impl EstimateId {
+    /// Constructs an aggregate-local estimate ID from its monotonic counter.
+    ///
+    /// ```
+    /// use optimist::domain::EstimateId;
+    /// assert_eq!(EstimateId::new(0).to_string(), "A");
+    /// ```
     pub const fn new(value: u64) -> Self {
         Self(EntityId::new(value))
     }
@@ -47,27 +57,56 @@ enum DistributionKind {
     },
 }
 
+/// Validation failures for primitive probability distributions.
+///
+/// Invalid distributions are rejected before persistence so analysis code can
+/// assume finite parameters, valid support, and normalized family definitions.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum DistributionError {
+    /// At least one supplied parameter is NaN or infinite.
     #[error("distribution parameters must be finite")]
     NonFinite,
+    /// A Normal standard deviation or LogNormal log-scale is not positive.
     #[error("a standard deviation or scale must be greater than zero")]
     InvalidScale,
+    /// A Beta shape parameter is not positive.
     #[error("beta shape parameters must be greater than zero")]
     InvalidShape,
+    /// A scaled Beta's lower bound is not strictly below its upper bound.
     #[error("a scaled beta distribution requires lower < upper")]
     InvalidBounds,
 }
 
+/// A validated primitive probability distribution used by an [`Estimate`].
+///
+/// Constructors encode Optimist's parameter conventions and reject invalid values.
+/// The enum representation remains private so deserialization cannot bypass those
+/// checks.
+///
+/// ```
+/// use optimist::domain::Distribution;
+///
+/// let success_rate = Distribution::beta(8.0, 2.0)?;
+/// assert!((success_rate.mean() - 0.8).abs() < f64::EPSILON);
+/// # Ok::<(), optimist::domain::DistributionError>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Distribution(DistributionKind);
 
 impl Distribution {
+    /// Creates a deterministic distribution concentrated at `value`.
+    ///
+    /// Point masses represent measured constants or assumptions with no modelled
+    /// uncertainty. They should not be used merely because uncertainty is unknown.
     pub fn point(value: f64) -> Result<Self, DistributionError> {
         Self::validated(DistributionKind::Point { value })
     }
 
+    /// Creates a Normal distribution parameterized by mean and standard deviation.
+    ///
+    /// Use this for unbounded additive uncertainty. Bounded probabilities and
+    /// non-negative quantities should use Beta or LogNormal families instead.
     pub fn normal(mean: f64, standard_deviation: f64) -> Result<Self, DistributionError> {
         Self::validated(DistributionKind::Normal {
             mean,
@@ -75,14 +114,26 @@ impl Distribution {
         })
     }
 
+    /// Creates a LogNormal distribution in log-space parameterization.
+    ///
+    /// If `X` is returned, then `ln(X) ~ Normal(location, scale²)`. This family is
+    /// appropriate for positive Fermi factors such as costs and durations.
     pub fn log_normal(location: f64, scale: f64) -> Result<Self, DistributionError> {
         Self::validated(DistributionKind::LogNormal { location, scale })
     }
 
+    /// Creates a standard Beta distribution on the closed interval `[0, 1]`.
+    ///
+    /// Positive `alpha` and `beta` can represent success rates and normalized
+    /// states, and support conjugate updating with Binomial observations.
     pub fn beta(alpha: f64, beta: f64) -> Result<Self, DistributionError> {
         Self::validated(DistributionKind::Beta { alpha, beta })
     }
 
+    /// Creates a Beta distribution affinely transformed onto `[lower, upper]`.
+    ///
+    /// This is used for bounded signed influence estimates, commonly with bounds
+    /// `-1` and `1`, while retaining the shape flexibility of a Beta distribution.
     pub fn scaled_beta(
         alpha: f64,
         beta: f64,
@@ -97,6 +148,20 @@ impl Distribution {
         })
     }
 
+    /// Returns the exact expected value for the represented primitive family.
+    ///
+    /// The implementation uses:
+    ///
+    /// - Point mass: `E[X] = x`
+    /// - Normal: `E[X] = μ`
+    /// - LogNormal: `E[X] = exp(μ + σ²/2)`
+    /// - Beta: `E[X] = α/(α+β)`
+    /// - Scaled Beta: `E[Y] = lower + (upper-lower)E[X]`
+    ///
+    /// These equations assume the constructor parameterizations documented above.
+    /// They are closed-form population means, not Monte Carlo approximations. See
+    /// NIST's [distribution handbook](https://www.itl.nist.gov/div898/handbook/)
+    /// for the underlying family definitions.
     pub fn mean(&self) -> f64 {
         match self.0 {
             DistributionKind::Point { value } => value,
@@ -198,14 +263,22 @@ mod sealed {
     pub trait Sealed {}
 }
 
+/// A sealed marker describing the physical or semantic support of an estimate.
+///
+/// Users select dimensions through marker types such as [`Money`] or
+/// [`SignedInfluence`]. The trait is sealed so downstream crates cannot weaken
+/// validation assumptions relied upon by statistical operations.
 pub trait EstimateDimension: sealed::Sealed {
+    /// Stable dimension name used in validation errors and serialized addresses.
     const NAME: &'static str;
 
+    /// Reports whether a primitive distribution's complete support fits the dimension.
     fn accepts(distribution: &Distribution) -> bool;
 }
 
 macro_rules! dimension {
-    ($name:ident, $label:literal, $validator:ident) => {
+    ($name:ident, $label:literal, $validator:ident, $doc:literal) => {
+        #[doc = $doc]
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub struct $name;
 
@@ -221,26 +294,74 @@ macro_rules! dimension {
     };
 }
 
-dimension!(Money, "money", is_non_negative);
-dimension!(Duration, "duration", is_non_negative);
-dimension!(Probability, "probability", is_probability);
-dimension!(NormalizedState, "normalized_state", is_probability);
-dimension!(SignedInfluence, "signed_influence", is_signed_influence);
+dimension!(
+    Money,
+    "money",
+    is_non_negative,
+    "A non-negative monetary or cost quantity used when comparing intervention investment."
+);
+dimension!(
+    Duration,
+    "duration",
+    is_non_negative,
+    "A non-negative elapsed-time quantity used for costs, lags, and planning horizons."
+);
+dimension!(
+    Probability,
+    "probability",
+    is_probability,
+    "A probability whose complete support lies within `[0, 1]`, used for uncertain success or occurrence."
+);
+dimension!(
+    NormalizedState,
+    "normalized_state",
+    is_probability,
+    "A normalized factor or outcome state on `[0, 1]`, enabling relative causal models without pretending to have calibrated units."
+);
+dimension!(
+    SignedInfluence,
+    "signed_influence",
+    is_signed_influence,
+    "A bounded causal effect on `[-1, 1]`, where sign gives direction and magnitude gives local strength."
+);
 
+/// Errors returned when a primitive distribution cannot form a typed estimate.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum EstimateError {
+    /// The primitive distribution itself contains invalid parameters.
     #[error(transparent)]
     Distribution(#[from] DistributionError),
+    /// The distribution has support outside the estimate dimension's legal range.
     #[error("distribution support is invalid for estimate dimension {0}")]
     InvalidSupport(&'static str),
 }
 
+/// An uncertain, revisioned quantity embedded in a node or edge payload.
+///
+/// The marker `T` makes dimensional mistakes unrepresentable: for example, a
+/// Normal distribution cannot be used as [`Estimate<Probability>`]. Provenance
+/// records the evidence or elicitation context behind the prior.
+///
+/// ```
+/// use optimist::domain::{Distribution, Estimate, EstimateId, Probability};
+///
+/// let estimate = Estimate::<Probability>::new(
+///     EstimateId::new(0),
+///     Distribution::beta(8.0, 2.0)?,
+/// )?;
+/// assert_eq!(estimate.revision, 0);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(bound = "")]
 pub struct Estimate<T: EstimateDimension> {
+    /// Stable ID used to address this estimate within its owning aggregate.
     pub id: EstimateId,
+    /// Optimistic-concurrency revision incremented when the estimate changes.
     pub revision: u64,
+    /// Validated prior distribution whose support is accepted by `T`.
     pub distribution: Distribution,
+    /// Human-readable evidence, source, or elicitation records supporting the estimate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<String>,
     #[serde(skip)]
@@ -248,6 +369,10 @@ pub struct Estimate<T: EstimateDimension> {
 }
 
 impl<T: EstimateDimension> Estimate<T> {
+    /// Constructs an estimate after checking the distribution against `T`.
+    ///
+    /// Use this constructor instead of struct literals so invalid dimensional
+    /// combinations are rejected before they reach storage or analysis.
     pub fn new(id: EstimateId, distribution: Distribution) -> Result<Self, EstimateError> {
         if !T::accepts(&distribution) {
             return Err(EstimateError::InvalidSupport(T::NAME));

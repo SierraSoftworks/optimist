@@ -1,13 +1,13 @@
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
-pub struct ScenarioArgs {
+pub(super) struct ScenarioArgs {
     #[command(subcommand)]
-    pub command: ScenarioCommand,
+    command: ScenarioCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ScenarioCommand {
+enum ScenarioCommand {
     Create { name: String },
     Show { id: String },
     List,

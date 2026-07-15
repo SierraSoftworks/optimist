@@ -1,13 +1,13 @@
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
-pub struct EdgeArgs {
+pub(super) struct EdgeArgs {
     #[command(subcommand)]
-    pub command: EdgeCommand,
+    command: EdgeCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum EdgeCommand {
+enum EdgeCommand {
     Create {
         source: String,
         kind: String,

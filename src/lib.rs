@@ -1,4 +1,19 @@
+//! Tools for collaboratively modelling causal systems and prioritizing interventions.
+//!
+//! Optimist separates its causal graph ([`domain`]) from project isolation
+//! ([`project`]), persistence ([`store`]), transport ([`server`]), and command-line
+//! interaction ([`cli`]). Keeping these boundaries explicit lets API clients, the web
+//! interface, and analysis code share the same validated model.
+
+#![deny(missing_docs)]
+
+/// Command-line argument types and dispatch used by the `optimist` binary.
 pub mod cli;
+/// Strongly typed causal graph aggregates and embedded probabilistic values.
 pub mod domain;
+/// Project metadata and isolated graph lifecycle management.
+pub mod project;
+/// HTTP routing and server process lifecycle.
 pub mod server;
+/// Backend-independent graph persistence contracts and implementations.
 pub mod store;

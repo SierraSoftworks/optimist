@@ -9,6 +9,12 @@ use super::super::{GraphRepository, RepositoryError, RepositoryResult};
 use super::codec::{NORMALIZED_NAME_PROPERTY, edge_items, edge_key, identifier, node_items};
 use super::queries;
 
+/// [`GraphRepository`] implementation backed by an embedded IndraDB datastore.
+///
+/// Each instance owns one project namespace. Node and edge payloads are serialized
+/// with their structural item using IndraDB bulk insertion. Cross-call atomicity is
+/// **not** assumed for RocksDB; higher-level multi-item commands require the planned
+/// ChangeSet recovery protocol.
 pub struct IndraDbRepository<D: Datastore> {
     project_id: ProjectId,
     database: Database<D>,
@@ -17,12 +23,24 @@ pub struct IndraDbRepository<D: Datastore> {
 }
 
 impl IndraDbRepository<MemoryDatastore> {
+    /// Creates an empty IndraDB memory repository for one project.
+    ///
+    /// ```
+    /// use optimist::{domain::ProjectId, store::IndraDbRepository};
+    /// let repository = IndraDbRepository::memory(ProjectId::new("delivery")?)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn memory(project_id: ProjectId) -> RepositoryResult<Self> {
         Self::from_database(project_id, MemoryDatastore::new_db())
     }
 }
 
 impl<D: Datastore> IndraDbRepository<D> {
+    /// Wraps an existing database and rebuilds project-local indices from payloads.
+    ///
+    /// Startup fails if persisted names, aliases, or payloads violate current domain
+    /// invariants. This makes corruption/schema incompatibility visible before serving
+    /// requests rather than producing partial query results.
     pub fn from_database(project_id: ProjectId, database: Database<D>) -> RepositoryResult<Self> {
         database
             .index_property(identifier(NORMALIZED_NAME_PROPERTY)?)

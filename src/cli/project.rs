@@ -5,13 +5,13 @@ use clap::{Args, Subcommand};
 use crate::domain::ProjectId;
 
 #[derive(Debug, Args)]
-pub struct ProjectArgs {
+pub(super) struct ProjectArgs {
     #[command(subcommand)]
-    pub command: ProjectCommand,
+    command: ProjectCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ProjectCommand {
+enum ProjectCommand {
     Create {
         name: String,
     },

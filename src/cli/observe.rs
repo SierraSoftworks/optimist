@@ -1,13 +1,13 @@
 use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
-pub struct ObserveArgs {
+pub(super) struct ObserveArgs {
     #[command(subcommand)]
-    pub command: ObserveCommand,
+    command: ObserveCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ObserveCommand {
+enum ObserveCommand {
     Add {
         measurement_edge: String,
         value: f64,

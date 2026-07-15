@@ -9,25 +9,52 @@ const ENTITY_NAMESPACE: Uuid = Uuid::from_bytes([
     0x73, 0x69, 0x65, 0x72, 0x72, 0x61, 0x45, 0x40, 0x80, 0x00, 0x6f, 0x70, 0x74, 0x69, 0x6d, 0x69,
 ]);
 
+/// Errors returned when external project or entity identifiers are not canonical.
+///
+/// Rejecting alternate spellings matters because identifiers are used in URLs,
+/// Markdown references, edge IDs, and agent commands. A single canonical form
+/// ensures those representations compare byte-for-byte.
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum IdError {
+    /// No identifier text was provided.
     #[error("an identifier cannot be empty")]
     Empty,
+    /// The text contains a character outside Optimist's delimiter-safe alphabet.
     #[error("identifier contains an invalid character: {0:?}")]
     InvalidCharacter(char),
+    /// The text decodes, but is not the shortest unique representation.
     #[error("identifier is not in its canonical form")]
     NonCanonical,
+    /// The text represents a value larger than the underlying 64-bit counter.
     #[error("identifier exceeds the supported 64-bit range")]
     Overflow,
+    /// A project ID is empty, too long, or contains a non-URL-safe character.
     #[error("project identifiers must be 1-64 URL-safe characters")]
     InvalidProjectId,
 }
 
+/// Identifies one isolated graph within an Optimist server.
+///
+/// Project IDs scope entity IDs, names, constraints, and analysis state. The same
+/// entity ID may safely occur in two projects because callers always select a
+/// project before addressing its graph.
+///
+/// ```
+/// use optimist::domain::ProjectId;
+///
+/// let project = ProjectId::new("platform_reliability")?;
+/// assert_eq!(project.as_str(), "platform_reliability");
+/// # Ok::<(), optimist::domain::IdError>(())
+/// ```
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ProjectId(String);
 
 impl ProjectId {
+    /// Validates and constructs a project ID suitable for URLs and filesystem keys.
+    ///
+    /// IDs may contain ASCII letters, digits, `_`, and `.`, and are limited to 64
+    /// bytes. Human-facing project names are separate and may contain Unicode.
     pub fn new(value: impl Into<String>) -> Result<Self, IdError> {
         let value = value.into();
         if value.is_empty()
@@ -42,6 +69,7 @@ impl ProjectId {
         Ok(Self(value))
     }
 
+    /// Returns the canonical text used in API paths and storage directories.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -61,18 +89,51 @@ impl FromStr for ProjectId {
     }
 }
 
+/// A compact project-local identifier for a graph entity.
+///
+/// The underlying monotonic counter is rendered with a delimiter-safe base-64
+/// alphabet, making IDs inexpensive for token-limited agents. Use [`Display`](fmt::Display)
+/// for external representations and [`EntityId::to_indradb_uuid`] for storage.
+///
+/// ```
+/// use optimist::domain::EntityId;
+///
+/// let id = EntityId::new(1);
+/// assert_eq!(id.to_string(), "B");
+/// assert_eq!(id, "B".parse()?);
+/// # Ok::<(), optimist::domain::IdError>(())
+/// ```
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EntityId(u64);
 
 impl EntityId {
+    /// Wraps a value allocated by a project's monotonic entity counter.
+    ///
+    /// This constructor does not reserve the value; repositories own allocation
+    /// and uniqueness. It is primarily useful when rebuilding IDs from storage.
     pub const fn new(value: u64) -> Self {
         Self(value)
     }
 
+    /// Returns the counter value used for ordering and allocating the next ID.
     pub const fn value(self) -> u64 {
         self.0
     }
 
+    /// Maps this short ID deterministically to IndraDB's UUID key space.
+    ///
+    /// The UUID is version 5 and stable across restarts. Project stores are
+    /// physically isolated, so equal entity counters in different projects may
+    /// intentionally map to equal UUID bytes without colliding.
+    ///
+    /// ```
+    /// use optimist::domain::EntityId;
+    ///
+    /// assert_eq!(
+    ///     EntityId::new(42).to_indradb_uuid(),
+    ///     EntityId::new(42).to_indradb_uuid()
+    /// );
+    /// ```
     pub fn to_indradb_uuid(self) -> Uuid {
         Uuid::new_v5(&ENTITY_NAMESPACE, &self.0.to_be_bytes())
     }
