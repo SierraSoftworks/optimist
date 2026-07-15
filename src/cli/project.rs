@@ -4,6 +4,8 @@ use clap::{Args, Subcommand};
 
 use crate::domain::ProjectId;
 
+use super::{client::ProjectClient, output::OutputFormat};
+
 #[derive(Debug, Args)]
 pub(super) struct ProjectArgs {
     #[command(subcommand)]
@@ -34,13 +36,36 @@ enum ProjectCommand {
     },
 }
 
-pub(super) fn run(_args: ProjectArgs) -> Result<(), human_errors::Error> {
-    super::unavailable(
-        "Project management is not available in this build yet.",
-        &[
-            "Start an Optimist server once server support is implemented, then retry this project command.",
-        ],
-    )
+pub(super) async fn run(
+    args: ProjectArgs,
+    server_url: &str,
+    output: OutputFormat,
+) -> Result<(), human_errors::Error> {
+    let client = ProjectClient::new(server_url)?;
+    let rendered = match args.command {
+        ProjectCommand::Create { name } => output.project(&client.create(name).await?)?,
+        ProjectCommand::List => output.projects(&client.list().await?)?,
+        ProjectCommand::Show { project } => output.project(&client.show(&project).await?)?,
+        ProjectCommand::Delete { project } => output.project(&client.delete(&project).await?)?,
+        ProjectCommand::Import { .. } => {
+            return super::unavailable(
+                "Markdown project import is not available yet.",
+                &[
+                    "Use project create/list/show/delete while the validated Markdown import pipeline is implemented.",
+                ],
+            );
+        }
+        ProjectCommand::Export { .. } => {
+            return super::unavailable(
+                "Markdown project export is not available yet.",
+                &[
+                    "Use project list/show to inspect project metadata while deterministic Markdown export is implemented.",
+                ],
+            );
+        }
+    };
+    println!("{rendered}");
+    Ok(())
 }
 
 #[cfg(test)]

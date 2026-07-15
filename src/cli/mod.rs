@@ -1,4 +1,5 @@
 mod apply;
+mod client;
 mod edge;
 mod estimate;
 mod node;
@@ -83,9 +84,11 @@ enum Command {
 /// # }
 /// ```
 pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
+    let server_url = cli.server_url;
+    let output = cli.output;
     match cli.command {
         Command::Server(args) => server::run(args).await,
-        Command::Project(args) => project::run(args),
+        Command::Project(args) => project::run(args, &server_url, output).await,
         Command::Node(args) => node::run(args),
         Command::Edge(args) => edge::run(args),
         Command::Observe(args) => observe::run(args),
