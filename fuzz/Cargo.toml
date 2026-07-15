@@ -1,0 +1,35 @@
+[package]
+name = "optimist-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+optimist = { path = ".." }
+serde = "1"
+serde_json = "1"
+
+[[bin]]
+name = "entity_edge_ids"
+path = "fuzz_targets/entity_edge_ids.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tagged_aggregates"
+path = "fuzz_targets/tagged_aggregates.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "command_replay"
+path = "fuzz_targets/command_replay.rs"
+test = false
+doc = false
+bench = false

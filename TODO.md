@@ -127,9 +127,12 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ## 9. Fuzzing, CI, And Hardening
 
-- [ ] Initialize `cargo-fuzz` with versioned seed corpora and dictionaries.
-- [ ] Fuzz IDs/names, JSON/YAML/Markdown, command replay, formulas/units, distributions, copulas, graph algorithms, and WebSocket events.
-- [ ] Add reusable `proptest` generators for valid and invalid domain graphs.
+- [x] Initialize `cargo-fuzz` with versioned seed corpora and dictionaries.
+- [ ] Expand fuzzing to names and, as their feature surfaces land, YAML/Markdown, formulas/units, distributions/copulas, graph algorithms, and WebSocket events.
+	- [x] Fuzz canonical `EntityId` and `EdgeId` parsing.
+	- [x] Fuzz bounded JSON decoding and round trips for core tagged node, edge, and observation aggregates.
+	- [x] Fuzz bounded command request decoding, deterministic in-memory sequences, and retry replay.
+- [x] Add reusable `proptest` generators for valid project/entity IDs, core node/edge/observation values, and constrained endpoints.
 - [ ] Add bounded fuzz corpus regressions to pull-request CI.
 - [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.
 - [ ] Run Miri on pure safe-Rust domain/statistics code where supported.
