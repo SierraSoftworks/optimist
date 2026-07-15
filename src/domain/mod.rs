@@ -4,6 +4,8 @@ mod estimate;
 mod id;
 mod node;
 mod observation;
+mod quantile_fit;
+mod quantiles;
 
 pub use edge::{
     BlockingEffect, CausalEffect, Edge, EdgeError, EdgeId, EdgeKind, EdgePayload, Measurement,
@@ -20,3 +22,4 @@ pub use node::{
     Outcome, OutcomeDirection, normalize_name,
 };
 pub use observation::{NewObservation, ObservationError};
+pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};

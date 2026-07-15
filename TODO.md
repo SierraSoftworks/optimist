@@ -1,0 +1,139 @@
+# Optimist Implementation Checklist
+
+This file is the tracked delivery checklist. Mark an item complete only when its behavior, documentation, and relevant tests are committed. Update this file in the same commit as each completed slice.
+
+## Quality Gate (Every Slice)
+
+- [x] Public Rust APIs are enforced with `#![deny(missing_docs)]`.
+- [x] `cargo fmt --check` passes.
+- [x] `cargo test` and `cargo test --doc` pass.
+- [x] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` passes.
+- [x] `cargo clippy --all-targets -- -D warnings` passes for default features.
+- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes.
+- [x] Touched production modules stay below 150 implementation lines, excluding tests and public docs.
+- [x] User-facing failures include actionable `human-errors` or API advice.
+
+## 1. Domain And Graph Foundation
+
+- [x] Project-local short entity IDs and deterministic IndraDB UUID mapping.
+- [x] Project-local case-insensitive unique names and aliases.
+- [x] Typed `Outcome`, `Metric`, `Factor`, and `Intervention` vertices.
+- [x] Typed edge payloads with endpoint validation and canonical edge IDs.
+- [x] Embedded measurement observations with immutable correction chains.
+- [x] Primitive validated distributions and dimensioned `Estimate<T>` values.
+- [ ] Runtime unit algebra for custom dimensions and formula validation.
+- [ ] Stable addresses for estimates embedded in nodes, edges, and nested Fermi components.
+- [ ] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
+- [x] Quantile-based Normal/LogNormal prior elicitation with retained inputs and residual diagnostics.
+- [ ] Project dependence model for shared variables and residual correlations.
+- [ ] Typed scenario/project documents outside the causal graph.
+
+## 2. Storage And Project Isolation
+
+- [x] Backend-independent graph repository contract.
+- [x] Deterministic in-memory repository implementation.
+- [x] Generic IndraDB adapter using `MemoryDatastore`.
+- [x] Atomic single-node and single-edge payload insertion/update.
+- [x] Process-local project catalog with isolated repositories and counters.
+- [ ] Persist project catalog metadata under `--data-dir`.
+- [ ] Open one RocksDB database per project behind the `rocksdb` feature.
+	- [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
+- [ ] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
+- [ ] Add forward-only schema migrations and startup integrity checks.
+- [ ] Add lazy project open/close handles and idle eviction.
+- [ ] Add backup/restore hooks and immutable graph snapshots.
+- [ ] Run the repository contract suite against memory and temporary RocksDB.
+
+## 3. Commands, API, And CLI
+
+- [x] UUID-keyed idempotent commands with expected project revisions.
+- [x] Project create/list/show/delete API and CLI.
+- [x] Typed node create/list/get API and CLI.
+- [x] Typed safe-edge create/list/get API and CLI.
+- [x] Observation add/correct/list API and CLI.
+- [x] Stable table, JSON, and JSONL agent output.
+- [ ] Revision-checked node and edge delete commands.
+- [ ] Typed node/edge metadata and Markdown description updates.
+- [ ] Primitive estimate set/show/remove commands and CLI.
+- [ ] Fermi component and formula authoring commands.
+- [ ] Scenario create/list/show/update/delete/analyze commands.
+- [ ] Atomic command batches and compensating undo.
+- [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
+- [ ] Add pagination/filter/search endpoints and CLI flags.
+
+## 4. Markdown Import And Export
+
+- [ ] Versioned `_project.md` schema for metadata, constraints, units, and dependence.
+- [ ] Canonical `entities/<id>-<slug>.md` schema with outgoing edge payloads.
+- [ ] Canonical `scenarios/<id>-<slug>.md` schema.
+- [ ] YAML frontmatter parser with source spans, input limits, and diagnostics.
+- [ ] Two-pass reference and project-constraint validation.
+- [ ] Safe merge import plan with create/update/unchanged/conflict reporting.
+- [ ] Explicit `--replace --yes` destructive restore semantics.
+- [ ] Deterministic atomic directory export from one immutable revision.
+- [ ] Export-import-export semantic and byte-stability tests.
+- [ ] Implement `optimist project import|export` as HTTP clients.
+
+## 5. Real-Time Collaboration
+
+- [ ] Persist committed `ChangeSet` events and replay by project revision.
+- [ ] Per-project WebSocket subscription and ordered broadcast.
+- [ ] Snapshot fallback when retained event history has a gap.
+- [ ] Ephemeral anonymous presence, selection, and editing state with expiry.
+- [ ] Merge disjoint nested fields and conflict on same-field edits.
+- [ ] Structured base/current/proposed conflict responses.
+- [ ] Two-client reconnect, retry, conflict, and stale-analysis tests.
+- [ ] Pluggable authorization middleware boundary; OIDC/roles remain later hardening.
+
+## 6. Probability And Bayesian Statistics
+
+- [ ] Exact moments and sampling for every supported primitive distribution.
+- [ ] Conjugate Beta-Binomial and Normal-Normal updates with explicit likelihoods.
+- [ ] Exact Normal sum and LogNormal product/ratio propagation including covariance.
+- [ ] Gaussian copula validation with positive-semidefinite correlation matrices.
+- [ ] Deterministic seeded joint Monte Carlo or quasi-Monte Carlo engine.
+- [ ] Formula DAG compilation with one sample per shared variable per draw.
+- [ ] Monte Carlo standard errors, convergence criteria, and reproducibility metadata.
+- [ ] Calibration history with proper scoring rules and interval coverage.
+- [ ] Decomposition comparison using variance/entropy, covariance attribution, and value of information.
+- [ ] Law-based and analytical-vs-sampled differential tests with error-derived tolerances.
+
+## 7. Causal And Decision Analysis
+
+- [ ] Immutable analysis projection keyed by graph/scenario/dependence revisions.
+- [ ] Finite-horizon intervention-to-outcome posterior propagation.
+- [ ] Stable feedback equilibrium checks and probability of instability.
+- [ ] Tarjan SCC detection and bounded elementary-cycle enumeration.
+- [ ] Reinforcing/balancing, nested, and interacting loop explanations.
+- [ ] Evidence-aware impediment ranking separate from topology-only candidates.
+- [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication.
+- [ ] Pareto impact/cost/time/risk/uncertainty frontier.
+- [ ] Scalar utility only when a scenario explicitly defines conversion preferences.
+- [ ] Reference model with hand-checked exact and sampled results.
+
+## 8. Vue Workbench
+
+- [ ] Vue 3 + TypeScript + Vite scaffold with Pinia, TanStack Query, Vitest, and Playwright.
+- [ ] Generated API client and project selector.
+- [ ] Cytoscape renderer adapter for the four core node kinds and structural edges.
+- [ ] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
+- [ ] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
+- [ ] Direct graph/property editing through typed commands.
+- [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
+- [ ] Explore, Impediments, Feedback, and Optimize analysis modes.
+- [ ] Keyboard navigation and synchronized table/outline accessibility view.
+- [ ] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
+- [ ] Serve production assets from Axum with SPA fallback and immutable caching.
+
+## 9. Fuzzing, CI, And Hardening
+
+- [ ] Initialize `cargo-fuzz` with versioned seed corpora and dictionaries.
+- [ ] Fuzz IDs/names, JSON/YAML/Markdown, command replay, formulas/units, distributions, copulas, graph algorithms, and WebSocket events.
+- [ ] Add reusable `proptest` generators for valid and invalid domain graphs.
+- [ ] Add bounded fuzz corpus regressions to pull-request CI.
+- [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.
+- [ ] Run Miri on pure safe-Rust domain/statistics code where supported.
+- [ ] Add dependency audit/deny checks and parser/body/decompression limits.
+- [ ] Benchmark the agreed 100-node/1,000-edge dense project fixture.
+- [ ] Add tracing/metrics, automated backups, audit retention, and release packaging.
+- [ ] Add TLS/reverse-proxy guidance and production OIDC viewer/editor/admin roles.
