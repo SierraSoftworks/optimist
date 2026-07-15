@@ -81,7 +81,7 @@ mod tests {
     use crate::{
         command::{
             AppendObservation, CommandOutcome, CommandRequest, CorrectObservation, CreateEdge,
-            CreateNode, GraphCommand,
+            CreateNode, DeleteEdge, DeleteNode, GraphCommand,
         },
         domain::{
             EdgeId, EdgeKind, EdgePayload, Factor, Measurement, MeasurementPolarity, Metric,
@@ -164,6 +164,100 @@ mod tests {
         assert_eq!(first, catalog.execute(&project.id, request).unwrap());
         assert!(matches!(first.outcome, CommandOutcome::EdgeCreated(_)));
         assert_eq!(catalog.list_edges(&project.id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn deletes_edges_before_nodes_with_revision_and_retry_guards() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog.execute(&project.id, create_node(0)).unwrap();
+        let mut second = create_node(1);
+        let GraphCommand::CreateNode(node) = &mut second.command else {
+            unreachable!()
+        };
+        node.name = "actions".to_owned();
+        catalog.execute(&project.id, second).unwrap();
+        let edge_id = EdgeId {
+            source: crate::domain::EntityId::new(1),
+            kind: EdgeKind::Requires,
+            destination: crate::domain::EntityId::new(0),
+        };
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: edge_id.source,
+                        destination: edge_id.destination,
+                        payload: EdgePayload::Requires(Requirement {
+                            hard: true,
+                            satisfaction_threshold: None,
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+
+        let blocked = catalog.execute(
+            &project.id,
+            CommandRequest::new(
+                3,
+                GraphCommand::DeleteNode(DeleteNode {
+                    id: edge_id.destination,
+                }),
+            ),
+        );
+        assert!(matches!(
+            blocked,
+            Err(ProjectError::Repository(
+                crate::store::RepositoryError::EntityHasEdges(_)
+            ))
+        ));
+        assert_eq!(catalog.get(&project.id).unwrap().revision, 3);
+
+        let stale = catalog.execute(
+            &project.id,
+            CommandRequest::new(
+                2,
+                GraphCommand::DeleteEdge(DeleteEdge {
+                    id: edge_id.clone(),
+                }),
+            ),
+        );
+        assert!(matches!(stale, Err(ProjectError::RevisionConflict { .. })));
+
+        let delete_edge = CommandRequest::new(
+            3,
+            GraphCommand::DeleteEdge(DeleteEdge {
+                id: edge_id.clone(),
+            }),
+        );
+        let deleted = catalog.execute(&project.id, delete_edge.clone()).unwrap();
+        assert_eq!(deleted, catalog.execute(&project.id, delete_edge).unwrap());
+        assert!(matches!(deleted.outcome, CommandOutcome::EdgeDeleted(_)));
+
+        let deleted_node = catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::DeleteNode(DeleteNode {
+                        id: edge_id.destination,
+                    }),
+                ),
+            )
+            .unwrap();
+        assert!(matches!(
+            deleted_node.outcome,
+            CommandOutcome::NodeDeleted(_)
+        ));
+        assert!(
+            catalog
+                .get_node(&project.id, edge_id.destination)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

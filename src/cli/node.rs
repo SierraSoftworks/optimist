@@ -48,7 +48,7 @@ enum NodeCommand {
     },
     List,
     Delete {
-        id: String,
+        id: EntityId,
     },
 }
 
@@ -80,12 +80,7 @@ pub(super) async fn run(
         }
         NodeCommand::Get { id } => output.node(&client.show_node(project, id).await?)?,
         NodeCommand::List => output.nodes(&client.list_nodes(project).await?)?,
-        NodeCommand::Delete { .. } => {
-            return super::unavailable(
-                "Revision-checked node deletion is not available yet.",
-                &["Remove incident edges first once typed delete commands are implemented."],
-            );
-        }
+        NodeCommand::Delete { id } => output.node(&client.delete_node(project, id).await?)?,
     };
     println!("{rendered}");
     Ok(())
@@ -116,6 +111,15 @@ mod tests {
                 "ratio"
             ])
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_node_delete_with_typed_id() {
+        assert!(Cli::try_parse_from(["optimist", "--project", "A", "node", "delete", "B"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["optimist", "--project", "A", "node", "delete", "not-an-id"])
+                .is_err()
         );
     }
 }

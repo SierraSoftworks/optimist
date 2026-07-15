@@ -13,6 +13,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
             &["Choose a node name or alias which is not already used in this project."]
         }
         "node_not_found" => &["Run `optimist node list` and retry with a returned entity ID."],
+        "node_has_edges" => &[
+            "Run `optimist edge list`, delete every edge connected to the node, then retry `optimist node delete`.",
+        ],
         "invalid_edge_id" => {
             &["Run `optimist edge list` and use a returned ID such as `A-requires-B`."]
         }

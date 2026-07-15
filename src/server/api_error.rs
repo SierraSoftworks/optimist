@@ -81,6 +81,13 @@ impl From<ProjectError> for ApiError {
                 "node_not_found",
                 &["List project nodes and retry with a returned entity ID."],
             ),
+            ProjectError::Repository(RepositoryError::EntityHasEdges(_)) => (
+                StatusCode::CONFLICT,
+                "node_has_edges",
+                &[
+                    "List the project's edges, delete every relationship connected to this node, then retry the node deletion.",
+                ],
+            ),
             ProjectError::Repository(RepositoryError::DuplicateEdge(_)) => (
                 StatusCode::CONFLICT,
                 "edge_conflict",
@@ -124,5 +131,33 @@ impl From<ProjectError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         (self.status, Json(self.body)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+    use serde_json::Value;
+
+    use crate::{domain::EntityId, project::ProjectError, store::RepositoryError};
+
+    use super::ApiError;
+
+    #[tokio::test]
+    async fn incident_edges_return_an_actionable_conflict() {
+        let response = ApiError::from(ProjectError::Repository(RepositoryError::EntityHasEdges(
+            EntityId::new(0),
+        )))
+        .into_response();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = to_bytes(response.into_body(), 16_384).await.unwrap();
+        let body: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], "node_has_edges");
+        assert!(
+            body["error"]["advice"][0]
+                .as_str()
+                .unwrap()
+                .contains("delete every relationship")
+        );
     }
 }

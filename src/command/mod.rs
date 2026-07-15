@@ -61,8 +61,12 @@ impl CommandRequest {
 pub enum GraphCommand {
     /// Allocates an entity ID and inserts a validated node aggregate.
     CreateNode(CreateNode),
+    /// Removes a node after the repository verifies that it has no incident edges.
+    DeleteNode(DeleteNode),
     /// Validates stored endpoint kinds and inserts one canonical structural edge.
     CreateEdge(CreateEdge),
+    /// Removes one structural edge while retaining both endpoint nodes.
+    DeleteEdge(DeleteEdge),
     /// Appends a validated immutable reading to a `measures` edge.
     AppendObservation(AppendObservation),
     /// Appends a correction which supersedes one existing observation.
@@ -80,6 +84,13 @@ pub struct CreateNode {
     pub payload: NodePayload,
 }
 
+/// Identity of a structural node to remove from the project graph.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteNode {
+    /// Project-local ID of the node, which must have no incident edges.
+    pub id: EntityId,
+}
+
 /// Data required to construct a structural relationship between existing nodes.
 ///
 /// Endpoint kinds are intentionally absent: the project executor derives them from
@@ -93,6 +104,13 @@ pub struct CreateEdge {
     pub destination: EntityId,
     /// Kind-specific fields and embedded values for the relationship.
     pub payload: EdgePayload,
+}
+
+/// Identity of a structural edge to remove from the project graph.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteEdge {
+    /// Canonical edge identity derived from its endpoints and kind.
+    pub id: EdgeId,
 }
 
 /// Data required to append a reading to an existing measurement edge.
@@ -132,8 +150,12 @@ pub struct CommandResult {
 pub enum CommandOutcome {
     /// Complete node aggregate created by [`GraphCommand::CreateNode`].
     NodeCreated(Node),
+    /// Complete node aggregate removed by [`GraphCommand::DeleteNode`].
+    NodeDeleted(Node),
     /// Complete canonical edge created by [`GraphCommand::CreateEdge`].
     EdgeCreated(Edge),
+    /// Complete canonical edge removed by [`GraphCommand::DeleteEdge`].
+    EdgeDeleted(Edge),
     /// New immutable reading and updated owning measurement edge.
     ObservationAppended {
         /// Complete updated edge aggregate after persistence.
@@ -148,4 +170,58 @@ pub enum CommandOutcome {
         /// Immutable correction whose `supersedes` points at its predecessor.
         observation: Observation,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use crate::domain::{EdgeId, EdgeKind, EntityId};
+
+    use super::{CommandRequest, DeleteEdge, DeleteNode, GraphCommand};
+
+    #[test]
+    fn delete_commands_have_stable_tagged_json() {
+        let node = CommandRequest {
+            request_id: Uuid::nil(),
+            expected_revision: 7,
+            command: GraphCommand::DeleteNode(DeleteNode {
+                id: EntityId::new(0),
+            }),
+        };
+        assert_eq!(
+            serde_json::to_value(&node).unwrap(),
+            json!({
+                "request_id": "00000000-0000-0000-0000-000000000000",
+                "expected_revision": 7,
+                "command": {"type": "delete_node", "payload": {"id": "A"}}
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<CommandRequest>(serde_json::to_value(&node).unwrap()).unwrap(),
+            node
+        );
+
+        let edge = GraphCommand::DeleteEdge(DeleteEdge {
+            id: EdgeId {
+                source: EntityId::new(1),
+                kind: EdgeKind::Requires,
+                destination: EntityId::new(0),
+            },
+        });
+        assert_eq!(
+            serde_json::to_value(&edge).unwrap(),
+            json!({
+                "type": "delete_edge",
+                "payload": {
+                    "id": {"source": "B", "kind": "requires", "destination": "A"}
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<GraphCommand>(serde_json::to_value(&edge).unwrap()).unwrap(),
+            edge
+        );
+    }
 }

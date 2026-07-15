@@ -17,6 +17,10 @@ pub(super) fn command(
             entry.repository.create_node(node.clone())?;
             Ok(CommandOutcome::NodeCreated(node))
         }
+        GraphCommand::DeleteNode(command) => {
+            let node = entry.repository.delete_node(command.id)?;
+            Ok(CommandOutcome::NodeDeleted(node))
+        }
         GraphCommand::CreateEdge(command) => {
             let source = entry
                 .repository
@@ -36,6 +40,10 @@ pub(super) fn command(
             .map_err(RepositoryError::from)?;
             entry.repository.create_edge(edge.clone())?;
             Ok(CommandOutcome::EdgeCreated(edge))
+        }
+        GraphCommand::DeleteEdge(command) => {
+            let edge = entry.repository.delete_edge(&command.id)?;
+            Ok(CommandOutcome::EdgeDeleted(edge))
         }
         GraphCommand::AppendObservation(command) => {
             let mut edge = measurement_edge(entry, &command.edge)?;

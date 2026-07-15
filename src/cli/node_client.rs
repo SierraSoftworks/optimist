@@ -1,5 +1,7 @@
 use crate::{
-    command::{CommandOutcome, CommandRequest, CommandResult, CreateNode, GraphCommand},
+    command::{
+        CommandOutcome, CommandRequest, CommandResult, CreateNode, DeleteNode, GraphCommand,
+    },
     domain::{EntityId, Node, NodePayload, ProjectId},
 };
 
@@ -56,6 +58,33 @@ impl ProjectClient {
             .await
             .map_err(node_network_error)?;
         decode(response).await
+    }
+
+    pub(super) async fn delete_node(
+        &self,
+        project: &ProjectId,
+        entity: EntityId,
+    ) -> Result<Node, human_errors::Error> {
+        let revision = self.show(project).await?.revision;
+        let request = CommandRequest::new(
+            revision,
+            GraphCommand::DeleteNode(DeleteNode { id: entity }),
+        );
+        let response = self
+            .client
+            .post(self.endpoint(&format!("api/v1/projects/{project}/commands"))?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(node_network_error)?;
+        let result: CommandResult = decode(response).await?;
+        match result.outcome {
+            CommandOutcome::NodeDeleted(node) => Ok(node),
+            _ => Err(human_errors::system(
+                "The Optimist server returned an unexpected result for a node command.",
+                &["Confirm the CLI and server versions match, then inspect the server logs."],
+            )),
+        }
     }
 
     pub(super) async fn show_node(

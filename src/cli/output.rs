@@ -111,7 +111,10 @@ fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_er
 #[cfg(test)]
 mod tests {
     use crate::{
-        domain::{Observation, ProjectId},
+        domain::{
+            Edge, EdgePayload, EntityId, Factor, Node, NodeKind, NodePayload, Observation,
+            ProjectId, Requirement,
+        },
         project::Project,
     };
 
@@ -172,5 +175,56 @@ mod tests {
             OutputFormat::Table.observations(&observations).unwrap(),
             "ID\tVALUE\tUNIT\tOBSERVED_AT\tSOURCE\tSUPERSEDES\n0\t0.9\tratio\t2026-07-15T12:00:00Z\tdeployment dashboard\t-"
         );
+    }
+
+    #[test]
+    fn renders_deleted_aggregates_stably_in_every_format() {
+        let node = Node::new(
+            EntityId::new(0),
+            "github",
+            "GitHub Delivery",
+            NodePayload::Factor(Factor {
+                current: None,
+                desired: None,
+                controllable: false,
+                evidence: vec![],
+            }),
+        )
+        .unwrap();
+        let edge = Edge::new(
+            EntityId::new(0),
+            NodeKind::Factor,
+            EntityId::new(1),
+            NodeKind::Factor,
+            EdgePayload::Requires(Requirement {
+                hard: true,
+                satisfaction_threshold: None,
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            OutputFormat::Table.node(&node).unwrap(),
+            "ID\tNAME\tKIND\tTITLE\nA\tgithub\tfactor\tGitHub Delivery"
+        );
+        assert_eq!(
+            OutputFormat::Table.edge(&edge).unwrap(),
+            "ID\tSOURCE\tKIND\tDESTINATION\nA-requires-B\tA\trequires\tB"
+        );
+        assert_eq!(
+            OutputFormat::Json.node(&node).unwrap(),
+            OutputFormat::Jsonl.node(&node).unwrap()
+        );
+        assert_eq!(
+            OutputFormat::Json.edge(&edge).unwrap(),
+            OutputFormat::Jsonl.edge(&edge).unwrap()
+        );
+        let node_json: serde_json::Value =
+            serde_json::from_str(&OutputFormat::Json.node(&node).unwrap()).unwrap();
+        let edge_json: serde_json::Value =
+            serde_json::from_str(&OutputFormat::Json.edge(&edge).unwrap()).unwrap();
+        assert_eq!(node_json["id"], "A");
+        assert_eq!(edge_json["source"], "A");
+        assert_eq!(edge_json["destination"], "B");
     }
 }

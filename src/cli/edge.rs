@@ -88,14 +88,7 @@ pub(super) async fn run(
         }
         EdgeCommand::Get { id } => output.edge(&client.show_edge(project, &id).await?)?,
         EdgeCommand::List => output.edges(&client.list_edges(project).await?)?,
-        EdgeCommand::Delete { .. } => {
-            return super::unavailable(
-                "Revision-checked edge deletion is not available yet.",
-                &[
-                    "Inspect the edge with `optimist edge get` while typed delete commands are implemented.",
-                ],
-            );
-        }
+        EdgeCommand::Delete { id } => output.edge(&client.delete_edge(project, id).await?)?,
     };
     println!("{rendered}");
     Ok(())
@@ -121,6 +114,21 @@ mod tests {
                 "B",
                 "--requirement",
                 "hard"
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_edge_delete_with_typed_id() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "edge",
+                "delete",
+                "B-requires-A"
             ])
             .is_ok()
         );
