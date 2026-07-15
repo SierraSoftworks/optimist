@@ -58,7 +58,7 @@ pub enum Command {
 
 pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
     match cli.command {
-        Command::Server(args) => server::run(args),
+        Command::Server(args) => server::run(args).await,
         Command::Project(args) => project::run(args),
         Command::Node(args) => node::run(args),
         Command::Edge(args) => edge::run(args),

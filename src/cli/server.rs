@@ -10,13 +10,22 @@ pub struct ServerArgs {
     pub bind: SocketAddr,
 }
 
-pub(super) fn run(_args: ServerArgs) -> Result<(), human_errors::Error> {
-    super::unavailable(
-        "The Optimist server is not available in this build yet.",
-        &[
-            "Use `optimist --help` to inspect the command contract while server implementation continues.",
-        ],
-    )
+pub(super) async fn run(args: ServerArgs) -> Result<(), human_errors::Error> {
+    crate::server::serve(crate::server::ServerConfig {
+        bind: args.bind,
+        data_dir: args.data_dir,
+    })
+    .await
+    .map_err(|error| {
+        human_errors::wrap_system(
+            error,
+            "The Optimist server stopped unexpectedly.",
+            &[
+                "Check that the bind address is available and the data directory is writable.",
+                "Retry with `optimist server --bind 127.0.0.1:3001` if another process uses the port.",
+            ],
+        )
+    })
 }
 
 #[cfg(test)]

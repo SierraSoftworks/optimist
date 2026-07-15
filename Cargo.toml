@@ -8,15 +8,17 @@ default = []
 rocksdb = ["indradb-lib/rocksdb-datastore"]
 
 [dependencies]
+axum = "0.8.4"
 clap = { version = "4.5.41", features = ["derive", "env"] }
 human-errors = { version = "0.2.4", features = ["pretty"] }
 indradb-lib = "5.0.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 thiserror = "2.0.12"
-tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.46.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 unicode-normalization = "0.1.24"
 uuid = { version = "1.17.0", features = ["serde", "v5"] }
 
 [dev-dependencies]
 proptest = "1.7.0"
+tower = { version = "0.5.2", features = ["util"] }
