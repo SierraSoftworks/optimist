@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use super::{Duration, EntityId, Estimate, NodeKind, SignedInfluence};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
     Contributes,
@@ -37,7 +37,7 @@ impl EdgeKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EdgeId {
     pub source: EntityId,
     pub kind: EdgeKind,

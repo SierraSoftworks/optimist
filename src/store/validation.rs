@@ -1,0 +1,25 @@
+use std::collections::BTreeSet;
+
+use crate::domain::{Node, normalize_name};
+
+use super::{RepositoryError, RepositoryResult};
+
+pub(super) fn name_claims(node: &Node) -> RepositoryResult<Vec<String>> {
+    let expected = normalize_name(&node.name);
+    if node.normalized_name != expected {
+        return Err(RepositoryError::InvalidNormalizedName {
+            id: node.id,
+            actual: node.normalized_name.clone(),
+            expected,
+        });
+    }
+
+    let claims = std::iter::once(node.normalized_name.clone())
+        .chain(node.aliases.iter().map(|alias| normalize_name(alias)))
+        .collect::<Vec<_>>();
+    let unique = claims.iter().collect::<BTreeSet<_>>();
+    if claims.iter().any(String::is_empty) || unique.len() != claims.len() {
+        return Err(RepositoryError::InvalidNameClaim(node.id));
+    }
+    Ok(claims)
+}
