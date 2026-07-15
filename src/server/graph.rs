@@ -7,7 +7,7 @@ use axum::{
 
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{EntityId, Node, ProjectId},
+    domain::{Edge, EdgeId, EntityId, Node, ProjectId},
     project::ProjectError,
     store::RepositoryError,
 };
@@ -19,6 +19,8 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/v1/projects/{project}/commands", post(execute_command))
         .route("/api/v1/projects/{project}/nodes", get(list_nodes))
         .route("/api/v1/projects/{project}/nodes/{entity}", get(show_node))
+        .route("/api/v1/projects/{project}/edges", get(list_edges))
+        .route("/api/v1/projects/{project}/edges/{edge}", get(show_edge))
 }
 
 async fn execute_command(
@@ -48,6 +50,27 @@ async fn show_node(
         .get_node(&project, entity)?
         .map(Json)
         .ok_or_else(|| ProjectError::Repository(RepositoryError::MissingEntity(entity)).into())
+}
+
+async fn list_edges(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+) -> Result<Json<Vec<Edge>>, ApiError> {
+    Ok(Json(state.catalog.write().await.list_edges(&project)?))
+}
+
+async fn show_edge(
+    State(state): State<AppState>,
+    Path((project, edge)): Path<(ProjectId, String)>,
+) -> Result<Json<Edge>, ApiError> {
+    let edge_id: EdgeId = edge.parse::<EdgeId>().map_err(ProjectError::from)?;
+    state
+        .catalog
+        .write()
+        .await
+        .get_edge(&project, &edge_id)?
+        .map(Json)
+        .ok_or_else(|| ProjectError::Repository(RepositoryError::MissingEdge(edge)).into())
 }
 
 #[cfg(test)]

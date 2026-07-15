@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 
-use crate::domain::{Node, NodeKind};
+use crate::domain::{Edge, Node, NodeKind};
 use crate::project::Project;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -48,6 +48,25 @@ impl OutputFormat {
                 .map(|lines| lines.join("\n")),
         }
     }
+
+    pub(super) fn edge(self, edge: &Edge) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(edge_table(std::slice::from_ref(edge))),
+            Self::Json | Self::Jsonl => serialize(edge),
+        }
+    }
+
+    pub(super) fn edges(self, edges: &[Edge]) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(edge_table(edges)),
+            Self::Json => serialize(edges),
+            Self::Jsonl => edges
+                .iter()
+                .map(serialize)
+                .collect::<Result<Vec<_>, _>>()
+                .map(|lines| lines.join("\n")),
+        }
+    }
 }
 
 fn table(projects: &[Project]) -> String {
@@ -86,6 +105,21 @@ fn node_kind(kind: NodeKind) -> &'static str {
         NodeKind::Factor => "factor",
         NodeKind::Intervention => "intervention",
     }
+}
+
+fn edge_table(edges: &[Edge]) -> String {
+    std::iter::once("ID\tSOURCE\tKIND\tDESTINATION".to_owned())
+        .chain(edges.iter().map(|edge| {
+            format!(
+                "{}\t{}\t{}\t{}",
+                edge.id(),
+                edge.source,
+                edge.payload.kind().token(),
+                edge.destination
+            )
+        }))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_errors::Error> {

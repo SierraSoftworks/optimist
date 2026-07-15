@@ -1,6 +1,6 @@
 use crate::{
     command::{CommandOutcome, CommandRequest, CommandResult, GraphCommand},
-    domain::{EntityId, Node, ProjectId},
+    domain::{Edge, EdgeId, EntityId, Node, ProjectId},
     store::GraphRepository,
 };
 
@@ -38,6 +38,25 @@ impl ProjectCatalog {
                 entry.repository.create_node(node.clone())?;
                 CommandOutcome::NodeCreated(node)
             }
+            GraphCommand::CreateEdge(command) => {
+                let source = entry
+                    .repository
+                    .get_node(command.source)?
+                    .ok_or(crate::store::RepositoryError::MissingEntity(command.source))?;
+                let destination = entry.repository.get_node(command.destination)?.ok_or(
+                    crate::store::RepositoryError::MissingEntity(command.destination),
+                )?;
+                let edge = Edge::new(
+                    command.source,
+                    source.kind(),
+                    command.destination,
+                    destination.kind(),
+                    command.payload,
+                )
+                .map_err(crate::store::RepositoryError::from)?;
+                entry.repository.create_edge(edge.clone())?;
+                CommandOutcome::EdgeCreated(edge)
+            }
         };
         entry.project.revision = entry
             .project
@@ -66,13 +85,27 @@ impl ProjectCatalog {
     ) -> Result<Option<Node>, ProjectError> {
         Ok(self.repository_mut(project_id)?.get_node(entity_id)?)
     }
+
+    /// Lists complete edge aggregates for one project in canonical edge-ID order.
+    pub fn list_edges(&mut self, project_id: &ProjectId) -> Result<Vec<Edge>, ProjectError> {
+        Ok(self.repository_mut(project_id)?.list_edges()?)
+    }
+
+    /// Retrieves one complete edge aggregate from its project-local tuple identity.
+    pub fn get_edge(
+        &mut self,
+        project_id: &ProjectId,
+        edge_id: &EdgeId,
+    ) -> Result<Option<Edge>, ProjectError> {
+        Ok(self.repository_mut(project_id)?.get_edge(edge_id)?)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        command::{CommandOutcome, CommandRequest, CreateNode, GraphCommand},
-        domain::{Factor, NodePayload},
+        command::{CommandOutcome, CommandRequest, CreateEdge, CreateNode, GraphCommand},
+        domain::{EdgePayload, Factor, NodePayload, Requirement},
     };
 
     use super::ProjectCatalog;
@@ -120,5 +153,35 @@ mod tests {
             ProjectError::RevisionConflict { current: 1, .. }
         ));
         assert_eq!(catalog.list_nodes(&project.id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn creates_edges_idempotently_from_stored_endpoint_kinds() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog.execute(&project.id, create_node(0)).unwrap();
+        let mut second = create_node(1);
+        let GraphCommand::CreateNode(node) = &mut second.command else {
+            unreachable!()
+        };
+        node.name = "actions".to_owned();
+        node.title = "Actions".to_owned();
+        catalog.execute(&project.id, second).unwrap();
+
+        let request = CommandRequest::new(
+            2,
+            GraphCommand::CreateEdge(CreateEdge {
+                source: crate::domain::EntityId::new(1),
+                destination: crate::domain::EntityId::new(0),
+                payload: EdgePayload::Requires(Requirement {
+                    hard: true,
+                    satisfaction_threshold: None,
+                }),
+            }),
+        );
+        let first = catalog.execute(&project.id, request.clone()).unwrap();
+        assert_eq!(first, catalog.execute(&project.id, request).unwrap());
+        assert!(matches!(first.outcome, CommandOutcome::EdgeCreated(_)));
+        assert_eq!(catalog.list_edges(&project.id).unwrap().len(), 1);
     }
 }

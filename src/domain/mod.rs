@@ -1,4 +1,5 @@
 mod edge;
+mod edge_id;
 mod estimate;
 mod id;
 mod node;
@@ -7,6 +8,7 @@ pub use edge::{
     BlockingEffect, CausalEffect, Edge, EdgeError, EdgeId, EdgeKind, EdgePayload, Measurement,
     MeasurementPolarity, Observation, Requirement,
 };
+pub use edge_id::EdgeIdError;
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateError, EstimateId, Money,
     NormalizedState, Probability, SignedInfluence,

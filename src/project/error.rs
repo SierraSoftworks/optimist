@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    domain::{NodeError, ProjectId},
+    domain::{EdgeIdError, NodeError, ProjectId},
     store::RepositoryError,
 };
 
@@ -37,6 +37,9 @@ pub enum ProjectError {
     /// The requested node aggregate failed local construction validation.
     #[error(transparent)]
     Node(#[from] NodeError),
+    /// An external edge ID does not use the canonical tuple representation.
+    #[error(transparent)]
+    EdgeId(#[from] EdgeIdError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

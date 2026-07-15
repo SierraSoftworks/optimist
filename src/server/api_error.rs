@@ -49,6 +49,11 @@ impl From<ProjectError> for ApiError {
                 "invalid_node",
                 &["Provide a non-empty node name and title with fields valid for its node kind."],
             ),
+            ProjectError::EdgeId(_) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_edge_id",
+                &["Use an edge ID returned by `optimist edge list`, such as `A-requires-B`."],
+            ),
             ProjectError::Repository(RepositoryError::DuplicateName(_)) => (
                 StatusCode::CONFLICT,
                 "node_name_conflict",
@@ -58,6 +63,24 @@ impl From<ProjectError> for ApiError {
                 StatusCode::NOT_FOUND,
                 "node_not_found",
                 &["List project nodes and retry with a returned entity ID."],
+            ),
+            ProjectError::Repository(RepositoryError::DuplicateEdge(_)) => (
+                StatusCode::CONFLICT,
+                "edge_conflict",
+                &[
+                    "Use `optimist edge get` to inspect the existing relationship before changing it.",
+                ],
+            ),
+            ProjectError::Repository(RepositoryError::MissingEdge(_)) => (
+                StatusCode::NOT_FOUND,
+                "edge_not_found",
+                &["List project edges and retry with a returned edge ID."],
+            ),
+            ProjectError::Repository(RepositoryError::InvalidEdge(_))
+            | ProjectError::Repository(RepositoryError::EndpointKindMismatch { .. }) => (
+                StatusCode::BAD_REQUEST,
+                "invalid_edge",
+                &["Check that the relationship kind is valid for both endpoint node kinds."],
             ),
             ProjectError::IdentifierSpaceExhausted
             | ProjectError::RevisionSpaceExhausted(_)

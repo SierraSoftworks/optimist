@@ -1,6 +1,9 @@
 mod apply;
 mod client;
+mod client_advice;
 mod edge;
+mod edge_client;
+mod edge_payload;
 mod estimate;
 mod node;
 mod node_client;
@@ -92,7 +95,7 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         Command::Server(args) => server::run(args).await,
         Command::Project(args) => project::run(args, &server_url, output).await,
         Command::Node(args) => node::run(args, cli.project.as_ref(), &server_url, output).await,
-        Command::Edge(args) => edge::run(args),
+        Command::Edge(args) => edge::run(args, cli.project.as_ref(), &server_url, output).await,
         Command::Observe(args) => observe::run(args),
         Command::Estimate(args) => estimate::run(args),
         Command::Scenario(args) => scenario::run(args),

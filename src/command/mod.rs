@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{Node, NodePayload};
+use crate::domain::{Edge, EdgePayload, EntityId, Node, NodePayload};
 
 /// One idempotent, revision-checked request to mutate a project graph.
 ///
@@ -59,6 +59,8 @@ impl CommandRequest {
 pub enum GraphCommand {
     /// Allocates an entity ID and inserts a validated node aggregate.
     CreateNode(CreateNode),
+    /// Validates stored endpoint kinds and inserts one canonical structural edge.
+    CreateEdge(CreateEdge),
 }
 
 /// Data required to construct a new structural node.
@@ -70,6 +72,21 @@ pub struct CreateNode {
     pub title: String,
     /// Kind-specific typed fields embedded in the node.
     pub payload: NodePayload,
+}
+
+/// Data required to construct a structural relationship between existing nodes.
+///
+/// Endpoint kinds are intentionally absent: the project executor derives them from
+/// stored nodes before calling `Edge::new`, preventing clients from forging type
+/// declarations to bypass the endpoint matrix.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CreateEdge {
+    /// Project-local outbound entity ID.
+    pub source: EntityId,
+    /// Project-local inbound entity ID.
+    pub destination: EntityId,
+    /// Kind-specific fields and embedded values for the relationship.
+    pub payload: EdgePayload,
 }
 
 /// Durable result of a committed command, returned identically on retries.
@@ -89,4 +106,6 @@ pub struct CommandResult {
 pub enum CommandOutcome {
     /// Complete node aggregate created by [`GraphCommand::CreateNode`].
     NodeCreated(Node),
+    /// Complete canonical edge created by [`GraphCommand::CreateEdge`].
+    EdgeCreated(Edge),
 }

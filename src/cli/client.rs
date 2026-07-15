@@ -6,6 +6,8 @@ use crate::{
     project::{CreateProject, Project},
 };
 
+use super::client_advice;
+
 pub(super) struct ProjectClient {
     pub(super) base_url: Url,
     pub(super) client: Client,
@@ -112,7 +114,7 @@ pub(super) async fn decode<T: serde::de::DeserializeOwned>(
     })?;
     Err(human_errors::user(
         error.error.message,
-        advice(error.error.code.as_str(), status),
+        client_advice::for_error(error.error.code.as_str(), status),
     ))
 }
 
@@ -122,28 +124,6 @@ fn network_error(error: reqwest::Error) -> human_errors::Error {
         "The Optimist server could not be reached.",
         &["Start `optimist server` and verify `--server-url` or `OPTIMIST_SERVER` points to it."],
     )
-}
-
-fn advice(code: &str, status: reqwest::StatusCode) -> &'static [&'static str] {
-    match code {
-        "invalid_project_name" => &["Provide a non-empty project name."],
-        "project_name_conflict" => &["Choose a project name which is not already in use."],
-        "project_not_found" => {
-            &["Run `optimist project list` and retry with a returned project ID."]
-        }
-        "project_revision_conflict" => {
-            &["Refresh the project and retry the command against its current revision."]
-        }
-        "invalid_node" => &["Provide the required fields for the selected node kind."],
-        "node_name_conflict" => {
-            &["Choose a node name or alias which is not already used in this project."]
-        }
-        "node_not_found" => &["Run `optimist node list` and retry with a returned entity ID."],
-        _ if status.is_server_error() => {
-            &["Retry the request and inspect server logs if it persists."]
-        }
-        _ => &["Check the command arguments and retry the request."],
-    }
 }
 
 #[cfg(test)]
