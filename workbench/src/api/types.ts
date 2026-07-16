@@ -113,3 +113,14 @@ export interface ApiErrorBody {
   message: string
   advice: string[]
 }
+
+export interface ProjectArchive {
+  schema_version: number
+  project: Project
+  files: Record<string, string>
+  summary: {
+    entities: number
+    edges: number
+    scenarios: number
+  }
+}

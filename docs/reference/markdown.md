@@ -69,6 +69,8 @@ A validated imported snapshot can be compared with a current snapshot without mu
 
 Semantic equality ignores stale base revisions when content is unchanged. Changed content from a stale base conflicts rather than overwriting concurrent work. Different projects and conflicting aggregate revisions also produce explicit conflicts.
 
-## Current transport status
+## Archive transport
 
-The Rust library supports parsing, rendering, validation, merge planning, directory reading, and staged publication. `optimist project import|export` and HTTP transport are not implemented yet; those CLI commands return actionable unavailable errors.
+The Rust library, CLI, HTTP API, and Vue workbench support complete project archives. HTTP/browser transport uses one `.optimist.json` envelope whose ordered `files` map contains the same canonical Markdown bytes used by directory export. This avoids archive-format ambiguity while preserving readable documents.
+
+Import is currently complete-snapshot restore, not merge application. A new project ID is restored directly; replacing an existing ID requires explicit destructive confirmation. Validation and fresh repository construction finish before the catalog entry is swapped. Project/document revisions are preserved, while graph revision and process-local ChangeSet replay history restart because import creates a new runtime lineage.

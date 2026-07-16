@@ -149,7 +149,7 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 - The default server catalog and graph databases are process-local; restarting the server loses its data.
 - The RocksDB feature is blocked on the current macOS bindgen target mismatch and is not part of the default quality gate.
 - Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
-- The Markdown parser, renderer, validation, and merge planner are available in the Rust library; complete HTTP/CLI import and export workflows remain pending.
+- Complete canonical project archives can be exported/imported through CLI, HTTP, and the workbench. Import is full-snapshot restore; safe merge application remains pending.
 - Authentication, retained-history snapshot fallback, and the Vue workbench are planned but not complete.
 
 The tracked implementation status is maintained in [TODO.md](TODO.md).

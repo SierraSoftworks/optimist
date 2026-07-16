@@ -47,6 +47,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .add-node-button { justify-self: end; }
 .header-actions { display: flex; align-items: center; gap: 7px; justify-self: end; }
 .header-actions button:disabled { opacity: .42; cursor: not-allowed; }
+.header-icon { border: 1px solid var(--line); background: white; }
 
 .workbench-body { min-height: 0; display: grid; grid-template-columns: 226px minmax(360px, 1fr) 286px; }
 .navigator, .inspector { min-height: 0; background: var(--surface); overflow: auto; }
@@ -130,7 +131,22 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .checkbox-label { display: flex !important; grid-template-columns: auto 1fr; align-items: center; margin-top: 14px; }
 .dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 .form-note { margin: 14px 0 0; color: var(--muted); font-size: 11px; }
+.form-error { margin: 10px 0 0; color: #9a3e31; font-size: 11px; }
 .relationship-fields { margin-top: 14px; }
+.file-picker { display: grid !important; grid-template-columns: auto 1fr; align-items: center; gap: 10px !important; min-height: 64px; padding: 12px; border: 1px dashed #aeb6b0; border-radius: 6px; background: #f7f9f5; cursor: pointer; }
+.file-picker span { display: grid; gap: 2px; }
+.file-picker small { color: var(--muted); font: 9px 'IBM Plex Mono', monospace; }
+.file-picker input { position: absolute; opacity: 0; pointer-events: none; }
+.archive-preview { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.archive-preview > div { display: grid; gap: 3px; }
+.archive-preview code { color: var(--muted); font: 9px 'IBM Plex Mono', monospace; }
+.archive-preview dl { grid-template-columns: repeat(3, auto); gap: 12px; }
+.archive-preview dl div { display: grid; grid-template-columns: auto; gap: 1px; text-align: right; }
+.archive-preview dd { font-weight: 700; }
+.replace-warning { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin: 14px 0; padding: 10px; border: 1px solid #d8a098; border-radius: 6px; background: #fff8f6; color: #8c3429; }
+.replace-warning div { display: grid; gap: 3px; }
+.replace-warning strong { font-size: 11px; }
+.replace-warning span { color: #654b46; font-size: 10px; line-height: 1.45; }
 .toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 10px; align-items: start; width: min(390px, calc(100vw - 32px)); padding: 12px; border: 1px solid #d8a098; border-radius: 7px; background: #fff8f6; color: #8c3429; box-shadow: 0 14px 38px rgba(41, 29, 26, .18); }
 .toast div { display: grid; gap: 3px; }
 .toast strong { font-size: 11px; }

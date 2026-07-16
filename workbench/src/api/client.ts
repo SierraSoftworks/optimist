@@ -5,6 +5,7 @@ import type {
   GraphEdge,
   GraphNode,
   Project,
+  ProjectArchive,
 } from './types'
 
 interface ErrorEnvelope {
@@ -64,6 +65,13 @@ export const api = {
     request<Project>('/api/v1/projects', {
       method: 'POST',
       body: JSON.stringify({ name }),
+    }),
+  exportProject: (project: string) =>
+    request<ProjectArchive>(`/api/v1/projects/${project}/archive`),
+  importProject: (archive: ProjectArchive, replace: boolean) =>
+    request<Project>(`/api/v1/project-archives?replace=${replace}&yes=${replace}`, {
+      method: 'POST',
+      body: JSON.stringify(archive),
     }),
   async createNode(project: Project, input: CreateNodeInput): Promise<GraphNode> {
     const result = await request<CommandResult<GraphNode>>(

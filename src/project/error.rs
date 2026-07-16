@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::markdown::{ImportError, MarkdownError};
 use crate::{
     domain::{
         AnalysisError, DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress,
@@ -144,6 +145,30 @@ pub enum ProjectError {
     /// Finite-horizon scenario propagation inputs or assumptions are invalid.
     #[error(transparent)]
     ScenarioAnalysis(#[from] ScenarioAnalysisError),
+    /// A canonical Markdown archive could not be parsed or rendered.
+    #[error(transparent)]
+    Markdown(#[from] MarkdownError),
+    /// A complete Markdown archive failed cross-document validation.
+    #[error(transparent)]
+    Import(#[from] ImportError),
+    /// An archive replacement was requested without explicit destructive confirmation.
+    #[error("replacing project {0} requires both replace and yes confirmation")]
+    ReplaceConfirmationRequired(ProjectId),
+    /// A non-replacement import attempted to restore an ID which already exists.
+    #[error("project {0} already exists; explicit replacement is required")]
+    ImportProjectExists(ProjectId),
+    /// The archive omits `_project.md` or uses an unsupported path.
+    #[error("invalid archive path {0:?}")]
+    InvalidArchivePath(String),
+    /// The archive exceeds the bounded project file count.
+    #[error("project archive exceeds the 10,001 file limit")]
+    ArchiveTooManyFiles,
+    /// Canonical Markdown content exceeds the bounded archive size.
+    #[error("project archive exceeds the 32 MiB content limit")]
+    ArchiveTooLarge,
+    /// Envelope metadata disagrees with canonical `_project.md` content.
+    #[error("project archive metadata does not match _project.md")]
+    ArchiveMetadataMismatch,
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

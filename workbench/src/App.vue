@@ -8,6 +8,8 @@ import {
   CircleDot,
   Gauge,
   Goal,
+  Download,
+  Upload,
   Link,
   Network,
   Plus,
@@ -20,14 +22,23 @@ import NodeInspector from './components/NodeInspector.vue'
 import CreateProjectDialog from './components/CreateProjectDialog.vue'
 import CreateNodeDialog from './components/CreateNodeDialog.vue'
 import CreateEdgeDialog from './components/CreateEdgeDialog.vue'
+import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import { OptimistApiError } from './api/client'
-import type { CreateEdgeInput, CreateNodeInput, GraphNode, NodeKind } from './api/types'
+import { api } from './api/client'
+import type {
+  CreateEdgeInput,
+  CreateNodeInput,
+  GraphNode,
+  NodeKind,
+  ProjectArchive,
+} from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
 import {
   useCreateNode,
   useCreateEdge,
   useCreateProject,
   useGraph,
+  useImportProject,
   useProject,
   useProjects,
 } from './composables/useProjectData'
@@ -40,9 +51,11 @@ const graph = useGraph(selectedProjectId)
 const createProject = useCreateProject()
 const createNode = useCreateNode(projectQuery.data)
 const createEdge = useCreateEdge(projectQuery.data)
+const importProject = useImportProject()
 const projectDialogOpen = ref(false)
 const nodeDialogOpen = ref(false)
 const edgeDialogOpen = ref(false)
+const importDialogOpen = ref(false)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -137,6 +150,38 @@ async function submitEdge(input: CreateEdgeInput) {
   }
 }
 
+async function exportProject() {
+  if (!selectedProjectId.value) return
+  mutationError.value = null
+  try {
+    const archive = await api.exportProject(selectedProjectId.value)
+    const blob = new Blob([JSON.stringify(archive, null, 2)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${archive.project.id}-${archive.project.name
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')}.optimist.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitImport(archive: ProjectArchive, replace: boolean) {
+  mutationError.value = null
+  try {
+    const project = await importProject.mutateAsync({ archive, replace })
+    store.selectProject(project.id)
+    importDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -186,6 +231,12 @@ function retry() {
       </nav>
 
       <div class="header-actions">
+        <button type="button" class="icon-button header-icon" title="Import project" aria-label="Import project" @click="importDialogOpen = true">
+          <Upload :size="16" />
+        </button>
+        <button type="button" class="icon-button header-icon" title="Export project" aria-label="Export project" :disabled="!selectedProjectId" @click="exportProject">
+          <Download :size="16" />
+        </button>
         <button type="button" class="secondary-button" :disabled="!canCreateRelationship" @click="edgeDialogOpen = true">
           <Link :size="16" /> Relationship
         </button>
@@ -302,6 +353,13 @@ function retry() {
       :nodes="nodes"
       @close="edgeDialogOpen = false"
       @submit="submitEdge"
+    />
+    <ImportProjectDialog
+      :open="importDialogOpen"
+      :pending="importProject.isPending.value"
+      :project-ids="projects.map((project) => project.id)"
+      @close="importDialogOpen = false"
+      @submit="submitImport"
     />
   </main>
 </template>

@@ -143,6 +143,24 @@ pub(super) fn classify(
                 "Remove non-empty dependence groups until correlated dynamic propagation is supported.",
             ],
         ),
+        ProjectError::Markdown(_)
+        | ProjectError::Import(_)
+        | ProjectError::InvalidArchivePath(_)
+        | ProjectError::ArchiveMetadataMismatch => (
+            StatusCode::BAD_REQUEST,
+            "invalid_project_archive",
+            &["Export a fresh archive, or correct the reported Markdown file and retry."],
+        ),
+        ProjectError::ArchiveTooManyFiles | ProjectError::ArchiveTooLarge => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "project_archive_too_large",
+            &["Reduce the archive to at most 10,001 files and 32 MiB of canonical Markdown."],
+        ),
+        ProjectError::ReplaceConfirmationRequired(_) | ProjectError::ImportProjectExists(_) => (
+            StatusCode::CONFLICT,
+            "project_import_requires_replace",
+            &["Confirm destructive replacement explicitly before restoring over this project."],
+        ),
         ProjectError::IdentifierSpaceExhausted
         | ProjectError::RevisionSpaceExhausted(_)
         | ProjectError::GraphRevisionSpaceExhausted(_)

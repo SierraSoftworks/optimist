@@ -24,6 +24,7 @@ mod output_scenario_analysis;
 mod output_table;
 mod output_table_formula;
 mod project;
+mod project_archive_client;
 mod project_changes_client;
 mod project_changes_output;
 mod scenario;

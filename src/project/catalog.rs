@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 pub(super) struct ProjectEntry {
     pub(super) project: Project,
+    pub(super) description: String,
     pub(super) graph_revision: u64,
     pub(super) repository: IndraDbRepository<MemoryDatastore>,
     pub(super) results: BTreeMap<Uuid, CommandResult>,
@@ -68,11 +69,7 @@ impl ProjectCatalog {
         if self.names.contains_key(&normalized_name) {
             return Err(ProjectError::DuplicateName(name));
         }
-        let value = self
-            .next_project_id
-            .ok_or(ProjectError::IdentifierSpaceExhausted)?;
-        let id = ProjectId::new(EntityId::new(value).to_string())
-            .expect("entity IDs are valid project IDs");
+        let (value, id) = self.next_available_project_id()?;
         let project = Project {
             id: id.clone(),
             name,
@@ -86,6 +83,7 @@ impl ProjectCatalog {
             id,
             ProjectEntry {
                 project: project.clone(),
+                description: String::new(),
                 graph_revision: 0,
                 repository,
                 results: BTreeMap::new(),
@@ -142,6 +140,39 @@ impl ProjectCatalog {
             .get_mut(id)
             .map(|entry| &mut entry.repository)
             .ok_or_else(|| ProjectError::NotFound(id.clone()))
+    }
+
+    pub(super) fn publish_import(&mut self, entry: ProjectEntry) -> Result<Project, ProjectError> {
+        let project = entry.project.clone();
+        let normalized_name = normalize_name(&project.name);
+        if self
+            .names
+            .get(&normalized_name)
+            .is_some_and(|owner| owner != &project.id)
+        {
+            return Err(ProjectError::DuplicateName(project.name));
+        }
+        if let Some(previous) = self.projects.insert(project.id.clone(), entry) {
+            self.names.remove(&normalize_name(&previous.project.name));
+        }
+        self.names.insert(normalized_name, project.id.clone());
+        Ok(project)
+    }
+
+    fn next_available_project_id(&self) -> Result<(u64, ProjectId), ProjectError> {
+        let mut value = self
+            .next_project_id
+            .ok_or(ProjectError::IdentifierSpaceExhausted)?;
+        loop {
+            let id = ProjectId::new(EntityId::new(value).to_string())
+                .expect("entity IDs are valid project IDs");
+            if !self.projects.contains_key(&id) {
+                return Ok((value, id));
+            }
+            value = value
+                .checked_add(1)
+                .ok_or(ProjectError::IdentifierSpaceExhausted)?;
+        }
     }
 }
 

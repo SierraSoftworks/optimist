@@ -1,7 +1,7 @@
 import { computed, type Ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '../api/client'
-import type { CreateEdgeInput, CreateNodeInput, Project } from '../api/types'
+import type { CreateEdgeInput, CreateNodeInput, Project, ProjectArchive } from '../api/types'
 
 export function useProjects() {
   return useQuery({ queryKey: ['projects'], queryFn: api.projects })
@@ -40,6 +40,17 @@ export function useCreateProject() {
         ...projects,
         project,
       ])
+    },
+  })
+}
+
+export function useImportProject() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ archive, replace }: { archive: ProjectArchive; replace: boolean }) =>
+      api.importProject(archive, replace),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries()
     },
   })
 }

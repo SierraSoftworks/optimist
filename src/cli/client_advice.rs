@@ -11,6 +11,15 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_replay_revision" => {
             &["Show the project and retry with a revision no newer than its current revision."]
         }
+        "invalid_project_archive" => {
+            &["Export a fresh archive, or correct the reported Markdown file and retry."]
+        }
+        "project_archive_too_large" => {
+            &["Reduce the archive to at most 10,001 files and 32 MiB of canonical Markdown."]
+        }
+        "project_import_requires_replace" => {
+            &["Retry with explicit replacement confirmation only after reviewing the archive."]
+        }
         "invalid_node" => &["Provide the required fields for the selected node kind."],
         "node_name_conflict" => {
             &["Choose a node name or alias which is not already used in this project."]

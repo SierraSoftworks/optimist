@@ -152,7 +152,7 @@ test('keeps project and graph controls usable on mobile', async ({ page }, testI
   await page.getByText('outcome', { exact: true }).click()
   await page.getByRole('button', { name: 'Add node' }).last().click()
 
-  await expect(page.getByLabel('Project')).toBeVisible()
+  await expect(page.getByLabel('Project', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Search graph')).toBeVisible()
   await expect(page.getByTestId('graph-surface')).toBeVisible()
   await expectCanvasPainted(page)

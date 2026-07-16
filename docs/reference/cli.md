@@ -30,9 +30,12 @@ optimist project list
 optimist project show <PROJECT>
 optimist project delete <PROJECT>
 optimist project changes <PROJECT> --after <REVISION>
+optimist project export <PROJECT> <DIRECTORY>
+optimist project import <DIRECTORY>
+optimist project import <DIRECTORY> --replace --yes
 ```
 
-`project import` and `project export` parse as commands but currently return an unavailable error while HTTP transport is implemented.
+Export downloads one immutable canonical Markdown snapshot and publishes it through a staged directory replacement. Import validates every document and reference before restoring the archive. Restoring over an existing project requires both `--replace` and `--yes`; replacement clears process-local command/replay history.
 
 ### Nodes
 

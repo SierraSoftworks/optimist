@@ -22,6 +22,9 @@ pub(crate) mod formula_primitives;
 pub(crate) mod formula_projection;
 mod formulas;
 mod model;
+mod project_archive;
+mod project_archive_export;
+mod project_archive_import;
 mod queries;
 mod scenarios;
 
@@ -31,3 +34,5 @@ pub use error::ProjectError;
 pub use estimate_error::EstimateCommandError;
 pub use formula_error::FormulaCommandError;
 pub use model::{CreateProject, Project};
+pub(crate) use project_archive::MAX_ARCHIVE_BYTES;
+pub use project_archive::{ProjectArchive, ProjectArchiveSummary};

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api, OptimistApiError } from './client'
-import type { Project } from './types'
+import type { Project, ProjectArchive } from './types'
 
 const project: Project = { id: 'A', name: 'Delivery', revision: 7 }
 
@@ -123,5 +123,35 @@ describe('Optimist API client', () => {
         payload: { source: 'A', destination: 'B', payload: { kind: 'part_of' } },
       },
     })
+  })
+
+  it('exports and explicitly replaces portable project archives', async () => {
+    const archive: ProjectArchive = {
+      schema_version: 1,
+      project,
+      files: { '_project.md': '---\n---\n' },
+      summary: { entities: 0, edges: 0, scenarios: 0 },
+    }
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(archive), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(project), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    vi.stubGlobal('fetch', fetch)
+
+    await expect(api.exportProject('A')).resolves.toEqual(archive)
+    await expect(api.importProject(archive, true)).resolves.toEqual(project)
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/archive')
+    expect(fetch.mock.calls[1]![0]).toBe('/api/v1/project-archives?replace=true&yes=true')
+    expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toEqual(archive)
   })
 })

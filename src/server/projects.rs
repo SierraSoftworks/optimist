@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::StatusCode,
     routing::get,
 };
@@ -8,7 +8,7 @@ use axum::{
 use crate::{
     command::ChangeSetReplay,
     domain::ProjectId,
-    project::{CreateProject, Project},
+    project::{CreateProject, Project, ProjectArchive},
 };
 
 use super::{AppState, api_error::ApiError};
@@ -16,7 +16,13 @@ use super::{AppState, api_error::ApiError};
 pub(super) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/projects", get(list).post(create))
+        .route(
+            "/api/v1/project-archives",
+            axum::routing::post(import_archive)
+                .layer(DefaultBodyLimit::max(crate::project::MAX_ARCHIVE_BYTES * 2)),
+        )
         .route("/api/v1/projects/{project}", get(show).delete(delete))
+        .route("/api/v1/projects/{project}/archive", get(export_archive))
         .route("/api/v1/projects/{project}/changes", get(changes))
 }
 
@@ -44,6 +50,34 @@ async fn delete(
     Path(project): Path<ProjectId>,
 ) -> Result<Json<Project>, ApiError> {
     Ok(Json(state.catalog.write().await.delete(&project)?))
+}
+
+async fn export_archive(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+) -> Result<Json<ProjectArchive>, ApiError> {
+    Ok(Json(state.catalog.write().await.export_archive(&project)?))
+}
+
+#[derive(serde::Deserialize)]
+struct ImportQuery {
+    #[serde(default)]
+    replace: bool,
+    #[serde(default)]
+    yes: bool,
+}
+
+async fn import_archive(
+    State(state): State<AppState>,
+    Query(query): Query<ImportQuery>,
+    Json(archive): Json<ProjectArchive>,
+) -> Result<(StatusCode, Json<Project>), ApiError> {
+    let project = state
+        .catalog
+        .write()
+        .await
+        .import_archive(&archive, query.replace, query.yes)?;
+    Ok((StatusCode::CREATED, Json(project)))
 }
 
 #[derive(serde::Deserialize)]
@@ -133,5 +167,60 @@ mod tests {
         let error = body(response).await;
         assert_eq!(error["error"]["code"], "project_not_found");
         assert!(!error["error"]["advice"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn exports_imports_and_confirms_project_replacement() {
+        let app = router();
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({"name":"Delivery"}).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let archive = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/projects/A/archive")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let archive = body(archive).await;
+        assert!(archive["files"]["_project.md"].is_string());
+
+        let conflict = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/project-archives")
+                    .header("content-type", "application/json")
+                    .body(Body::from(archive.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(conflict.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            body(conflict).await["error"]["code"],
+            "project_import_requires_replace"
+        );
+
+        let replaced = app
+            .oneshot(
+                Request::post("/api/v1/project-archives?replace=true&yes=true")
+                    .header("content-type", "application/json")
+                    .body(Body::from(archive.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(replaced.status(), StatusCode::CREATED);
+        assert_eq!(body(replaced).await["id"], "A");
     }
 }

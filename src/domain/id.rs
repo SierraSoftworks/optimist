@@ -46,7 +46,7 @@ pub enum IdError {
 /// assert_eq!(project.as_str(), "platform_reliability");
 /// # Ok::<(), optimist::domain::IdError>(())
 /// ```
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct ProjectId(String);
 
@@ -86,6 +86,15 @@ impl FromStr for ProjectId {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::new(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProjectId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::new(String::deserialize(deserializer)?).map_err(de::Error::custom)
     }
 }
 
@@ -240,6 +249,8 @@ mod tests {
             ProjectId::new("another/project"),
             Err(IdError::InvalidProjectId)
         );
+        assert!(ProjectId::new("contains/slash").is_err());
+        assert!(serde_json::from_str::<ProjectId>(r#""contains/slash""#).is_err());
     }
 
     proptest! {

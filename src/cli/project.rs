@@ -2,7 +2,11 @@ use std::path::PathBuf;
 
 use clap::{Args, Subcommand};
 
-use crate::domain::ProjectId;
+use crate::{
+    domain::ProjectId,
+    markdown::{RenderedSnapshot, read_directory, write_directory},
+    project::ProjectArchive,
+};
 
 use super::{client::ProjectClient, output::OutputFormat, project_changes_output};
 
@@ -38,6 +42,7 @@ enum ProjectCommand {
         yes: bool,
     },
     Export {
+        project: ProjectId,
         directory: PathBuf,
     },
 }
@@ -56,21 +61,68 @@ pub(super) async fn run(
         ProjectCommand::Changes { project, after } => {
             project_changes_output::render(output, &client.replay_changes(&project, after).await?)?
         }
-        ProjectCommand::Import { .. } => {
-            return super::unavailable(
-                "Markdown project import is not available yet.",
-                &[
-                    "Use project create/list/show/delete while the validated Markdown import pipeline is implemented.",
-                ],
-            );
+        ProjectCommand::Import {
+            directory,
+            replace,
+            yes,
+        } => {
+            let import = read_directory(&directory).map_err(|error| {
+                human_errors::wrap_user(
+                    error,
+                    "Optimist could not read the Markdown project directory.",
+                    &["Correct the reported Markdown file and retry the import."],
+                )
+            })?;
+            let snapshot = RenderedSnapshot::from_import(&import).map_err(|error| {
+                human_errors::wrap_user(
+                    error,
+                    "Optimist could not render the validated project archive.",
+                    &["Correct the reported project document and retry the import."],
+                )
+            })?;
+            let archive = ProjectArchive {
+                schema_version: crate::markdown::SCHEMA_VERSION,
+                project: import.project.document.project.clone(),
+                files: snapshot
+                    .files()
+                    .map(|(path, contents)| (path.to_owned(), contents.to_owned()))
+                    .collect(),
+                summary: crate::project::ProjectArchiveSummary {
+                    entities: import.entities.len(),
+                    edges: import
+                        .entities
+                        .values()
+                        .map(|source| source.document.outgoing_edges.len())
+                        .sum(),
+                    scenarios: import.scenarios.len(),
+                },
+            };
+            output.project(&client.import_archive(&archive, replace, yes).await?)?
         }
-        ProjectCommand::Export { .. } => {
-            return super::unavailable(
-                "Markdown project export is not available yet.",
-                &[
-                    "Use project list/show to inspect project metadata while deterministic Markdown export is implemented.",
-                ],
-            );
+        ProjectCommand::Export { project, directory } => {
+            let archive = client.export_archive(&project).await?;
+            let import = archive.validated_import().map_err(|error| {
+                human_errors::wrap_system(
+                    error,
+                    "The Optimist server returned an invalid project archive.",
+                    &["Confirm the CLI and server versions match, then inspect the server logs."],
+                )
+            })?;
+            let snapshot = RenderedSnapshot::from_import(&import).map_err(|error| {
+                human_errors::wrap_system(
+                    error,
+                    "Optimist could not render the exported project archive.",
+                    &["Confirm the CLI and server versions match, then retry the export."],
+                )
+            })?;
+            write_directory(&directory, &snapshot).map_err(|error| {
+                human_errors::wrap_system(
+                    error,
+                    "Optimist could not publish the Markdown export directory.",
+                    &["Check directory permissions and retry with a writable destination."],
+                )
+            })?;
+            output.project(&client.show(&project).await?)?
         }
     };
     println!("{rendered}");
@@ -79,11 +131,16 @@ pub(super) async fn run(
 
 #[cfg(test)]
 mod tests {
+    use tokio::net::TcpListener;
+
     use clap::Parser;
 
-    use crate::cli::{Cli, Command};
+    use crate::{
+        cli::{Cli, Command, client::ProjectClient, output::OutputFormat},
+        server,
+    };
 
-    use super::{ProjectArgs, ProjectCommand};
+    use super::{ProjectArgs, ProjectCommand, run};
 
     #[test]
     fn parses_project_import() {
@@ -105,6 +162,11 @@ mod tests {
     }
 
     #[test]
+    fn parses_project_export_with_explicit_project() {
+        assert!(Cli::try_parse_from(["optimist", "project", "export", "A", "./model"]).is_ok());
+    }
+
+    #[test]
     fn replacement_requires_confirmation_flag() {
         let result = Cli::try_parse_from(["optimist", "project", "import", "./model", "--yes"]);
         assert!(result.is_err());
@@ -115,5 +177,51 @@ mod tests {
         assert!(
             Cli::try_parse_from(["optimist", "project", "changes", "A", "--after", "42",]).is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn exports_and_imports_markdown_directories_over_http() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, server::router()).await.unwrap();
+        });
+        let server_url = format!("http://{address}");
+        let client = ProjectClient::new(&server_url).unwrap();
+        let project = client.create("Delivery".to_owned()).await.unwrap();
+        let directory =
+            std::env::temp_dir().join(format!("optimist-cli-archive-{}", uuid::Uuid::new_v4()));
+
+        run(
+            ProjectArgs {
+                command: ProjectCommand::Export {
+                    project: project.id.clone(),
+                    directory: directory.clone(),
+                },
+            },
+            &server_url,
+            OutputFormat::Json,
+        )
+        .await
+        .unwrap();
+        assert!(directory.join("_project.md").exists());
+        client.delete(&project.id).await.unwrap();
+        run(
+            ProjectArgs {
+                command: ProjectCommand::Import {
+                    directory: directory.clone(),
+                    replace: false,
+                    yes: false,
+                },
+            },
+            &server_url,
+            OutputFormat::Json,
+        )
+        .await
+        .unwrap();
+        assert_eq!(client.show(&project.id).await.unwrap().name, "Delivery");
+
+        std::fs::remove_dir_all(directory).unwrap();
+        server.abort();
     }
 }

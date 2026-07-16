@@ -16,6 +16,8 @@ GET    /api/v1/projects
 GET    /api/v1/projects/{project}
 DELETE /api/v1/projects/{project}
 GET    /api/v1/projects/{project}/changes?after={revision}
+GET    /api/v1/projects/{project}/archive
+POST   /api/v1/project-archives?replace={bool}&yes={bool}
 ```
 
 Create body:
@@ -23,6 +25,8 @@ Create body:
 ```json
 {"name":"Delivery reliability"}
 ```
+
+Archive responses are bounded JSON envelopes containing validated project metadata, summary counts, and a `files` map of canonical Markdown paths to UTF-8 content. Import validates envelope metadata, file/path/byte limits, every Markdown document, cross-references, formulas, and dependence before atomically publishing a fresh in-memory project entry. Existing IDs return `project_import_requires_replace` unless both replacement flags are true.
 
 ## Commands
 
