@@ -2,24 +2,40 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Calculator, ChevronDown, Plus } from '@lucide/vue'
 import { api } from '../api/client'
-import type { Distribution, FermiAssessment, Unit } from '../api/types'
+import type { FermiAssessment, FermiEstimateDefinition, Unit } from '../api/types'
 import type { FermiComponentDraft, FermiSupport } from '../domain/fermiBuilder'
-import { compileFermiEquation, FermiEquationError, fermiEquationProvenance } from '../domain/fermiEquation'
+import { compileFermiEquation, FermiEquationError } from '../domain/fermiEquation'
 import { divideUnits, formatUnitExpression, parseUnitExpression, unitsEqual } from '../domain/unitExpression'
 import FermiVariableEditor from './FermiVariableEditor.vue'
 
-const props = defineProps<{ projectId: string; support: FermiSupport; expectedUnit: Unit }>()
-const emit = defineEmits<{ apply: [distribution: Distribution, provenance: string] }>()
-let nextId = 2
-const open = ref(false)
+const props = defineProps<{
+  projectId: string
+  support: FermiSupport
+  expectedUnit: Unit
+  modelValue: FermiEstimateDefinition | null
+  initialAssessment?: FermiAssessment | null
+}>()
+const emit = defineEmits<{
+  'update:modelValue': [definition: FermiEstimateDefinition]
+  dirty: []
+}>()
+let nextId = props.modelValue?.variables.length ?? 2
+const open = ref(Boolean(props.modelValue))
 const pending = ref(false)
 const error = ref<string | null>(null)
-const assessment = ref<FermiAssessment | null>(null)
-const equation = ref(props.support === 'non_negative' ? 'x + y' : 'x * y')
+const assessment = ref<FermiAssessment | null>(props.initialAssessment ?? null)
+const equation = ref(props.modelValue?.equation ?? (props.support === 'non_negative' ? 'x + y' : 'x * y'))
 const goalUnit = ref(formatUnitExpression(props.expectedUnit))
 const components = reactive<Array<FermiComponentDraft & { id: number }>>([
-  initialVariable(0, 'x'),
-  initialVariable(1, 'y'),
+  ...(props.modelValue?.variables.map((variable, index) => ({
+    id: index,
+    name: variable.name,
+    likely: variable.estimate,
+    low: variable.uncertainty.type === 'three_point' ? variable.uncertainty.low : variable.estimate / 10,
+    high: variable.uncertainty.type === 'three_point' ? variable.uncertainty.high : variable.estimate * 10,
+    unit: variable.unit,
+    mode: variable.uncertainty.type === 'three_point' ? 'pert' as const : 'order_of_magnitude' as const,
+  })) ?? [initialVariable(0, 'x'), initialVariable(1, 'y')]),
 ])
 const preview = computed(() => {
   try {
@@ -83,16 +99,19 @@ function addVariable() {
   components.push(initialVariable(nextId, `v${nextId + 1}`))
   nextId += 1
   assessment.value = null
+  emit('dirty')
 }
 
 function updateVariable(index: number, value: FermiComponentDraft & { id: number }) {
   components[index] = value
   assessment.value = null
+  emit('dirty')
 }
 
 function removeVariable(index: number) {
   components.splice(index, 1)
   assessment.value = null
+  emit('dirty')
 }
 
 watch(() => props.expectedUnit, (next, previous) => {
@@ -130,10 +149,21 @@ async function assess() {
   }
 }
 
-function apply() {
-  if (!recommendation.value || !assessment.value || !goalMatchesSlot.value) return
-  emit('apply', recommendation.value.distribution, fermiEquationProvenance(equation.value, components, assessment.value.report.diagnostics.valid_samples))
-  open.value = false
+function useDefinition() {
+  if (!recommendation.value || !assessment.value || !goalMatchesSlot.value || !preview.value.compiled) return
+  emit('update:modelValue', {
+    equation: equation.value.trim(),
+    variables: components.map((component) => ({
+      name: component.name.trim(),
+      estimate: component.likely,
+      unit: component.unit.trim(),
+      uncertainty: component.mode === 'pert'
+        ? { type: 'three_point' as const, low: component.low, high: component.high }
+        : { type: 'order_of_magnitude' as const },
+    })),
+    formula: preview.value.compiled.formula,
+    monte_carlo: assessment.value.report.diagnostics.criterion,
+  })
 }
 
 function format(value: number | null | undefined) {
@@ -150,8 +180,8 @@ function format(value: number | null | undefined) {
     </button>
     <div v-if="open" class="fermi-workspace">
       <div class="fermi-equation-fields">
-        <label>Goal unit<input v-model="goalUnit" aria-label="Fermi goal unit" placeholder="pianos/day" @input="assessment = null" /></label>
-        <label>Equation<input v-model="equation" class="code-input" aria-label="Fermi equation" placeholder="(x * y) + (z / a)" spellcheck="false" @input="assessment = null" /></label>
+        <label>Goal unit<input v-model="goalUnit" aria-label="Fermi goal unit" placeholder="pianos/day" @input="assessment = null; emit('dirty')" /></label>
+        <label>Equation<input v-model="equation" class="code-input" aria-label="Fermi equation" placeholder="(x * y) + (z / a)" spellcheck="false" @input="assessment = null; emit('dirty')" /></label>
       </div>
 
       <div class="fermi-equation-status" :class="{ invalid: preview.error || !preview.matchesGoal }" aria-live="polite">
@@ -194,7 +224,7 @@ function format(value: number | null | undefined) {
         </dl>
         <template v-if="recommendation">
           <p v-if="recommendation.status === 'moment_matched'">{{ recommendation.warning }}</p>
-          <button v-if="goalMatchesSlot" type="button" class="primary-button" @click="apply">Use suggested distribution</button>
+          <button v-if="goalMatchesSlot" type="button" class="primary-button" @click="useDefinition">Use Fermi equation</button>
           <p v-else>Standalone assessment only: the equation is valid for {{ formatUnitExpression(assessment.compiled.unit) }}, but this estimate slot expects {{ formatUnitExpression(expectedUnit) }}.</p>
         </template>
         <p v-else class="form-error">{{ assessment.recommendation.status === 'unavailable' ? assessment.recommendation.reason : '' }}</p>

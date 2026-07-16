@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, Formula,
-    MeasurementCalibration, NewObservation, NodePayload, ProjectDependenceModel, ScenarioDraft,
-    ScenarioId,
+    Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot,
+    FermiEstimateDefinition, Formula, MeasurementCalibration, NewObservation, NodePayload,
+    ProjectDependenceModel, ScenarioDraft, ScenarioId,
 };
 
 /// Data required to construct a new structural node.
@@ -119,6 +119,20 @@ pub struct SetEstimate {
     pub slot: EstimateSlot,
     /// Primitive distribution to validate against the selected slot dimension.
     pub distribution: Distribution,
+    /// Evidence or elicitation records supporting this estimate revision.
+    #[serde(default)]
+    pub provenance: Vec<String>,
+}
+
+/// Data required to create or replace an estimate from a persisted Fermi equation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetFermiEstimate {
+    /// Stable project/owner/estimate identity; nested components are unsupported.
+    pub address: EstimateAddress,
+    /// Semantic owner field whose support and unit are enforced server-side.
+    pub slot: EstimateSlot,
+    /// Reviewable equation, variables, canonical formula, and sampling controls.
+    pub definition: FermiEstimateDefinition,
     /// Evidence or elicitation records supporting this estimate revision.
     #[serde(default)]
     pub provenance: Vec<String>,

@@ -96,6 +96,7 @@ pub(super) fn command(
             Ok(CommandOutcome::MeasurementCalibrationSet(edge))
         }
         GraphCommand::SetEstimate(command) => estimate::set(entry, command),
+        GraphCommand::SetFermiEstimate(command) => estimate::set_fermi(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::SetFormula(command) => formulas::set(entry, command),
         GraphCommand::RemoveFormula(command) => formulas::remove(entry, command),

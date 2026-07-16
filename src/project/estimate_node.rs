@@ -1,6 +1,6 @@
 use crate::domain::{
-    CostEstimate, Distribution, EstimateAddress, EstimateSlot, Intervention, Node, NodePayload,
-    PrimitiveEstimate,
+    CostEstimate, Distribution, EstimateAddress, EstimateSlot, EstimateSource, Intervention, Node,
+    NodePayload, PrimitiveEstimate,
 };
 
 use super::{ProjectError, estimate_node_ids, estimate_support};
@@ -10,6 +10,7 @@ pub(super) fn set(
     address: &EstimateAddress,
     slot: EstimateSlot,
     distribution: Distribution,
+    source: EstimateSource,
     provenance: Vec<String>,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let count = estimate_node_ids::count(&node.payload, address.estimate);
@@ -20,6 +21,7 @@ pub(super) fn set(
             slot,
             count,
             distribution,
+            source,
             provenance,
         )
         .map(|(estimate, result)| {
@@ -32,6 +34,7 @@ pub(super) fn set(
             slot,
             count,
             distribution,
+            source,
             provenance,
         )
         .map(|(estimate, result)| {
@@ -44,6 +47,7 @@ pub(super) fn set(
             slot,
             count,
             distribution,
+            source,
             provenance,
         )
         .map(|(estimate, result)| {
@@ -56,15 +60,22 @@ pub(super) fn set(
             slot,
             count,
             distribution,
+            source,
             provenance,
         )
         .map(|(estimate, result)| {
             value.desired = Some(estimate);
             result
         }),
-        (NodePayload::Intervention(value), EstimateSlot::Cost(dimension)) => {
-            set_cost(value, address, dimension, count, distribution, provenance)
-        }
+        (NodePayload::Intervention(value), EstimateSlot::Cost(dimension)) => set_cost(
+            value,
+            address,
+            dimension,
+            count,
+            distribution,
+            source,
+            provenance,
+        ),
         (NodePayload::Intervention(value), EstimateSlot::Duration) => {
             estimate_support::replacement(
                 value.duration.as_ref(),
@@ -72,6 +83,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
+                source,
                 provenance,
             )
             .map(|(estimate, result)| {
@@ -86,6 +98,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
+                source,
                 provenance,
             )
             .map(|(estimate, result)| {
@@ -103,6 +116,7 @@ fn set_cost(
     dimension: String,
     count: usize,
     distribution: Distribution,
+    source: EstimateSource,
     provenance: Vec<String>,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let index = value
@@ -111,8 +125,15 @@ fn set_cost(
         .position(|cost| cost.dimension == dimension);
     let current = index.map(|index| &value.costs[index].value);
     let slot = EstimateSlot::Cost(dimension.clone());
-    let (estimate, result) =
-        estimate_support::replacement(current, address, slot, count, distribution, provenance)?;
+    let (estimate, result) = estimate_support::replacement(
+        current,
+        address,
+        slot,
+        count,
+        distribution,
+        source,
+        provenance,
+    )?;
     if let Some(index) = index {
         value.costs[index].value = estimate;
     } else {

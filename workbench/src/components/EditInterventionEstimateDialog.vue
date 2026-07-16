@@ -4,11 +4,12 @@ import { Trash2, X } from '@lucide/vue'
 import type {
   Distribution,
   Estimate,
+  EstimateSourceInput,
   GraphNode,
   InterventionEstimateSlot,
   SetInterventionEstimateInput,
 } from '../api/types'
-import DistributionEditor from './DistributionEditor.vue'
+import EstimateSourceEditor from './EstimateSourceEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -26,7 +27,8 @@ const form = reactive({
   dimension: '',
   provenance: '',
 })
-const distribution = ref<Distribution>({ type: 'point', value: 0 })
+const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0 } })
+const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const probability = computed(() => props.slot?.kind === 'probability_of_success')
 const families = computed<Array<Distribution['type']>>(() =>
@@ -70,7 +72,10 @@ watch(
     if (!open || !props.slot) return
     const currentDistribution = existing.value?.distribution
     form.dimension = props.slot.kind === 'cost' ? props.slot.value : ''
-    distribution.value = currentDistribution ?? { type: 'point', value: probability.value ? 0.5 : 0 }
+    source.value = existing.value?.source?.type === 'fermi'
+      ? { type: 'fermi', definition: existing.value.source.definition }
+      : { type: 'distribution', distribution: currentDistribution ?? { type: 'point', value: probability.value ? 0.5 : 0 } }
+    sourceValid.value = true
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     confirmRemove.value = false
   },
@@ -84,7 +89,7 @@ function submit() {
   if ((slot.kind === 'cost' && !slot.value) || duplicateCost.value) return
   emit('submit', {
     slot,
-    distribution: distribution.value,
+    source: source.value,
     provenance: form.provenance
       .split('\n')
       .map((value) => value.trim())
@@ -92,9 +97,6 @@ function submit() {
   })
 }
 
-function appendFermiProvenance(value: string) {
-  form.provenance = [form.provenance.trim(), value].filter(Boolean).join('\n')
-}
 </script>
 
 <template>
@@ -110,13 +112,14 @@ function appendFermiProvenance(value: string) {
         </header>
         <label v-if="slot.kind === 'cost'">Dimension<input v-model="form.dimension" :readonly="Boolean(existing)" placeholder="usd, engineer_days, risk" required /></label>
         <p v-if="duplicateCost" class="form-error">This cost dimension already exists. Edit it from the inspector.</p>
-        <DistributionEditor
-          v-model="distribution"
+        <EstimateSourceEditor
+          v-model="source"
+          :existing="existing"
           :families="families"
           :support="probability ? 'probability' : 'non_negative'"
           :project-id="projectId"
           :expected-unit="expectedUnit"
-          @fermi-provenance="appendFermiProvenance"
+          @validity="sourceValid = $event"
         />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
@@ -127,7 +130,7 @@ function appendFermiProvenance(value: string) {
           <button v-if="existing" type="button" class="danger-button" :disabled="pending" @click="confirmRemove ? emit('remove', existing) : (confirmRemove = true)"><Trash2 :size="14" /> {{ confirmRemove ? 'Confirm remove' : 'Remove' }}</button>
           <span class="footer-spacer"></span>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending || duplicateCost || (slot.kind === 'cost' && !form.dimension.trim())">{{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}</button>
+          <button type="submit" class="primary-button" :disabled="pending || !sourceValid || duplicateCost || (slot.kind === 'cost' && !form.dimension.trim())">{{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}</button>
         </footer>
       </form>
     </div>

@@ -7,6 +7,8 @@ import type {
   EdgeIdentity,
   EdgeEstimateSlot,
   Estimate,
+  EstimateSource,
+  EstimateSourceInput,
   Evidence,
   EvidenceInput,
   FermiAssessment,
@@ -22,6 +24,7 @@ import type {
   ScenarioDraft,
   StructuralAnalysis,
   SetInterventionEstimateInput,
+  InterventionEstimateSlot,
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
   StateEstimateSlot,
@@ -46,10 +49,32 @@ interface PrimitiveEstimate {
     owner: { kind: 'node'; id: string } | { kind: 'edge'; id: EdgeIdentity }
     estimate: string
   }
-  slot: { kind: StateEstimateSlot } | EdgeEstimateSlot
+  slot: { kind: StateEstimateSlot } | EdgeEstimateSlot | InterventionEstimateSlot
   revision: number
   distribution: import('./types').Distribution
+  source: EstimateSource
   provenance: string[]
+}
+
+function estimateCommand(
+  address: PrimitiveEstimate['address'],
+  slot: PrimitiveEstimate['slot'],
+  source: EstimateSourceInput,
+  provenance: string[],
+) {
+  return source.type === 'distribution'
+    ? {
+        type: 'set_estimate',
+        payload: { address, slot, distribution: source.distribution, provenance },
+      }
+    : {
+        type: 'set_fermi_estimate',
+        payload: { address, slot, definition: source.definition, provenance },
+      }
+}
+
+function expectedEstimateOutcome(source: EstimateSourceInput) {
+  return source.type === 'distribution' ? 'estimate_set' : 'fermi_estimate_set'
 }
 
 const estimateIdAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.'
@@ -366,22 +391,17 @@ export const api = {
           request_id: crypto.randomUUID(),
           expected_revision: project.revision,
           command: {
-            type: 'set_estimate',
-            payload: {
-              address: {
-                project: project.id,
-                owner: { kind: 'node', id: node.id },
-                estimate,
-              },
-              slot: { kind: input.slot },
-              distribution: input.distribution,
-              provenance: input.provenance,
-            },
+            ...estimateCommand(
+              { project: project.id, owner: { kind: 'node', id: node.id }, estimate },
+              { kind: input.slot },
+              input.source,
+              input.provenance,
+            ),
           },
         }),
       },
     )
-    if (result.outcome.type !== 'estimate_set') {
+    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for estimate editing.',
@@ -569,19 +589,16 @@ export const api = {
         body: JSON.stringify({
           request_id: crypto.randomUUID(),
           expected_revision: project.revision,
-          command: {
-            type: 'set_estimate',
-            payload: {
-              address: { project: project.id, owner: { kind: 'node', id: node.id }, estimate },
-              slot: input.slot,
-              distribution: input.distribution,
-              provenance: input.provenance,
-            },
-          },
+          command: estimateCommand(
+            { project: project.id, owner: { kind: 'node', id: node.id }, estimate },
+            input.slot,
+            input.source,
+            input.provenance,
+          ),
         }),
       },
     )
-    if (result.outcome.type !== 'estimate_set') {
+    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for intervention estimate editing.',
@@ -732,23 +749,20 @@ export const api = {
         body: JSON.stringify({
           request_id: crypto.randomUUID(),
           expected_revision: project.revision,
-          command: {
-            type: 'set_estimate',
-            payload: {
-              address: {
-                project: project.id,
-                owner: { kind: 'edge', id: edgeIdentity(edge) },
-                estimate,
-              },
-              slot: input.slot,
-              distribution: input.distribution,
-              provenance: input.provenance,
+          command: estimateCommand(
+            {
+              project: project.id,
+              owner: { kind: 'edge', id: edgeIdentity(edge) },
+              estimate,
             },
-          },
+            input.slot,
+            input.source,
+            input.provenance,
+          ),
         }),
       },
     )
-    if (result.outcome.type !== 'estimate_set') {
+    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for relationship estimate editing.',

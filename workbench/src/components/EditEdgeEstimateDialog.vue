@@ -5,11 +5,12 @@ import type {
   Distribution,
   EdgeEstimateSlot,
   Estimate,
+  EstimateSourceInput,
   GraphEdge,
   SetEdgeEstimateInput,
   Unit,
 } from '../api/types'
-import DistributionEditor from './DistributionEditor.vue'
+import EstimateSourceEditor from './EstimateSourceEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -26,7 +27,8 @@ const emit = defineEmits<{
 const form = reactive({
   provenance: '',
 })
-const distribution = ref<Distribution>({ type: 'point', value: 0 })
+const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0 } })
+const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const signed = computed(() => props.slot?.kind === 'effect' || props.slot?.kind === 'degree')
 const families = computed<Array<Distribution['type']>>(() =>
@@ -59,7 +61,10 @@ watch(
   () => [props.open, props.edge, props.slot] as const,
   ([open]) => {
     if (!open || !props.slot) return
-    distribution.value = existing.value?.distribution ?? { type: 'point', value: 0 }
+    source.value = existing.value?.source?.type === 'fermi'
+      ? { type: 'fermi', definition: existing.value.source.definition }
+      : { type: 'distribution', distribution: existing.value?.distribution ?? { type: 'point', value: 0 } }
+    sourceValid.value = true
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     confirmRemove.value = false
   },
@@ -69,7 +74,7 @@ function submit() {
   if (!props.slot) return
   emit('submit', {
     slot: props.slot,
-    distribution: distribution.value,
+    source: source.value,
     provenance: form.provenance
       .split('\n')
       .map((value) => value.trim())
@@ -77,9 +82,6 @@ function submit() {
   })
 }
 
-function appendFermiProvenance(value: string) {
-  form.provenance = [form.provenance.trim(), value].filter(Boolean).join('\n')
-}
 </script>
 
 <template>
@@ -93,13 +95,14 @@ function appendFermiProvenance(value: string) {
           </div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
-        <DistributionEditor
-          v-model="distribution"
+        <EstimateSourceEditor
+          v-model="source"
+          :existing="existing"
           :families="families"
           :support="signed ? 'signed' : 'non_negative'"
           :project-id="projectId"
           :expected-unit="expectedUnit"
-          @fermi-provenance="appendFermiProvenance"
+          @validity="sourceValid = $event"
         />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
@@ -110,7 +113,7 @@ function appendFermiProvenance(value: string) {
           <button v-if="slot.kind === 'lag' && existing" type="button" class="danger-button" :disabled="pending" @click="confirmRemove ? emit('remove', existing) : (confirmRemove = true)"><Trash2 :size="14" /> {{ confirmRemove ? 'Confirm remove' : 'Remove lag' }}</button>
           <span class="footer-spacer"></span>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending">{{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}</button>
+          <button type="submit" class="primary-button" :disabled="pending || !sourceValid">{{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}</button>
         </footer>
       </form>
     </div>

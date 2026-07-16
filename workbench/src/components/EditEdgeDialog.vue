@@ -103,6 +103,12 @@ function distributionLabel(value: Distribution) {
   if (value.type === 'normal') return `Normal · μ ${value.mean}, σ ${value.standard_deviation}`
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
+
+function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
+  return estimate?.source?.type === 'fermi'
+    ? `Fermi · ${estimate.source.definition.equation}`
+    : null
+}
 </script>
 
 <template>
@@ -118,11 +124,11 @@ function distributionLabel(value: Distribution) {
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong></div>
+            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.effect)">{{ estimateSourceLabel(edge.payload.properties.effect) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit relationship effect estimate" @click="emit('estimate', { kind: 'effect' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
-            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong></div>
+            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.lag)">{{ estimateSourceLabel(edge.payload.properties.lag) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
           <dl class="relationship-context">
@@ -132,7 +138,7 @@ function distributionLabel(value: Distribution) {
         </section>
         <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong></div>
+            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.degree)">{{ estimateSourceLabel(edge.payload.properties.degree) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
           </div>
         </section>

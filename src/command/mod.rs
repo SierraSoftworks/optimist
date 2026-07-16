@@ -95,6 +95,8 @@ pub enum GraphCommand {
     SetMeasurementCalibration(SetMeasurementCalibration),
     /// Creates or replaces one primitive estimate in a typed owner field.
     SetEstimate(SetEstimate),
+    /// Creates or replaces one estimate from a persisted, server-assessed Fermi equation.
+    SetFermiEstimate(SetFermiEstimate),
     /// Removes one optional or named-cost estimate from its owner.
     RemoveEstimate(RemoveEstimate),
     /// Creates or replaces one nested Fermi component formula.
@@ -179,6 +181,8 @@ pub enum CommandOutcome {
     MeasurementCalibrationSet(Edge),
     /// Primitive estimate created or revisioned by [`GraphCommand::SetEstimate`].
     EstimateSet(PrimitiveEstimate),
+    /// Formula-derived estimate created or revisioned by [`GraphCommand::SetFermiEstimate`].
+    FermiEstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].
     EstimateRemoved(PrimitiveEstimate),
     /// Fermi component created or replaced by [`GraphCommand::SetFormula`].

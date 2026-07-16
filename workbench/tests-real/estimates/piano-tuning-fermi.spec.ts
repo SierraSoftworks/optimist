@@ -6,6 +6,7 @@ test('models piano tunings with compact variables, equations, and unit verificat
   await addNode(page, 'Piano tuning demand', 'intervention')
   await page.getByRole('button', { name: /Piano tuning demand/ }).click()
   await page.getByRole('button', { name: 'Edit duration estimate' }).click()
+  await page.getByRole('button', { name: 'Fermi equation' }).click()
   await page.getByRole('button', { name: /Fermi decomposition/ }).click()
   const assistant = page.locator('.fermi-assistant')
   await assistant.getByLabel('Fermi goal unit').fill('pianos/day')

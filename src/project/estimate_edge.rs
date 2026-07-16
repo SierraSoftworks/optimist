@@ -1,5 +1,6 @@
 use crate::domain::{
-    Distribution, Edge, EdgePayload, EstimateAddress, EstimateId, EstimateSlot, PrimitiveEstimate,
+    Distribution, Edge, EdgePayload, EstimateAddress, EstimateId, EstimateSlot, EstimateSource,
+    PrimitiveEstimate,
 };
 
 use super::{EstimateCommandError, ProjectError, estimate_support};
@@ -9,6 +10,7 @@ pub(super) fn set(
     address: &EstimateAddress,
     slot: EstimateSlot,
     distribution: Distribution,
+    source: EstimateSource,
     provenance: Vec<String>,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let count = count_id(&edge.payload, address.estimate);
@@ -20,6 +22,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
+                source,
                 provenance,
             )
             .map(|(estimate, result)| {
@@ -34,6 +37,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
+                source,
                 provenance,
             )
             .map(|(estimate, result)| {
@@ -47,6 +51,7 @@ pub(super) fn set(
             slot,
             count,
             distribution,
+            source,
             provenance,
         )
         .map(|(estimate, result)| {

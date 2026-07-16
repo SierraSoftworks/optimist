@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { Distribution, GraphEdge, GraphNode, SetStateEstimateInput, StateEstimateSlot } from '../api/types'
-import DistributionEditor from './DistributionEditor.vue'
+import type { EstimateSourceInput, GraphEdge, GraphNode, SetStateEstimateInput, StateEstimateSlot } from '../api/types'
+import EstimateSourceEditor from './EstimateSourceEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
 const props = defineProps<{
@@ -17,7 +17,8 @@ const form = reactive({
   slot: 'current' as StateEstimateSlot,
   provenance: '',
 })
-const distribution = ref<Distribution>({ type: 'point', value: 0.5 })
+const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0.5 } })
+const sourceValid = ref(true)
 const existing = computed(() => {
   if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return null
   return props.node.payload.properties[form.slot]
@@ -41,15 +42,18 @@ watch(
     const currentDistribution = existing.value?.distribution
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     if (currentDistribution?.type === 'beta' || currentDistribution?.type === 'point') {
-      distribution.value = currentDistribution
-    } else distribution.value = { type: 'point', value: 0.5 }
+      source.value = existing.value?.source?.type === 'fermi'
+        ? { type: 'fermi', definition: existing.value.source.definition }
+        : { type: 'distribution', distribution: currentDistribution }
+    } else source.value = { type: 'distribution', distribution: { type: 'point', value: 0.5 } }
+    sourceValid.value = true
   },
 )
 
 function submit() {
   emit('submit', {
     slot: form.slot,
-    distribution: distribution.value,
+    source: source.value,
     provenance: form.provenance
       .split('\n')
       .map((value) => value.trim())
@@ -57,12 +61,9 @@ function submit() {
   })
 }
 
-function appendFermiProvenance(value: string) {
-  form.provenance = [form.provenance.trim(), value].filter(Boolean).join('\n')
-}
-
 function useReading(reading: typeof calibratedReadings.value[number]) {
-  distribution.value = { type: 'point', value: reading.state }
+  source.value = { type: 'distribution', distribution: { type: 'point', value: reading.state } }
+  sourceValid.value = true
   form.provenance = [
     form.provenance.trim(),
     `Calibrated observation #${reading.observation.id}: ${reading.observation.value} ${reading.observation.unit} from ${reading.observation.source} at ${reading.observation.observed_at} mapped to normalized state ${reading.state.toFixed(4)}.`,
@@ -88,14 +89,15 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
             <option value="desired">Desired</option>
           </select>
         </label>
-        <DistributionEditor
-          v-model="distribution"
+        <EstimateSourceEditor
+          v-model="source"
+          :existing="existing"
           :families="['point', 'beta']"
           support="probability"
           point-label="Value on [0, 1]"
           :project-id="projectId"
           :expected-unit="{}"
-          @fermi-provenance="appendFermiProvenance"
+          @validity="sourceValid = $event"
         />
         <section v-if="calibratedReadings.length" class="calibrated-evidence">
           <div><strong>Metric evidence</strong><span>Latest unsuperseded readings</span></div>
@@ -114,7 +116,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
         </label>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending">
+          <button type="submit" class="primary-button" :disabled="pending || !sourceValid">
             {{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}
           </button>
         </footer>

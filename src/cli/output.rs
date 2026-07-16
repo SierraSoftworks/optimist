@@ -239,15 +239,16 @@ mod tests {
             slot: EstimateSlot::Current,
             revision: 2,
             distribution: Distribution::beta(3.0, 2.0).unwrap(),
+            source: crate::domain::EstimateSource::Distribution,
             provenance: vec!["expert".to_owned()],
         };
         assert_eq!(
             OutputFormat::Json.estimate(&estimate).unwrap(),
-            r#"{"address":{"project":"A","owner":{"kind":"node","id":"A"},"estimate":"B"},"slot":{"kind":"current"},"revision":2,"distribution":{"type":"beta","alpha":3.0,"beta":2.0},"provenance":["expert"]}"#
+            r#"{"address":{"project":"A","owner":{"kind":"node","id":"A"},"estimate":"B"},"slot":{"kind":"current"},"revision":2,"distribution":{"type":"beta","alpha":3.0,"beta":2.0},"source":{"type":"distribution"},"provenance":["expert"]}"#
         );
         assert_eq!(
             OutputFormat::Table.estimate(&estimate).unwrap(),
-            "ADDRESS\tSLOT\tREVISION\tDISTRIBUTION\tPROVENANCE\nA/node/A/estimate/B\tCurrent\t2\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\texpert"
+            "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\nA/node/A/estimate/B\tCurrent\t2\tdistribution\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\texpert"
         );
     }
 

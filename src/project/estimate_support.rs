@@ -1,5 +1,6 @@
 use crate::domain::{
-    Distribution, Estimate, EstimateAddress, EstimateDimension, EstimateSlot, PrimitiveEstimate,
+    Distribution, Estimate, EstimateAddress, EstimateDimension, EstimateSlot, EstimateSource,
+    PrimitiveEstimate,
 };
 
 use super::{EstimateCommandError, ProjectError};
@@ -10,6 +11,7 @@ pub(super) fn replacement<T: EstimateDimension>(
     slot: EstimateSlot,
     owner_id_count: usize,
     distribution: Distribution,
+    source: EstimateSource,
     provenance: Vec<String>,
 ) -> Result<(Estimate<T>, PrimitiveEstimate), ProjectError> {
     let revision = match current {
@@ -35,6 +37,7 @@ pub(super) fn replacement<T: EstimateDimension>(
     let mut estimate =
         Estimate::<T>::new(address.estimate, distribution).map_err(EstimateCommandError::from)?;
     estimate.revision = revision;
+    estimate.source = source;
     estimate.provenance = provenance;
     let value = PrimitiveEstimate::from_typed(address.clone(), slot, &estimate);
     Ok((estimate, value))

@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{Distribution, Estimate, EstimateAddress, EstimateDimension};
+use super::{
+    Distribution, Estimate, EstimateAddress, EstimateDimension, EstimateSource,
+    FermiEstimateSupport, Unit,
+};
 
 /// Semantic field within a node or edge payload where an estimate is embedded.
 ///
@@ -44,6 +47,32 @@ impl EstimateSlot {
             slot => Ok(slot),
         }
     }
+
+    /// Returns the primitive support required by this semantic slot.
+    pub fn fermi_support(&self) -> FermiEstimateSupport {
+        match self {
+            Self::Current | Self::Desired | Self::ProbabilityOfSuccess => {
+                FermiEstimateSupport::Probability
+            }
+            Self::Effect | Self::Degree => FermiEstimateSupport::Signed,
+            Self::Cost(_) | Self::Duration | Self::Lag => FermiEstimateSupport::NonNegative,
+        }
+    }
+
+    /// Returns the runtime unit required by this semantic slot.
+    pub fn unit(&self) -> Result<Unit, EstimateSlotError> {
+        match self {
+            Self::Cost(dimension) => {
+                Unit::base(dimension).map_err(|_| EstimateSlotError::InvalidUnit(dimension.clone()))
+            }
+            Self::Duration | Self::Lag => Ok(Unit::base("duration").expect("valid unit")),
+            Self::Current
+            | Self::Desired
+            | Self::ProbabilityOfSuccess
+            | Self::Effect
+            | Self::Degree => Ok(Unit::dimensionless()),
+        }
+    }
 }
 
 /// A dimension-neutral root estimate returned by API and CLI lookups.
@@ -61,6 +90,8 @@ pub struct PrimitiveEstimate {
     pub revision: u64,
     /// Validated primitive probability distribution.
     pub distribution: Distribution,
+    /// Active authoring source and retained assessment when formula-derived.
+    pub source: EstimateSource,
     /// Evidence or elicitation records supporting the estimate.
     pub provenance: Vec<String>,
 }
@@ -77,6 +108,7 @@ impl PrimitiveEstimate {
             slot,
             revision: estimate.revision,
             distribution: estimate.distribution.clone(),
+            source: estimate.source.clone(),
             provenance: estimate.provenance.clone(),
         }
     }
@@ -88,6 +120,9 @@ pub enum EstimateSlotError {
     /// Intervention costs require a nonempty project-defined dimension name.
     #[error("an intervention cost dimension cannot be empty")]
     EmptyCostDimension,
+    /// A cost dimension cannot form a runtime unit identifier.
+    #[error("invalid estimate unit {0:?}")]
+    InvalidUnit(String),
 }
 
 #[cfg(test)]

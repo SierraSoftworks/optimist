@@ -100,11 +100,18 @@ pub(super) fn scenarios(scenarios: &[Scenario]) -> String {
 }
 
 pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_errors::Error> {
+    let source = match &estimate.source {
+        crate::domain::EstimateSource::Distribution => "distribution".to_owned(),
+        crate::domain::EstimateSource::Fermi { definition, .. } => {
+            format!("fermi:{}", definition.equation.replace(['\t', '\n'], " "))
+        }
+    };
     Ok(format!(
-        "ADDRESS\tSLOT\tREVISION\tDISTRIBUTION\tPROVENANCE\n{}\t{:?}\t{}\t{}\t{}",
+        "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\n{}\t{:?}\t{}\t{}\t{}\t{}",
         estimate.address,
         estimate.slot,
         estimate.revision,
+        source,
         super::output_json::serialize(&estimate.distribution)?,
         estimate.provenance.join("; ")
     ))

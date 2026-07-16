@@ -3,7 +3,7 @@ use std::{fmt, marker::PhantomData};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::EntityId;
+use super::{EntityId, FermiAssessment, FermiEstimateDefinition, FermiEstimateError};
 
 /// Identifies an estimate within its owning node or edge aggregate.
 ///
@@ -303,6 +303,25 @@ pub enum EstimateError {
     /// The distribution has support outside the estimate dimension's legal range.
     #[error("distribution support is invalid for estimate dimension {0}")]
     InvalidSupport(&'static str),
+    /// Persisted Fermi source metadata or assessment is inconsistent.
+    #[error(transparent)]
+    Fermi(#[from] FermiEstimateError),
+}
+
+/// Exclusive source used to produce an estimate's effective distribution.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EstimateSource {
+    /// The effective distribution was authored directly.
+    #[default]
+    Distribution,
+    /// A retained equation was assessed into the effective distribution.
+    Fermi {
+        /// Reviewable equation, variables, canonical formula, and sampling controls.
+        definition: Box<FermiEstimateDefinition>,
+        /// Server-generated result and diagnostics retained with the estimate revision.
+        assessment: Box<FermiAssessment>,
+    },
 }
 
 /// An uncertain, revisioned quantity embedded in a node or edge payload.
@@ -330,6 +349,9 @@ pub struct Estimate<T: EstimateDimension> {
     pub revision: u64,
     /// Validated prior distribution whose support is accepted by `T`.
     pub distribution: Distribution,
+    /// Active authoring source; Fermi sources supersede direct distribution editing.
+    #[serde(default)]
+    pub source: EstimateSource,
     /// Human-readable evidence, source, or elicitation records supporting the estimate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<String>,
@@ -351,9 +373,29 @@ impl<T: EstimateDimension> Estimate<T> {
             id,
             revision: 0,
             distribution,
+            source: EstimateSource::Distribution,
             provenance: Vec::new(),
             marker: PhantomData,
         })
+    }
+
+    /// Constructs a Fermi-sourced estimate from one validated server assessment.
+    pub fn from_fermi(
+        id: EstimateId,
+        definition: FermiEstimateDefinition,
+        assessment: FermiAssessment,
+    ) -> Result<Self, EstimateError> {
+        let definition = definition.validated()?;
+        let distribution = assessment
+            .recommended_distribution()
+            .cloned()
+            .ok_or(FermiEstimateError::UnavailableRecommendation)?;
+        let mut estimate = Self::new(id, distribution)?;
+        estimate.source = EstimateSource::Fermi {
+            definition: Box::new(definition),
+            assessment: Box::new(assessment),
+        };
+        Ok(estimate)
     }
 }
 
@@ -362,6 +404,8 @@ struct RawEstimate {
     id: EstimateId,
     revision: u64,
     distribution: Distribution,
+    #[serde(default)]
+    source: EstimateSource,
     #[serde(default)]
     provenance: Vec<String>,
 }
@@ -372,7 +416,22 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
         D: Deserializer<'de>,
     {
         let raw = RawEstimate::deserialize(deserializer)?;
-        let mut estimate = Self::new(raw.id, raw.distribution).map_err(de::Error::custom)?;
+        let mut estimate = match raw.source {
+            EstimateSource::Distribution => {
+                Self::new(raw.id, raw.distribution).map_err(de::Error::custom)?
+            }
+            EstimateSource::Fermi {
+                definition,
+                assessment,
+            } => {
+                let estimate = Self::from_fermi(raw.id, *definition, *assessment)
+                    .map_err(de::Error::custom)?;
+                if estimate.distribution != raw.distribution {
+                    return Err(de::Error::custom(FermiEstimateError::ResultMismatch));
+                }
+                estimate
+            }
+        };
         estimate.revision = raw.revision;
         estimate.provenance = raw.provenance;
         Ok(estimate)
@@ -382,8 +441,12 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Distribution, DistributionError, Estimate, EstimateError, EstimateId, Money, Probability,
-        SignedInfluence,
+        Distribution, DistributionError, Estimate, EstimateError, EstimateId, EstimateSource,
+        Money, Probability, SignedInfluence,
+    };
+    use crate::domain::{
+        FermiEstimateDefinition, FermiEstimateSupport, FermiVariable, FermiVariableUncertainty,
+        Formula, MonteCarloConfig, ProjectId, Unit, assess_fermi,
     };
 
     #[test]
@@ -429,5 +492,61 @@ mod tests {
             "distribution":{"type":"normal","mean":0.5,"standard_deviation":0.1}
         }"#;
         assert!(serde_json::from_str::<Estimate<Probability>>(json).is_err());
+    }
+
+    #[test]
+    fn legacy_estimates_default_to_distribution_sources() {
+        let json = r#"{
+            "id":"A",
+            "revision":0,
+            "distribution":{"type":"beta","alpha":2.0,"beta":3.0}
+        }"#;
+        let estimate = serde_json::from_str::<Estimate<Probability>>(json).unwrap();
+        assert_eq!(estimate.source, EstimateSource::Distribution);
+    }
+
+    #[test]
+    fn fermi_sources_round_trip_and_reject_tampered_results() {
+        let formula = Formula::Literal {
+            distribution: Distribution::point(0.5).unwrap(),
+            unit: Unit::dimensionless(),
+        };
+        let assessment = assess_fermi(
+            &ProjectId::new("A").unwrap(),
+            formula.clone(),
+            FermiEstimateSupport::Probability,
+            Unit::dimensionless(),
+            MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
+        )
+        .unwrap();
+        let definition = FermiEstimateDefinition {
+            equation: "confidence".to_owned(),
+            variables: vec![FermiVariable {
+                name: "confidence".to_owned(),
+                estimate: 0.5,
+                unit: String::new(),
+                uncertainty: FermiVariableUncertainty::ThreePoint {
+                    low: 0.5,
+                    high: 0.5,
+                },
+            }],
+            formula,
+            monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
+        };
+        let estimate =
+            Estimate::<Probability>::from_fermi(EstimateId::new(0), definition, assessment)
+                .unwrap();
+        let value = serde_json::to_value(&estimate).unwrap();
+        assert_eq!(
+            serde_json::from_value::<Estimate<Probability>>(value.clone()).unwrap(),
+            estimate
+        );
+
+        let mut tampered = value;
+        tampered["distribution"] = serde_json::json!({
+            "type": "point",
+            "value": 0.75
+        });
+        assert!(serde_json::from_value::<Estimate<Probability>>(tampered).is_err());
     }
 }

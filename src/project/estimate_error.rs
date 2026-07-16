@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::domain::{EstimateAddress, EstimateError, EstimateSlot, EstimateSlotError};
+use crate::domain::{
+    EstimateAddress, EstimateError, EstimateSlot, EstimateSlotError, FermiAssessmentError,
+    FermiEstimateError,
+};
 
 /// Failures returned by primitive estimate authoring and lookup operations.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -58,6 +61,15 @@ pub enum EstimateCommandError {
     /// Estimate slot input is empty or otherwise invalid.
     #[error(transparent)]
     Slot(#[from] EstimateSlotError),
+    /// Persisted Fermi authoring metadata is invalid.
+    #[error(transparent)]
+    Fermi(#[from] FermiEstimateError),
+    /// The canonical formula could not be validated or sampled for this slot.
+    #[error(transparent)]
+    FermiAssessment(#[from] FermiAssessmentError),
+    /// Assessment completed without a usable primitive recommendation.
+    #[error("the Fermi equation did not produce a persistable distribution recommendation")]
+    UnavailableFermiRecommendation,
     /// A node or estimate aggregate revision cannot represent another update.
     #[error("owner of estimate {0} has exhausted its revision space")]
     RevisionSpaceExhausted(EstimateAddress),

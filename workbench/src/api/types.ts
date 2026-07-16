@@ -32,8 +32,17 @@ export interface Estimate {
   id: string
   revision: number
   distribution: Distribution
+  source?: EstimateSource
   provenance?: string[]
 }
+
+export type EstimateSource =
+  | { type: 'distribution' }
+  | { type: 'fermi'; definition: FermiEstimateDefinition; assessment: FermiAssessment }
+
+export type EstimateSourceInput =
+  | { type: 'distribution'; distribution: Distribution }
+  | { type: 'fermi'; definition: FermiEstimateDefinition }
 
 export interface Evidence {
   id: number
@@ -269,6 +278,22 @@ export interface FermiAssessmentInput {
   monte_carlo: MonteCarloConfig
 }
 
+export interface FermiEstimateDefinition {
+  equation: string
+  variables: FermiVariable[]
+  formula: Formula
+  monte_carlo: MonteCarloConfig
+}
+
+export interface FermiVariable {
+  name: string
+  estimate: number
+  unit: string
+  uncertainty:
+    | { type: 'order_of_magnitude' }
+    | { type: 'three_point'; low: number; high: number }
+}
+
 export interface FermiAssessment {
   compiled: { unit: Unit; dependencies: unknown[] }
   report: {
@@ -350,7 +375,7 @@ export type StateEstimateSlot = 'current' | 'desired'
 
 export interface SetStateEstimateInput {
   slot: StateEstimateSlot
-  distribution: Distribution
+  source: EstimateSourceInput
   provenance: string[]
 }
 
@@ -361,7 +386,7 @@ export type InterventionEstimateSlot =
 
 export interface SetInterventionEstimateInput {
   slot: InterventionEstimateSlot
-  distribution: Distribution
+  source: EstimateSourceInput
   provenance: string[]
 }
 
@@ -369,7 +394,7 @@ export type EdgeEstimateSlot = { kind: 'effect' | 'lag' | 'degree' }
 
 export interface SetEdgeEstimateInput {
   slot: EdgeEstimateSlot
-  distribution: Distribution
+  source: EstimateSourceInput
   provenance: string[]
 }
 

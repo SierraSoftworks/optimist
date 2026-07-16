@@ -21,7 +21,7 @@ pub enum FermiEstimateSupport {
 }
 
 /// Primitive recommendation derived from a sampled Fermi decomposition.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum FermiRecommendation {
     /// The decomposition is deterministic and can be represented exactly.
@@ -48,7 +48,7 @@ pub enum FermiRecommendation {
 }
 
 /// Central interval implied by a recommended primitive approximation.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FermiInterval {
     /// Probability mass between the reported bounds.
     pub probability: f64,
@@ -59,7 +59,7 @@ pub struct FermiInterval {
 }
 
 /// Validation, sampling, and approximation result for one proposed Fermi decomposition.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FermiAssessment {
     /// Unit and deterministic reference dependencies validated before sampling.
     pub compiled: CompiledFormula,
@@ -67,6 +67,17 @@ pub struct FermiAssessment {
     pub report: JointMonteCarloReport,
     /// Primitive approximation which the caller may explicitly apply to an estimate.
     pub recommendation: FermiRecommendation,
+}
+
+impl FermiAssessment {
+    /// Returns the effective primitive approximation when assessment succeeded.
+    pub fn recommended_distribution(&self) -> Option<&Distribution> {
+        match &self.recommendation {
+            FermiRecommendation::Exact { distribution, .. }
+            | FermiRecommendation::MomentMatched { distribution, .. } => Some(distribution),
+            FermiRecommendation::Unavailable { .. } => None,
+        }
+    }
 }
 
 /// Failures which prevent a Fermi decomposition from being assessed.

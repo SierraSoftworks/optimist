@@ -453,7 +453,7 @@ describe('Optimist API client', () => {
 
     await api.setStateEstimate(project, node, {
       slot: 'desired',
-      distribution: { type: 'beta', alpha: 8, beta: 2 },
+      source: { type: 'distribution', distribution: { type: 'beta', alpha: 8, beta: 2 } },
       provenance: ['planning'],
     })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
@@ -467,6 +467,45 @@ describe('Optimist API client', () => {
         },
       },
     })
+  })
+
+  it('persists Fermi state sources without accepting a client result distribution', async () => {
+    const node = {
+      id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
+    }
+    const definition = {
+      equation: 'confidence',
+      variables: [{ name: 'confidence', estimate: 0.5, unit: '', uncertainty: { type: 'three_point' as const, low: 0.4, high: 0.6 } }],
+      formula: { type: 'literal' as const, distribution: { type: 'point' as const, value: 0.5 }, unit: {} },
+      monte_carlo: { seed: 42, minimum_samples: 100, maximum_samples: 1000, absolute_tolerance: 0.01, relative_tolerance: 0.01 },
+    }
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      request_id: 'request', project_revision: 8,
+      outcome: {
+        type: 'fermi_estimate_set',
+        value: {
+          address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
+          slot: { kind: 'current' }, revision: 0,
+          distribution: { type: 'point', value: 0.5 },
+          source: { type: 'fermi', definition, assessment: {} },
+          provenance: [],
+        },
+      },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => 'request' })
+
+    await api.setStateEstimate(project, node, {
+      slot: 'current', source: { type: 'fermi', definition }, provenance: [],
+    })
+    const body = JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)
+    expect(body.command).toMatchObject({
+      type: 'set_fermi_estimate',
+      payload: { slot: { kind: 'current' }, definition },
+    })
+    expect(body.command.payload).not.toHaveProperty('distribution')
   })
 
   it('sends revision-checked relationship edit and delete commands', async () => {
@@ -660,7 +699,7 @@ describe('Optimist API client', () => {
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
     await api.setInterventionEstimate(project, node, {
       slot: { kind: 'duration' },
-      distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+      source: { type: 'distribution', distribution: { type: 'log_normal', location: 2, scale: 0.3 } },
       provenance: ['planning'],
     })
     await api.removeInterventionEstimate(project, node, { id: 'B', revision: 0, distribution: primitive.distribution })
@@ -748,7 +787,7 @@ describe('Optimist API client', () => {
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
     await api.setEdgeEstimate(project, edge, {
-      slot: { kind: 'effect' }, distribution: primitive.distribution, provenance: ['analysis'],
+      slot: { kind: 'effect' }, source: { type: 'distribution', distribution: primitive.distribution }, provenance: ['analysis'],
     })
     await api.removeEdgeEstimate(project, edge, lag)
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({

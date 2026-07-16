@@ -27,7 +27,7 @@ describe('FermiEstimateAssistant', () => {
       },
     })
     const wrapper = mount(FermiEstimateAssistant, {
-      props: { projectId: 'A', support: 'probability', expectedUnit: {} },
+      props: { projectId: 'A', support: 'probability', expectedUnit: {}, modelValue: null },
     })
     await wrapper.get('.fermi-toggle').trigger('click')
     await wrapper.get('.fermi-actions button:last-child').trigger('click')
@@ -38,20 +38,23 @@ describe('FermiEstimateAssistant', () => {
     }))
     expect(wrapper.text()).toContain('2,000 samples · converged')
     await wrapper.get('.fermi-result .primary-button').trigger('click')
-    expect(wrapper.emitted('apply')![0]![0]).toEqual({ type: 'beta', alpha: 6, beta: 4 })
-    expect(wrapper.emitted('apply')![0]![1]).toContain('Fermi equation: x * y')
+    expect(wrapper.emitted('update:modelValue')![0]![0]).toMatchObject({
+      equation: 'x * y',
+      formula: { type: 'bounded' },
+      variables: [{ name: 'x' }, { name: 'y' }],
+    })
   })
 
   it('shows unit validation failures without applying a distribution', async () => {
     vi.spyOn(api, 'assessFermi').mockRejectedValue(new Error('decomposition unit days does not match target unit duration'))
     const wrapper = mount(FermiEstimateAssistant, {
-      props: { projectId: 'A', support: 'non_negative', expectedUnit: { duration: 1 } },
+      props: { projectId: 'A', support: 'non_negative', expectedUnit: { duration: 1 }, modelValue: null },
     })
     await wrapper.get('.fermi-toggle').trigger('click')
     await wrapper.get('.fermi-actions button:last-child').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('does not match target unit')
-    expect(wrapper.emitted('apply')).toBeUndefined()
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
   it('builds the piano equation and highlights its unresolved subject dimension', async () => {
@@ -70,7 +73,7 @@ describe('FermiEstimateAssistant', () => {
       recommendation: { status: 'moment_matched', distribution: { type: 'log_normal', location: 4.8, scale: 0.3 }, interval: { probability: 0.9, lower: 80, upper: 220 }, warning: 'Approximation' },
     })
     const wrapper = mount(FermiEstimateAssistant, {
-      props: { projectId: 'A', support: 'non_negative', expectedUnit: { piano: 1, day: -1 } },
+      props: { projectId: 'A', support: 'non_negative', expectedUnit: { piano: 1, day: -1 }, modelValue: null },
     })
     await wrapper.get('.fermi-toggle').trigger('click')
     await wrapper.get('[aria-label="Fermi equation"]').setValue('people / people_per_household / households_per_piano / days_per_tuning * pianos_per_tuning')

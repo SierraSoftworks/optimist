@@ -1,6 +1,8 @@
 use crate::{
-    command::{CommandOutcome, RemoveEstimate, SetEstimate},
-    domain::{EstimateAddress, EstimateOwner, PrimitiveEstimate, ProjectId},
+    command::{CommandOutcome, RemoveEstimate, SetEstimate, SetFermiEstimate},
+    domain::{
+        EstimateAddress, EstimateOwner, EstimateSource, PrimitiveEstimate, ProjectId, assess_fermi,
+    },
     store::{GraphRepository, RepositoryError},
 };
 
@@ -13,25 +15,76 @@ pub(super) fn set(
     entry: &mut ProjectEntry,
     command: SetEstimate,
 ) -> Result<CommandOutcome, ProjectError> {
+    set_value(
+        entry,
+        command.address,
+        command.slot,
+        command.distribution,
+        EstimateSource::Distribution,
+        command.provenance,
+    )
+    .map(CommandOutcome::EstimateSet)
+}
+
+pub(super) fn set_fermi(
+    entry: &mut ProjectEntry,
+    command: SetFermiEstimate,
+) -> Result<CommandOutcome, ProjectError> {
     validate_address(&entry.project.id, &command.address)?;
     let slot = command
         .slot
         .validated()
         .map_err(EstimateCommandError::from)?;
-    let value = match &command.address.owner {
+    let definition = command
+        .definition
+        .validated()
+        .map_err(EstimateCommandError::from)?;
+    let assessment = assess_fermi(
+        &entry.project.id,
+        definition.formula.clone(),
+        slot.fermi_support(),
+        slot.unit().map_err(EstimateCommandError::from)?,
+        definition.monte_carlo,
+    )
+    .map_err(EstimateCommandError::from)?;
+    let distribution = assessment
+        .recommended_distribution()
+        .cloned()
+        .ok_or(EstimateCommandError::UnavailableFermiRecommendation)?;
+    let source = EstimateSource::Fermi {
+        definition: Box::new(definition),
+        assessment: Box::new(assessment),
+    };
+    set_value(
+        entry,
+        command.address,
+        slot,
+        distribution,
+        source,
+        command.provenance,
+    )
+    .map(CommandOutcome::FermiEstimateSet)
+}
+
+fn set_value(
+    entry: &mut ProjectEntry,
+    address: EstimateAddress,
+    slot: crate::domain::EstimateSlot,
+    distribution: crate::domain::Distribution,
+    source: EstimateSource,
+    provenance: Vec<String>,
+) -> Result<PrimitiveEstimate, ProjectError> {
+    validate_address(&entry.project.id, &address)?;
+    let slot = slot.validated().map_err(EstimateCommandError::from)?;
+    let value = match &address.owner {
         EstimateOwner::Node(id) => {
             let mut node = entry
                 .repository
                 .get_node(*id)?
                 .ok_or(RepositoryError::MissingEntity(*id))?;
-            let value = estimate_node::set(
-                &mut node,
-                &command.address,
-                slot,
-                command.distribution,
-                command.provenance,
-            )?;
-            node.revision = next_owner_revision(node.revision, &command.address)?;
+            let value =
+                estimate_node::set(&mut node, &address, slot, distribution, source, provenance)?;
+            node.revision = next_owner_revision(node.revision, &address)?;
             entry.repository.update_node(node)?;
             value
         }
@@ -40,19 +93,14 @@ pub(super) fn set(
                 .repository
                 .get_edge(id)?
                 .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
-            let value = estimate_edge::set(
-                &mut edge,
-                &command.address,
-                slot,
-                command.distribution,
-                command.provenance,
-            )?;
-            edge.revision = next_owner_revision(edge.revision, &command.address)?;
+            let value =
+                estimate_edge::set(&mut edge, &address, slot, distribution, source, provenance)?;
+            edge.revision = next_owner_revision(edge.revision, &address)?;
             entry.repository.update_edge(edge)?;
             value
         }
     };
-    Ok(CommandOutcome::EstimateSet(value))
+    Ok(value)
 }
 
 pub(super) fn remove(
@@ -145,11 +193,13 @@ mod tests {
     use crate::{
         command::{
             CommandOutcome, CommandRequest, CreateEdge, CreateNode, GraphCommand, RemoveEstimate,
-            SetEstimate,
+            SetEstimate, SetFermiEstimate,
         },
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
-            EstimateOwner, EstimateSlot, Factor, ProjectId, SignedInfluence,
+            EstimateOwner, EstimateSlot, EstimateSource, Factor, FermiEstimateDefinition,
+            FermiVariable, FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId,
+            SignedInfluence, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -252,6 +302,97 @@ mod tests {
                 EstimateCommandError::NotFound(address)
             ))
         );
+    }
+
+    #[test]
+    fn persists_fermi_sources_and_replaces_them_exclusively() {
+        let (mut catalog, project) = catalog();
+        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
+        let formula = Formula::Product {
+            factors: vec![
+                Formula::Literal {
+                    distribution: Distribution::scaled_beta(3.0, 3.0, 0.5, 0.9).unwrap(),
+                    unit: Unit::dimensionless(),
+                },
+                Formula::Literal {
+                    distribution: Distribution::scaled_beta(4.0, 2.0, 0.6, 1.0).unwrap(),
+                    unit: Unit::dimensionless(),
+                },
+            ],
+        };
+        let definition = FermiEstimateDefinition {
+            equation: "adoption * completion".to_owned(),
+            variables: vec![
+                FermiVariable {
+                    name: "adoption".to_owned(),
+                    estimate: 0.7,
+                    unit: String::new(),
+                    uncertainty: FermiVariableUncertainty::ThreePoint {
+                        low: 0.5,
+                        high: 0.9,
+                    },
+                },
+                FermiVariable {
+                    name: "completion".to_owned(),
+                    estimate: 0.85,
+                    unit: String::new(),
+                    uncertainty: FermiVariableUncertainty::ThreePoint {
+                        low: 0.6,
+                        high: 1.0,
+                    },
+                },
+            ],
+            formula,
+            monte_carlo: MonteCarloConfig::new(42, 1_000, 10_000, 0.001, 0.01).unwrap(),
+        };
+        let created = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::SetFermiEstimate(SetFermiEstimate {
+                        address: address.clone(),
+                        slot: EstimateSlot::Current,
+                        definition,
+                        provenance: vec!["planning workshop".to_owned()],
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::FermiEstimateSet(created) = created.outcome else {
+            panic!("expected Fermi estimate result")
+        };
+        let EstimateSource::Fermi {
+            definition,
+            assessment,
+        } = &created.source
+        else {
+            panic!("expected persisted Fermi source")
+        };
+        assert_eq!(definition.equation, "adoption * completion");
+        assert!(assessment.recommended_distribution().is_some());
+        assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
+
+        let replaced = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    3,
+                    GraphCommand::SetEstimate(SetEstimate {
+                        address: address.clone(),
+                        slot: EstimateSlot::Current,
+                        distribution: Distribution::beta(8.0, 2.0).unwrap(),
+                        provenance: vec!["direct prior".to_owned()],
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::EstimateSet(replaced) = replaced.outcome else {
+            panic!("expected direct estimate result")
+        };
+        assert_eq!(replaced.revision, 1);
+        assert_eq!(replaced.source, EstimateSource::Distribution);
+        assert_eq!(replaced.provenance, vec!["direct prior"]);
     }
 
     #[test]

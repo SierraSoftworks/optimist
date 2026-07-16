@@ -65,6 +65,13 @@ function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
   return formatDistribution(value)
 }
 
+function sourceLabel(node: GraphNode, slot: 'current' | 'desired') {
+  if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return null
+  const estimate = node.payload.properties[slot]
+  if (estimate?.source?.type !== 'fermi') return null
+  return `${estimate.source.definition.equation} · ${estimate.source.definition.variables.length} variables · ${estimate.source.assessment.report.diagnostics.status.replaceAll('_', ' ')}`
+}
+
 function formatDistribution(value: Distribution) {
   if (value.type === 'point') return `Point · ${value.value}`
   if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
@@ -136,8 +143,10 @@ function replacement(edge: GraphEdge, observation: Observation) {
         <h3>State estimates</h3>
         <dl>
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
+          <div v-if="sourceLabel(node, 'current')"><dt>Current Fermi</dt><dd>{{ sourceLabel(node, 'current') }}</dd></div>
           <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
           <div><dt>Desired</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
+          <div v-if="sourceLabel(node, 'desired')"><dt>Desired Fermi</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
           <div v-if="provenance(node, 'desired').length"><dt>Desired source</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
@@ -198,15 +207,15 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">
         <h3>Investment <button type="button" class="icon-button section-action" title="Add cost dimension" aria-label="Add cost dimension" @click="emit('interventionEstimate', { kind: 'cost', value: '' })"><Plus :size="14" /></button></h3>
         <div class="estimate-row">
-          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong></div>
+          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong><small v-if="node.payload.properties.duration?.source?.type === 'fermi'">Fermi · {{ node.payload.properties.duration.source.definition.equation }}</small></div>
           <button type="button" class="icon-button" aria-label="Edit duration estimate" @click="emit('interventionEstimate', { kind: 'duration' })"><Pencil :size="13" /></button>
         </div>
         <div class="estimate-row">
-          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong></div>
+          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong><small v-if="node.payload.properties.probability_of_success?.source?.type === 'fermi'">Fermi · {{ node.payload.properties.probability_of_success.source.definition.equation }}</small></div>
           <button type="button" class="icon-button" aria-label="Edit success probability estimate" @click="emit('interventionEstimate', { kind: 'probability_of_success' })"><Pencil :size="13" /></button>
         </div>
         <div v-for="cost in node.payload.properties.costs" :key="cost.dimension" class="estimate-row">
-          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong></div>
+          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong><small v-if="cost.value.source?.type === 'fermi'">Fermi · {{ cost.value.source.definition.equation }}</small></div>
           <button type="button" class="icon-button" :aria-label="`Edit ${cost.dimension} cost estimate`" @click="emit('interventionEstimate', { kind: 'cost', value: cost.dimension })"><Pencil :size="13" /></button>
         </div>
         <p v-if="!node.payload.properties.costs.length" class="muted">No cost dimensions configured.</p>
