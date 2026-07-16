@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Gauge, Goal, Wrench } from '@lucide/vue'
+import { Activity, Gauge, Goal, Pencil, Sigma, Wrench } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
+const emit = defineEmits<{ edit: []; estimate: [] }>()
 
 const incidentEdges = computed(() =>
   props.node
@@ -31,6 +32,23 @@ function distribution(node: GraphNode, slot: 'current' | 'desired') {
   if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return null
   return node.payload.properties[slot]?.distribution ?? null
 }
+
+function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
+  const value = distribution(node, slot)
+  if (!value) return 'Not set'
+  if (value.type === 'point') return `Point · ${value.value}`
+  if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
+  if (value.type === 'scaled_beta') {
+    return `Scaled Beta · [${value.lower}, ${value.upper}]`
+  }
+  if (value.type === 'normal') return `Normal · μ ${value.mean}, σ ${value.standard_deviation}`
+  return `LogNormal · μ ${value.location}, σ ${value.scale}`
+}
+
+function provenance(node: GraphNode, slot: 'current' | 'desired') {
+  if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return []
+  return node.payload.properties[slot]?.provenance ?? []
+}
 </script>
 
 <template>
@@ -43,6 +61,16 @@ function distribution(node: GraphNode, slot: 'current' | 'desired') {
           <h2>{{ node.title }}</h2>
         </div>
       </header>
+
+      <div class="inspector-actions">
+        <button type="button" class="secondary-button" @click="emit('edit')"><Pencil :size="14" /> Details</button>
+        <button
+          v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'"
+          type="button"
+          class="secondary-button"
+          @click="emit('estimate')"
+        ><Sigma :size="14" /> Estimate</button>
+      </div>
 
       <p v-if="node.description" class="description">{{ node.description }}</p>
       <p v-else class="muted">No description has been added.</p>
@@ -59,11 +87,18 @@ function distribution(node: GraphNode, slot: 'current' | 'desired') {
       <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section">
         <h3>State estimates</h3>
         <dl>
-          <div><dt>Current</dt><dd>{{ distribution(node, 'current')?.type ?? 'Not set' }}</dd></div>
-          <div><dt>Desired</dt><dd>{{ distribution(node, 'desired')?.type ?? 'Not set' }}</dd></div>
+          <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
+          <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
+          <div><dt>Desired</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
+          <div v-if="provenance(node, 'desired').length"><dt>Desired source</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
+      </section>
+
+      <section v-if="Object.keys(node.metadata).length" class="inspector-section">
+        <h3>Metadata</h3>
+        <pre class="metadata-view">{{ JSON.stringify(node.metadata, null, 2) }}</pre>
       </section>
 
       <section v-if="node.payload.kind === 'metric'" class="inspector-section">

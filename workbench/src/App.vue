@@ -23,6 +23,8 @@ import CreateProjectDialog from './components/CreateProjectDialog.vue'
 import CreateNodeDialog from './components/CreateNodeDialog.vue'
 import CreateEdgeDialog from './components/CreateEdgeDialog.vue'
 import ImportProjectDialog from './components/ImportProjectDialog.vue'
+import EditNodeDialog from './components/EditNodeDialog.vue'
+import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -31,6 +33,8 @@ import type {
   GraphNode,
   NodeKind,
   ProjectArchive,
+  SetStateEstimateInput,
+  UpdateNodeInput,
 } from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
 import {
@@ -41,6 +45,8 @@ import {
   useImportProject,
   useProject,
   useProjects,
+  useSetStateEstimate,
+  useUpdateNode,
 } from './composables/useProjectData'
 
 const store = useWorkbenchStore()
@@ -56,6 +62,8 @@ const projectDialogOpen = ref(false)
 const nodeDialogOpen = ref(false)
 const edgeDialogOpen = ref(false)
 const importDialogOpen = ref(false)
+const editNodeDialogOpen = ref(false)
+const estimateDialogOpen = ref(false)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -77,6 +85,8 @@ const canCreateRelationship = computed(
 const selectedNode = computed<GraphNode | null>(
   () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
 )
+const updateNode = useUpdateNode(projectQuery.data, selectedNode)
+const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -177,6 +187,26 @@ async function submitImport(archive: ProjectArchive, replace: boolean) {
     const project = await importProject.mutateAsync({ archive, replace })
     store.selectProject(project.id)
     importDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitNodeEdit(input: UpdateNodeInput) {
+  mutationError.value = null
+  try {
+    await updateNode.mutateAsync(input)
+    editNodeDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitStateEstimate(input: SetStateEstimateInput) {
+  mutationError.value = null
+  try {
+    await setStateEstimate.mutateAsync(input)
+    estimateDialogOpen.value = false
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -326,7 +356,12 @@ function retry() {
         />
       </section>
 
-      <NodeInspector :node="selectedNode" :edges="edges" />
+      <NodeInspector
+        :node="selectedNode"
+        :edges="edges"
+        @edit="editNodeDialogOpen = true"
+        @estimate="estimateDialogOpen = true"
+      />
     </section>
 
     <div v-if="mutationError" class="toast" role="alert">
@@ -360,6 +395,20 @@ function retry() {
       :project-ids="projects.map((project) => project.id)"
       @close="importDialogOpen = false"
       @submit="submitImport"
+    />
+    <EditNodeDialog
+      :open="editNodeDialogOpen"
+      :pending="updateNode.isPending.value"
+      :node="selectedNode"
+      @close="editNodeDialogOpen = false"
+      @submit="submitNodeEdit"
+    />
+    <EditStateEstimateDialog
+      :open="estimateDialogOpen"
+      :pending="setStateEstimate.isPending.value"
+      :node="selectedNode"
+      @close="estimateDialogOpen = false"
+      @submit="submitStateEstimate"
     />
   </main>
 </template>

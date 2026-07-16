@@ -6,6 +6,9 @@ import type {
   GraphNode,
   Project,
   ProjectArchive,
+  SetStateEstimateInput,
+  StateEstimateSlot,
+  UpdateNodeInput,
 } from './types'
 
 interface ErrorEnvelope {
@@ -16,6 +19,18 @@ interface CommandResult<T> {
   request_id: string
   project_revision: number
   outcome: { type: string; value: T }
+}
+
+interface PrimitiveEstimate {
+  address: {
+    project: string
+    owner: { kind: 'node'; id: string }
+    estimate: string
+  }
+  slot: { kind: StateEstimateSlot }
+  revision: number
+  distribution: import('./types').Distribution
+  provenance: string[]
 }
 
 export class OptimistApiError extends Error {
@@ -110,6 +125,89 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for relationship creation.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async updateNode(
+    project: Project,
+    node: GraphNode,
+    input: UpdateNodeInput,
+  ): Promise<GraphNode> {
+    const result = await request<CommandResult<GraphNode>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'update_node_metadata',
+            payload: {
+              id: node.id,
+              expected_revision: node.revision,
+              ...input,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'node_metadata_updated') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for node editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async setStateEstimate(
+    project: Project,
+    node: GraphNode,
+    input: SetStateEstimateInput,
+  ): Promise<PrimitiveEstimate> {
+    const properties =
+      node.payload.kind === 'factor' || node.payload.kind === 'outcome'
+        ? node.payload.properties
+        : null
+    if (!properties) {
+      throw new OptimistApiError(
+        'invalid_estimate_slot',
+        'Only factors and outcomes have normalized state estimates.',
+        ['Select a factor or outcome and retry.'],
+      )
+    }
+    const current = properties[input.slot]
+    const other = properties[input.slot === 'current' ? 'desired' : 'current']
+    const estimate = current?.id ?? (other?.id === 'A' ? 'B' : 'A')
+    const result = await request<CommandResult<PrimitiveEstimate>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_estimate',
+            payload: {
+              address: {
+                project: project.id,
+                owner: { kind: 'node', id: node.id },
+                estimate,
+              },
+              slot: { kind: input.slot },
+              distribution: input.distribution,
+              provenance: input.provenance,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'estimate_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for estimate editing.',
         ['Confirm the workbench and server versions match.'],
       )
     }

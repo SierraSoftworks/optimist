@@ -31,6 +31,22 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await expect(page.getByText('B', { exact: true }).last()).toBeVisible()
   await expect(page.getByText('r3')).toBeVisible()
 
+  await page.getByRole('button', { name: 'Details' }).click()
+  await page.getByLabel('Title').fill('Rapid feedback')
+  await page.getByLabel('Description').fill('Short feedback loops.')
+  await page.getByLabel('Metadata').fill('{"owner":"platform"}')
+  await page.getByRole('button', { name: 'Save details' }).click()
+  await expect(page.getByRole('heading', { name: 'Rapid feedback' })).toBeVisible()
+  await expect(page.getByText('Short feedback loops.')).toBeVisible()
+  await expect(page.getByText(/"owner": "platform"/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Estimate' }).click()
+  await page.getByLabel('Value on [0, 1]').fill('0.65')
+  await page.getByLabel('Provenance').fill('Weekly review')
+  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await expect(page.getByText('Point · 0.65')).toBeVisible()
+  await expect(page.getByText('Weekly review')).toBeVisible()
+
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export project' }).click()
   const download = await downloadPromise
@@ -52,4 +68,8 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await expect(page.getByText('2 nodes')).toBeVisible()
   await expect(page.getByText('1 relationships')).toBeVisible()
   await expect(page.getByRole('button', { name: /Temporary factor/ })).toHaveCount(0)
+  await page.getByRole('button', { name: /Rapid feedback/ }).click()
+  await expect(page.getByText('Point · 0.65')).toBeVisible()
+  await expect(page.getByText('Weekly review')).toBeVisible()
+  await expect(page.getByText(/"owner": "platform"/)).toBeVisible()
 })

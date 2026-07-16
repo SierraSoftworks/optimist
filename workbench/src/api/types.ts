@@ -95,6 +95,20 @@ export interface CreateNodeInput {
   payload: NodePayload
 }
 
+export interface UpdateNodeInput {
+  title: string
+  description: string
+  metadata: Record<string, unknown>
+}
+
+export type StateEstimateSlot = 'current' | 'desired'
+
+export interface SetStateEstimateInput {
+  slot: StateEstimateSlot
+  distribution: Distribution
+  provenance: string[]
+}
+
 export type EditableEdgePayload =
   | { kind: 'part_of' }
   | {

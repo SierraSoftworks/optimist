@@ -1,7 +1,15 @@
 import { computed, type Ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '../api/client'
-import type { CreateEdgeInput, CreateNodeInput, Project, ProjectArchive } from '../api/types'
+import type {
+  CreateEdgeInput,
+  CreateNodeInput,
+  GraphNode,
+  Project,
+  ProjectArchive,
+  SetStateEstimateInput,
+  UpdateNodeInput,
+} from '../api/types'
 
 export function useProjects() {
   return useQuery({ queryKey: ['projects'], queryFn: api.projects })
@@ -80,5 +88,32 @@ export function useCreateEdge(project: Ref<Project | undefined>) {
         queryClient.refetchQueries({ queryKey: ['edges', id] }),
       ])
     },
+  })
+}
+
+async function refetchNodeData(queryClient: ReturnType<typeof useQueryClient>, project: Project) {
+  await Promise.all([
+    queryClient.refetchQueries({ queryKey: ['project', project.id] }),
+    queryClient.refetchQueries({ queryKey: ['nodes', project.id] }),
+  ])
+}
+
+export function useUpdateNode(project: Ref<Project | undefined>, node: Ref<GraphNode | null>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateNodeInput) => api.updateNode(project.value!, node.value!, input),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useSetStateEstimate(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SetStateEstimateInput) =>
+      api.setStateEstimate(project.value!, node.value!, input),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
   })
 }
