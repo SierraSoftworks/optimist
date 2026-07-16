@@ -1,0 +1,115 @@
+export type NodeKind = 'outcome' | 'metric' | 'factor' | 'intervention'
+
+export interface Project {
+  id: string
+  name: string
+  revision: number
+}
+
+export interface Distribution {
+  type: 'point' | 'normal' | 'log_normal' | 'beta' | 'scaled_beta'
+  value?: number
+  mean?: number
+  standard_deviation?: number
+  location?: number
+  scale?: number
+  alpha?: number
+  beta?: number
+  lower?: number
+  upper?: number
+}
+
+export interface Estimate {
+  id: string
+  revision: number
+  distribution: Distribution
+  provenance?: string[]
+}
+
+export interface Evidence {
+  id: number
+  revision: number
+  summary: string
+  source: string | null
+}
+
+export type NodePayload =
+  | {
+      kind: 'outcome'
+      properties: {
+        direction: 'maximize' | 'minimize' | 'target_range'
+        current: Estimate | null
+        desired: Estimate | null
+        evidence: Evidence[]
+      }
+    }
+  | {
+      kind: 'metric'
+      properties: { unit: string; aggregation: string | null }
+    }
+  | {
+      kind: 'factor'
+      properties: {
+        current: Estimate | null
+        desired: Estimate | null
+        controllable: boolean
+        evidence: Evidence[]
+      }
+    }
+  | {
+      kind: 'intervention'
+      properties: {
+        costs: Array<{ dimension: string; value: Estimate }>
+        duration: Estimate | null
+        probability_of_success: Estimate | null
+        acceptance_criteria: string[]
+      }
+    }
+
+export interface GraphNode {
+  id: string
+  revision: number
+  name: string
+  normalized_name: string
+  title: string
+  description: string
+  aliases: string[]
+  metadata: Record<string, unknown>
+  payload: NodePayload
+}
+
+export interface GraphEdge {
+  source: string
+  source_kind: NodeKind
+  destination: string
+  destination_kind: NodeKind
+  revision: number
+  description: string
+  metadata: Record<string, unknown>
+  payload: { kind: string; properties?: Record<string, unknown> }
+}
+
+export interface CreateNodeInput {
+  name: string
+  title: string
+  payload: NodePayload
+}
+
+export type EditableEdgePayload =
+  | { kind: 'part_of' }
+  | {
+      kind: 'requires'
+      properties: { hard: boolean; satisfaction_threshold: number | null }
+    }
+
+export interface CreateEdgeInput {
+  source: string
+  destination: string
+  payload: EditableEdgePayload
+}
+
+export interface ApiErrorBody {
+  code: string
+  message: string
+  advice: string[]
+}

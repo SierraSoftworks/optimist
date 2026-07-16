@@ -120,16 +120,16 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ## 8. Vue Workbench
 
-- [ ] Vue 3 + TypeScript + Vite scaffold with Pinia, TanStack Query, Vitest, and Playwright.
+- [x] Vue 3 + TypeScript + Vite scaffold with Pinia, TanStack Query, Vitest, and Playwright.
 - [ ] Generated API client and project selector.
-- [ ] Cytoscape renderer adapter for the four core node kinds and structural edges.
+- [x] Cytoscape renderer adapter for the four core node kinds and structural edges.
 - [ ] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
 - [ ] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
 - [ ] Direct graph/property editing through typed commands.
 - [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [ ] Explore, Impediments, Feedback, and Optimize analysis modes.
 - [ ] Keyboard navigation and synchronized table/outline accessibility view.
-- [ ] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
+- [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
 - [ ] Serve production assets from Axum with SPA fallback and immutable caching.
 
 ## 9. Fuzzing, CI, And Hardening
