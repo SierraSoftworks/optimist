@@ -17,6 +17,15 @@ pub enum ServerError {
         #[source]
         source: std::io::Error,
     },
+    /// A persisted catalog snapshot could not be loaded or validated.
+    #[error("could not load project catalog from {path}")]
+    Catalog {
+        /// Configured data root containing the snapshot.
+        path: PathBuf,
+        /// Snapshot read, decode, schema, or validation failure.
+        #[source]
+        source: crate::project::CatalogPersistenceError,
+    },
     /// The configured socket address could not be bound.
     #[error("could not bind the HTTP listener to {address}")]
     Bind {

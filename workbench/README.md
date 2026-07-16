@@ -22,7 +22,7 @@ The graph navigator provides synchronized Outline and Table views. Selecting a r
 
 **Impediments** mode projects factors with causal paths to outcomes. Topology ordering uses reachable-outcome count and shortest distance; Evidence ordering separately prioritizes direct node evidence and typed relationship references. Candidate cards expose controllability, path coverage, and unsupported path edges, and selecting one highlights the exact reviewed path. Neither ordering is a causal confidence score or effect estimate.
 
-Use the header download button to save the selected project as `.optimist.json`. The upload button previews archive identity/counts before restore. Replacing an existing project requires typing its project ID; replacement discards current process-local replay history after the canonical Markdown snapshot validates successfully.
+Use the header download button to save the selected project as `.optimist.json`. The upload button previews archive identity/counts before restore. Replacing an existing project requires typing its project ID; replacement discards current process-local replay history after the canonical Markdown snapshot validates successfully. The server also writes complete project snapshots under `--data-dir`, so projects and allocator positions survive ordinary restarts even though replay history does not yet.
 
 ## Run locally
 

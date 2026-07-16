@@ -30,7 +30,7 @@ async fn create(
     State(state): State<AppState>,
     Json(request): Json<CreateProject>,
 ) -> Result<(StatusCode, Json<Project>), ApiError> {
-    let project = state.catalog.write().await.create(request.name)?;
+    let project = state.mutate(|catalog| catalog.create(request.name)).await?;
     Ok((StatusCode::CREATED, Json(project)))
 }
 
@@ -49,7 +49,9 @@ async fn delete(
     State(state): State<AppState>,
     Path(project): Path<ProjectId>,
 ) -> Result<Json<Project>, ApiError> {
-    Ok(Json(state.catalog.write().await.delete(&project)?))
+    Ok(Json(
+        state.mutate(|catalog| catalog.delete(&project)).await?,
+    ))
 }
 
 async fn export_archive(
@@ -73,10 +75,8 @@ async fn import_archive(
     Json(archive): Json<ProjectArchive>,
 ) -> Result<(StatusCode, Json<Project>), ApiError> {
     let project = state
-        .catalog
-        .write()
-        .await
-        .import_archive(&archive, query.replace, query.yes)?;
+        .mutate(|catalog| catalog.import_archive(&archive, query.replace, query.yes))
+        .await?;
     Ok((StatusCode::CREATED, Json(project)))
 }
 

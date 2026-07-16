@@ -5,7 +5,7 @@ Optimist helps teams model complex systems, preserve uncertainty, identify feedb
 It combines a typed causal graph, project-scoped estimates and formulas, Bayesian updates, dependence-aware Monte Carlo sampling, structural feedback analysis, an HTTP/CLI workflow, deterministic Markdown documents, and ordered collaboration events.
 
 > [!IMPORTANT]
-> Optimist is under active development. The modelling and statistical core is usable today, but the default server stores projects in process memory. Durable RocksDB projects, complete Markdown import/export commands, decision optimization, and the visual workbench remain in progress.
+> Optimist is under active development. The modelling and statistical core is usable today. The default server atomically snapshots complete projects under `--data-dir`, while RocksDB-backed handles, durable command replay, and several decision workflows remain in progress.
 
 ## What it provides
 
@@ -85,6 +85,8 @@ cargo run -- --output json project changes A --after 0
 cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
+
+The server atomically writes a versioned `catalog.json` under `--data-dir` after every successful project or command mutation. Restarting with the same data directory restores project metadata, graph contents, estimates, Fermi sources, scenarios, formulas, dependence documents, revisions, and monotonic project/entity/scenario allocators. Startup rejects malformed or unsupported snapshots instead of serving partial state. Command idempotency caches and replay history remain process-local until durable `ChangeSet` persistence lands.
 
 ### Serve the production workbench
 
@@ -169,7 +171,7 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 
 ## Current limitations
 
-- The default server catalog and graph databases are process-local; restarting the server loses its data.
+- Projects are restored from an atomic canonical snapshot, but command idempotency caches and replay history remain process-local across restarts.
 - The RocksDB feature is blocked on the current macOS bindgen target mismatch and is not part of the default quality gate.
 - Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
 - Complete canonical project archives can be exported/imported through CLI, HTTP, and the workbench. Import is full-snapshot restore; safe merge application remains pending.

@@ -69,6 +69,30 @@ impl<D: Datastore> IndraDbRepository<D> {
         advance_entity_id(&mut self.next_entity_id, node.id);
         Ok(())
     }
+
+    pub(crate) fn next_entity_id_counter(&self) -> Option<u64> {
+        self.next_entity_id
+    }
+
+    pub(crate) fn restore_next_entity_id_counter(
+        &mut self,
+        next: Option<u64>,
+    ) -> RepositoryResult<()> {
+        if let (Some(minimum), Some(next)) = (self.next_entity_id, next)
+            && next < minimum
+        {
+            return Err(RepositoryError::InvalidPayload(format!(
+                "persisted next entity ID {next} precedes required value {minimum}"
+            )));
+        }
+        if self.next_entity_id.is_none() && next.is_some() {
+            return Err(RepositoryError::InvalidPayload(
+                "an exhausted entity ID allocator cannot be restored to a finite value".to_owned(),
+            ));
+        }
+        self.next_entity_id = next;
+        Ok(())
+    }
 }
 
 impl<D: Datastore> GraphRepository for IndraDbRepository<D> {

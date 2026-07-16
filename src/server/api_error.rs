@@ -4,6 +4,7 @@ use serde::Serialize;
 use crate::project::ProjectError;
 
 use super::project_error_response;
+use super::state::CatalogMutationError;
 
 pub(super) struct ApiError {
     status: StatusCode,
@@ -32,6 +33,26 @@ impl From<ProjectError> for ApiError {
                     code,
                     message: error.to_string(),
                     advice: advice.to_vec(),
+                },
+            },
+        }
+    }
+}
+
+impl From<CatalogMutationError> for ApiError {
+    fn from(error: CatalogMutationError) -> Self {
+        match error {
+            CatalogMutationError::Project(error) => Self::from(error),
+            CatalogMutationError::Persistence(error) => Self {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                body: ErrorEnvelope {
+                    error: ErrorBody {
+                        code: "catalog_persistence_failure",
+                        message: error.to_string(),
+                        advice: vec![
+                            "Check that the server data directory is writable and has free space, then retry.",
+                        ],
+                    },
                 },
             },
         }

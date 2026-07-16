@@ -22,7 +22,7 @@ use tokio::net::TcpListener;
 pub use error::ServerError;
 use state::AppState;
 
-use crate::project::ProjectCatalog;
+use crate::project::{CatalogStore, ProjectCatalog};
 
 /// Configuration required to run the Optimist HTTP process.
 ///
@@ -70,6 +70,10 @@ pub fn router() -> Router {
 /// # let _ = app;
 /// ```
 pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
+    router_with_state(AppState::new(catalog))
+}
+
+fn router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/health", get(health))
         .merge(projects::router())
@@ -77,7 +81,14 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
         .merge(graph::router())
         .merge(analysis::router())
         .merge(websocket_changes::router())
-        .with_state(AppState::new(catalog))
+        .with_state(state)
+}
+
+pub(crate) fn router_with_persistent_catalog(
+    catalog: ProjectCatalog,
+    store: CatalogStore,
+) -> Router {
+    router_with_state(AppState::persistent(catalog, store))
 }
 
 /// Creates the data root, binds the listener, and serves until shutdown or failure.
@@ -98,7 +109,12 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
 /// ```
 pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
     std::fs::create_dir_all(&config.data_dir).map_err(|source| ServerError::DataDirectory {
-        path: config.data_dir,
+        path: config.data_dir.clone(),
+        source,
+    })?;
+    let store = CatalogStore::new(config.data_dir.clone());
+    let catalog = store.load().map_err(|source| ServerError::Catalog {
+        path: config.data_dir.clone(),
         source,
     })?;
     let listener = TcpListener::bind(config.bind)
@@ -107,7 +123,10 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
             address: config.bind,
             source,
         })?;
-    let app = web_assets::with_workbench(router(), config.web_root.as_deref());
+    let app = web_assets::with_workbench(
+        router_with_persistent_catalog(catalog, store),
+        config.web_root.as_deref(),
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await

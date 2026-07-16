@@ -3,6 +3,7 @@ mod aggregate_updates;
 mod analysis;
 mod apply;
 mod catalog;
+mod catalog_persistence;
 mod change_queries;
 mod commands;
 mod dependence;
@@ -32,6 +33,8 @@ mod scenarios;
 
 pub use aggregate_update_error::AggregateUpdateError;
 pub use catalog::ProjectCatalog;
+pub use catalog_persistence::CatalogPersistenceError;
+pub(crate) use catalog_persistence::CatalogStore;
 pub use error::ProjectError;
 pub use estimate_error::EstimateCommandError;
 pub use evidence_error::EvidenceCommandError;

@@ -21,15 +21,19 @@ async fn execute(
     Path(project): Path<ProjectId>,
     Json(request): Json<CommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResult>), ApiError> {
-    let mut catalog = state.catalog.write().await;
-    let before = catalog.get(&project)?.revision;
-    let result = catalog.execute(&project, request)?;
-    let change = if result.project_revision > before {
-        catalog.get_change(&project, result.project_revision)?
-    } else {
-        None
-    };
-    drop(catalog);
+    let command_project = project.clone();
+    let (result, change) = state
+        .mutate(move |catalog| {
+            let before = catalog.get(&command_project)?.revision;
+            let result = catalog.execute(&command_project, request)?;
+            let change = if result.project_revision > before {
+                catalog.get_change(&command_project, result.project_revision)?
+            } else {
+                None
+            };
+            Ok((result, change))
+        })
+        .await?;
     if let Some(change) = change {
         state.publish(&project, change).await;
     }

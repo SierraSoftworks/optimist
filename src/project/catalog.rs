@@ -42,7 +42,7 @@ pub(super) struct ProjectEntry {
 /// # Ok::<(), optimist::project::ProjectError>(())
 /// ```
 pub struct ProjectCatalog {
-    next_project_id: Option<u64>,
+    pub(super) next_project_id: Option<u64>,
     pub(super) projects: BTreeMap<ProjectId, ProjectEntry>,
     names: BTreeMap<String, ProjectId>,
 }

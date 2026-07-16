@@ -1,27 +1,57 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use thiserror::Error;
 use tokio::sync::{RwLock, broadcast};
 
-use crate::{command::ChangeSet, domain::ProjectId, project::ProjectCatalog};
+use crate::{
+    command::ChangeSet,
+    domain::ProjectId,
+    project::{CatalogPersistenceError, CatalogStore, ProjectCatalog, ProjectError},
+};
 
 #[derive(Clone)]
 pub(super) struct AppState {
     pub(super) catalog: Arc<RwLock<ProjectCatalog>>,
+    store: Option<Arc<CatalogStore>>,
     channels: Arc<RwLock<BTreeMap<ProjectId, broadcast::Sender<ChangeSet>>>>,
     channel_capacity: usize,
 }
 
 impl AppState {
     pub(super) fn new(catalog: ProjectCatalog) -> Self {
-        Self::with_channel_capacity(catalog, 256)
+        Self::with_channel_capacity(catalog, None, 256)
     }
 
-    fn with_channel_capacity(catalog: ProjectCatalog, channel_capacity: usize) -> Self {
+    pub(super) fn persistent(catalog: ProjectCatalog, store: CatalogStore) -> Self {
+        Self::with_channel_capacity(catalog, Some(Arc::new(store)), 256)
+    }
+
+    fn with_channel_capacity(
+        catalog: ProjectCatalog,
+        store: Option<Arc<CatalogStore>>,
+        channel_capacity: usize,
+    ) -> Self {
         Self {
             catalog: Arc::new(RwLock::new(catalog)),
+            store,
             channels: Arc::new(RwLock::new(BTreeMap::new())),
             channel_capacity,
         }
+    }
+
+    pub(super) async fn mutate<T>(
+        &self,
+        operation: impl FnOnce(&mut ProjectCatalog) -> Result<T, ProjectError>,
+    ) -> Result<T, CatalogMutationError> {
+        let mut catalog = self.catalog.write().await;
+        let Some(store) = &self.store else {
+            return operation(&mut catalog).map_err(CatalogMutationError::from);
+        };
+        let mut candidate = catalog.transaction_clone()?;
+        let result = operation(&mut candidate)?;
+        store.save(&mut candidate)?;
+        *catalog = candidate;
+        Ok(result)
     }
 
     pub(super) async fn subscribe(&self, project: &ProjectId) -> broadcast::Receiver<ChangeSet> {
@@ -38,6 +68,14 @@ impl AppState {
             let _ = channel.send(change);
         }
     }
+}
+
+#[derive(Debug, Error)]
+pub(super) enum CatalogMutationError {
+    #[error(transparent)]
+    Project(#[from] ProjectError),
+    #[error(transparent)]
+    Persistence(#[from] CatalogPersistenceError),
 }
 
 #[cfg(test)]
@@ -78,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn bounded_project_channels_report_lag() {
-        let state = AppState::with_channel_capacity(ProjectCatalog::new(), 1);
+        let state = AppState::with_channel_capacity(ProjectCatalog::new(), None, 1);
         let project = ProjectId::new("A").unwrap();
         let mut receiver = state.subscribe(&project).await;
         state.publish(&project, change(1)).await;

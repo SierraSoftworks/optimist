@@ -35,7 +35,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Generic IndraDB adapter using `MemoryDatastore`.
 - [x] Atomic single-node and single-edge payload insertion/update.
 - [x] Process-local project catalog with isolated repositories and counters.
-- [ ] Persist project catalog metadata under `--data-dir`.
+- [x] Persist project catalog metadata and complete canonical project snapshots under `--data-dir`.
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
   - [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
 - [ ] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.

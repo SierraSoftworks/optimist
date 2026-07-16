@@ -8,7 +8,7 @@ This guide builds a small delivery-reliability model using the HTTP server and C
 - A local checkout of Optimist
 - Two terminal windows
 
-The default build uses an embedded in-memory IndraDB datastore. It requires no external database, but all project data is lost when the server stops.
+The default build uses an embedded in-memory IndraDB datastore and requires no external database. The server atomically snapshots complete canonical projects under `--data-dir` after successful mutations and restores them on restart. Command replay/idempotency history remains process-local.
 
 ## Start the server
 
