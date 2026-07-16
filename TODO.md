@@ -37,7 +37,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Process-local project catalog with isolated repositories and counters.
 - [ ] Persist project catalog metadata under `--data-dir`.
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
-	- [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
+  - [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
 - [ ] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
 - [ ] Add forward-only schema migrations and startup integrity checks.
 - [ ] Add lazy project open/close handles and idle eviction.
@@ -63,10 +63,12 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ## 4. Markdown Import And Export
 
-- [ ] Versioned `_project.md` schema for metadata, constraints, units, and dependence.
-- [ ] Canonical `entities/<id>-<slug>.md` schema with outgoing edge payloads.
+- [x] Versioned `_project.md` schema foundation for project identity and base revision.
+  - [ ] Extend `_project.md` with constraints, unit registry, and dependence documents.
+- [x] Canonical entity document schema with outgoing edge payloads and Markdown description body.
 - [ ] Canonical `scenarios/<id>-<slug>.md` schema.
-- [ ] YAML frontmatter parser with source spans, input limits, and diagnostics.
+- [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.
+  - [x] Deterministic in-memory rendering and parse-render-parse semantic stability.
 - [ ] Two-pass reference and project-constraint validation.
 - [ ] Safe merge import plan with create/update/unchanged/conflict reporting.
 - [ ] Explicit `--replace --yes` destructive restore semantics.
@@ -129,9 +131,10 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 - [x] Initialize `cargo-fuzz` with versioned seed corpora and dictionaries.
 - [ ] Expand fuzzing to names and, as their feature surfaces land, YAML/Markdown, formulas/units, distributions/copulas, graph algorithms, and WebSocket events.
-	- [x] Fuzz canonical `EntityId` and `EdgeId` parsing.
-	- [x] Fuzz bounded JSON decoding and round trips for core tagged node, edge, and observation aggregates.
-	- [x] Fuzz bounded command request decoding, deterministic in-memory sequences, and retry replay.
+  - [x] Fuzz canonical `EntityId` and `EdgeId` parsing.
+  - [x] Fuzz bounded JSON decoding and round trips for core tagged node, edge, and observation aggregates.
+  - [x] Fuzz bounded command request decoding, deterministic in-memory sequences, and retry replay.
+  - [x] Fuzz bounded YAML/Markdown frontmatter parsing.
 - [x] Add reusable `proptest` generators for valid project/entity IDs, core node/edge/observation values, and constrained endpoints.
 - [ ] Add bounded fuzz corpus regressions to pull-request CI.
 - [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.
