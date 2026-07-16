@@ -19,6 +19,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_edge_id" => {
             &["Run `optimist edge list` and use a returned ID such as `A-requires-B`."]
         }
+        "invalid_estimate_address" => {
+            &["Use `<project>/<node|edge>/<owner>/estimate/<id>` with canonical IDs."]
+        }
         "edge_conflict" => &["Use `optimist edge get` to inspect the existing relationship."],
         "edge_not_found" => &["Run `optimist edge list` and retry with a returned edge ID."],
         "invalid_edge" => {
@@ -54,6 +57,30 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         }
         "missing_estimate_address" => {
             &["Use estimate addresses embedded in existing project nodes or edges."]
+        }
+        "cross_project_estimate_address" => {
+            &["Use an address whose project ID matches `--project`."]
+        }
+        "nested_estimate_address" => {
+            &["Use a root address without `/component/...` for primitive estimate commands."]
+        }
+        "invalid_estimate_slot" => {
+            &["Choose a slot supported by the addressed node or edge payload."]
+        }
+        "estimate_conflict" => {
+            &["Show the owner aggregate, then use its existing estimate ID or an unused ID."]
+        }
+        "estimate_not_found" => {
+            &["Check the address against estimates embedded in the current node or edge payload."]
+        }
+        "required_estimate" => &[
+            "Required causal effect and blocking degree estimates may be replaced but not removed.",
+        ],
+        "estimate_in_use" => {
+            &["Replace or remove project dependence before removing this estimate."]
+        }
+        "invalid_estimate_distribution" => {
+            &["Use a distribution whose complete support fits the selected slot dimension."]
         }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]

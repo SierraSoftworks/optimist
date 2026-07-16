@@ -1,6 +1,8 @@
 use axum::http::StatusCode;
 
-use crate::{project::ProjectError, store::RepositoryError};
+use crate::project::ProjectError;
+
+use super::{estimate_error_response, repository_error_response};
 
 pub(super) fn classify(
     error: &ProjectError,
@@ -35,6 +37,13 @@ pub(super) fn classify(
             StatusCode::BAD_REQUEST,
             "invalid_edge_id",
             &["Use an edge ID returned by `optimist edge list`, such as `A-requires-B`."],
+        ),
+        ProjectError::EstimateAddress(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_estimate_address",
+            &[
+                "Use `<project>/<node|edge>/<owner>/estimate/<id>` with canonical project, owner, and estimate IDs.",
+            ],
         ),
         ProjectError::NotMeasurementEdge(_) => (
             StatusCode::BAD_REQUEST,
@@ -99,49 +108,17 @@ pub(super) fn classify(
             "missing_estimate_address",
             &["Use estimate addresses embedded in existing project nodes or edges."],
         ),
-        ProjectError::Repository(RepositoryError::DuplicateName(_)) => (
-            StatusCode::CONFLICT,
-            "node_name_conflict",
-            &["Choose a node name or alias which is not already used in this project."],
-        ),
-        ProjectError::Repository(RepositoryError::MissingEntity(_)) => (
-            StatusCode::NOT_FOUND,
-            "node_not_found",
-            &["List project nodes and retry with a returned entity ID."],
-        ),
-        ProjectError::Repository(RepositoryError::EntityHasEdges(_)) => (
-            StatusCode::CONFLICT,
-            "node_has_edges",
-            &[
-                "List the project's edges, delete every relationship connected to this node, then retry the node deletion.",
-            ],
-        ),
-        ProjectError::Repository(RepositoryError::DuplicateEdge(_)) => (
-            StatusCode::CONFLICT,
-            "edge_conflict",
-            &["Use `optimist edge get` to inspect the existing relationship before changing it."],
-        ),
-        ProjectError::Repository(RepositoryError::MissingEdge(_)) => (
-            StatusCode::NOT_FOUND,
-            "edge_not_found",
-            &["List project edges and retry with a returned edge ID."],
-        ),
-        ProjectError::Repository(RepositoryError::InvalidEdge(_))
-        | ProjectError::Repository(RepositoryError::EndpointKindMismatch { .. }) => (
-            StatusCode::BAD_REQUEST,
-            "invalid_edge",
-            &["Check that the relationship kind is valid for both endpoint node kinds."],
-        ),
+        ProjectError::EstimateCommand(error) => estimate_error_response::classify(error),
         ProjectError::IdentifierSpaceExhausted
         | ProjectError::RevisionSpaceExhausted(_)
         | ProjectError::EdgeRevisionSpaceExhausted(_)
         | ProjectError::ScenarioRevisionSpaceExhausted(_)
         | ProjectError::ScenarioIdentifierSpaceExhausted(_)
-        | ProjectError::DependenceRevisionSpaceExhausted(_)
-        | ProjectError::Repository(_) => (
+        | ProjectError::DependenceRevisionSpaceExhausted(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "project_store_failure",
             &["Retry the request and inspect the server logs if the problem persists."],
         ),
+        ProjectError::Repository(error) => repository_error_response::classify(error),
     }
 }

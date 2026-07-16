@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Edge, Node, NodeKind, Observation, Scenario},
+    domain::{Edge, Node, NodeKind, Observation, PrimitiveEstimate, Scenario},
     project::Project,
 };
 
@@ -97,6 +97,17 @@ pub(super) fn scenarios(scenarios: &[Scenario]) -> String {
             )
         }),
     )
+}
+
+pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_errors::Error> {
+    Ok(format!(
+        "ADDRESS\tSLOT\tREVISION\tDISTRIBUTION\tPROVENANCE\n{}\t{:?}\t{}\t{}\t{}",
+        estimate.address,
+        estimate.slot,
+        estimate.revision,
+        super::output_json::serialize(&estimate.distribution)?,
+        estimate.provenance.join("; ")
+    ))
 }
 
 fn node_kind(kind: NodeKind) -> &'static str {

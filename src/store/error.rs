@@ -33,6 +33,9 @@ pub enum RepositoryError {
     /// A requested entity or edge endpoint is absent from this project.
     #[error("entity {0} does not exist in this project")]
     MissingEntity(EntityId),
+    /// A payload-only update attempted to alter node identity or presentation metadata.
+    #[error("entity {0} payload update cannot change identity or presentation metadata")]
+    NodeUpdateChangedMetadata(EntityId),
     /// An edge's declared endpoint kind disagrees with the stored node payload.
     #[error("entity {id} is {actual:?}, but the edge declares it as {declared:?}")]
     EndpointKindMismatch {

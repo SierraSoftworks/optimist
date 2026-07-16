@@ -1,8 +1,10 @@
 mod api_error;
 mod error;
+mod estimate_error_response;
 mod graph;
 mod project_error_response;
 mod projects;
+mod repository_error_response;
 mod state;
 
 use std::{net::SocketAddr, path::PathBuf};

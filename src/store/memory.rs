@@ -74,6 +74,16 @@ impl GraphRepository for InMemoryRepository {
         Ok(self.nodes.values().cloned().collect())
     }
 
+    fn update_node(&mut self, node: Node) -> RepositoryResult<()> {
+        let current = self
+            .nodes
+            .get(&node.id)
+            .ok_or(RepositoryError::MissingEntity(node.id))?;
+        super::validation::validate_node_update(current, &node)?;
+        self.nodes.insert(node.id, node);
+        Ok(())
+    }
+
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node> {
         if self
             .edges
@@ -170,6 +180,30 @@ mod tests {
         second.create_node(factor(0, "Reliability")).unwrap();
         assert_eq!(first.next_entity_id().unwrap(), EntityId::new(1));
         assert_eq!(second.next_entity_id().unwrap(), EntityId::new(1));
+    }
+
+    #[test]
+    fn update_node_replaces_only_payload_and_revision() {
+        let mut repository = repository("update_node");
+        repository.create_node(factor(0, "delivery")).unwrap();
+        let mut replacement = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        replacement.revision = 1;
+        let NodePayload::Factor(factor) = &mut replacement.payload else {
+            unreachable!()
+        };
+        factor.controllable = false;
+        repository.update_node(replacement.clone()).unwrap();
+        assert_eq!(
+            repository.get_node(EntityId::new(0)).unwrap(),
+            Some(replacement)
+        );
+
+        let mut invalid = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        invalid.title = "Changed".to_owned();
+        assert_eq!(
+            repository.update_node(invalid),
+            Err(RepositoryError::NodeUpdateChangedMetadata(EntityId::new(0)))
+        );
     }
 
     #[test]

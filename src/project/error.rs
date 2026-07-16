@@ -2,11 +2,13 @@ use thiserror::Error;
 
 use crate::{
     domain::{
-        DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress, NodeError, NodeKind,
-        ObservationError, ProjectId, ScenarioError, ScenarioId,
+        DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress, EstimateAddressError,
+        NodeError, NodeKind, ObservationError, ProjectId, ScenarioError, ScenarioId,
     },
     store::RepositoryError,
 };
+
+use super::EstimateCommandError;
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -43,6 +45,9 @@ pub enum ProjectError {
     /// An external edge ID does not use the canonical tuple representation.
     #[error(transparent)]
     EdgeId(#[from] EdgeIdError),
+    /// An external estimate address does not use the canonical tagged path grammar.
+    #[error(transparent)]
+    EstimateAddress(#[from] EstimateAddressError),
     /// The selected edge does not own a measurement observation series.
     #[error("edge {0} is not a measurement edge")]
     NotMeasurementEdge(EdgeId),
@@ -112,6 +117,9 @@ pub enum ProjectError {
     /// An address does not resolve to an estimate embedded in the project graph.
     #[error("dependence address {0} does not identify a stored estimate")]
     MissingEstimateAddress(EstimateAddress),
+    /// Primitive estimate authoring or lookup validation failed.
+    #[error(transparent)]
+    EstimateCommand(#[from] EstimateCommandError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

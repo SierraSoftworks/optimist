@@ -9,6 +9,7 @@ use super::super::validation::{advance_entity_id, name_claims};
 use super::super::{GraphRepository, RepositoryError, RepositoryResult};
 use super::codec::{NORMALIZED_NAME_PROPERTY, identifier, node_items};
 use super::edges;
+use super::nodes;
 use super::queries;
 
 /// [`GraphRepository`] implementation backed by an embedded IndraDB datastore.
@@ -103,6 +104,10 @@ impl<D: Datastore> GraphRepository for IndraDbRepository<D> {
         queries::list_nodes(&self.database)
     }
 
+    fn update_node(&mut self, node: Node) -> RepositoryResult<()> {
+        nodes::update(&self.database, node)
+    }
+
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node> {
         if self
             .list_edges()?
@@ -193,6 +198,30 @@ mod tests {
             Some(factor(0, "GitHub Actions"))
         );
         assert_eq!(repository.get_edge(&edge.id()).unwrap(), Some(edge));
+    }
+
+    #[test]
+    fn updates_only_node_payload_and_revision() {
+        let mut repository = repository();
+        repository.create_node(factor(0, "delivery")).unwrap();
+        let mut replacement = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        replacement.revision = 1;
+        let NodePayload::Factor(factor) = &mut replacement.payload else {
+            unreachable!()
+        };
+        factor.controllable = false;
+        repository.update_node(replacement.clone()).unwrap();
+        assert_eq!(
+            repository.get_node(EntityId::new(0)).unwrap(),
+            Some(replacement)
+        );
+
+        let mut invalid = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        invalid.title = "Changed".to_owned();
+        assert_eq!(
+            repository.update_node(invalid),
+            Err(RepositoryError::NodeUpdateChangedMetadata(EntityId::new(0)))
+        );
     }
 
     #[test]

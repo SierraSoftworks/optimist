@@ -37,6 +37,13 @@ pub trait GraphRepository {
     /// Lists complete node aggregates in deterministic entity-ID order.
     fn list_nodes(&self) -> RepositoryResult<Vec<Node>>;
 
+    /// Replaces the payload/revision of an existing node without changing identity metadata.
+    ///
+    /// Implementations reject changes to ID, kind, names, aliases, title,
+    /// description, or metadata. Broader node editing uses a separate command
+    /// contract so an estimate mutation cannot alter unrelated fields.
+    fn update_node(&mut self, node: Node) -> RepositoryResult<()>;
+
     /// Removes and returns a node only when no incident edges would dangle.
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node>;
 

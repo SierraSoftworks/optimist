@@ -7,12 +7,14 @@ mod edge;
 mod edge_client;
 mod edge_payload;
 mod estimate;
+mod estimate_client;
 mod node;
 mod node_client;
 mod node_payload;
 mod observe;
 mod observe_client;
 mod output;
+mod output_json;
 mod output_table;
 mod project;
 mod scenario;
@@ -106,7 +108,9 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         Command::Observe(args) => {
             observe::run(args, cli.project.as_ref(), &server_url, output).await
         }
-        Command::Estimate(args) => estimate::run(args),
+        Command::Estimate(args) => {
+            estimate::run(args, cli.project.as_ref(), &server_url, output).await
+        }
         Command::Scenario(args) => {
             scenario::run(args, cli.project.as_ref(), &server_url, output).await
         }

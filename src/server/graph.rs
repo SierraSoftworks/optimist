@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -8,7 +8,8 @@ use axum::{
 use crate::{
     command::{CommandRequest, CommandResult},
     domain::{
-        Edge, EdgeId, EntityId, Node, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
+        Edge, EdgeId, EntityId, EstimateAddress, Node, PrimitiveEstimate, ProjectDependenceModel,
+        ProjectId, Scenario, ScenarioId,
     },
     project::ProjectError,
     store::RepositoryError,
@@ -23,6 +24,7 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/v1/projects/{project}/nodes/{entity}", get(show_node))
         .route("/api/v1/projects/{project}/edges", get(list_edges))
         .route("/api/v1/projects/{project}/edges/{edge}", get(show_edge))
+        .route("/api/v1/projects/{project}/estimates", get(show_estimate))
         .route("/api/v1/projects/{project}/scenarios", get(list_scenarios))
         .route(
             "/api/v1/projects/{project}/scenarios/{scenario}",
@@ -82,6 +84,29 @@ async fn show_edge(
         .get_edge(&project, &edge_id)?
         .map(Json)
         .ok_or_else(|| ProjectError::Repository(RepositoryError::MissingEdge(edge)).into())
+}
+
+#[derive(serde::Deserialize)]
+struct EstimateQuery {
+    address: String,
+}
+
+async fn show_estimate(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+    Query(query): Query<EstimateQuery>,
+) -> Result<Json<PrimitiveEstimate>, ApiError> {
+    let address = query
+        .address
+        .parse::<EstimateAddress>()
+        .map_err(ProjectError::from)?;
+    Ok(Json(
+        state
+            .catalog
+            .write()
+            .await
+            .get_estimate(&project, &address)?,
+    ))
 }
 
 async fn list_scenarios(

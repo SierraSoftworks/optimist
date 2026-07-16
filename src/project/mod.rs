@@ -4,9 +4,18 @@ mod commands;
 mod dependence;
 mod dependence_addresses;
 mod error;
+mod estimate;
+mod estimate_edge;
+mod estimate_error;
+mod estimate_node;
+mod estimate_node_find;
+mod estimate_node_ids;
+mod estimate_node_remove;
+mod estimate_support;
 mod model;
 mod scenarios;
 
 pub use catalog::ProjectCatalog;
 pub use error::ProjectError;
+pub use estimate_error::EstimateCommandError;
 pub use model::{CreateProject, Project};

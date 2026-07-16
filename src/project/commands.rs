@@ -1,7 +1,8 @@
 use crate::{
     command::{CommandRequest, CommandResult},
     domain::{
-        Edge, EdgeId, EntityId, Node, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
+        Edge, EdgeId, EntityId, EstimateAddress, Node, PrimitiveEstimate, ProjectDependenceModel,
+        ProjectId, Scenario, ScenarioId,
     },
     store::GraphRepository,
 };
@@ -75,6 +76,19 @@ impl ProjectCatalog {
         edge_id: &EdgeId,
     ) -> Result<Option<Edge>, ProjectError> {
         Ok(self.repository_mut(project_id)?.get_edge(edge_id)?)
+    }
+
+    /// Retrieves one primitive estimate by its stable project/owner-local address.
+    pub fn get_estimate(
+        &mut self,
+        project_id: &ProjectId,
+        address: &EstimateAddress,
+    ) -> Result<PrimitiveEstimate, ProjectError> {
+        let entry = self
+            .projects
+            .get_mut(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        super::estimate::get(entry, address)
     }
 
     /// Lists scenario documents in deterministic project-local ID order.

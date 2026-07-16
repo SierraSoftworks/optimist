@@ -1,9 +1,9 @@
 use clap::ValueEnum;
 
-use crate::domain::{Edge, Node, Observation, ProjectDependenceModel, Scenario};
+use crate::domain::{Edge, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario};
 use crate::project::Project;
 
-use super::output_table;
+use super::{output_json, output_table};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(super) enum OutputFormat {
@@ -16,57 +16,45 @@ impl OutputFormat {
     pub(super) fn project(self, project: &Project) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::projects(std::slice::from_ref(project))),
-            Self::Json | Self::Jsonl => serialize(project),
+            Self::Json | Self::Jsonl => output_json::serialize(project),
         }
     }
 
     pub(super) fn projects(self, projects: &[Project]) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::projects(projects)),
-            Self::Json => serialize(projects),
-            Self::Jsonl => projects
-                .iter()
-                .map(serialize)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n")),
+            Self::Json => output_json::serialize(projects),
+            Self::Jsonl => output_json::lines(projects),
         }
     }
 
     pub(super) fn node(self, node: &Node) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::nodes(std::slice::from_ref(node))),
-            Self::Json | Self::Jsonl => serialize(node),
+            Self::Json | Self::Jsonl => output_json::serialize(node),
         }
     }
 
     pub(super) fn nodes(self, nodes: &[Node]) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::nodes(nodes)),
-            Self::Json => serialize(nodes),
-            Self::Jsonl => nodes
-                .iter()
-                .map(serialize)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n")),
+            Self::Json => output_json::serialize(nodes),
+            Self::Jsonl => output_json::lines(nodes),
         }
     }
 
     pub(super) fn edge(self, edge: &Edge) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::edges(std::slice::from_ref(edge))),
-            Self::Json | Self::Jsonl => serialize(edge),
+            Self::Json | Self::Jsonl => output_json::serialize(edge),
         }
     }
 
     pub(super) fn edges(self, edges: &[Edge]) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::edges(edges)),
-            Self::Json => serialize(edges),
-            Self::Jsonl => edges
-                .iter()
-                .map(serialize)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n")),
+            Self::Json => output_json::serialize(edges),
+            Self::Jsonl => output_json::lines(edges),
         }
     }
 
@@ -78,7 +66,7 @@ impl OutputFormat {
             Self::Table => Ok(output_table::observations(std::slice::from_ref(
                 observation,
             ))),
-            Self::Json | Self::Jsonl => serialize(observation),
+            Self::Json | Self::Jsonl => output_json::serialize(observation),
         }
     }
 
@@ -88,31 +76,23 @@ impl OutputFormat {
     ) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::observations(observations)),
-            Self::Json => serialize(observations),
-            Self::Jsonl => observations
-                .iter()
-                .map(serialize)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n")),
+            Self::Json => output_json::serialize(observations),
+            Self::Jsonl => output_json::lines(observations),
         }
     }
 
     pub(super) fn scenario(self, scenario: &Scenario) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::scenarios(std::slice::from_ref(scenario))),
-            Self::Json | Self::Jsonl => serialize(scenario),
+            Self::Json | Self::Jsonl => output_json::serialize(scenario),
         }
     }
 
     pub(super) fn scenarios(self, scenarios: &[Scenario]) -> Result<String, human_errors::Error> {
         match self {
             Self::Table => Ok(output_table::scenarios(scenarios)),
-            Self::Json => serialize(scenarios),
-            Self::Jsonl => scenarios
-                .iter()
-                .map(serialize)
-                .collect::<Result<Vec<_>, _>>()
-                .map(|lines| lines.join("\n")),
+            Self::Json => output_json::serialize(scenarios),
+            Self::Jsonl => output_json::lines(scenarios),
         }
     }
 
@@ -131,27 +111,28 @@ impl OutputFormat {
                     .map(|group| group.members.len())
                     .sum::<usize>()
             )),
-            Self::Json | Self::Jsonl => serialize(model),
+            Self::Json | Self::Jsonl => output_json::serialize(model),
         }
     }
-}
 
-fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_errors::Error> {
-    serde_json::to_string(value).map_err(|error| {
-        human_errors::wrap_system(
-            error,
-            "Optimist could not serialize command output.",
-            &["Retry with `--output table` and report the serialization failure if it persists."],
-        )
-    })
+    pub(super) fn estimate(
+        self,
+        estimate: &PrimitiveEstimate,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => output_table::estimate(estimate),
+            Self::Json | Self::Jsonl => output_json::serialize(estimate),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         domain::{
-            Edge, EdgePayload, EntityId, Factor, MonteCarloConfig, Node, NodeKind, NodePayload,
-            Observation, ProjectId, Requirement, Scenario, ScenarioDraft, ScenarioId,
+            Distribution, Edge, EdgePayload, EntityId, EstimateAddress, EstimateId, EstimateOwner,
+            EstimateSlot, Factor, MonteCarloConfig, Node, NodeKind, NodePayload, Observation,
+            PrimitiveEstimate, ProjectId, Requirement, Scenario, ScenarioDraft, ScenarioId,
         },
         project::Project,
     };
@@ -212,6 +193,29 @@ mod tests {
         assert_eq!(
             OutputFormat::Table.observations(&observations).unwrap(),
             "ID\tVALUE\tUNIT\tOBSERVED_AT\tSOURCE\tSUPERSEDES\n0\t0.9\tratio\t2026-07-15T12:00:00Z\tdeployment dashboard\t-"
+        );
+    }
+
+    #[test]
+    fn renders_primitive_estimates_stably() {
+        let estimate = PrimitiveEstimate {
+            address: EstimateAddress::new(
+                ProjectId::new("A").unwrap(),
+                EstimateOwner::Node(EntityId::new(0)),
+                EstimateId::new(1),
+            ),
+            slot: EstimateSlot::Current,
+            revision: 2,
+            distribution: Distribution::beta(3.0, 2.0).unwrap(),
+            provenance: vec!["expert".to_owned()],
+        };
+        assert_eq!(
+            OutputFormat::Json.estimate(&estimate).unwrap(),
+            r#"{"address":{"project":"A","owner":{"kind":"node","id":"A"},"estimate":"B"},"slot":{"kind":"current"},"revision":2,"distribution":{"type":"beta","alpha":3.0,"beta":2.0},"provenance":["expert"]}"#
+        );
+        assert_eq!(
+            OutputFormat::Table.estimate(&estimate).unwrap(),
+            "ADDRESS\tSLOT\tREVISION\tDISTRIBUTION\tPROVENANCE\nA/node/A/estimate/B\tCurrent\t2\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\texpert"
         );
     }
 

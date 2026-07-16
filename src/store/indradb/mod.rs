@@ -1,5 +1,6 @@
 mod codec;
 mod edges;
+mod nodes;
 mod queries;
 mod repository;
 

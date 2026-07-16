@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{
-    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation,
-    ProjectDependenceModel, Scenario, ScenarioDraft, ScenarioId,
-};
+use crate::domain::{Edge, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario};
+
+mod operations;
+
+pub use operations::*;
 
 /// One idempotent, revision-checked request to mutate a project graph.
 ///
@@ -72,6 +73,10 @@ pub enum GraphCommand {
     AppendObservation(AppendObservation),
     /// Appends a correction which supersedes one existing observation.
     CorrectObservation(CorrectObservation),
+    /// Creates or replaces one primitive estimate in a typed owner field.
+    SetEstimate(SetEstimate),
+    /// Removes one optional or named-cost estimate from its owner.
+    RemoveEstimate(RemoveEstimate),
     /// Allocates an independent project-local ID and stores a scenario document.
     CreateScenario(CreateScenario),
     /// Replaces a scenario document under its own revision guard.
@@ -82,107 +87,6 @@ pub enum GraphCommand {
     SetProjectDependence(SetProjectDependence),
     /// Removes the project's Gaussian residual dependence document.
     RemoveProjectDependence(RemoveProjectDependence),
-}
-
-/// Data required to construct a new structural node.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CreateNode {
-    /// Project-unique semantic name used by agents and API callers.
-    pub name: String,
-    /// Human-facing label shown in graph and detail views.
-    pub title: String,
-    /// Kind-specific typed fields embedded in the node.
-    pub payload: NodePayload,
-}
-
-/// Identity of a structural node to remove from the project graph.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct DeleteNode {
-    /// Project-local ID of the node, which must have no incident edges.
-    pub id: EntityId,
-}
-
-/// Data required to construct a structural relationship between existing nodes.
-///
-/// Endpoint kinds are intentionally absent: the project executor derives them from
-/// stored nodes before calling `Edge::new`, preventing clients from forging type
-/// declarations to bypass the endpoint matrix.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CreateEdge {
-    /// Project-local outbound entity ID.
-    pub source: EntityId,
-    /// Project-local inbound entity ID.
-    pub destination: EntityId,
-    /// Kind-specific fields and embedded values for the relationship.
-    pub payload: EdgePayload,
-}
-
-/// Identity of a structural edge to remove from the project graph.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct DeleteEdge {
-    /// Canonical edge identity derived from its endpoints and kind.
-    pub id: EdgeId,
-}
-
-/// Data required to append a reading to an existing measurement edge.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct AppendObservation {
-    /// Canonical ID of the `measures` edge which owns the observation series.
-    pub edge: EdgeId,
-    /// Unidentified reading; the edge allocates its local observation ID.
-    pub observation: NewObservation,
-}
-
-/// Data required to append an immutable correction to a measurement series.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CorrectObservation {
-    /// Canonical ID of the `measures` edge owning the original observation.
-    pub edge: EdgeId,
-    /// Edge-local ID of the unsuperseded observation being corrected.
-    pub observation_id: u64,
-    /// Finite corrected value; other provenance fields are copied from the original.
-    pub value: f64,
-}
-
-/// Data required to create a scenario outside the causal graph.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CreateScenario {
-    /// Validated scenario fields and graph references awaiting project resolution.
-    pub scenario: ScenarioDraft,
-}
-
-/// Revision-checked replacement for an existing scenario document.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct UpdateScenario {
-    /// Project-local scenario document ID.
-    pub id: ScenarioId,
-    /// Scenario revision on which the replacement was based.
-    pub expected_revision: u64,
-    /// Complete replacement fields; partial patch semantics are intentionally absent.
-    pub scenario: ScenarioDraft,
-}
-
-/// Revision-checked identity of a scenario document to remove.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct DeleteScenario {
-    /// Project-local scenario document ID.
-    pub id: ScenarioId,
-    /// Scenario revision observed before deletion.
-    pub expected_revision: u64,
-}
-
-/// Complete revision-checked replacement for project residual dependence.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SetProjectDependence {
-    /// Complete model whose revision must match the stored document on replacement.
-    pub model: ProjectDependenceModel,
-}
-
-/// Revision-checked request to remove project residual dependence.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct RemoveProjectDependence {
-    /// Dependence document revision observed by the caller.
-    pub expected_revision: u64,
 }
 
 /// Durable result of a committed command, returned identically on retries.
@@ -222,6 +126,10 @@ pub enum CommandOutcome {
         /// Immutable correction whose `supersedes` points at its predecessor.
         observation: Observation,
     },
+    /// Primitive estimate created or revisioned by [`GraphCommand::SetEstimate`].
+    EstimateSet(PrimitiveEstimate),
+    /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].
+    EstimateRemoved(PrimitiveEstimate),
     /// Complete scenario document created by [`GraphCommand::CreateScenario`].
     ScenarioCreated(Scenario),
     /// Complete replacement stored by [`GraphCommand::UpdateScenario`].
