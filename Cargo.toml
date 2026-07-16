@@ -25,10 +25,11 @@ serde_yaml_ng = "0.10.0"
 statrs = "=0.18.0"
 thiserror = "2.0.12"
 tokio = { version = "1.46.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
+tower = { version = "0.5.2", features = ["util"] }
+tower-http = { version = "0.6.6", features = ["fs", "set-header"] }
 unicode-normalization = "0.1.24"
 uuid = { version = "1.17.0", features = ["serde", "v4", "v5"] }
 
 [dev-dependencies]
 proptest = "1.7.0"
-tower = { version = "0.5.2", features = ["util"] }
 tokio-tungstenite = "0.29.0"

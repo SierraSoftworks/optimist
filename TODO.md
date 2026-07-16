@@ -134,7 +134,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [ ] Optimize mode with budget-aware candidate bundles and Pareto impact/cost frontiers.
 - [x] Keyboard navigation and synchronized table/outline accessibility view.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
-- [ ] Serve production assets from Axum with SPA fallback and immutable caching.
+- [x] Serve production assets from Axum with SPA fallback and immutable caching.
 
 ## 9. Fuzzing, CI, And Hardening
 

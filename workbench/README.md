@@ -36,6 +36,16 @@ npm run dev
 
 Vite proxies `/api` to `http://127.0.0.1:3000`. Set `OPTIMIST_API_URL` before `npm run dev` to use another server.
 
+For a production-style single-process run, build the workbench and start Optimist from the repository root:
+
+```sh
+npm run build
+cd ..
+cargo run -- server
+```
+
+The server auto-discovers `workbench/dist`; `--web-root` and `OPTIMIST_WEB_ROOT` can select another build. HTML uses revalidation, hashed `/assets` are immutable, unknown API routes stay JSON errors, and non-API browser routes use SPA fallback.
+
 ## Validate
 
 ```sh

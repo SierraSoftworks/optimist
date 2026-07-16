@@ -86,6 +86,29 @@ cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
 
+### Serve the production workbench
+
+Build the Vue application, then start Optimist from the repository root:
+
+```sh
+cd workbench
+npm install
+npm run build
+cd ..
+cargo run -- server
+```
+
+When `workbench/dist/index.html` exists, the server automatically serves the workbench and API from `http://127.0.0.1:3000`. Browser routes fall back to `index.html`; generated files under `/assets` use a one-year immutable cache, while HTML revalidates on every load. `/api` and every `/api/*` path remain JSON-only and never fall back to the SPA.
+
+Use another build directory explicitly with either:
+
+```sh
+cargo run -- server --web-root /path/to/dist
+OPTIMIST_WEB_ROOT=/path/to/dist cargo run -- server
+```
+
+Rust builds do not invoke Node. If no valid web root is configured or discovered, the server remains API-only.
+
 ## Core concepts
 
 | Concept | Purpose |
@@ -150,7 +173,7 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 - The RocksDB feature is blocked on the current macOS bindgen target mismatch and is not part of the default quality gate.
 - Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
 - Complete canonical project archives can be exported/imported through CLI, HTTP, and the workbench. Import is full-snapshot restore; safe merge application remains pending.
-- Authentication, retained-history snapshot fallback, and the Vue workbench are planned but not complete.
+- Authentication and retained-history snapshot fallback remain planned. The Vue workbench is available, but several roadmap workflows remain incomplete.
 
 The tracked implementation status is maintained in [TODO.md](TODO.md).
 

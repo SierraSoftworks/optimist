@@ -18,9 +18,12 @@ optimist [OPTIONS] <COMMAND>
 
 ```sh
 optimist server --bind 127.0.0.1:3000 --data-dir .optimist
+optimist server --web-root workbench/dist
 ```
 
 `--data-dir` is reserved for durable storage. The current default server remains process-local.
+
+`--web-root` points to a completed Vite build containing `index.html`; `OPTIMIST_WEB_ROOT` provides the environment equivalent. When omitted, Optimist uses `workbench/dist` if it exists relative to the process working directory. The server gives browser routes SPA fallback, keeps `/api` JSON-only, revalidates HTML, and serves generated `/assets` with immutable caching.
 
 ### Projects
 

@@ -10,6 +10,7 @@ mod project_error_response;
 mod projects;
 mod repository_error_response;
 mod state;
+mod web_assets;
 mod websocket_changes;
 
 use std::{net::SocketAddr, path::PathBuf};
@@ -30,6 +31,7 @@ use crate::project::ProjectCatalog;
 /// let config = ServerConfig {
 ///     bind: "127.0.0.1:3000".parse()?,
 ///     data_dir: ".optimist".into(),
+///     web_root: None,
 /// };
 /// # Ok::<(), std::net::AddrParseError>(())
 /// ```
@@ -39,6 +41,11 @@ pub struct ServerConfig {
     pub bind: SocketAddr,
     /// Root directory reserved for project catalogs and per-project databases.
     pub data_dir: PathBuf,
+    /// Optional Vite build directory containing `index.html` and static assets.
+    ///
+    /// Non-API requests use single-page application fallback when this directory
+    /// is configured. Rust builds do not invoke Node or require this directory.
+    pub web_root: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -85,6 +92,7 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
 /// serve(ServerConfig {
 ///     bind: "127.0.0.1:3000".parse().unwrap(),
 ///     data_dir: ".optimist".into(),
+///     web_root: None,
 /// }).await
 /// # }
 /// ```
@@ -99,7 +107,8 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
             address: config.bind,
             source,
         })?;
-    axum::serve(listener, router())
+    let app = web_assets::with_workbench(router(), config.web_root.as_deref());
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(ServerError::Serve)

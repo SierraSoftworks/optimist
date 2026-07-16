@@ -18,6 +18,8 @@ cargo run -- server --bind 127.0.0.1:3000
 
 The CLI defaults to `http://127.0.0.1:3000`. Use `--server-url` or `OPTIMIST_SERVER` to select another endpoint.
 
+To serve the production workbench from the same process, run `npm run build` inside `workbench` before starting the server. Optimist discovers `workbench/dist` from the repository root. Use `--web-root <DIRECTORY>` or `OPTIMIST_WEB_ROOT` for another Vite build; without a valid `index.html`, the server remains API-only.
+
 ## Create a project
 
 ```sh
