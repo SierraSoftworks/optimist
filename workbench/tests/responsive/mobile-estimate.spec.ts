@@ -1,0 +1,28 @@
+import { test, expect, expectCanvasPainted } from '../support/mock-api'
+
+test('keeps project and graph controls usable on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'mobile-only layout assertion')
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await page.getByLabel('Project name').fill('Mobile model')
+  await page.getByRole('button', { name: 'Create project' }).last().click()
+  await page.getByRole('button', { name: 'Add node' }).last().click()
+  await page.getByLabel('Title').fill('Customer trust')
+  await page.getByText('outcome', { exact: true }).click()
+  await page.getByRole('button', { name: 'Add node' }).last().click()
+
+  await expect(page.getByLabel('Project', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Search graph')).toBeVisible()
+  await expect(page.getByTestId('graph-surface')).toBeVisible()
+  await expectCanvasPainted(page)
+  await page.getByRole('button', { name: /Customer trust/ }).click()
+  await page.getByRole('button', { name: 'Estimate' }).click()
+  await page.getByLabel('Distribution', { exact: true }).selectOption('beta')
+  await page.getByRole('button', { name: 'Explain Alpha' }).click()
+  await expect(page.getByText(/Increasing alpha relative to beta/)).toBeVisible()
+  const previewBox = await page.getByLabel('Beta distribution preview').boundingBox()
+  expect(previewBox).not.toBeNull()
+  expect(previewBox!.x).toBeGreaterThanOrEqual(0)
+  expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  await page.screenshot({ path: 'artifacts/workbench-mobile.png', fullPage: true })
+})
