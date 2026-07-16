@@ -154,6 +154,7 @@ mod tests {
     fn appends_and_corrects_immutable_observations() {
         let mut measurement = Measurement {
             polarity: MeasurementPolarity::HigherIsBetter,
+            calibration: None,
             observations: vec![],
         };
         let original = measurement.append(input(0.9)).unwrap();
@@ -172,6 +173,7 @@ mod tests {
         assert_eq!(
             Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: vec![],
             }
             .append(NewObservation {

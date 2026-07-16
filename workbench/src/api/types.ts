@@ -58,6 +58,16 @@ export interface Observation {
   supersedes: number | null
 }
 
+export type MeasurementCalibration =
+  | { type: 'linear'; state_zero: number; state_one: number }
+  | {
+      type: 'target_range'
+      outer_lower: number
+      ideal_lower: number
+      ideal_upper: number
+      outer_upper: number
+    }
+
 export interface AppendObservationInput {
   value: number
   unit: string
@@ -142,6 +152,7 @@ export interface GraphEdge {
         kind: 'measures'
         properties: {
           polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
+          calibration?: MeasurementCalibration
           observations: Observation[]
         }
       }
@@ -241,6 +252,42 @@ export interface MonteCarloDiagnostics {
   status: 'converged' | 'maximum_samples_reached' | 'insufficient_valid_samples'
 }
 
+export type Unit = Record<string, number>
+
+export type Formula =
+  | { type: 'literal'; distribution: Distribution; unit: Unit }
+  | { type: 'sum'; terms: Formula[] }
+  | { type: 'product'; factors: Formula[] }
+  | { type: 'ratio'; numerator: Formula; denominator: Formula }
+  | { type: 'power'; base: Formula; exponent: number }
+  | { type: 'bounded'; input: Formula; lower: number; upper: number }
+
+export interface FermiAssessmentInput {
+  formula: Formula
+  support: 'real' | 'non_negative' | 'probability' | 'signed'
+  expected_unit: Unit
+  monte_carlo: MonteCarloConfig
+}
+
+export interface FermiAssessment {
+  compiled: { unit: Unit; dependencies: unknown[] }
+  report: {
+    estimates: MonteCarloEstimate[]
+    covariance: Array<Array<number | null>>
+    diagnostics: MonteCarloDiagnostics
+  }
+  recommendation:
+    | { status: 'exact'; distribution: Distribution; interval: FermiInterval }
+    | { status: 'moment_matched'; distribution: Distribution; interval: FermiInterval; warning: string }
+    | { status: 'unavailable'; reason: string }
+}
+
+export interface FermiInterval {
+  probability: number
+  lower: number
+  upper: number
+}
+
 export interface ObjectiveProjection {
   outcome: string
   direction: 'maximize' | 'minimize'
@@ -329,6 +376,10 @@ export interface SetEdgeEstimateInput {
 export interface UpdateEdgeInput {
   description: string
   metadata: Record<string, unknown>
+}
+
+export interface SetMeasurementCalibrationInput {
+  calibration: MeasurementCalibration | null
 }
 
 export type EditableEdgePayload =

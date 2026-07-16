@@ -13,6 +13,7 @@ import DistributionEditor from './DistributionEditor.vue'
 const props = defineProps<{
   open: boolean
   pending: boolean
+  projectId: string | null
   node: GraphNode | null
   slot: InterventionEstimateSlot | null
 }>()
@@ -57,6 +58,11 @@ const title = computed(() => {
   if (props.slot?.kind === 'probability_of_success') return 'Success probability'
   return props.slot?.value ? `${props.slot.value} cost` : 'Add cost dimension'
 })
+const expectedUnit = computed(() => {
+  if (props.slot?.kind === 'duration') return { duration: 1 }
+  if (props.slot?.kind === 'cost' && form.dimension.trim()) return { [form.dimension.trim()]: 1 }
+  return {}
+})
 
 watch(
   () => [props.open, props.node, props.slot] as const,
@@ -85,6 +91,10 @@ function submit() {
       .filter(Boolean),
   })
 }
+
+function appendFermiProvenance(value: string) {
+  form.provenance = [form.provenance.trim(), value].filter(Boolean).join('\n')
+}
 </script>
 
 <template>
@@ -100,7 +110,14 @@ function submit() {
         </header>
         <label v-if="slot.kind === 'cost'">Dimension<input v-model="form.dimension" :readonly="Boolean(existing)" placeholder="usd, engineer_days, risk" required /></label>
         <p v-if="duplicateCost" class="form-error">This cost dimension already exists. Edit it from the inspector.</p>
-        <DistributionEditor v-model="distribution" :families="families" :support="probability ? 'probability' : 'non_negative'" />
+        <DistributionEditor
+          v-model="distribution"
+          :families="families"
+          :support="probability ? 'probability' : 'non_negative'"
+          :project-id="projectId"
+          :expected-unit="expectedUnit"
+          @fermi-provenance="appendFermiProvenance"
+        />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
           <Trash2 :size="18" />

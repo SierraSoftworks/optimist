@@ -9,6 +9,7 @@ import type {
   InterventionEstimateSlot,
   Observation,
 } from '../api/types'
+import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -174,6 +175,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
             <div>
               <strong>{{ edge.destination }}</strong>
               <span>{{ edge.payload.kind === 'measures' ? edge.payload.properties.polarity.replaceAll('_', ' ') : '' }}</span>
+              <small v-if="edge.payload.kind === 'measures' && edge.payload.properties.calibration">{{ calibrationLabel(edge.payload.properties.calibration, node.payload.kind === 'metric' ? node.payload.properties.unit : '') }}</small>
             </div>
             <button type="button" class="icon-button" :aria-label="`Add observation for ${edge.destination}`" title="Add observation" @click="emit('observe', edge)"><Plus :size="15" /></button>
           </div>
@@ -182,6 +184,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
               <strong>{{ observation.value }} {{ observation.unit }}</strong>
               <span>{{ new Date(observation.observed_at).toLocaleString() }}</span>
               <small>{{ observation.source }}<template v-if="observation.measurement_standard_deviation !== null"> · σ {{ observation.measurement_standard_deviation }}</template></small>
+              <small v-if="edge.payload.kind === 'measures' && edge.payload.properties.calibration" class="calibrated-reading">Normalized factor state {{ calibratedState(edge.payload.properties.calibration, observation.value)?.toFixed(3) }}</small>
               <small v-if="replacement(edge, observation)">Superseded by #{{ replacement(edge, observation)?.id }}</small>
               <small v-else-if="observation.supersedes !== null">Correction of #{{ observation.supersedes }}</small>
               <button v-if="!replacement(edge, observation)" type="button" class="icon-button observation-correct" :aria-label="`Correct observation ${observation.id} for ${edge.destination}`" title="Correct observation" @click="emit('correct', edge, observation)"><Pencil :size="13" /></button>

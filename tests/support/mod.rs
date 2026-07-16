@@ -101,6 +101,7 @@ pub(crate) fn valid_endpoints() -> impl Strategy<Value = EndpointTuple> {
                     NodeKind::Factor,
                     EdgePayload::Measures(Measurement {
                         polarity: MeasurementPolarity::HigherIsBetter,
+                        calibration: None,
                         observations: Vec::new(),
                     }),
                 ),

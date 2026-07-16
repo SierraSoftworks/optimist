@@ -67,6 +67,13 @@ pub(super) fn classify(
                 "Check the value, RFC 3339 timestamp, source, unit, and measurement standard deviation.",
             ],
         ),
+        ProjectError::MeasurementCalibration(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_measurement_calibration",
+            &[
+                "Use finite distinct anchors whose direction matches polarity, or four ordered anchors for a target range.",
+            ],
+        ),
         ProjectError::EvidenceCommand(EvidenceCommandError::RevisionConflict { .. }) => (
             StatusCode::CONFLICT,
             "evidence_revision_conflict",
@@ -151,6 +158,13 @@ pub(super) fn classify(
             StatusCode::BAD_REQUEST,
             "invalid_analysis",
             &["Use positive cycle limits and ensure the selected scenario still exists."],
+        ),
+        ProjectError::FermiAssessment(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_fermi_assessment",
+            &[
+                "Check the decomposition's formula arity, bounds, units, finite distributions, and Monte Carlo controls.",
+            ],
         ),
         ProjectError::ScenarioAnalysis(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,

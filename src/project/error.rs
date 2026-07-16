@@ -4,8 +4,8 @@ use crate::markdown::{ImportError, MarkdownError};
 use crate::{
     domain::{
         AnalysisError, DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress,
-        EstimateAddressError, NodeError, NodeKind, ObservationError, ProjectId,
-        ScenarioAnalysisError, ScenarioError, ScenarioId,
+        EstimateAddressError, FermiAssessmentError, MeasurementCalibrationError, NodeError,
+        NodeKind, ObservationError, ProjectId, ScenarioAnalysisError, ScenarioError, ScenarioId,
     },
     store::RepositoryError,
 };
@@ -83,6 +83,9 @@ pub enum ProjectError {
     /// Observation validation or immutable correction semantics failed.
     #[error(transparent)]
     Observation(#[from] ObservationError),
+    /// A measurement calibration has invalid anchors or conflicts with its polarity.
+    #[error(transparent)]
+    MeasurementCalibration(#[from] MeasurementCalibrationError),
     /// Node-owned evidence authoring or deletion failed.
     #[error(transparent)]
     EvidenceCommand(#[from] EvidenceCommandError),
@@ -147,6 +150,9 @@ pub enum ProjectError {
     /// Exact structural analysis input or bounds are invalid.
     #[error(transparent)]
     Analysis(#[from] AnalysisError),
+    /// A proposed Fermi decomposition could not be validated or sampled.
+    #[error(transparent)]
+    FermiAssessment(#[from] FermiAssessmentError),
     /// Finite-horizon scenario propagation inputs or assumptions are invalid.
     #[error(transparent)]
     ScenarioAnalysis(#[from] ScenarioAnalysisError),

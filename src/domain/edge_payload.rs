@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{Duration, EdgeKind, Estimate, SignedInfluence};
+use super::{
+    Duration, EdgeKind, Estimate, MeasurementCalibration, MeasurementCalibrationError,
+    SignedInfluence,
+};
 
 /// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -54,9 +57,51 @@ pub enum MeasurementPolarity {
 pub struct Measurement {
     /// Interpretation of movement when mapping readings to subject state.
     pub polarity: MeasurementPolarity,
+    /// Optional anchors translating metric readings into normalized subject state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calibration: Option<MeasurementCalibration>,
     /// Append-only readings for this exact metric/subject pair.
     #[serde(default)]
     pub observations: Vec<Observation>,
+}
+
+impl Measurement {
+    /// Validates and replaces the reading-to-state calibration for this relationship.
+    pub fn set_calibration(
+        &mut self,
+        calibration: Option<MeasurementCalibration>,
+    ) -> Result<(), MeasurementCalibrationError> {
+        let calibration = calibration
+            .map(MeasurementCalibration::validated)
+            .transpose()?;
+        let compatible = match (&self.polarity, &calibration) {
+            (_, None) => true,
+            (
+                MeasurementPolarity::HigherIsBetter,
+                Some(MeasurementCalibration::Linear {
+                    state_zero,
+                    state_one,
+                }),
+            ) => state_zero < state_one,
+            (
+                MeasurementPolarity::LowerIsBetter,
+                Some(MeasurementCalibration::Linear {
+                    state_zero,
+                    state_one,
+                }),
+            ) => state_zero > state_one,
+            (
+                MeasurementPolarity::TargetRange,
+                Some(MeasurementCalibration::TargetRange { .. }),
+            ) => true,
+            _ => false,
+        };
+        if !compatible {
+            return Err(MeasurementCalibrationError::PolarityMismatch(self.polarity));
+        }
+        self.calibration = calibration;
+        Ok(())
+    }
 }
 
 /// Prerequisite semantics embedded in a `requires` edge.

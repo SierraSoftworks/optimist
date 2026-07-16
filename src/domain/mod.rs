@@ -12,6 +12,7 @@ mod edge_payload;
 mod estimate;
 mod estimate_address;
 mod estimate_slot;
+mod fermi_assessment;
 mod formula;
 mod formula_dependence;
 mod formula_document;
@@ -24,6 +25,7 @@ mod id;
 mod impediment_analysis;
 mod impediment_analysis_compute;
 mod likelihood;
+mod measurement_calibration;
 mod monte_carlo;
 mod monte_carlo_report;
 mod node;
@@ -68,11 +70,16 @@ pub use estimate_address::{
     EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
 };
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};
+pub use fermi_assessment::{
+    FermiAssessment, FermiAssessmentError, FermiEstimateSupport, FermiInterval,
+    FermiRecommendation, assess_fermi,
+};
 pub use formula::{CompiledFormula, Formula, FormulaError, FormulaSet};
 pub use formula_document::{FormulaCatalog, FormulaDefinition, FormulaDocument};
 pub use formula_sampling::MonteCarloError;
 pub use id::{EntityId, IdError, ProjectId};
 pub use impediment_analysis::{ImpedimentAnalysis, ImpedimentCandidate, RelationshipEvidence};
+pub use measurement_calibration::{MeasurementCalibration, MeasurementCalibrationError};
 pub use monte_carlo::{MonteCarloConfig, MonteCarloConfigError};
 pub use monte_carlo_report::{
     ConvergenceStatus, InvalidSampleCounts, JointMonteCarloReport, MonteCarloDiagnostics,

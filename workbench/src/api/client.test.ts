@@ -7,6 +7,79 @@ const project: Project = { id: 'A', name: 'Delivery', revision: 7 }
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Optimist API client', () => {
+  it('assesses a unit-aware Fermi decomposition', async () => {
+    const assessment = {
+      compiled: { unit: {}, dependencies: [] },
+      report: {
+        estimates: [{ mean: 0.6, variance: 0.04, mean_standard_error: 0.001, variance_standard_error: 0.002 }],
+        covariance: [[0.04]],
+        diagnostics: {
+          seed: 42, attempted_samples: 1000, valid_samples: 1000,
+          invalid_samples: { zero_denominator: 0, non_finite_primitive: 0, non_finite_result: 0 },
+          criterion: { seed: 42, minimum_samples: 1000, maximum_samples: 10000, absolute_tolerance: 0.001, relative_tolerance: 0.01 },
+          status: 'converged',
+        },
+      },
+      recommendation: { status: 'moment_matched', distribution: { type: 'beta', alpha: 3, beta: 2 }, interval: { probability: 0.9, lower: 0.2, upper: 0.9 }, warning: 'Approximation' },
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(assessment), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const formula = {
+      type: 'product' as const,
+      factors: [
+        { type: 'literal' as const, distribution: { type: 'point' as const, value: 0.6 }, unit: {} },
+        { type: 'literal' as const, distribution: { type: 'point' as const, value: 1 }, unit: {} },
+      ],
+    }
+    await expect(api.assessFermi('A', {
+      formula,
+      support: 'probability',
+      expected_unit: {},
+      monte_carlo: assessment.report.diagnostics.criterion,
+    })).resolves.toEqual(assessment)
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/fermi-assessment')
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toMatchObject({
+      support: 'probability', expected_unit: {}, formula: { type: 'product' },
+    })
+  })
+
+  it('sets measurement calibration under project and edge revision guards', async () => {
+    const edge = {
+      source: 'A', source_kind: 'metric' as const,
+      destination: 'B', destination_kind: 'factor' as const,
+      revision: 3, description: '', metadata: {},
+      payload: { kind: 'measures' as const, properties: { polarity: 'lower_is_better' as const, observations: [] } },
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        request_id: 'request', project_revision: 8,
+        outcome: {
+          type: 'measurement_calibration_set',
+          value: { ...edge, revision: 4, payload: { ...edge.payload, properties: { ...edge.payload.properties, calibration: { type: 'linear', state_zero: 20, state_one: 5 } } } },
+        },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    await api.setMeasurementCalibration(project, edge, {
+      calibration: { type: 'linear', state_zero: 20, state_one: 5 },
+    })
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toMatchObject({
+      expected_revision: 7,
+      command: {
+        type: 'set_measurement_calibration',
+        payload: {
+          edge: { source: 'A', kind: 'measures', destination: 'B' },
+          expected_revision: 3,
+          calibration: { type: 'linear', state_zero: 20, state_one: 5 },
+        },
+      },
+    })
+  })
+
   it('reads exact structural feedback analysis', async () => {
     const analysis = {
       revision: {

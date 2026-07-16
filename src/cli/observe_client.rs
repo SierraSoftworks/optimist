@@ -156,6 +156,7 @@ mod tests {
                 factor.id,
                 EdgePayload::Measures(Measurement {
                     polarity: MeasurementPolarity::HigherIsBetter,
+                    calibration: None,
                     observations: vec![],
                 }),
             )

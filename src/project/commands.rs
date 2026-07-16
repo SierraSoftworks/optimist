@@ -74,16 +74,17 @@ mod tests {
     use crate::{
         command::{
             AppendObservation, CommandOutcome, CommandRequest, CorrectObservation, CreateEdge,
-            CreateNode, DeleteEdge, DeleteNode, GraphCommand,
+            CreateNode, DeleteEdge, DeleteNode, GraphCommand, SetMeasurementCalibration,
         },
         domain::{
-            EdgeId, EdgeKind, EdgePayload, EntityId, Factor, Measurement, MeasurementPolarity,
-            Metric, NewObservation, NodePayload, Requirement,
+            EdgeId, EdgeKind, EdgePayload, EntityId, Factor, Measurement, MeasurementCalibration,
+            MeasurementCalibrationError, MeasurementPolarity, Metric, NewObservation, NodePayload,
+            Requirement,
         },
     };
 
     use super::ProjectCatalog;
-    use crate::project::ProjectError;
+    use crate::project::{AggregateUpdateError, ProjectError};
 
     fn create_node(revision: u64) -> CommandRequest {
         CommandRequest::new(
@@ -99,6 +100,112 @@ mod tests {
                 }),
             }),
         )
+    }
+
+    #[test]
+    fn calibrates_measurement_values_under_edge_revision_guards() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    0,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "lead_time".to_owned(),
+                        title: "Lead time".to_owned(),
+                        payload: NodePayload::Metric(Metric {
+                            unit: "days".to_owned(),
+                            aggregation: None,
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        catalog.execute(&project.id, create_node(1)).unwrap();
+        let edge_id = EdgeId {
+            source: EntityId::new(0),
+            kind: EdgeKind::Measures,
+            destination: EntityId::new(1),
+        };
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: edge_id.source,
+                        destination: edge_id.destination,
+                        payload: EdgePayload::Measures(Measurement {
+                            polarity: MeasurementPolarity::LowerIsBetter,
+                            calibration: None,
+                            observations: vec![],
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        let result = catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    3,
+                    GraphCommand::SetMeasurementCalibration(SetMeasurementCalibration {
+                        edge: edge_id.clone(),
+                        expected_revision: 0,
+                        calibration: Some(MeasurementCalibration::Linear {
+                            state_zero: 20.0,
+                            state_one: 5.0,
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::MeasurementCalibrationSet(edge) = result.outcome else {
+            panic!("expected calibrated edge")
+        };
+        assert_eq!(edge.revision, 1);
+        let EdgePayload::Measures(measurement) = edge.payload else {
+            panic!("expected measurement payload")
+        };
+        assert_eq!(measurement.calibration.unwrap().state(12.5).unwrap(), 0.5);
+
+        let mismatched = catalog.execute(
+            &project.id,
+            CommandRequest::new(
+                4,
+                GraphCommand::SetMeasurementCalibration(SetMeasurementCalibration {
+                    edge: edge_id.clone(),
+                    expected_revision: 1,
+                    calibration: Some(MeasurementCalibration::Linear {
+                        state_zero: 5.0,
+                        state_one: 20.0,
+                    }),
+                }),
+            ),
+        );
+        assert!(matches!(
+            mismatched,
+            Err(ProjectError::MeasurementCalibration(
+                MeasurementCalibrationError::PolarityMismatch(MeasurementPolarity::LowerIsBetter)
+            ))
+        ));
+        assert!(matches!(
+            catalog.execute(
+                &project.id,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::SetMeasurementCalibration(SetMeasurementCalibration {
+                        edge: edge_id,
+                        expected_revision: 0,
+                        calibration: None,
+                    }),
+                ),
+            ),
+            Err(ProjectError::AggregateUpdate(
+                AggregateUpdateError::EdgeRevisionConflict { current: 1, .. }
+            ))
+        ));
     }
 
     #[test]
@@ -347,6 +454,7 @@ mod tests {
                         destination: edge_id.destination,
                         payload: EdgePayload::Measures(Measurement {
                             polarity: MeasurementPolarity::HigherIsBetter,
+                            calibration: None,
                             observations: vec![],
                         }),
                     }),

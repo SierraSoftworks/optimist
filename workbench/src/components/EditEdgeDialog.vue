@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { Pencil, Trash2, X } from '@lucide/vue'
-import type { Distribution, EdgeEstimateSlot, GraphEdge, UpdateEdgeInput } from '../api/types'
+import type {
+  Distribution,
+  EdgeEstimateSlot,
+  GraphEdge,
+  MeasurementCalibration,
+  SetMeasurementCalibrationInput,
+  UpdateEdgeInput,
+} from '../api/types'
+import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
 const emit = defineEmits<{
@@ -9,8 +17,18 @@ const emit = defineEmits<{
   submit: [input: UpdateEdgeInput]
   delete: []
   estimate: [slot: EdgeEstimateSlot]
+  calibration: [input: SetMeasurementCalibrationInput]
 }>()
 const form = reactive({ description: '', metadata: '{}' })
+const calibration = reactive({
+  enabled: false,
+  stateZero: 0,
+  stateOne: 1,
+  outerLower: 0,
+  idealLower: 0.4,
+  idealUpper: 0.6,
+  outerUpper: 1,
+})
 const error = ref<string | null>(null)
 const confirmDelete = ref(false)
 
@@ -20,6 +38,19 @@ watch(
     if (!open || !edge) return
     form.description = edge.description
     form.metadata = JSON.stringify(edge.metadata, null, 2)
+    if (edge.payload.kind === 'measures') {
+      const current = edge.payload.properties.calibration
+      calibration.enabled = Boolean(current)
+      if (current?.type === 'linear') {
+        calibration.stateZero = current.state_zero
+        calibration.stateOne = current.state_one
+      } else if (current?.type === 'target_range') {
+        calibration.outerLower = current.outer_lower
+        calibration.idealLower = current.ideal_lower
+        calibration.idealUpper = current.ideal_upper
+        calibration.outerUpper = current.outer_upper
+      }
+    }
     error.value = null
     confirmDelete.value = false
   },
@@ -38,6 +69,31 @@ function submit() {
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : 'Metadata is invalid JSON.'
   }
+}
+
+function calibrationValue(): MeasurementCalibration | null {
+  if (!calibration.enabled || props.edge?.payload.kind !== 'measures') return null
+  if (props.edge.payload.properties.polarity === 'target_range') {
+    return {
+      type: 'target_range',
+      outer_lower: calibration.outerLower,
+      ideal_lower: calibration.idealLower,
+      ideal_upper: calibration.idealUpper,
+      outer_upper: calibration.outerUpper,
+    }
+  }
+  return { type: 'linear', state_zero: calibration.stateZero, state_one: calibration.stateOne }
+}
+
+function saveCalibration() {
+  emit('calibration', { calibration: calibrationValue() })
+}
+
+function sampleReadings(value: MeasurementCalibration) {
+  if (value.type === 'linear') {
+    return [value.state_zero, (value.state_zero + value.state_one) / 2, value.state_one]
+  }
+  return [value.outer_lower, (value.ideal_lower + value.ideal_upper) / 2, value.outer_upper]
 }
 
 function distributionLabel(value: Distribution) {
@@ -79,6 +135,36 @@ function distributionLabel(value: Distribution) {
             <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
           </div>
+        </section>
+        <section v-else-if="edge.payload.kind === 'measures'" class="dialog-section calibration-editor">
+          <header class="section-header">
+            <div><strong>Metric to state</strong><span>{{ edge.payload.properties.polarity.replaceAll('_', ' ') }}</span></div>
+            <label class="checkbox-label"><input v-model="calibration.enabled" type="checkbox" /> Calibrated</label>
+          </header>
+          <template v-if="calibration.enabled && edge.payload.properties.polarity !== 'target_range'">
+            <div class="field-grid">
+              <label>Reading at state 0<input v-model.number="calibration.stateZero" type="number" step="any" /></label>
+              <label>Reading at state 1<input v-model.number="calibration.stateOne" type="number" step="any" /></label>
+            </div>
+          </template>
+          <template v-else-if="calibration.enabled">
+            <div class="calibration-fields">
+              <label>Outer low<input v-model.number="calibration.outerLower" type="number" step="any" /></label>
+              <label>Ideal low<input v-model.number="calibration.idealLower" type="number" step="any" /></label>
+              <label>Ideal high<input v-model.number="calibration.idealUpper" type="number" step="any" /></label>
+              <label>Outer high<input v-model.number="calibration.outerUpper" type="number" step="any" /></label>
+            </div>
+          </template>
+          <template v-if="calibration.enabled && calibrationValue()">
+            <p class="calibration-summary">{{ calibrationLabel(calibrationValue()!, 'metric units') }}</p>
+            <div class="calibration-preview" aria-label="Calibration preview">
+              <div v-for="reading in sampleReadings(calibrationValue()!)" :key="reading">
+                <span>{{ reading }}</span><strong>{{ calibratedState(calibrationValue()!, reading)?.toFixed(2) }}</strong>
+              </div>
+            </div>
+          </template>
+          <p v-else class="muted">Polarity describes direction only. Add anchors to translate readings into normalized state estimates.</p>
+          <button type="button" class="secondary-button" :disabled="pending" @click="saveCalibration">{{ calibration.enabled ? 'Save calibration' : 'Remove calibration' }}</button>
         </section>
         <label>
           Description

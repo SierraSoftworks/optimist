@@ -24,6 +24,7 @@ pub(super) fn build(
             let polarity = polarity.ok_or_else(|| invalid("Measures edges need `--polarity`."))?;
             Ok(EdgePayload::Measures(Measurement {
                 polarity: polarity.into(),
+                calibration: None,
                 observations: vec![],
             }))
         }

@@ -18,6 +18,7 @@ import type {
   Evidence,
   EvidenceInput,
   SetEdgeEstimateInput,
+  SetMeasurementCalibrationInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from '../api/types'
@@ -227,6 +228,23 @@ export function useUpdateEdge(project: Ref<Project | undefined>, edge: Ref<Graph
   return useMutation({
     mutationFn: (input: UpdateEdgeInput) => api.updateEdge(project.value!, edge.value!, input),
     onSuccess: async () => refetchEdgeData(queryClient, project.value!),
+  })
+}
+
+export function useSetMeasurementCalibration(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SetMeasurementCalibrationInput) =>
+      api.setMeasurementCalibration(project.value!, edge.value!, input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['project', project.value!.id] }),
+        queryClient.refetchQueries({ queryKey: ['edges', project.value!.id] }),
+      ])
+    },
   })
 }
 

@@ -32,6 +32,45 @@ cargo run --example fermi_delivery_time
 
 Formula operations include sums, products, ratios, integer powers, bounded transforms, and references. References are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
 
+### Workbench elicitation
+
+The workbench accepts compact central estimates such as `1.5M`. By default, each positive variable uses a LogNormal whose median is the entered estimate and whose central 90% interval spans one order of magnitude in either direction. If $m$ is the estimate, then:
+
+$$
+\mu=\ln m, \qquad \sigma=\frac{\ln 10}{\Phi^{-1}(0.95)}.
+$$
+
+This is deliberately broad. Expanding a variable enables a custom three-point Beta-PERT component. For low $a$, most-likely $m$, and high $b$, it uses a Scaled Beta on $[a,b]$ with:
+
+$$
+\alpha = 1 + 4\frac{m-a}{b-a}, \qquad
+\beta = 1 + 4\frac{b-m}{b-a}.
+$$
+
+Variables accept human unit expressions such as `people/household`, `piano*days/tuning`, and `(pianos/day)^2`. Optimist singularizes simple English plurals, composes exponents through the equation, and compares the result with the goal unit. Equations support `+`, `-`, `*`, `/`, integer powers, numeric constants, and parentheses. Addition and subtraction require equal units.
+
+For example, the central piano-tuning arithmetic is:
+
+$$
+1{,}500{,}000 / 3 / 20 / 180 \times 1 = 138.889.
+$$
+
+With units exactly `people`, `people/household`, `households/piano`, `days/tuning`, and `pianos/tuning`, dimensional analysis produces `piano^2/day`, not `piano/day`. The assistant reports the unresolved `piano` dimension. One coherent correction is to describe the tuning interval as `piano*days/tuning`: each tuning event is required per piano per 180 days. The same equation then resolves to `piano/day`.
+
+Optimist samples the resolved equation and recommends a primitive family compatible with the requested support by matching sampled mean and variance. The hand-calculated `138.889` is the equation evaluated at entered central values; it is not generally equal to the Monte Carlo expectation of broad products and ratios. Five independent order-of-magnitude priors create a very wide distribution and may hit the sample limit. Refine variables with evidence rather than interpreting that broad default as calibrated confidence. The reported 90% interval belongs to the moment-matched recommendation and does not preserve multimodality or exact tail shape.
+
+## Metric calibration
+
+A `measures` relationship may explicitly map readings in a metric's unit to the measured factor or outcome's normalized state. For linear anchors $x_0$ at state zero and $x_1$ at state one:
+
+$$
+s(x)=\operatorname{clamp}\left(\frac{x-x_0}{x_1-x_0},0,1\right).
+$$
+
+Lower-is-better metrics use $x_0>x_1$. Target-range metrics use two linear ramps from outer state-zero anchors to an ideal state-one interval. Values outside the outer anchors clamp to zero.
+
+Calibration makes interpretation visible; it is not an automatic statistical update. Observations remain immutable edge-local records, and state estimates change only when a caller explicitly adopts a calibrated reading or performs a separately justified Bayesian update.
+
 ## Monte Carlo convergence
 
 Sampling uses a pinned ChaCha20 stream. Given the same model, seed, configuration, and dependency versions, results are bit-reproducible.

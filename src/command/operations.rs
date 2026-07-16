@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, Formula,
-    NewObservation, NodePayload, ProjectDependenceModel, ScenarioDraft, ScenarioId,
+    MeasurementCalibration, NewObservation, NodePayload, ProjectDependenceModel, ScenarioDraft,
+    ScenarioId,
 };
 
 /// Data required to construct a new structural node.
@@ -96,6 +97,17 @@ pub struct CorrectObservation {
     pub observation_id: u64,
     /// Finite corrected value; other provenance fields are copied from the original.
     pub value: f64,
+}
+
+/// Revision-checked replacement of one measurement relationship's state calibration.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetMeasurementCalibration {
+    /// Canonical identity of the `measures` relationship being calibrated.
+    pub edge: EdgeId,
+    /// Edge revision observed before preparing the calibration.
+    pub expected_revision: u64,
+    /// Complete replacement, or `None` to return the relationship to descriptive polarity only.
+    pub calibration: Option<MeasurementCalibration>,
 }
 
 /// Data required to create or replace a primitive embedded estimate.

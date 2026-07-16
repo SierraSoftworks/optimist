@@ -273,6 +273,7 @@ mod tests {
             NodeKind::Factor,
             EdgePayload::Measures(Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: Vec::new(),
             }),
         )
@@ -300,6 +301,7 @@ mod tests {
                     NodeKind::Factor,
                     EdgePayload::Measures(Measurement {
                         polarity: MeasurementPolarity::HigherIsBetter,
+                        calibration: None,
                         observations: Vec::new(),
                     }),
                 )
@@ -323,6 +325,7 @@ mod tests {
             NodeKind::Factor,
             EdgePayload::Measures(Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: Vec::new(),
             }),
         )
@@ -346,6 +349,7 @@ mod tests {
             NodeKind::Factor,
             EdgePayload::Measures(Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: Vec::new(),
             }),
         )

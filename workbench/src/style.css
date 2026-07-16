@@ -145,10 +145,12 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .observation-series-header > div { display: grid; gap: 2px; }
 .observation-series-header strong { font: 11px 'IBM Plex Mono', monospace; }
 .observation-series-header span { color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.observation-series-header small { color: #4e6257; font-size: 8px; line-height: 1.4; }
 .observation-list { margin: 9px 0 0; padding: 9px 0 0; border-top: 1px solid var(--line); list-style: none; display: grid; gap: 9px; }
 .observation-list li { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding-right: 30px; font-size: 10px; }
 .observation-list li > span { color: var(--muted); font-size: 9px; text-align: right; }
 .observation-list small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.observation-list small.calibrated-reading { color: var(--green); font-weight: 700; }
 .observation-list li.superseded > strong { color: var(--muted); text-decoration: line-through; }
 .observation-correct { position: absolute; top: 0; right: 0; width: 24px; height: 24px; }
 .correction-note { margin: 0 0 16px; }
@@ -164,6 +166,27 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .distribution-fields { margin-top: 14px; }
 .dialog-section { margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
 .relationship-context { margin-top: 10px; }
+.calibration-editor { display: grid; gap: 10px; }
+.calibration-editor .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.calibration-editor .section-header > div { display: grid; gap: 2px; }
+.calibration-editor .section-header strong { font-size: 11px; }
+.calibration-editor .section-header span { color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.calibration-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.calibration-summary { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.calibration-preview { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 5px; }
+.calibration-preview div { display: grid; gap: 2px; padding: 7px; border-right: 1px solid var(--line); text-align: center; }
+.calibration-preview div:last-child { border-right: 0; }
+.calibration-preview span { color: var(--muted); font-size: 8px; }
+.calibration-preview strong { color: var(--green); font: 10px 'IBM Plex Mono', monospace; }
+.calibration-editor > .secondary-button { justify-self: end; }
+.calibrated-evidence { display: grid; gap: 8px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 6px; background: #f3f8f4; }
+.calibrated-evidence > div { display: flex; justify-content: space-between; gap: 8px; }
+.calibrated-evidence > div strong { font-size: 10px; }
+.calibrated-evidence > div span { color: var(--muted); font-size: 8px; }
+.calibrated-evidence article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding-top: 8px; border-top: 1px solid #cbd9d0; }
+.calibrated-evidence article > div { min-width: 0; display: grid; gap: 2px; }
+.calibrated-evidence article strong { font-size: 10px; }
+.calibrated-evidence article span, .calibrated-evidence article small { color: var(--muted); font-size: 8px; line-height: 1.4; }
 .evidence-row { margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .evidence-row button { width: 100%; display: grid; gap: 3px; padding: 8px; border: 0; background: transparent; text-align: left; }
 .evidence-row button:hover { background: var(--green-soft); }
@@ -301,6 +324,43 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .preview-marker { stroke: var(--green); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .preview-marker-dot { fill: var(--green); }
 .distribution-preview > p { margin: 2px 0 0; color: #4f5954; font-size: 10px; line-height: 1.5; }
+.fermi-assistant { overflow: hidden; border: 1px solid #aeb9b1; border-radius: 6px; background: #f7f9f5; }
+.fermi-toggle { width: 100%; min-height: 48px; display: grid; grid-template-columns: 20px minmax(0, 1fr) 16px; gap: 8px; align-items: center; padding: 8px 10px; border: 0; background: transparent; color: var(--green); text-align: left; }
+.fermi-toggle:hover, .fermi-toggle[aria-expanded='true'] { background: var(--green-soft); }
+.fermi-toggle > span { min-width: 0; display: grid; gap: 2px; }
+.fermi-toggle strong { color: var(--ink); font-size: 10px; }
+.fermi-toggle small { color: var(--muted); font-size: 9px; }
+.fermi-toggle > svg:last-child { transition: transform .16s ease; }
+.fermi-toggle > svg.rotated { transform: rotate(180deg); }
+.fermi-workspace { display: grid; gap: 12px; padding: 12px; border-top: 1px solid var(--line); background: white; }
+.fermi-equation-fields { display: grid; grid-template-columns: minmax(120px, .4fr) minmax(220px, 1fr); gap: 8px; }
+.fermi-equation-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #a8bfb2; border-radius: 5px; background: #a8bfb2; }
+.fermi-equation-status > div { min-width: 0; display: grid; gap: 2px; padding: 8px; background: #f3f8f4; }
+.fermi-equation-status span { color: var(--muted); font-size: 8px; }
+.fermi-equation-status strong { overflow: hidden; color: var(--green); font: 10px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.fermi-equation-status > p { grid-column: 1 / -1; margin: 0; padding: 8px; background: #f3f8f4; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.fermi-equation-status.invalid { border-color: #d8a098; background: #d8a098; }
+.fermi-equation-status.invalid > div, .fermi-equation-status.invalid > p { background: #fff8f6; }
+.fermi-equation-status.invalid strong, .fermi-equation-status.invalid > p { color: #8c3429; }
+.fermi-components { display: grid; gap: 8px; }
+.fermi-variable { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; }
+.fermi-variable.invalid { border-color: #c76e61; background: #fff8f6; }
+.fermi-variable legend { padding: 0 4px; color: var(--muted); font: 8px 'IBM Plex Mono', monospace; text-transform: uppercase; }
+.fermi-variable-quick { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(90px, .45fr) minmax(130px, .7fr) 28px 28px; gap: 7px; align-items: end; }
+.fermi-variable-quick .icon-button { margin-bottom: 1px; }
+.fermi-detail-toggle svg { transition: transform .16s ease; }
+.fermi-detail-toggle svg.rotated { transform: rotate(180deg); }
+.fermi-variable-range, .fermi-variable-issue { margin: 6px 0 0; font-size: 8px; line-height: 1.4; }
+.fermi-variable-range { color: var(--muted); }
+.fermi-variable-issue { color: #9a3e31; }
+.fermi-variable-detail { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.fermi-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.fermi-actions { display: flex; justify-content: space-between; gap: 8px; }
+.fermi-result { display: grid; gap: 10px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 5px; background: #f3f8f4; }
+.fermi-result dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; }
+.fermi-result dl div { display: grid; gap: 2px; }
+.fermi-result p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.fermi-result .primary-button { justify-self: end; }
 .parameter-help { position: relative; display: inline-flex; font-weight: 400; }
 .parameter-help-trigger { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
 .parameter-help-trigger:hover, .parameter-help-trigger[aria-expanded='true'] { background: var(--green-soft); color: var(--green); }
@@ -357,6 +417,16 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .empty-inspector { min-height: 220px; }
   .field-grid, .kind-options { grid-template-columns: 1fr 1fr; }
   .estimate-dialog { max-height: calc(100svh - 24px); }
+  .fermi-equation-fields { grid-template-columns: 1fr; }
+  .fermi-equation-status { grid-template-columns: 1fr; }
+  .fermi-equation-status > p { grid-column: 1; }
+  .fermi-variable-quick { grid-template-columns: minmax(0, 1fr) minmax(90px, .55fr) 28px 28px; }
+  .fermi-variable-quick > label:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .fermi-variable-quick .icon-button { grid-row: 1; }
+  .fermi-actions { flex-wrap: wrap; }
+  .calibration-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calibrated-evidence article { grid-template-columns: 1fr; }
+  .calibrated-evidence article .secondary-button { justify-self: start; }
   .scenario-dialog { max-height: calc(100svh - 24px); }
   .parameter-popover { width: min(280px, calc(100vw - 24px)); }
 }

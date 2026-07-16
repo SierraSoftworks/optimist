@@ -7,12 +7,14 @@ import type {
   Estimate,
   GraphEdge,
   SetEdgeEstimateInput,
+  Unit,
 } from '../api/types'
 import DistributionEditor from './DistributionEditor.vue'
 
 const props = defineProps<{
   open: boolean
   pending: boolean
+  projectId: string | null
   edge: GraphEdge | null
   slot: EdgeEstimateSlot | null
 }>()
@@ -48,6 +50,10 @@ const title = computed(() => {
   if (props.slot?.kind === 'degree') return 'Blocking degree'
   return 'Causal lag'
 })
+const expectedUnit = computed<Unit>(() => {
+  if (props.slot?.kind === 'lag') return { duration: 1 }
+  return {} as Unit
+})
 
 watch(
   () => [props.open, props.edge, props.slot] as const,
@@ -70,6 +76,10 @@ function submit() {
       .filter(Boolean),
   })
 }
+
+function appendFermiProvenance(value: string) {
+  form.provenance = [form.provenance.trim(), value].filter(Boolean).join('\n')
+}
 </script>
 
 <template>
@@ -83,7 +93,14 @@ function submit() {
           </div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
-        <DistributionEditor v-model="distribution" :families="families" :support="signed ? 'signed' : 'non_negative'" />
+        <DistributionEditor
+          v-model="distribution"
+          :families="families"
+          :support="signed ? 'signed' : 'non_negative'"
+          :project-id="projectId"
+          :expected-unit="expectedUnit"
+          @fermi-provenance="appendFermiProvenance"
+        />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
           <Trash2 :size="18" />

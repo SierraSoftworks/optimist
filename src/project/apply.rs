@@ -76,6 +76,25 @@ pub(super) fn command(
             entry.repository.update_edge(edge.clone())?;
             Ok(CommandOutcome::ObservationCorrected { edge, observation })
         }
+        GraphCommand::SetMeasurementCalibration(command) => {
+            let mut edge = measurement_edge(entry, &command.edge)?;
+            if edge.revision != command.expected_revision {
+                return Err(super::AggregateUpdateError::EdgeRevisionConflict {
+                    id: command.edge,
+                    expected: command.expected_revision,
+                    current: edge.revision,
+                }
+                .into());
+            }
+            let next_revision = next_edge_revision(&edge)?;
+            let EdgePayload::Measures(measurement) = &mut edge.payload else {
+                unreachable!("measurement_edge validated the payload")
+            };
+            measurement.set_calibration(command.calibration)?;
+            edge.revision = next_revision;
+            entry.repository.update_edge(edge.clone())?;
+            Ok(CommandOutcome::MeasurementCalibrationSet(edge))
+        }
         GraphCommand::SetEstimate(command) => estimate::set(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::SetFormula(command) => formulas::set(entry, command),

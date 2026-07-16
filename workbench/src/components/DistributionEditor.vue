@@ -3,6 +3,8 @@ import { computed, reactive, watch } from 'vue'
 import type { Distribution } from '../api/types'
 import DistributionPreview from './DistributionPreview.vue'
 import ParameterHelp from './ParameterHelp.vue'
+import FermiEstimateAssistant from './FermiEstimateAssistant.vue'
+import type { Unit } from '../api/types'
 
 type Family = Distribution['type']
 type Support = 'probability' | 'non_negative' | 'signed' | 'real'
@@ -12,8 +14,13 @@ const props = withDefaults(defineProps<{
   families: Family[]
   support: Support
   pointLabel?: string
+  projectId?: string | null
+  expectedUnit?: Unit
 }>(), { pointLabel: 'Value' })
-const emit = defineEmits<{ 'update:modelValue': [distribution: Distribution] }>()
+const emit = defineEmits<{
+  'update:modelValue': [distribution: Distribution]
+  fermiProvenance: [provenance: string]
+}>()
 const form = reactive({
   family: props.modelValue.type,
   value: 0,
@@ -108,6 +115,11 @@ function changeFamily() {
 function emitDistribution() {
   emit('update:modelValue', selectedDistribution())
 }
+
+function applyFermi(distribution: Distribution, provenance: string) {
+  emit('update:modelValue', distribution)
+  emit('fermiProvenance', provenance)
+}
 </script>
 
 <template>
@@ -172,5 +184,12 @@ function emitDistribution() {
     </div>
 
     <DistributionPreview :distribution="modelValue" :domain="previewDomain" />
+    <FermiEstimateAssistant
+      v-if="projectId && expectedUnit"
+      :project-id="projectId"
+      :support="support"
+      :expected-unit="expectedUnit"
+      @apply="applyFermi"
+    />
   </div>
 </template>

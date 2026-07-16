@@ -91,6 +91,8 @@ pub enum GraphCommand {
     AppendObservation(AppendObservation),
     /// Appends a correction which supersedes one existing observation.
     CorrectObservation(CorrectObservation),
+    /// Replaces or removes one measurement relationship's reading-to-state calibration.
+    SetMeasurementCalibration(SetMeasurementCalibration),
     /// Creates or replaces one primitive estimate in a typed owner field.
     SetEstimate(SetEstimate),
     /// Removes one optional or named-cost estimate from its owner.
@@ -173,6 +175,8 @@ pub enum CommandOutcome {
         /// Immutable correction whose `supersedes` points at its predecessor.
         observation: Observation,
     },
+    /// Complete measurement edge after its calibration was replaced or removed.
+    MeasurementCalibrationSet(Edge),
     /// Primitive estimate created or revisioned by [`GraphCommand::SetEstimate`].
     EstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].

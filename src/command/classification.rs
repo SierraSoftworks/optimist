@@ -15,6 +15,7 @@ impl GraphCommand {
                 | Self::UpdateEdgeMetadata(_)
                 | Self::AppendObservation(_)
                 | Self::CorrectObservation(_)
+                | Self::SetMeasurementCalibration(_)
                 | Self::SetEstimate(_)
                 | Self::RemoveEstimate(_)
         )

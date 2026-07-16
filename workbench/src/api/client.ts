@@ -9,6 +9,8 @@ import type {
   Estimate,
   Evidence,
   EvidenceInput,
+  FermiAssessment,
+  FermiAssessmentInput,
   GraphEdge,
   ImpedimentAnalysis,
   GraphNode,
@@ -21,6 +23,7 @@ import type {
   StructuralAnalysis,
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
+  SetMeasurementCalibrationInput,
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -188,6 +191,11 @@ export const api = {
     request<StructuralAnalysis>(`/api/v1/projects/${project}/analysis/structure`),
   impedimentAnalysis: (project: string) =>
     request<ImpedimentAnalysis>(`/api/v1/projects/${project}/analysis/impediments`),
+  assessFermi: (project: string, input: FermiAssessmentInput) =>
+    request<FermiAssessment>(`/api/v1/projects/${project}/analysis/fermi-assessment`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   scenarios: (project: string) =>
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),
   scenarioAnalysis: (project: string, scenario: string) =>
@@ -409,6 +417,38 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for relationship editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async setMeasurementCalibration(
+    project: Project,
+    edge: GraphEdge,
+    input: SetMeasurementCalibrationInput,
+  ): Promise<GraphEdge> {
+    const result = await request<CommandResult<GraphEdge>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_measurement_calibration',
+            payload: {
+              edge: edgeIdentity(edge),
+              expected_revision: edge.revision,
+              calibration: input.calibration,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'measurement_calibration_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for measurement calibration.',
         ['Confirm the workbench and server versions match.'],
       )
     }

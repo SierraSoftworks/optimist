@@ -58,6 +58,7 @@ import type {
   SetStateEstimateInput,
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
+  SetMeasurementCalibrationInput,
   ScenarioDraft,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -91,6 +92,7 @@ import {
   useCreateScenario,
   useUpdateScenario,
   useImpedimentAnalysis,
+  useSetMeasurementCalibration,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -164,6 +166,7 @@ const relationshipMenuSource = computed<GraphNode | null>(() =>
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
+const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
 const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
@@ -467,6 +470,15 @@ async function submitEdgeEdit(input: UpdateEdgeInput) {
   try {
     await updateEdge.mutateAsync(input)
     edgeEditDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitMeasurementCalibration(input: SetMeasurementCalibrationInput) {
+  mutationError.value = null
+  try {
+    selectedEdge.value = await setMeasurementCalibration.mutateAsync(input)
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -858,17 +870,20 @@ function retry() {
       :open="estimateDialogOpen"
       :pending="setStateEstimate.isPending.value"
       :node="selectedNode"
+      :project-id="selectedProjectId"
+      :edges="edges"
       @close="estimateDialogOpen = false"
       @submit="submitStateEstimate"
     />
     <EditEdgeDialog
       :open="edgeEditDialogOpen"
-      :pending="updateEdge.isPending.value || deleteEdge.isPending.value"
+      :pending="updateEdge.isPending.value || deleteEdge.isPending.value || setMeasurementCalibration.isPending.value"
       :edge="selectedEdge"
       @close="edgeEditDialogOpen = false"
       @submit="submitEdgeEdit"
       @delete="submitEdgeDelete"
       @estimate="editEdgeEstimate"
+      @calibration="submitMeasurementCalibration"
     />
     <AddObservationDialog
       :open="observationDialogOpen"
@@ -891,6 +906,7 @@ function retry() {
       :pending="setInterventionEstimate.isPending.value || removeInterventionEstimate.isPending.value"
       :node="selectedNode"
       :slot="selectedInterventionSlot"
+      :project-id="selectedProjectId"
       @close="interventionEstimateDialogOpen = false"
       @submit="submitInterventionEstimate"
       @remove="submitInterventionEstimateRemove"
@@ -909,6 +925,7 @@ function retry() {
       :pending="setEdgeEstimate.isPending.value || removeEdgeEstimate.isPending.value"
       :edge="selectedEdge"
       :slot="selectedEdgeEstimateSlot"
+      :project-id="selectedProjectId"
       @close="edgeEstimateDialogOpen = false"
       @submit="submitEdgeEstimate"
       @remove="submitEdgeEstimateRemove"

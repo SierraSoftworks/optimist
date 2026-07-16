@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{EdgeId, EdgeKind, EdgePayload, EntityId, NodeKind};
+use super::{EdgeId, EdgeKind, EdgePayload, EntityId, MeasurementCalibrationError, NodeKind};
 
 /// Validation failures returned when edge semantics do not match their endpoints.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -21,6 +21,9 @@ pub enum EdgeError {
     /// A symmetric interaction attempted to connect an intervention to itself.
     #[error("a symmetric relationship cannot connect a node to itself")]
     SymmetricSelfEdge,
+    /// A measurement edge contains invalid or polarity-incompatible calibration anchors.
+    #[error(transparent)]
+    MeasurementCalibration(#[from] MeasurementCalibrationError),
 }
 
 /// A validated structural graph relationship with an embedded typed payload.
@@ -78,7 +81,7 @@ impl Edge {
         mut source_kind: NodeKind,
         mut destination: EntityId,
         mut destination_kind: NodeKind,
-        payload: EdgePayload,
+        mut payload: EdgePayload,
     ) -> Result<Self, EdgeError> {
         let kind = payload.kind();
         if !endpoints_are_valid(kind, source_kind, destination_kind) {
@@ -94,6 +97,10 @@ impl Edge {
         if kind.is_symmetric() && source > destination {
             std::mem::swap(&mut source, &mut destination);
             std::mem::swap(&mut source_kind, &mut destination_kind);
+        }
+        if let EdgePayload::Measures(measurement) = &mut payload {
+            let calibration = measurement.calibration.take();
+            measurement.set_calibration(calibration)?;
         }
 
         Ok(Self {
@@ -155,7 +162,10 @@ const fn endpoints_are_valid(kind: EdgeKind, source: NodeKind, destination: Node
 #[cfg(test)]
 mod tests {
     use super::{Edge, EdgeError};
-    use crate::domain::{EdgePayload, EntityId, Measurement, MeasurementPolarity, NodeKind};
+    use crate::domain::{
+        EdgePayload, EntityId, Measurement, MeasurementCalibration, MeasurementCalibrationError,
+        MeasurementPolarity, NodeKind,
+    };
 
     #[test]
     fn measurements_are_owned_by_metric_to_subject_edges() {
@@ -166,6 +176,7 @@ mod tests {
             NodeKind::Factor,
             EdgePayload::Measures(Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: Vec::new(),
             }),
         )
@@ -183,11 +194,36 @@ mod tests {
             NodeKind::Outcome,
             EdgePayload::Measures(Measurement {
                 polarity: MeasurementPolarity::HigherIsBetter,
+                calibration: None,
                 observations: Vec::new(),
             }),
         );
 
         assert!(matches!(result, Err(EdgeError::InvalidEndpoints { .. })));
+    }
+
+    #[test]
+    fn rejects_measurement_calibration_which_conflicts_with_polarity() {
+        let result = Edge::new(
+            EntityId::new(1),
+            NodeKind::Metric,
+            EntityId::new(2),
+            NodeKind::Factor,
+            EdgePayload::Measures(Measurement {
+                polarity: MeasurementPolarity::LowerIsBetter,
+                calibration: Some(MeasurementCalibration::Linear {
+                    state_zero: 5.0,
+                    state_one: 20.0,
+                }),
+                observations: Vec::new(),
+            }),
+        );
+        assert!(matches!(
+            result,
+            Err(EdgeError::MeasurementCalibration(
+                MeasurementCalibrationError::PolarityMismatch(MeasurementPolarity::LowerIsBetter)
+            ))
+        ));
     }
 
     #[test]
