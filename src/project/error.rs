@@ -1,7 +1,10 @@
 use thiserror::Error;
 
 use crate::{
-    domain::{EdgeId, EdgeIdError, NodeError, ObservationError, ProjectId},
+    domain::{
+        EdgeId, EdgeIdError, EntityId, NodeError, NodeKind, ObservationError, ProjectId,
+        ScenarioError, ScenarioId,
+    },
     store::RepositoryError,
 };
 
@@ -57,6 +60,38 @@ pub enum ProjectError {
     /// Observation validation or immutable correction semantics failed.
     #[error(transparent)]
     Observation(#[from] ObservationError),
+    /// Scenario aggregate-local validation failed.
+    #[error(transparent)]
+    Scenario(#[from] ScenarioError),
+    /// The requested scenario document does not exist in this project.
+    #[error("scenario {0} does not exist")]
+    ScenarioNotFound(ScenarioId),
+    /// A scenario update or delete was based on an older document revision.
+    #[error("scenario {id} revision conflict: expected {expected}, current {current}")]
+    ScenarioRevisionConflict {
+        /// Project-local scenario document ID.
+        id: ScenarioId,
+        /// Revision supplied by the caller.
+        expected: u64,
+        /// Revision currently stored by the project.
+        current: u64,
+    },
+    /// A scenario's document revision cannot represent another update.
+    #[error("scenario {0} has exhausted its revision space")]
+    ScenarioRevisionSpaceExhausted(ScenarioId),
+    /// A scenario's independent project-local ID counter is exhausted.
+    #[error("project {0} has exhausted its scenario identifier space")]
+    ScenarioIdentifierSpaceExhausted(ProjectId),
+    /// A scenario reference points at a missing or wrong-kind graph entity.
+    #[error("scenario reference {id} must identify a {expected:?}, found {actual:?}")]
+    InvalidScenarioReference {
+        /// Project-local graph entity ID referenced by the scenario.
+        id: EntityId,
+        /// Required structural entity kind.
+        expected: NodeKind,
+        /// Stored kind, or `None` when no such entity exists.
+        actual: Option<NodeKind>,
+    },
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

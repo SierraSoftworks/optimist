@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Edge, Node, NodeKind, Observation},
+    domain::{Edge, Node, NodeKind, Observation, Scenario},
     project::Project,
 };
 
@@ -66,6 +66,34 @@ pub(super) fn observations(observations: &[Observation]) -> String {
                     .supersedes
                     .map(|id| id.to_string())
                     .unwrap_or_else(|| "-".to_owned())
+            )
+        }),
+    )
+}
+
+pub(super) fn scenarios(scenarios: &[Scenario]) -> String {
+    rows(
+        "ID\tNAME\tTITLE\tHORIZON\tOBJECTIVES\tCANDIDATES\tREVISION",
+        scenarios.iter().map(|scenario| {
+            format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                scenario.id,
+                scenario
+                    .draft
+                    .name
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                scenario
+                    .draft
+                    .title
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                scenario.draft.planning_horizon,
+                scenario.draft.objectives.len(),
+                scenario.draft.candidate_interventions.len(),
+                scenario.revision,
             )
         }),
     )

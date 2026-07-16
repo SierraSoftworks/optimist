@@ -31,6 +31,18 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_observation" => {
             &["Check the value, RFC 3339 timestamp, source, unit, and standard deviation."]
         }
+        "invalid_scenario" => &[
+            "Check the scenario document fields and use positive finite importance and budget values.",
+        ],
+        "scenario_not_found" => {
+            &["Run `optimist scenario list` and retry with a returned scenario ID."]
+        }
+        "scenario_revision_conflict" => {
+            &["Run `optimist scenario show <ID>` and retry with its current `revision`."]
+        }
+        "invalid_scenario_reference" => {
+            &["Use outcome IDs for objectives and intervention IDs for candidate interventions."]
+        }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]
         }

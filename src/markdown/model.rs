@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Edge, Node},
+    domain::{Edge, Node, Scenario, normalize_name},
     project::Project,
 };
 
@@ -35,4 +35,43 @@ pub struct EntityDocument {
     pub node: Node,
     /// Complete outgoing edge aggregates, sorted by canonical edge ID when rendered.
     pub outgoing_edges: Vec<Edge>,
+}
+
+/// Versioned canonical `scenarios/<id>-<slug>.md` content.
+///
+/// Structured scenario fields live in YAML frontmatter while the scenario's
+/// Markdown rationale is the document body. Entity references remain unresolved
+/// until project-level import validation has loaded the complete graph.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScenarioDocument {
+    /// Schema version used to decode this document.
+    pub schema_version: u32,
+    /// Project revision from which this scenario file was exported.
+    pub base_project_revision: u64,
+    /// Complete typed scenario reconstructed with its Markdown rationale.
+    pub scenario: Scenario,
+}
+
+impl ScenarioDocument {
+    /// Returns the deterministic relative export path for this document.
+    pub fn canonical_path(&self) -> String {
+        let normalized = normalize_name(&self.scenario.draft.name);
+        let mut slug = String::new();
+        let mut separator = false;
+        for character in normalized.chars() {
+            if character.is_alphanumeric() {
+                if separator && !slug.is_empty() {
+                    slug.push('-');
+                }
+                separator = false;
+                slug.push(character);
+            } else {
+                separator = true;
+            }
+        }
+        if slug.is_empty() {
+            slug.push_str("scenario");
+        }
+        format!("scenarios/{}-{slug}.md", self.scenario.id)
+    }
 }

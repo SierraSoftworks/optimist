@@ -1,8 +1,12 @@
 use crate::{
-    domain::{Edge, EdgePayload, EntityId, Factor, Node, NodeKind, NodePayload},
+    domain::{
+        Edge, EdgePayload, EntityId, Factor, MonteCarloConfig, Node, NodeKind, NodePayload,
+        Scenario, ScenarioDraft, ScenarioId,
+    },
     markdown::{
-        EntityDocument, MarkdownError, ProjectDocument, SCHEMA_VERSION, parse_entity,
-        parse_project, render_entity, render_project,
+        EntityDocument, MarkdownError, ProjectDocument, SCHEMA_VERSION, ScenarioDocument,
+        parse_entity, parse_project, parse_scenario, render_entity, render_project,
+        render_scenario,
     },
     project::Project,
 };
@@ -127,4 +131,36 @@ fn rejects_noncanonical_or_oversized_documents() {
         parse_project("_project.md", &oversized),
         Err(MarkdownError::DocumentTooLarge { .. })
     ));
+}
+
+#[test]
+fn scenario_render_is_canonical_and_semantically_stable() {
+    let document = ScenarioDocument {
+        schema_version: SCHEMA_VERSION,
+        base_project_revision: 8,
+        scenario: Scenario::new(
+            ScenarioId::new(0),
+            ScenarioDraft {
+                name: "Delivery Reliability".to_owned(),
+                title: "Reliable delivery".to_owned(),
+                rationale: "# Decision\n\nPrefer sustainable improvements.\n".to_owned(),
+                objectives: vec![],
+                planning_horizon: 12,
+                budgets: vec![],
+                candidate_interventions: vec![],
+                monte_carlo: MonteCarloConfig::new(42, 10, 100, 0.01, 0.01).unwrap(),
+                scalar_preferences: None,
+            },
+        )
+        .unwrap(),
+    };
+    assert_eq!(
+        document.canonical_path(),
+        "scenarios/A-delivery-reliability.md"
+    );
+    let rendered = render_scenario(&document).unwrap();
+    assert!(!rendered.contains("rationale:"));
+    let parsed = parse_scenario(document.canonical_path(), &rendered).unwrap();
+    assert_eq!(parsed, document);
+    assert_eq!(render_scenario(&parsed).unwrap(), rendered);
 }

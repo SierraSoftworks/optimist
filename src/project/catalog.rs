@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use indradb::MemoryDatastore;
 
 use crate::{
-    domain::{EntityId, ProjectId, normalize_name},
+    domain::{EntityId, ProjectId, Scenario, ScenarioId, normalize_name},
     store::IndraDbRepository,
 };
 
@@ -15,6 +15,8 @@ pub(super) struct ProjectEntry {
     pub(super) project: Project,
     pub(super) repository: IndraDbRepository<MemoryDatastore>,
     pub(super) results: BTreeMap<Uuid, CommandResult>,
+    pub(super) next_scenario_id: Option<u64>,
+    pub(super) scenarios: BTreeMap<ScenarioId, Scenario>,
 }
 
 /// Owns project metadata and one isolated graph repository per project.
@@ -79,6 +81,8 @@ impl ProjectCatalog {
                 project: project.clone(),
                 repository,
                 results: BTreeMap::new(),
+                next_scenario_id: Some(0),
+                scenarios: BTreeMap::new(),
             },
         );
         Ok(project)

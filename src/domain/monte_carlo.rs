@@ -1,3 +1,4 @@
+use serde::{Deserialize, Deserializer, de};
 use thiserror::Error;
 
 use super::online_moments::OnlineJointMoments;
@@ -25,6 +26,32 @@ pub struct MonteCarloConfig {
     maximum_samples: u64,
     absolute_tolerance: f64,
     relative_tolerance: f64,
+}
+
+impl<'de> Deserialize<'de> for MonteCarloConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct SerializedConfig {
+            seed: u64,
+            minimum_samples: u64,
+            maximum_samples: u64,
+            absolute_tolerance: f64,
+            relative_tolerance: f64,
+        }
+
+        let value = SerializedConfig::deserialize(deserializer)?;
+        Self::new(
+            value.seed,
+            value.minimum_samples,
+            value.maximum_samples,
+            value.absolute_tolerance,
+            value.relative_tolerance,
+        )
+        .map_err(de::Error::custom)
+    }
 }
 
 impl MonteCarloConfig {

@@ -2,8 +2,8 @@ use serde::de::DeserializeOwned;
 
 use super::{
     MarkdownError,
-    frontmatter::{EntityHeader, ProjectHeader},
-    model::{EntityDocument, ProjectDocument, SCHEMA_VERSION},
+    frontmatter::{EntityHeader, ProjectHeader, ScenarioDocumentHeader},
+    model::{EntityDocument, ProjectDocument, SCHEMA_VERSION, ScenarioDocument},
     validate,
 };
 
@@ -43,6 +43,34 @@ pub fn parse_entity(path: impl Into<String>, input: &str) -> Result<EntityDocume
     };
     validate::entity(&path, &mut document)?;
     Ok(document)
+}
+
+/// Parses and aggregate-validates a bounded scenario Markdown document.
+///
+/// Outcome and intervention references are intentionally resolved later by the
+/// project import layer, after all entity documents have been loaded.
+pub fn parse_scenario(
+    path: impl Into<String>,
+    input: &str,
+) -> Result<ScenarioDocument, MarkdownError> {
+    let path = path.into();
+    let (frontmatter, body) = split(&path, input)?;
+    let header: ScenarioDocumentHeader = decode_yaml(&path, frontmatter)?;
+    schema(&path, header.schema_version)?;
+    let scenario = header.scenario.into_scenario(body.to_owned());
+    scenario
+        .draft
+        .validate()
+        .map_err(|error| MarkdownError::InvalidScenario {
+            path: path.clone(),
+            scenario: scenario.id,
+            message: error.to_string(),
+        })?;
+    Ok(ScenarioDocument {
+        schema_version: header.schema_version,
+        base_project_revision: header.base_project_revision,
+        scenario,
+    })
 }
 
 fn split<'a>(path: &str, input: &'a str) -> Result<(&'a str, &'a str), MarkdownError> {

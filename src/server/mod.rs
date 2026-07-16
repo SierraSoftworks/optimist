@@ -1,6 +1,7 @@
 mod api_error;
 mod error;
 mod graph;
+mod project_error_response;
 mod projects;
 mod state;
 

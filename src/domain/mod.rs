@@ -22,6 +22,9 @@ mod quantile_fit;
 pub use distribution_math::DistributionMoments;
 pub use likelihood::{BayesianUpdateError, BetaBinomialLikelihood, NormalNormalLikelihood};
 mod quantiles;
+mod scenario;
+mod scenario_id;
+mod scenario_validation;
 mod unit;
 mod unit_ops;
 
@@ -52,4 +55,9 @@ pub use node::{
 pub use observation::{NewObservation, ObservationError};
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
+pub use scenario::{
+    ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
+};
+pub use scenario_id::ScenarioId;
+pub use scenario_validation::ScenarioError;
 pub use unit::{Dimension, Unit, UnitError};

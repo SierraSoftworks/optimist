@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    domain::{Edge, EntityId, Node, NodePayload},
+    domain::{
+        Edge, EntityId, MonteCarloConfig, Node, NodePayload, ScalarPreference, Scenario,
+        ScenarioBudget, ScenarioDraft, ScenarioId, ScenarioObjective,
+    },
     project::Project,
 };
 
@@ -22,6 +25,67 @@ pub(super) struct EntityHeader {
     pub(super) node: NodeHeader,
     #[serde(default)]
     pub(super) outgoing_edges: Vec<Edge>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ScenarioDocumentHeader {
+    pub(super) schema_version: u32,
+    pub(super) base_project_revision: u64,
+    pub(super) scenario: ScenarioHeader,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ScenarioHeader {
+    pub(super) id: ScenarioId,
+    pub(super) revision: u64,
+    pub(super) name: String,
+    pub(super) title: String,
+    pub(super) objectives: Vec<ScenarioObjective>,
+    pub(super) planning_horizon: u64,
+    #[serde(default)]
+    pub(super) budgets: Vec<ScenarioBudget>,
+    #[serde(default)]
+    pub(super) candidate_interventions: Vec<EntityId>,
+    pub(super) monte_carlo: MonteCarloConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) scalar_preferences: Option<Vec<ScalarPreference>>,
+}
+
+impl ScenarioHeader {
+    pub(super) fn from_scenario(scenario: &Scenario) -> Self {
+        Self {
+            id: scenario.id,
+            revision: scenario.revision,
+            name: scenario.draft.name.clone(),
+            title: scenario.draft.title.clone(),
+            objectives: scenario.draft.objectives.clone(),
+            planning_horizon: scenario.draft.planning_horizon,
+            budgets: scenario.draft.budgets.clone(),
+            candidate_interventions: scenario.draft.candidate_interventions.clone(),
+            monte_carlo: scenario.draft.monte_carlo,
+            scalar_preferences: scenario.draft.scalar_preferences.clone(),
+        }
+    }
+
+    pub(super) fn into_scenario(self, rationale: String) -> Scenario {
+        Scenario {
+            id: self.id,
+            revision: self.revision,
+            draft: ScenarioDraft {
+                name: self.name,
+                title: self.title,
+                rationale,
+                objectives: self.objectives,
+                planning_horizon: self.planning_horizon,
+                budgets: self.budgets,
+                candidate_interventions: self.candidate_interventions,
+                monte_carlo: self.monte_carlo,
+                scalar_preferences: self.scalar_preferences,
+            },
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]

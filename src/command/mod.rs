@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::{
-    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation,
+    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation, Scenario,
+    ScenarioDraft, ScenarioId,
 };
 
 /// One idempotent, revision-checked request to mutate a project graph.
@@ -71,6 +72,12 @@ pub enum GraphCommand {
     AppendObservation(AppendObservation),
     /// Appends a correction which supersedes one existing observation.
     CorrectObservation(CorrectObservation),
+    /// Allocates an independent project-local ID and stores a scenario document.
+    CreateScenario(CreateScenario),
+    /// Replaces a scenario document under its own revision guard.
+    UpdateScenario(UpdateScenario),
+    /// Removes a scenario document under its own revision guard.
+    DeleteScenario(DeleteScenario),
 }
 
 /// Data required to construct a new structural node.
@@ -133,6 +140,33 @@ pub struct CorrectObservation {
     pub value: f64,
 }
 
+/// Data required to create a scenario outside the causal graph.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CreateScenario {
+    /// Validated scenario fields and graph references awaiting project resolution.
+    pub scenario: ScenarioDraft,
+}
+
+/// Revision-checked replacement for an existing scenario document.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct UpdateScenario {
+    /// Project-local scenario document ID.
+    pub id: ScenarioId,
+    /// Scenario revision on which the replacement was based.
+    pub expected_revision: u64,
+    /// Complete replacement fields; partial patch semantics are intentionally absent.
+    pub scenario: ScenarioDraft,
+}
+
+/// Revision-checked identity of a scenario document to remove.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteScenario {
+    /// Project-local scenario document ID.
+    pub id: ScenarioId,
+    /// Scenario revision observed before deletion.
+    pub expected_revision: u64,
+}
+
 /// Durable result of a committed command, returned identically on retries.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CommandResult {
@@ -170,6 +204,12 @@ pub enum CommandOutcome {
         /// Immutable correction whose `supersedes` points at its predecessor.
         observation: Observation,
     },
+    /// Complete scenario document created by [`GraphCommand::CreateScenario`].
+    ScenarioCreated(Scenario),
+    /// Complete replacement stored by [`GraphCommand::UpdateScenario`].
+    ScenarioUpdated(Scenario),
+    /// Complete document removed by [`GraphCommand::DeleteScenario`].
+    ScenarioDeleted(Scenario),
 }
 
 #[cfg(test)]

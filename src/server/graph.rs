@@ -7,7 +7,7 @@ use axum::{
 
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{Edge, EdgeId, EntityId, Node, ProjectId},
+    domain::{Edge, EdgeId, EntityId, Node, ProjectId, Scenario, ScenarioId},
     project::ProjectError,
     store::RepositoryError,
 };
@@ -21,6 +21,11 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/v1/projects/{project}/nodes/{entity}", get(show_node))
         .route("/api/v1/projects/{project}/edges", get(list_edges))
         .route("/api/v1/projects/{project}/edges/{edge}", get(show_edge))
+        .route("/api/v1/projects/{project}/scenarios", get(list_scenarios))
+        .route(
+            "/api/v1/projects/{project}/scenarios/{scenario}",
+            get(show_scenario),
+        )
 }
 
 async fn execute_command(
@@ -73,6 +78,26 @@ async fn show_edge(
         .ok_or_else(|| ProjectError::Repository(RepositoryError::MissingEdge(edge)).into())
 }
 
+async fn list_scenarios(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+) -> Result<Json<Vec<Scenario>>, ApiError> {
+    Ok(Json(state.catalog.read().await.list_scenarios(&project)?))
+}
+
+async fn show_scenario(
+    State(state): State<AppState>,
+    Path((project, scenario)): Path<(ProjectId, ScenarioId)>,
+) -> Result<Json<Scenario>, ApiError> {
+    state
+        .catalog
+        .read()
+        .await
+        .get_scenario(&project, scenario)?
+        .map(Json)
+        .ok_or_else(|| ProjectError::ScenarioNotFound(scenario).into())
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -83,8 +108,8 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        command::{CommandRequest, CreateNode, GraphCommand},
-        domain::{Factor, NodePayload},
+        command::{CommandRequest, CreateNode, CreateScenario, GraphCommand},
+        domain::{Factor, MonteCarloConfig, NodePayload, ScenarioDraft},
         server::router,
     };
 
@@ -166,5 +191,64 @@ mod tests {
                 .unwrap();
             assert_eq!(response.status(), expected_status);
         }
+    }
+
+    #[tokio::test]
+    async fn creates_lists_and_shows_scenarios() {
+        let app = router();
+        create_project(&app).await;
+        let request = CommandRequest::new(
+            0,
+            GraphCommand::CreateScenario(CreateScenario {
+                scenario: ScenarioDraft {
+                    name: "empty graph".to_owned(),
+                    title: "Empty graph".to_owned(),
+                    rationale: "Transport fixture without references.".to_owned(),
+                    objectives: vec![],
+                    planning_horizon: 1,
+                    budgets: vec![],
+                    candidate_interventions: vec![],
+                    monte_carlo: MonteCarloConfig::new(1, 2, 10, 0.1, 0.1).unwrap(),
+                    scalar_preferences: None,
+                },
+            }),
+        );
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        assert_eq!(response_json(created).await["outcome"]["value"]["id"], "A");
+
+        let listed = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/projects/A/scenarios")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response_json(listed).await[0]["name"], "empty graph");
+
+        let missing = app
+            .oneshot(
+                Request::get("/api/v1/projects/A/scenarios/B")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response_json(missing).await["error"]["code"],
+            "scenario_not_found"
+        );
     }
 }

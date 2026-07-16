@@ -1,7 +1,9 @@
 use super::{
     MarkdownError,
-    frontmatter::{EntityHeader, NodeHeader, ProjectHeader},
-    model::{EntityDocument, ProjectDocument, SCHEMA_VERSION},
+    frontmatter::{
+        EntityHeader, NodeHeader, ProjectHeader, ScenarioDocumentHeader, ScenarioHeader,
+    },
+    model::{EntityDocument, ProjectDocument, SCHEMA_VERSION, ScenarioDocument},
     validate,
 };
 
@@ -27,6 +29,26 @@ pub fn render_entity(document: &EntityDocument) -> Result<String, MarkdownError>
         outgoing_edges: document.outgoing_edges,
     };
     render(&header, &document.node.description)
+}
+
+/// Validates and deterministically renders a canonical scenario Markdown document.
+pub fn render_scenario(document: &ScenarioDocument) -> Result<String, MarkdownError> {
+    schema(document.schema_version)?;
+    document
+        .scenario
+        .draft
+        .validate()
+        .map_err(|error| MarkdownError::InvalidScenario {
+            path: "<render>".to_owned(),
+            scenario: document.scenario.id,
+            message: error.to_string(),
+        })?;
+    let header = ScenarioDocumentHeader {
+        schema_version: document.schema_version,
+        base_project_revision: document.base_project_revision,
+        scenario: ScenarioHeader::from_scenario(&document.scenario),
+    };
+    render(&header, &document.scenario.draft.rationale)
 }
 
 fn schema(version: u32) -> Result<(), MarkdownError> {

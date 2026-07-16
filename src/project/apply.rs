@@ -4,7 +4,7 @@ use crate::{
     store::{GraphRepository, RepositoryError},
 };
 
-use super::{ProjectError, catalog::ProjectEntry};
+use super::{ProjectError, catalog::ProjectEntry, scenarios};
 
 pub(super) fn command(
     entry: &mut ProjectEntry,
@@ -68,6 +68,9 @@ pub(super) fn command(
             entry.repository.update_edge(edge.clone())?;
             Ok(CommandOutcome::ObservationCorrected { edge, observation })
         }
+        GraphCommand::CreateScenario(command) => scenarios::create(entry, command),
+        GraphCommand::UpdateScenario(command) => scenarios::update(entry, command),
+        GraphCommand::DeleteScenario(command) => scenarios::delete(entry, command),
     }
 }
 

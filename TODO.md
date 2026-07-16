@@ -26,7 +26,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
 - [x] Quantile-based Normal/LogNormal prior elicitation with retained inputs and residual diagnostics.
 - [ ] Project dependence model for shared variables and residual correlations.
-- [ ] Typed scenario/project documents outside the causal graph.
+- [x] Typed scenario/project documents outside the causal graph.
 
 ## 2. Storage And Project Isolation
 
@@ -56,7 +56,8 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Typed node/edge metadata and Markdown description updates.
 - [ ] Primitive estimate set/show/remove commands and CLI.
 - [ ] Fermi component and formula authoring commands.
-- [ ] Scenario create/list/show/update/delete/analyze commands.
+- [x] Scenario create/list/show/update/delete commands.
+  - [ ] Scenario analysis command and result transport.
 - [ ] Atomic command batches and compensating undo.
 - [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
 - [ ] Add pagination/filter/search endpoints and CLI flags.
@@ -66,7 +67,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Versioned `_project.md` schema foundation for project identity and base revision.
   - [ ] Extend `_project.md` with constraints, unit registry, and dependence documents.
 - [x] Canonical entity document schema with outgoing edge payloads and Markdown description body.
-- [ ] Canonical `scenarios/<id>-<slug>.md` schema.
+- [x] Canonical `scenarios/<id>-<slug>.md` schema.
 - [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.
   - [x] Deterministic in-memory rendering and parse-render-parse semantic stability.
 - [ ] Two-pass reference and project-constraint validation.

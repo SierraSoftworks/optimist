@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::domain::{EdgeId, EntityId};
+use crate::domain::{EdgeId, EntityId, ScenarioId};
 
 /// Source-aware failures returned by bounded Markdown parsing and rendering.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -80,6 +80,16 @@ pub enum MarkdownError {
         path: String,
         /// Invalid edge identity.
         edge: EdgeId,
+        /// Domain validation diagnostic.
+        message: String,
+    },
+    /// A scenario document violates aggregate-local validation rules.
+    #[error("{path}: invalid scenario {scenario}: {message}")]
+    InvalidScenario {
+        /// Source path or render boundary.
+        path: String,
+        /// Affected project-local scenario ID.
+        scenario: ScenarioId,
         /// Domain validation diagnostic.
         message: String,
     },

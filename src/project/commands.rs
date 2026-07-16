@@ -1,6 +1,6 @@
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{Edge, EdgeId, EntityId, Node, ProjectId},
+    domain::{Edge, EdgeId, EntityId, Node, ProjectId, Scenario, ScenarioId},
     store::GraphRepository,
 };
 
@@ -73,6 +73,28 @@ impl ProjectCatalog {
         edge_id: &EdgeId,
     ) -> Result<Option<Edge>, ProjectError> {
         Ok(self.repository_mut(project_id)?.get_edge(edge_id)?)
+    }
+
+    /// Lists scenario documents in deterministic project-local ID order.
+    pub fn list_scenarios(&self, project_id: &ProjectId) -> Result<Vec<Scenario>, ProjectError> {
+        let entry = self
+            .projects
+            .get(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        Ok(entry.scenarios.values().cloned().collect())
+    }
+
+    /// Retrieves one scenario document without exposing graph storage internals.
+    pub fn get_scenario(
+        &self,
+        project_id: &ProjectId,
+        scenario_id: ScenarioId,
+    ) -> Result<Option<Scenario>, ProjectError> {
+        let entry = self
+            .projects
+            .get(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        Ok(entry.scenarios.get(&scenario_id).cloned())
     }
 }
 

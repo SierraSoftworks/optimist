@@ -14,6 +14,7 @@ mod output;
 mod output_table;
 mod project;
 mod scenario;
+mod scenario_client;
 mod server;
 
 use clap::{Parser, Subcommand};
@@ -102,7 +103,9 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
             observe::run(args, cli.project.as_ref(), &server_url, output).await
         }
         Command::Estimate(args) => estimate::run(args),
-        Command::Scenario(args) => scenario::run(args),
+        Command::Scenario(args) => {
+            scenario::run(args, cli.project.as_ref(), &server_url, output).await
+        }
         Command::Apply(args) => apply::run(args),
     }
 }

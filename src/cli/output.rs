@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 
-use crate::domain::{Edge, Node, Observation};
+use crate::domain::{Edge, Node, Observation, Scenario};
 use crate::project::Project;
 
 use super::output_table;
@@ -96,6 +96,25 @@ impl OutputFormat {
                 .map(|lines| lines.join("\n")),
         }
     }
+
+    pub(super) fn scenario(self, scenario: &Scenario) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(output_table::scenarios(std::slice::from_ref(scenario))),
+            Self::Json | Self::Jsonl => serialize(scenario),
+        }
+    }
+
+    pub(super) fn scenarios(self, scenarios: &[Scenario]) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(output_table::scenarios(scenarios)),
+            Self::Json => serialize(scenarios),
+            Self::Jsonl => scenarios
+                .iter()
+                .map(serialize)
+                .collect::<Result<Vec<_>, _>>()
+                .map(|lines| lines.join("\n")),
+        }
+    }
 }
 
 fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_errors::Error> {
@@ -112,8 +131,8 @@ fn serialize<T: serde::Serialize + ?Sized>(value: &T) -> Result<String, human_er
 mod tests {
     use crate::{
         domain::{
-            Edge, EdgePayload, EntityId, Factor, Node, NodeKind, NodePayload, Observation,
-            ProjectId, Requirement,
+            Edge, EdgePayload, EntityId, Factor, MonteCarloConfig, Node, NodeKind, NodePayload,
+            Observation, ProjectId, Requirement, Scenario, ScenarioDraft, ScenarioId,
         },
         project::Project,
     };
@@ -226,5 +245,34 @@ mod tests {
         assert_eq!(node_json["id"], "A");
         assert_eq!(edge_json["source"], "A");
         assert_eq!(edge_json["destination"], "B");
+    }
+
+    #[test]
+    fn renders_scenario_tables_and_jsonl_stably() {
+        let scenario = Scenario::new(
+            ScenarioId::new(0),
+            ScenarioDraft {
+                name: "delivery reliability".to_owned(),
+                title: "Delivery Reliability".to_owned(),
+                rationale: String::new(),
+                objectives: vec![],
+                planning_horizon: 12,
+                budgets: vec![],
+                candidate_interventions: vec![],
+                monte_carlo: MonteCarloConfig::new(1, 2, 10, 0.1, 0.1).unwrap(),
+                scalar_preferences: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            OutputFormat::Table.scenario(&scenario).unwrap(),
+            "ID\tNAME\tTITLE\tHORIZON\tOBJECTIVES\tCANDIDATES\tREVISION\nA\tdelivery reliability\tDelivery Reliability\t12\t0\t0\t0"
+        );
+        assert_eq!(
+            OutputFormat::Jsonl
+                .scenarios(std::slice::from_ref(&scenario))
+                .unwrap(),
+            OutputFormat::Json.scenario(&scenario).unwrap()
+        );
     }
 }
