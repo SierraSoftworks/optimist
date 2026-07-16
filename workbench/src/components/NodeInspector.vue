@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Activity, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
-import type { GraphEdge, GraphNode, Observation } from '../api/types'
+import type {
+  Distribution,
+  GraphEdge,
+  GraphNode,
+  InterventionEstimateSlot,
+  Observation,
+} from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -10,6 +16,7 @@ const emit = defineEmits<{
   relationship: [edge: GraphEdge]
   observe: [edge: GraphEdge]
   correct: [edge: GraphEdge, observation: Observation]
+  interventionEstimate: [slot: InterventionEstimateSlot]
   delete: []
 }>()
 const confirmDelete = ref(false)
@@ -52,6 +59,10 @@ function distribution(node: GraphNode, slot: 'current' | 'desired') {
 function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
   const value = distribution(node, slot)
   if (!value) return 'Not set'
+  return formatDistribution(value)
+}
+
+function formatDistribution(value: Distribution) {
   if (value.type === 'point') return `Point · ${value.value}`
   if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
   if (value.type === 'scaled_beta') {
@@ -169,12 +180,24 @@ function replacement(edge: GraphEdge, observation: Observation) {
       </section>
 
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">
-        <h3>Investment</h3>
-        <dl>
-          <div><dt>Cost dimensions</dt><dd>{{ node.payload.properties.costs.length }}</dd></div>
-          <div><dt>Duration</dt><dd>{{ node.payload.properties.duration?.distribution.type ?? 'Not set' }}</dd></div>
-          <div><dt>Success prior</dt><dd>{{ node.payload.properties.probability_of_success?.distribution.type ?? 'Not set' }}</dd></div>
-        </dl>
+        <h3>Investment <button type="button" class="icon-button section-action" title="Add cost dimension" aria-label="Add cost dimension" @click="emit('interventionEstimate', { kind: 'cost', value: '' })"><Plus :size="14" /></button></h3>
+        <div class="estimate-row">
+          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong></div>
+          <button type="button" class="icon-button" aria-label="Edit duration estimate" @click="emit('interventionEstimate', { kind: 'duration' })"><Pencil :size="13" /></button>
+        </div>
+        <div class="estimate-row">
+          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong></div>
+          <button type="button" class="icon-button" aria-label="Edit success probability estimate" @click="emit('interventionEstimate', { kind: 'probability_of_success' })"><Pencil :size="13" /></button>
+        </div>
+        <div v-for="cost in node.payload.properties.costs" :key="cost.dimension" class="estimate-row">
+          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong></div>
+          <button type="button" class="icon-button" :aria-label="`Edit ${cost.dimension} cost estimate`" @click="emit('interventionEstimate', { kind: 'cost', value: cost.dimension })"><Pencil :size="13" /></button>
+        </div>
+        <p v-if="!node.payload.properties.costs.length" class="muted">No cost dimensions configured.</p>
+        <div v-if="node.payload.properties.acceptance_criteria.length" class="acceptance-criteria">
+          <span>Acceptance criteria</span>
+          <ul><li v-for="criterion in node.payload.properties.acceptance_criteria" :key="criterion">{{ criterion }}</li></ul>
+        </div>
       </section>
 
       <section class="inspector-section">

@@ -5,11 +5,13 @@ import type {
   CreateEdgeInput,
   CreateNodeInput,
   EdgeIdentity,
+  Estimate,
   GraphEdge,
   GraphNode,
   Project,
   ProjectArchive,
   SetStateEstimateInput,
+  SetInterventionEstimateInput,
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -36,6 +38,50 @@ interface PrimitiveEstimate {
   revision: number
   distribution: import('./types').Distribution
   provenance: string[]
+}
+
+const estimateIdAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.'
+
+function encodeEstimateId(value: number) {
+  if (value === 0) return estimateIdAlphabet[0]!
+  let encoded = ''
+  while (value > 0) {
+    encoded = estimateIdAlphabet[value % 64]! + encoded
+    value = Math.floor(value / 64)
+  }
+  return encoded
+}
+
+function interventionEstimate(node: GraphNode, input: SetInterventionEstimateInput) {
+  if (node.payload.kind !== 'intervention') return null
+  const slot = input.slot
+  if (slot.kind === 'duration') return node.payload.properties.duration
+  if (slot.kind === 'probability_of_success') {
+    return node.payload.properties.probability_of_success
+  }
+  return node.payload.properties.costs.find(
+    (cost) => cost.dimension === slot.value.trim(),
+  )?.value ?? null
+}
+
+function nextInterventionEstimateId(node: GraphNode) {
+  if (node.payload.kind !== 'intervention') return 'A'
+  const used = new Set([
+    ...node.payload.properties.costs.map((cost) => cost.value.id),
+    ...(node.payload.properties.duration ? [node.payload.properties.duration.id] : []),
+    ...(node.payload.properties.probability_of_success
+      ? [node.payload.properties.probability_of_success.id]
+      : []),
+  ])
+  for (let value = 0; value < Number.MAX_SAFE_INTEGER; value += 1) {
+    const id = encodeEstimateId(value)
+    if (!used.has(id)) return id
+  }
+  throw new OptimistApiError(
+    'estimate_identifier_space_exhausted',
+    'The intervention has exhausted its estimate identifier space.',
+    ['Remove an unused estimate and retry.'],
+  )
 }
 
 interface ObservationAppendResult {
@@ -363,5 +409,74 @@ export const api = {
       )
     }
     return result.outcome.value.observation
+  },
+  async setInterventionEstimate(
+    project: Project,
+    node: GraphNode,
+    input: SetInterventionEstimateInput,
+  ): Promise<PrimitiveEstimate> {
+    const existing = interventionEstimate(node, input)
+    const estimate = existing?.id ?? nextInterventionEstimateId(node)
+    const result = await request<CommandResult<PrimitiveEstimate>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_estimate',
+            payload: {
+              address: { project: project.id, owner: { kind: 'node', id: node.id }, estimate },
+              slot: input.slot,
+              distribution: input.distribution,
+              provenance: input.provenance,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'estimate_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for intervention estimate editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async removeInterventionEstimate(
+    project: Project,
+    node: GraphNode,
+    estimate: Estimate,
+  ): Promise<PrimitiveEstimate> {
+    const result = await request<CommandResult<PrimitiveEstimate>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'remove_estimate',
+            payload: {
+              address: {
+                project: project.id,
+                owner: { kind: 'node', id: node.id },
+                estimate: estimate.id,
+              },
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'estimate_removed') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for intervention estimate removal.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
   },
 }

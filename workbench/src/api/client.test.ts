@@ -432,4 +432,51 @@ describe('Optimist API client', () => {
       },
     })
   })
+
+  it('allocates and removes typed intervention estimates', async () => {
+    const node = {
+      id: 'B', revision: 0, name: 'automate', normalized_name: 'automate', title: 'Automate',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'intervention' as const,
+        properties: {
+          costs: [{ dimension: 'usd', value: { id: 'A', revision: 0, distribution: { type: 'point' as const, value: 100 } } }],
+          duration: null, probability_of_success: null, acceptance_criteria: [],
+        },
+      },
+    }
+    const primitive = {
+      address: { project: 'A', owner: { kind: 'node', id: 'B' }, estimate: 'B' },
+      slot: { kind: 'duration' }, revision: 0,
+      distribution: { type: 'log_normal' as const, location: 2, scale: 0.3 }, provenance: ['planning'],
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'estimate_set', value: primitive },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 9,
+        outcome: { type: 'estimate_removed', value: primitive },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await api.setInterventionEstimate(project, node, {
+      slot: { kind: 'duration' },
+      distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+      provenance: ['planning'],
+    })
+    await api.removeInterventionEstimate(project, node, { id: 'B', revision: 0, distribution: primitive.distribution })
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      command: { type: 'set_estimate', payload: {
+        address: { project: 'A', owner: { kind: 'node', id: 'B' }, estimate: 'B' },
+        slot: { kind: 'duration' }, distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+      } },
+    })
+    expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      command: { type: 'remove_estimate', payload: {
+        address: { project: 'A', owner: { kind: 'node', id: 'B' }, estimate: 'B' },
+      } },
+    })
+  })
 })

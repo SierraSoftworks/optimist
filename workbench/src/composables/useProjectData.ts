@@ -11,6 +11,8 @@ import type {
   Project,
   ProjectArchive,
   SetStateEstimateInput,
+  SetInterventionEstimateInput,
+  Estimate,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from '../api/types'
@@ -174,5 +176,29 @@ export function useCorrectObservation(
     mutationFn: (input: CorrectObservationInput) =>
       api.correctObservation(project.value!, edge.value!, input),
     onSuccess: async () => refetchEdgeData(queryClient, project.value!),
+  })
+}
+
+export function useSetInterventionEstimate(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SetInterventionEstimateInput) =>
+      api.setInterventionEstimate(project.value!, node.value!, input),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useRemoveInterventionEstimate(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (estimate: Estimate) =>
+      api.removeInterventionEstimate(project.value!, node.value!, estimate),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
   })
 }

@@ -28,6 +28,7 @@ import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
 import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
+import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -37,10 +38,13 @@ import type {
   CreateNodeInput,
   GraphNode,
   GraphEdge,
+  Estimate,
+  InterventionEstimateSlot,
   NodeKind,
   Observation,
   ProjectArchive,
   SetStateEstimateInput,
+  SetInterventionEstimateInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from './api/types'
@@ -60,6 +64,8 @@ import {
   useDeleteNode,
   useAppendObservation,
   useCorrectObservation,
+  useSetInterventionEstimate,
+  useRemoveInterventionEstimate,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -81,9 +87,11 @@ const estimateDialogOpen = ref(false)
 const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
+const interventionEstimateDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
+const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -116,6 +124,8 @@ const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
 const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
 const correctObservation = useCorrectObservation(projectQuery.data, selectedMeasurementEdge)
+const setInterventionEstimate = useSetInterventionEstimate(projectQuery.data, selectedNode)
+const removeInterventionEstimate = useRemoveInterventionEstimate(projectQuery.data, selectedNode)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -311,6 +321,33 @@ async function submitCorrection(input: CorrectObservationInput) {
   }
 }
 
+function editInterventionEstimate(slot: InterventionEstimateSlot) {
+  selectedInterventionSlot.value = slot
+  interventionEstimateDialogOpen.value = true
+}
+
+async function submitInterventionEstimate(input: SetInterventionEstimateInput) {
+  mutationError.value = null
+  try {
+    await setInterventionEstimate.mutateAsync(input)
+    interventionEstimateDialogOpen.value = false
+    selectedInterventionSlot.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitInterventionEstimateRemove(estimate: Estimate) {
+  mutationError.value = null
+  try {
+    await removeInterventionEstimate.mutateAsync(estimate)
+    interventionEstimateDialogOpen.value = false
+    selectedInterventionSlot.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -463,6 +500,7 @@ function retry() {
         @relationship="editRelationship"
         @observe="observe"
         @correct="correct"
+        @intervention-estimate="editInterventionEstimate"
         @delete="submitNodeDelete"
       />
     </section>
@@ -536,6 +574,15 @@ function retry() {
       :observation="selectedObservation"
       @close="correctionDialogOpen = false"
       @submit="submitCorrection"
+    />
+    <EditInterventionEstimateDialog
+      :open="interventionEstimateDialogOpen"
+      :pending="setInterventionEstimate.isPending.value || removeInterventionEstimate.isPending.value"
+      :node="selectedNode"
+      :slot="selectedInterventionSlot"
+      @close="interventionEstimateDialogOpen = false"
+      @submit="submitInterventionEstimate"
+      @remove="submitInterventionEstimateRemove"
     />
   </main>
 </template>

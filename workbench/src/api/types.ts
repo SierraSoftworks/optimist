@@ -156,6 +156,17 @@ export interface SetStateEstimateInput {
   provenance: string[]
 }
 
+export type InterventionEstimateSlot =
+  | { kind: 'cost'; value: string }
+  | { kind: 'duration' }
+  | { kind: 'probability_of_success' }
+
+export interface SetInterventionEstimateInput {
+  slot: InterventionEstimateSlot
+  distribution: Distribution
+  provenance: string[]
+}
+
 export interface UpdateEdgeInput {
   description: string
   metadata: Record<string, unknown>

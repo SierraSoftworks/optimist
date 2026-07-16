@@ -129,6 +129,15 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .observation-correct { position: absolute; top: 0; right: 0; width: 24px; height: 24px; }
 .correction-note { margin: 0 0 16px; }
 .correction-context { margin-top: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: #f7f9f5; }
+.section-action { width: 24px; height: 24px; margin: -6px 0; }
+.estimate-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 7px; margin-top: 6px; padding: 7px 5px 7px 8px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.estimate-row > div { min-width: 0; display: grid; gap: 2px; }
+.estimate-row span { color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.estimate-row strong { overflow-wrap: anywhere; font-size: 10px; font-weight: 650; }
+.estimate-row .icon-button { width: 24px; height: 24px; }
+.acceptance-criteria { margin-top: 12px; color: var(--muted); font-size: 9px; }
+.acceptance-criteria ul { margin: 5px 0 0; padding-left: 17px; color: var(--ink); line-height: 1.55; }
+.distribution-fields { margin-top: 14px; }
 .empty-inspector { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }
 .empty-inspector h2 { margin-top: 12px; }
 .empty-inspector p { max-width: 210px; margin-top: 7px; font-size: 11px; line-height: 1.5; }
