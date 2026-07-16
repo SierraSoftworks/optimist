@@ -61,7 +61,7 @@ pub struct ScenarioDraft {
     /// Project-local entity IDs which must resolve to interventions.
     #[serde(default)]
     pub candidate_interventions: Vec<EntityId>,
-    /// Deterministic probability-sampling controls for eventual analysis.
+    /// Deterministic probability-sampling controls for scenario analysis.
     pub monte_carlo: MonteCarloConfig,
     /// Optional scalar conversions, present only when explicitly supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -157,5 +157,12 @@ mod tests {
         let mut value = draft();
         value.planning_horizon = 0;
         assert_eq!(value.validate(), Err(ScenarioError::ZeroPlanningHorizon));
+
+        let mut value = draft();
+        value.planning_horizon = 10_001;
+        assert_eq!(
+            value.validate(),
+            Err(ScenarioError::PlanningHorizonTooLarge)
+        );
     }
 }

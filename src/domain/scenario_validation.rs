@@ -4,6 +4,8 @@ use thiserror::Error;
 
 use super::ScenarioDraft;
 
+const MAX_PLANNING_HORIZON: u64 = 10_000;
+
 pub(super) fn validate(value: &ScenarioDraft) -> Result<(), ScenarioError> {
     if value.name.trim().is_empty() {
         return Err(ScenarioError::EmptyName);
@@ -13,6 +15,9 @@ pub(super) fn validate(value: &ScenarioDraft) -> Result<(), ScenarioError> {
     }
     if value.planning_horizon == 0 {
         return Err(ScenarioError::ZeroPlanningHorizon);
+    }
+    if value.planning_horizon > MAX_PLANNING_HORIZON {
+        return Err(ScenarioError::PlanningHorizonTooLarge);
     }
     unique_positive(
         value.objectives.iter().map(|item| item.outcome_id),
@@ -84,6 +89,9 @@ pub enum ScenarioError {
     /// Analysis requires at least one planning period.
     #[error("a scenario planning horizon must be nonzero")]
     ZeroPlanningHorizon,
+    /// Dynamic analysis bounds the number of retained synchronous states.
+    #[error("a scenario planning horizon cannot exceed 10,000 periods")]
+    PlanningHorizonTooLarge,
     /// The same outcome appears more than once.
     #[error("scenario objectives must reference unique outcomes")]
     DuplicateObjective,

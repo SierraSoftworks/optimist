@@ -289,6 +289,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn analyzes_scenarios_over_http() {
+        let app = router();
+        create_project(&app).await;
+        let request = CommandRequest::new(
+            0,
+            GraphCommand::CreateScenario(CreateScenario {
+                scenario: ScenarioDraft {
+                    name: "empty graph".to_owned(),
+                    title: "Empty graph".to_owned(),
+                    rationale: String::new(),
+                    objectives: vec![],
+                    planning_horizon: 3,
+                    budgets: vec![],
+                    candidate_interventions: vec![],
+                    monte_carlo: MonteCarloConfig::new(1, 2, 10, 0.1, 0.1).unwrap(),
+                    scalar_preferences: None,
+                },
+            }),
+        );
+        app.clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(
+                Request::get("/api/v1/projects/A/scenarios/A/analysis")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["revision"]["scenario"], json!(["A", 0]));
+        assert_eq!(body["planning_horizon"], 3);
+        assert_eq!(body["candidates"], json!([]));
+    }
+
+    #[tokio::test]
     async fn sets_shows_and_removes_project_dependence() {
         let app = router();
         create_project(&app).await;

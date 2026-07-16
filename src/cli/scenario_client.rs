@@ -3,7 +3,7 @@ use crate::{
         CommandOutcome, CommandRequest, CommandResult, CreateScenario, DeleteScenario,
         GraphCommand, UpdateScenario,
     },
-    domain::{ProjectId, Scenario, ScenarioDraft, ScenarioId},
+    domain::{ProjectId, Scenario, ScenarioAnalysis, ScenarioDraft, ScenarioId},
 };
 
 use super::client::{ProjectClient, decode};
@@ -76,6 +76,22 @@ impl ProjectClient {
         let response = self
             .client
             .get(self.endpoint(&format!("api/v1/projects/{project}/scenarios/{id}"))?)
+            .send()
+            .await
+            .map_err(scenario_network_error)?;
+        decode(response).await
+    }
+
+    pub(super) async fn analyze_scenario(
+        &self,
+        project: &ProjectId,
+        id: ScenarioId,
+    ) -> Result<ScenarioAnalysis, human_errors::Error> {
+        let response = self
+            .client
+            .get(self.endpoint(&format!(
+                "api/v1/projects/{project}/scenarios/{id}/analysis"
+            ))?)
             .send()
             .await
             .map_err(scenario_network_error)?;

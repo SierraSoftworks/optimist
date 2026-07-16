@@ -39,6 +39,14 @@ pub use distribution_math::DistributionMoments;
 pub use likelihood::{BayesianUpdateError, BetaBinomialLikelihood, NormalNormalLikelihood};
 mod quantiles;
 mod scenario;
+mod scenario_analysis;
+mod scenario_analysis_draw;
+mod scenario_analysis_edges;
+mod scenario_analysis_graph;
+mod scenario_analysis_model;
+mod scenario_analysis_reachability;
+mod scenario_analysis_sampling;
+mod scenario_analysis_state;
 mod scenario_id;
 mod scenario_validation;
 mod unit;
@@ -80,6 +88,9 @@ pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
+};
+pub use scenario_analysis_model::{
+    InterventionProjection, ObjectiveProjection, ScenarioAnalysis, ScenarioAnalysisError,
 };
 pub use scenario_id::ScenarioId;
 pub use scenario_validation::ScenarioError;

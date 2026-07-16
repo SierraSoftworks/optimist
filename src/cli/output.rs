@@ -2,11 +2,11 @@ use clap::ValueEnum;
 
 use crate::domain::{
     Edge, FormulaCatalog, FormulaDefinition, Node, Observation, PrimitiveEstimate,
-    ProjectDependenceModel, Scenario,
+    ProjectDependenceModel, Scenario, ScenarioAnalysis,
 };
 use crate::project::Project;
 
-use super::{output_json, output_table, output_table_formula};
+use super::{output_json, output_scenario_analysis, output_table, output_table_formula};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(super) enum OutputFormat {
@@ -99,6 +99,13 @@ impl OutputFormat {
         }
     }
 
+    pub(super) fn scenario_analysis(
+        self,
+        analysis: &ScenarioAnalysis,
+    ) -> Result<String, human_errors::Error> {
+        output_scenario_analysis::render(self, analysis)
+    }
+
     pub(super) fn dependence(
         self,
         model: &ProjectDependenceModel,
@@ -153,9 +160,11 @@ mod tests {
         domain::{
             CompiledFormula, Distribution, Edge, EdgePayload, EntityId, EstimateAddress,
             EstimateComponentId, EstimateId, EstimateOwner, EstimateSlot, Factor, Formula,
-            FormulaCatalog, FormulaDefinition, MonteCarloConfig, Node, NodeKind, NodePayload,
-            Observation, PrimitiveEstimate, ProjectId, Requirement, Scenario, ScenarioDraft,
-            ScenarioId, Unit,
+            FormulaCatalog, FormulaDefinition, InterventionProjection, InvalidSampleCounts,
+            MonteCarloConfig, MonteCarloDiagnostics, MonteCarloEstimate, Node, NodeKind,
+            NodePayload, ObjectiveProjection, Observation, PrimitiveEstimate, ProjectId,
+            Requirement, Scenario, ScenarioAnalysis, ScenarioDraft, ScenarioId, Unit,
+            UtilityDirection,
         },
         project::Project,
     };
@@ -362,5 +371,83 @@ mod tests {
                 .unwrap(),
             OutputFormat::Json.scenario(&scenario).unwrap()
         );
+    }
+
+    #[test]
+    fn renders_empty_scenario_analysis_stably() {
+        let analysis = ScenarioAnalysis {
+            revision: crate::domain::AnalysisRevisionKey {
+                project: ProjectId::new("A").unwrap(),
+                graph_revision: 2,
+                scenario: Some((ScenarioId::new(0), 1)),
+                dependence_revision: None,
+                formula_revision: 0,
+            },
+            planning_horizon: 4,
+            candidates: vec![],
+        };
+        assert_eq!(
+            OutputFormat::Table.scenario_analysis(&analysis).unwrap(),
+            "INTERVENTION\tOUTCOME\tREACHABLE\tDIRECTION\tIMPORTANCE\tBASELINE_MEAN\tFINAL_MEAN\tIMPROVEMENT_MEAN\tIMPROVEMENT_VARIANCE\tCLAMPED_UPDATES\tSAMPLES\tSTATUS"
+        );
+        assert_eq!(
+            OutputFormat::Jsonl.scenario_analysis(&analysis).unwrap(),
+            ""
+        );
+        assert!(
+            OutputFormat::Json
+                .scenario_analysis(&analysis)
+                .unwrap()
+                .contains("\"planning_horizon\":4")
+        );
+    }
+
+    #[test]
+    fn renders_candidate_analysis_rows_stably() {
+        let config = MonteCarloConfig::new(1, 2, 2, 0.1, 0.0).unwrap();
+        let estimate = MonteCarloEstimate {
+            mean: Some(0.5),
+            variance: Some(0.0),
+            mean_standard_error: Some(0.0),
+            variance_standard_error: None,
+        };
+        let analysis = ScenarioAnalysis {
+            revision: crate::domain::AnalysisRevisionKey {
+                project: ProjectId::new("A").unwrap(),
+                graph_revision: 2,
+                scenario: Some((ScenarioId::new(0), 1)),
+                dependence_revision: None,
+                formula_revision: 0,
+            },
+            planning_horizon: 4,
+            candidates: vec![InterventionProjection {
+                intervention: EntityId::new(1),
+                objectives: vec![ObjectiveProjection {
+                    outcome: EntityId::new(0),
+                    direction: UtilityDirection::Maximize,
+                    importance: 1.0,
+                    reachable: true,
+                    baseline: estimate.clone(),
+                    final_state: estimate.clone(),
+                    improvement: estimate,
+                }],
+                improvement_covariance: vec![vec![Some(0.0)]],
+                clamped_state_updates: 3,
+                diagnostics: MonteCarloDiagnostics {
+                    seed: 1,
+                    attempted_samples: 2,
+                    valid_samples: 2,
+                    invalid_samples: InvalidSampleCounts::default(),
+                    criterion: config,
+                    status: crate::domain::ConvergenceStatus::Converged,
+                },
+            }],
+        };
+        let table = OutputFormat::Table.scenario_analysis(&analysis).unwrap();
+        assert!(table.contains("B\tA\ttrue\tMaximize"));
+        assert!(table.contains("\t3\t2\tConverged"));
+        let jsonl = OutputFormat::Jsonl.scenario_analysis(&analysis).unwrap();
+        assert!(jsonl.contains("\"reachable\":true"));
+        assert!(jsonl.contains("\"clamped_state_updates\":3"));
     }
 }

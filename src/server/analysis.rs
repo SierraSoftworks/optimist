@@ -4,16 +4,21 @@ use axum::{
     routing::get,
 };
 
-use crate::domain::{AnalysisLimits, ProjectId, ScenarioId, StructuralAnalysis};
+use crate::domain::{AnalysisLimits, ProjectId, ScenarioAnalysis, ScenarioId, StructuralAnalysis};
 use crate::project::ProjectError;
 
 use super::{AppState, api_error::ApiError};
 
 pub(super) fn router() -> Router<AppState> {
-    Router::new().route(
-        "/api/v1/projects/{project}/analysis/structure",
-        get(structure),
-    )
+    Router::new()
+        .route(
+            "/api/v1/projects/{project}/analysis/structure",
+            get(structure),
+        )
+        .route(
+            "/api/v1/projects/{project}/scenarios/{scenario}/analysis",
+            get(scenario),
+        )
 }
 
 #[derive(serde::Deserialize)]
@@ -41,4 +46,17 @@ async fn structure(
         query.scenario,
         limits,
     )?))
+}
+
+async fn scenario(
+    State(state): State<AppState>,
+    Path((project, scenario)): Path<(ProjectId, ScenarioId)>,
+) -> Result<Json<ScenarioAnalysis>, ApiError> {
+    Ok(Json(
+        state
+            .catalog
+            .write()
+            .await
+            .analyze_scenario(&project, scenario)?,
+    ))
 }

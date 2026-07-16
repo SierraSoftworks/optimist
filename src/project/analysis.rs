@@ -1,5 +1,8 @@
 use crate::{
-    domain::{AnalysisLimits, AnalysisRevisionKey, ScenarioId, StructuralAnalysis},
+    domain::{
+        AnalysisLimits, AnalysisRevisionKey, ScenarioAnalysis, ScenarioAnalysisError, ScenarioId,
+        StructuralAnalysis,
+    },
     store::GraphRepository,
 };
 
@@ -43,6 +46,46 @@ impl ProjectCatalog {
         let edges = entry.repository.list_edges()?;
         Ok(StructuralAnalysis::compute(
             revision, &nodes, &edges, limits,
+        )?)
+    }
+
+    /// Projects each scenario candidate over its finite planning horizon.
+    ///
+    /// The returned key captures every independently revisioned input document.
+    /// Non-empty dependence documents are rejected until dynamic copula sampling
+    /// can preserve their addressed correlations instead of silently ignoring them.
+    pub fn analyze_scenario(
+        &mut self,
+        project_id: &crate::domain::ProjectId,
+        scenario_id: ScenarioId,
+    ) -> Result<ScenarioAnalysis, ProjectError> {
+        let entry = self
+            .projects
+            .get_mut(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        if entry
+            .dependence
+            .as_ref()
+            .is_some_and(|model| !model.residual_groups.is_empty())
+        {
+            return Err(ScenarioAnalysisError::UnsupportedDependence.into());
+        }
+        let scenario = entry
+            .scenarios
+            .get(&scenario_id)
+            .ok_or(ProjectError::ScenarioNotFound(scenario_id))?
+            .clone();
+        let revision = AnalysisRevisionKey {
+            project: project_id.clone(),
+            graph_revision: entry.graph_revision,
+            scenario: Some((scenario.id, scenario.revision)),
+            dependence_revision: entry.dependence.as_ref().map(|model| model.revision),
+            formula_revision: entry.formulas.revision,
+        };
+        let nodes = entry.repository.list_nodes()?;
+        let edges = entry.repository.list_edges()?;
+        Ok(ScenarioAnalysis::compute(
+            revision, &scenario, &nodes, &edges,
         )?)
     }
 }
@@ -120,6 +163,12 @@ mod tests {
             .unwrap();
         assert_eq!(scenario.revision.graph_revision, 1);
         assert_eq!(scenario.revision.scenario, Some((ScenarioId::new(0), 0)));
+        let projection = catalog
+            .analyze_scenario(&project.id, ScenarioId::new(0))
+            .unwrap();
+        assert_eq!(projection.revision, scenario.revision);
+        assert_eq!(projection.planning_horizon, 4);
+        assert!(projection.candidates.is_empty());
         assert!(matches!(
             catalog.analyze_structure(
                 &project.id,

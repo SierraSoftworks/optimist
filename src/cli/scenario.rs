@@ -43,7 +43,7 @@ enum ScenarioCommand {
         #[arg(long)]
         revision: u64,
     },
-    /// Analyze a scenario once causal decision analysis is available.
+    /// Project each candidate independently over the scenario planning horizon.
     Analyze { id: ScenarioId },
 }
 
@@ -53,14 +53,6 @@ pub(super) async fn run(
     server_url: &str,
     output: OutputFormat,
 ) -> Result<(), human_errors::Error> {
-    if matches!(&args.command, ScenarioCommand::Analyze { .. }) {
-        return super::unavailable(
-            "Scenario analysis is not available in this build yet.",
-            &[
-                "Scenario documents can be managed now. Analysis computation remains intentionally unavailable until the causal projection is implemented.",
-            ],
-        );
-    }
     let project = project.ok_or_else(|| {
         human_errors::user(
             "A project is required for scenario commands.",
@@ -90,7 +82,9 @@ pub(super) async fn run(
         ScenarioCommand::Delete { id, revision } => {
             output.scenario(&client.delete_scenario(project, id, revision).await?)?
         }
-        ScenarioCommand::Analyze { .. } => unreachable!("handled before project resolution"),
+        ScenarioCommand::Analyze { id } => {
+            output.scenario_analysis(&client.analyze_scenario(project, id).await?)?
+        }
     };
     println!("{rendered}");
     Ok(())
@@ -174,7 +168,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn creates_scenarios_through_cli_dispatch_and_keeps_analysis_unavailable() {
+    async fn manages_and_analyzes_scenarios_through_cli_dispatch() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
@@ -197,6 +191,18 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(client.list_scenarios(&project.id).await.unwrap().len(), 1);
+        run(
+            ScenarioArgs {
+                command: ScenarioCommand::Analyze {
+                    id: ScenarioId::new(0),
+                },
+            },
+            Some(&project.id),
+            &server_url,
+            crate::cli::output::OutputFormat::Json,
+        )
+        .await
+        .unwrap();
 
         for command in [
             ScenarioCommand::List,
@@ -242,25 +248,6 @@ mod tests {
         .unwrap();
         assert!(client.list_scenarios(&project.id).await.unwrap().is_empty());
 
-        let error = run(
-            ScenarioArgs {
-                command: ScenarioCommand::Analyze {
-                    id: ScenarioId::new(0),
-                },
-            },
-            None,
-            "not a URL",
-            crate::cli::output::OutputFormat::Table,
-        )
-        .await
-        .unwrap_err();
-        assert!(error.to_string().contains("analysis is not available"));
-        assert!(
-            error
-                .advice()
-                .iter()
-                .any(|item| item.contains("intentionally unavailable"))
-        );
         server.abort();
     }
 }

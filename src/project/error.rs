@@ -3,8 +3,8 @@ use thiserror::Error;
 use crate::{
     domain::{
         AnalysisError, DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress,
-        EstimateAddressError, NodeError, NodeKind, ObservationError, ProjectId, ScenarioError,
-        ScenarioId,
+        EstimateAddressError, NodeError, NodeKind, ObservationError, ProjectId,
+        ScenarioAnalysisError, ScenarioError, ScenarioId,
     },
     store::RepositoryError,
 };
@@ -141,6 +141,9 @@ pub enum ProjectError {
     /// Exact structural analysis input or bounds are invalid.
     #[error(transparent)]
     Analysis(#[from] AnalysisError),
+    /// Finite-horizon scenario propagation inputs or assumptions are invalid.
+    #[error(transparent)]
+    ScenarioAnalysis(#[from] ScenarioAnalysisError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

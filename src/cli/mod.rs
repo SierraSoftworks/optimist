@@ -20,6 +20,7 @@ mod observe;
 mod observe_client;
 mod output;
 mod output_json;
+mod output_scenario_analysis;
 mod output_table;
 mod output_table_formula;
 mod project;

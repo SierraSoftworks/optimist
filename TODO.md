@@ -57,7 +57,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Primitive estimate set/show/remove commands and CLI.
 - [x] Fermi component and formula authoring commands.
 - [x] Scenario create/list/show/update/delete commands.
-  - [ ] Scenario analysis command and result transport.
+  - [x] Scenario analysis command and result transport.
 - [ ] Atomic command batches and compensating undo.
 - [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
 - [ ] Add pagination/filter/search endpoints and CLI flags.
@@ -108,7 +108,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 ## 7. Causal And Decision Analysis
 
 - [x] Immutable analysis projection keyed by graph/scenario/dependence/formula revisions.
-- [ ] Finite-horizon intervention-to-outcome posterior propagation.
+- [x] Finite-horizon intervention-to-outcome posterior propagation.
 - [ ] Stable feedback equilibrium checks and probability of instability.
 - [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [ ] Reinforcing/balancing, nested, and interacting loop explanations.

@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::MonteCarloConfig;
 
 /// Why deterministic Monte Carlo sampling stopped.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConvergenceStatus {
     /// Every output met the configured mean-standard-error criterion.
@@ -15,7 +15,7 @@ pub enum ConvergenceStatus {
 }
 
 /// Counts joint draws rejected by numerical failure category.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InvalidSampleCounts {
     /// Draws where a generic formula ratio had an exactly zero denominator.
     pub zero_denominator: u64,
@@ -33,7 +33,7 @@ impl InvalidSampleCounts {
 }
 
 /// Reproducibility, convergence, and numerical stability metadata for one run.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MonteCarloDiagnostics {
     /// Seed used to initialize the pinned ChaCha20 random stream.
     pub seed: u64,
@@ -56,7 +56,7 @@ pub struct MonteCarloDiagnostics {
 /// $\sqrt{(\hat\mu_4-(n-3)s^4/(n-1))/n}$ and is unavailable below four valid
 /// draws. These errors measure Monte Carlo noise, not model uncertainty, and do
 /// not diagnose bias or tail non-convergence.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MonteCarloEstimate {
     /// Sample mean, absent when no joint draw was valid.
     pub mean: Option<f64>,
@@ -72,7 +72,7 @@ pub struct MonteCarloEstimate {
 ///
 /// The covariance matrix uses Bessel's correction and the root order supplied by
 /// the caller. Any invalid root rejects the entire draw, preserving alignment.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct JointMonteCarloReport {
     /// Per-root estimates in caller-supplied order.
     pub estimates: Vec<MonteCarloEstimate>,

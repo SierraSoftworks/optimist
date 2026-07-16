@@ -135,6 +135,14 @@ pub(super) fn classify(
             "invalid_analysis",
             &["Use positive cycle limits and ensure the selected scenario still exists."],
         ),
+        ProjectError::ScenarioAnalysis(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "scenario_analysis_unavailable",
+            &[
+                "Add current estimates to every objective and causal factor used by the scenario.",
+                "Remove non-empty dependence groups until correlated dynamic propagation is supported.",
+            ],
+        ),
         ProjectError::IdentifierSpaceExhausted
         | ProjectError::RevisionSpaceExhausted(_)
         | ProjectError::GraphRevisionSpaceExhausted(_)
