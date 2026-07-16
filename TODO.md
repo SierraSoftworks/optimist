@@ -21,9 +21,9 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Typed edge payloads with endpoint validation and canonical edge IDs.
 - [x] Embedded measurement observations with immutable correction chains.
 - [x] Primitive validated distributions and dimensioned `Estimate<T>` values.
-- [ ] Runtime unit algebra for custom dimensions and formula validation.
-- [ ] Stable addresses for estimates embedded in nodes, edges, and nested Fermi components.
-- [ ] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
+- [x] Runtime unit algebra for custom dimensions and formula validation.
+- [x] Stable addresses for estimates embedded in nodes, edges, and nested Fermi components.
+- [x] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
 - [x] Quantile-based Normal/LogNormal prior elicitation with retained inputs and residual diagnostics.
 - [ ] Project dependence model for shared variables and residual correlations.
 - [ ] Typed scenario/project documents outside the causal graph.
@@ -135,6 +135,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Fuzz bounded JSON decoding and round trips for core tagged node, edge, and observation aggregates.
   - [x] Fuzz bounded command request decoding, deterministic in-memory sequences, and retry replay.
   - [x] Fuzz bounded YAML/Markdown frontmatter parsing.
+  - [x] Fuzz bounded formula, unit, and estimate-address decoding/validation.
 - [x] Add reusable `proptest` generators for valid project/entity IDs, core node/edge/observation values, and constrained endpoints.
 - [ ] Add bounded fuzz corpus regressions to pull-request CI.
 - [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.

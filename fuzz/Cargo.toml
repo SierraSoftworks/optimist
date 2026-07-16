@@ -40,3 +40,10 @@ path = "fuzz_targets/markdown_frontmatter.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "formula_units"
+path = "fuzz_targets/formula_units.rs"
+test = false
+doc = false
+bench = false
