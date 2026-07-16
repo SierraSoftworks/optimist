@@ -4,7 +4,13 @@ import { X } from '@lucide/vue'
 import type { CreateEdgeInput, EdgeKind, GraphNode } from '../api/types'
 import { destinationsFor, edgeKinds, edgePayload, sourcesFor } from '../domain/edgeAuthoring'
 
-const props = defineProps<{ open: boolean; pending: boolean; nodes: GraphNode[] }>()
+const props = defineProps<{
+  open: boolean
+  pending: boolean
+  nodes: GraphNode[]
+  initialSourceId?: string | null
+  initialKind?: EdgeKind | null
+}>()
 const emit = defineEmits<{ close: []; submit: [input: CreateEdgeInput] }>()
 const form = reactive({
   source: '', destination: '', kind: 'contributes' as EdgeKind, effect: 0.5,
@@ -16,12 +22,17 @@ const form = reactive({
 const validSources = computed(() => sourcesFor(form.kind, props.nodes))
 const source = computed(() => props.nodes.find((node) => node.id === form.source))
 const validDestinations = computed(() => destinationsFor(form.kind, source.value, props.nodes))
+const validKinds = computed(() => {
+  const initialSource = props.nodes.find((node) => node.id === props.initialSourceId)
+  if (!initialSource) return edgeKinds
+  return edgeKinds.filter(({ kind }) => destinationsFor(kind, initialSource, props.nodes).length > 0)
+})
 const causal = computed(() => form.kind === 'contributes' || form.kind === 'changes')
 
 watch(() => props.open, (open) => {
   if (!open) return
   Object.assign(form, {
-    source: '', destination: '', kind: 'contributes', effect: 0.5,
+    source: props.initialSourceId ?? '', destination: '', kind: props.initialKind ?? 'contributes', effect: 0.5,
     lagEnabled: false, lag: 0, mechanism: '', evidence: '',
     polarity: 'higher_is_better', hard: true, thresholdEnabled: false, threshold: 0.5,
   })
@@ -59,9 +70,9 @@ function submit() {
           <div><span class="eyebrow">Graph structure</span><h2 id="create-edge-title">Add relationship</h2></div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
-        <label>Relationship<select v-model="form.kind"><option v-for="item in edgeKinds" :key="item.kind" :value="item.kind">{{ item.label }}</option></select></label>
+        <label>Relationship<select v-model="form.kind"><option v-for="item in validKinds" :key="item.kind" :value="item.kind">{{ item.label }}</option></select></label>
         <div class="field-grid relationship-fields">
-          <label>Source<select v-model="form.source" required><option value="" disabled>Select node</option><option v-for="node in validSources" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
+          <label>Source<select v-model="form.source" required :disabled="Boolean(initialSourceId)"><option value="" disabled>Select node</option><option v-for="node in validSources" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
           <label>Destination<select v-model="form.destination" required><option value="" disabled>Select node</option><option v-for="node in validDestinations" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
         </div>
         <label v-if="causal || form.kind === 'blocks'">{{ form.kind === 'blocks' ? 'Blocking degree' : 'Signed effect' }} on [-1, 1]<input v-model.number="form.effect" type="number" min="-1" max="1" step="0.05" required /></label>

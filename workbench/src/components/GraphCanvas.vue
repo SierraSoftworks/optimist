@@ -12,7 +12,10 @@ const props = defineProps<{
   highlightedEdgeIds?: string[]
 }>()
 
-const emit = defineEmits<{ select: [id: string | null] }>()
+const emit = defineEmits<{
+  select: [id: string | null]
+  nodeContextmenu: [event: { nodeId: string; x: number; y: number }]
+}>()
 const container = ref<HTMLDivElement>()
 let graph: Core | null = null
 let resizeObserver: ResizeObserver | null = null
@@ -193,6 +196,15 @@ onMounted(async () => {
     selectionType: 'single',
   })
   graph.on('tap', 'node', (event) => emit('select', event.target.id()))
+  graph.on('cxttap', 'node', (event) => {
+    const bounds = container.value?.getBoundingClientRect()
+    if (!bounds) return
+    emit('nodeContextmenu', {
+      nodeId: event.target.id(),
+      x: bounds.left + event.renderedPosition.x,
+      y: bounds.top + event.renderedPosition.y,
+    })
+  })
   graph.on('tap', (event) => {
     if (event.target === graph) emit('select', null)
   })
@@ -219,7 +231,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="graph-surface" data-testid="graph-surface">
-    <div ref="container" class="graph-canvas" aria-label="System graph"></div>
+    <div ref="container" class="graph-canvas" aria-label="System graph" @contextmenu.prevent></div>
     <p v-if="highlightedNodeIds?.length || highlightedEdgeIds?.length" class="sr-only" aria-live="polite">
       Analysis highlights {{ highlightedNodeIds?.length ?? 0 }} nodes and {{ highlightedEdgeIds?.length ?? 0 }} relationships.
     </p>
