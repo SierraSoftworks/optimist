@@ -334,4 +334,25 @@ describe('Optimist API client', () => {
       },
     })
   })
+
+  it('sends project-revision checked node deletion commands', async () => {
+    const node = {
+      id: 'A', revision: 2, name: 'flow', normalized_name: 'flow', title: 'Flow',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'node_deleted', value: node },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await api.deleteNode(project, node)
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: { type: 'delete_node', payload: { id: 'A' } },
+    })
+  })
 })

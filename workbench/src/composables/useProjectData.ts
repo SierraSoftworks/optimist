@@ -142,3 +142,11 @@ export function useDeleteEdge(project: Ref<Project | undefined>, edge: Ref<Graph
     onSuccess: async () => refetchEdgeData(queryClient, project.value!),
   })
 }
+
+export function useDeleteNode(project: Ref<Project | undefined>, node: Ref<GraphNode | null>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.deleteNode(project.value!, node.value!),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}

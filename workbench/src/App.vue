@@ -52,6 +52,7 @@ import {
   useUpdateNode,
   useUpdateEdge,
   useDeleteEdge,
+  useDeleteNode,
 } from './composables/useProjectData'
 
 const store = useWorkbenchStore()
@@ -96,6 +97,7 @@ const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
+const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -242,6 +244,16 @@ async function submitEdgeDelete() {
     await deleteEdge.mutateAsync()
     edgeEditDialogOpen.value = false
     selectedEdge.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitNodeDelete() {
+  mutationError.value = null
+  try {
+    await deleteNode.mutateAsync()
+    store.selectNode(null)
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -397,6 +409,7 @@ function retry() {
         @edit="editNodeDialogOpen = true"
         @estimate="estimateDialogOpen = true"
         @relationship="editRelationship"
+        @delete="submitNodeDelete"
       />
     </section>
 

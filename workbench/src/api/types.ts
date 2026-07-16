@@ -130,11 +130,32 @@ export interface UpdateEdgeInput {
 }
 
 export type EditableEdgePayload =
+  | {
+      kind: 'contributes' | 'changes'
+      properties: {
+        effect: Estimate
+        lag: Estimate | null
+        mechanism: string
+        evidence: string[]
+      }
+    }
+  | {
+      kind: 'measures'
+      properties: {
+        polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
+        observations: []
+      }
+    }
   | { kind: 'part_of' }
   | {
       kind: 'requires'
       properties: { hard: boolean; satisfaction_threshold: number | null }
     }
+  | {
+      kind: 'blocks'
+      properties: { degree: Estimate }
+    }
+  | { kind: 'conflicts_with' | 'synergizes_with' }
 
 export interface CreateEdgeInput {
   source: string

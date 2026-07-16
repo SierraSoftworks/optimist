@@ -18,6 +18,7 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await page.getByRole('button', { name: 'Add node' }).last().click()
 
   await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
   await page.getByRole('button', { name: 'Add relationship' }).click()
@@ -38,11 +39,12 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await expect(page.getByText('r4')).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit part of relationship A to B' }).click()
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await page.getByRole('button', { name: 'Confirm delete' }).click()
   await expect(page.getByText('0 relationships')).toBeVisible()
 
   await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
   await page.getByRole('button', { name: 'Add relationship' }).click()
@@ -89,4 +91,50 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await expect(page.getByText('Point · 0.65')).toBeVisible()
   await expect(page.getByText('Weekly review')).toBeVisible()
   await expect(page.getByText(/"owner": "platform"/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Add node' }).first().click()
+  await page.getByLabel('metric').check()
+  await page.getByLabel('Title').fill('Cycle time')
+  await page.getByLabel('Unit').fill('days')
+  await page.getByRole('button', { name: 'Add node' }).last().click()
+
+  for (const title of ['Automate review', 'Pair review']) {
+    await page.getByRole('button', { name: 'Add node' }).first().click()
+    await page.getByLabel('intervention').check()
+    await page.getByLabel('Title').fill(title)
+    await page.getByRole('button', { name: 'Add node' }).last().click()
+  }
+
+  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('contributes')
+  await page.getByLabel('Source').selectOption('A')
+  await page.getByLabel('Destination').selectOption('B')
+  await page.getByLabel('Signed effect on [-1, 1]').fill('0.7')
+  await page.getByLabel('Mechanism').fill('Short loops increase learning.')
+  await page.getByRole('button', { name: 'Add relationship' }).click()
+
+  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('measures')
+  await page.getByLabel('Source').selectOption('C')
+  await page.getByLabel('Destination').selectOption('A')
+  await page.getByLabel('Measurement polarity').selectOption('lower_is_better')
+  await page.getByRole('button', { name: 'Add relationship' }).click()
+
+  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('synergizes_with')
+  await page.getByLabel('Source').selectOption('D')
+  await page.getByLabel('Destination').selectOption('E')
+  await page.getByRole('button', { name: 'Add relationship' }).click()
+  await expect(page.getByText('5 nodes')).toBeVisible()
+  await expect(page.getByText('4 relationships')).toBeVisible()
+
+  await page.getByRole('button', { name: /Automate review/ }).click()
+  await page.getByRole('button', { name: 'Edit synergizes with relationship D to E' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm delete' }).click()
+  await expect(page.getByText('3 relationships')).toBeVisible()
+  await page.getByRole('button', { name: 'Delete node' }).click()
+  await page.getByRole('button', { name: 'Confirm delete D' }).click()
+  await expect(page.getByText('4 nodes')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Automate review/ })).toHaveCount(0)
 })

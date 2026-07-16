@@ -121,6 +121,7 @@ test('creates nodes and a relationship, then filters and inspects the model', as
   await page.getByRole('button', { name: 'Add node' }).last().click()
 
   await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
   await page.getByRole('button', { name: 'Add relationship' }).click()

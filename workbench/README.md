@@ -1,10 +1,10 @@
 # Optimist Workbench
 
-The Vue workbench is the interactive client for Optimist's typed systems model. It currently supports project selection and creation, archive download/upload, typed node creation, `part_of` and `requires` relationship creation, graph search/kind filters, Cytoscape navigation, and a typed inspector.
+The Vue workbench is the interactive client for Optimist's typed systems model. It currently supports project selection and creation, archive download/upload, typed node creation, all eight typed relationship kinds, graph search/kind filters, Cytoscape navigation, and a typed inspector.
 
-Select a node and use **Details** to edit its title, Markdown description, and JSON metadata with project/node revision guards. Factors and outcomes also expose **Estimate** for current/desired normalized-state Point or Beta priors with provenance. Broader edge effects, intervention costs, measurements, deletion, and scenario editing remain under development.
+Select a node and use **Details** to edit its title, Markdown description, and JSON metadata with project/node revision guards. Factors and outcomes also expose **Estimate** for current/desired normalized-state Point or Beta priors with provenance. Nodes without incident relationships can be deleted after an explicit confirmation; connected relationships must be deleted first. Intervention costs, measurements, and scenario editing remain under development.
 
-Incident relationships in the inspector are selectable. Their Markdown description and JSON metadata can be edited with edge revision guards, and relationships can be deleted after an explicit confirmation without deleting endpoint nodes. Typed causal effect/lag payload editing remains under development.
+Incident relationships in the inspector are selectable. Their Markdown description and JSON metadata can be edited with edge revision guards, and relationships can be deleted after an explicit confirmation without deleting endpoint nodes. New causal relationships support Point effects, optional lags, mechanisms, and evidence references; editing those typed payload fields after creation remains under development.
 
 Use the header download button to save the selected project as `.optimist.json`. The upload button previews archive identity/counts before restore. Replacing an existing project requires typing its project ID; replacement discards current process-local replay history after the canonical Markdown snapshot validates successfully.
 
@@ -36,4 +36,4 @@ npm run test:e2e:real
 npm audit
 ```
 
-`test:e2e` uses deterministic mocked API state for desktop/mobile layout, screenshots, canvas-pixel checks, and a 100-node render bound. `test:e2e:real` starts Axum and Vite on isolated ports and verifies project, node, relationship, archive download, mutation, and confirmed restore through the real proxy. Both Playwright configurations use a non-interactive line reporter and exit after completion.
+`test:e2e` uses deterministic mocked API state for desktop/mobile layout, screenshots, canvas-pixel checks, and a 100-node render bound. `test:e2e:real` starts Axum and Vite on isolated ports and verifies representative causal, measurement, and symmetric relationships, edge/node deletion, archive download, mutation, and confirmed restore through the real proxy. Both Playwright configurations use a non-interactive line reporter and exit after completion.

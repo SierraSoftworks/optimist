@@ -279,4 +279,25 @@ export const api = {
     }
     return result.outcome.value
   },
+  async deleteNode(project: Project, node: GraphNode): Promise<GraphNode> {
+    const result = await request<CommandResult<GraphNode>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: { type: 'delete_node', payload: { id: node.id } },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'node_deleted') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for node deletion.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
 }

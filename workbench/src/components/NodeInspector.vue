@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Activity, Gauge, Goal, Pencil, Sigma, Wrench } from '@lucide/vue'
+import { computed, ref, watch } from 'vue'
+import { Activity, Gauge, Goal, Pencil, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
-const emit = defineEmits<{ edit: []; estimate: []; relationship: [edge: GraphEdge] }>()
+const emit = defineEmits<{ edit: []; estimate: []; relationship: [edge: GraphEdge]; delete: [] }>()
+const confirmDelete = ref(false)
 
 const incidentEdges = computed(() =>
   props.node
@@ -13,6 +14,7 @@ const incidentEdges = computed(() =>
       )
     : [],
 )
+watch(() => props.node?.id, () => { confirmDelete.value = false })
 
 const kindLabel = computed(() => props.node?.payload.kind ?? '')
 const Icon = computed(() => {
@@ -82,6 +84,17 @@ function provenance(node: GraphNode, slot: 'current' | 'desired') {
           <div><dt>Revision</dt><dd>{{ node.revision }}</dd></div>
           <div v-if="node.aliases.length"><dt>Aliases</dt><dd>{{ node.aliases.join(', ') }}</dd></div>
         </dl>
+      </section>
+
+      <section class="inspector-section danger-section">
+        <h3>Delete node</h3>
+        <p v-if="incidentEdges.length" class="muted">Delete {{ incidentEdges.length }} connected relationship{{ incidentEdges.length === 1 ? '' : 's' }} first.</p>
+        <button
+          type="button"
+          class="danger-button"
+          :disabled="incidentEdges.length > 0"
+          @click="confirmDelete ? emit('delete') : (confirmDelete = true)"
+        ><Trash2 :size="14" /> {{ confirmDelete ? `Confirm delete ${node.id}` : 'Delete node' }}</button>
       </section>
 
       <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section">
