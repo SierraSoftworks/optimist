@@ -1,0 +1,85 @@
+# Modelling systems
+
+Optimist separates structural graph concepts from values which have one natural owner. This keeps causal traversal focused while preserving evidence and uncertainty alongside the thing they describe.
+
+## Node kinds
+
+| Kind | Meaning | Typical owned data |
+| --- | --- | --- |
+| Outcome | A result whose direction guides prioritisation. | Current/desired normalized state, evidence. |
+| Metric | A reusable measurement definition. | Unit and aggregation/window. |
+| Factor | A condition influencing another part of the system. | Current/desired state, controllability, evidence. |
+| Intervention | An investable action. | Costs, duration, probability of success, acceptance criteria. |
+
+Names and aliases are unique within a project after Unicode normalisation, lowercasing, and whitespace collapse. IDs are compact counters (`A`, `B`, ..., `BA`) scoped to their project.
+
+## Edge kinds
+
+| Kind | Direction | Purpose |
+| --- | --- | --- |
+| `contributes` | Directed | A signed uncertain causal effect. |
+| `measures` | Directed | A metric measuring a factor or outcome. |
+| `changes` | Directed | An intervention changing a factor. |
+| `requires` | Directed | A hard or soft prerequisite. |
+| `part-of` | Directed | Non-causal factor decomposition. |
+| `blocks` | Directed | A factor inhibiting a factor or intervention. |
+| `conflicts-with` | Symmetric | Incompatible interventions. |
+| `synergizes-with` | Symmetric | Mutually beneficial interventions. |
+
+Endpoint combinations are validated. For example, `changes` must connect an intervention to a factor, while `measures` must connect a metric to a factor or outcome.
+
+Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
+
+## Embedded ownership
+
+Optimist deliberately does not create graph vertices for:
+
+- estimates,
+- observations,
+- intervention costs,
+- evidence,
+- formula components.
+
+An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal effect belongs to one causal edge.
+
+This design avoids graph noise and makes deletion/reference checks explicit.
+
+## Descriptions and metadata
+
+Nodes and edges carry Markdown descriptions plus extensible JSON metadata. Updates are complete replacements guarded by the aggregate revision:
+
+```sh
+cargo run -- node update B \
+  --title "Fast feedback" \
+  --description $'# Fast feedback\n\nTime from change to useful evidence.' \
+  --metadata '{"owner":"platform"}'
+
+cargo run -- edge update C-part-of-B \
+  --description $'# Decomposition\n\nSmall batches are one part of fast feedback.' \
+  --metadata '{"source":"ADR-17"}'
+```
+
+These commands preserve identity, names, aliases, endpoint kinds, typed payloads, estimates, and observation histories.
+
+## Project documents
+
+Some concepts span several graph aggregates and therefore live outside the graph:
+
+- **Scenarios** define objectives, horizon, budgets, candidates, and sampling controls.
+- **Formula documents** define project-scoped Fermi component DAGs.
+- **Dependence documents** group residual marginals under Gaussian copulas.
+
+Each document has its own revision. Structural analysis keys include the graph, scenario, formula, and dependence revisions, making the input snapshot explicit.
+
+## Choosing model detail
+
+Start with the smallest graph which can answer the question:
+
+1. Define one or more outcomes.
+2. Add factors with a plausible direct causal mechanism.
+3. Add metrics only where observations can be supplied.
+4. Add interventions only when a team can choose or fund them.
+5. Decompose uncertain quantities into estimates/formulas rather than creating structural nodes for arithmetic.
+6. Add dependence only when shared causes or residual correlation are justified.
+
+A denser graph is not automatically a better model. Every causal edge should have a mechanism, evidence boundary, and uncertainty model that can be reviewed.

@@ -1,0 +1,23 @@
+{
+  "name": "optimist-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The documentation website for Optimist, generated with VuePress",
+  "scripts": {
+    "build": "vuepress build --clean-cache --clean-temp",
+    "dev": "vuepress dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SierraSoftworks/optimist.git"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@vuepress/bundler-vite": "2.0.0-rc.30",
+    "@vuepress/plugin-markdown-math": "2.0.0-rc.132",
+    "@vuepress/theme-default": "2.0.0-rc.132",
+    "katex": "^0.16.38",
+    "sass-embedded": "^1.100.0",
+    "vuepress": "2.0.0-rc.30"
+  }
+}
