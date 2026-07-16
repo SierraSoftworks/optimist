@@ -1,11 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::get,
 };
 
 use crate::{
+    command::ChangeSetReplay,
     domain::ProjectId,
     project::{CreateProject, Project},
 };
@@ -16,6 +17,7 @@ pub(super) fn router() -> Router<AppState> {
     Router::new()
         .route("/api/v1/projects", get(list).post(create))
         .route("/api/v1/projects/{project}", get(show).delete(delete))
+        .route("/api/v1/projects/{project}/changes", get(changes))
 }
 
 async fn create(
@@ -42,6 +44,25 @@ async fn delete(
     Path(project): Path<ProjectId>,
 ) -> Result<Json<Project>, ApiError> {
     Ok(Json(state.catalog.write().await.delete(&project)?))
+}
+
+#[derive(serde::Deserialize)]
+struct ReplayQuery {
+    after: u64,
+}
+
+async fn changes(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+    Query(query): Query<ReplayQuery>,
+) -> Result<Json<ChangeSetReplay>, ApiError> {
+    Ok(Json(
+        state
+            .catalog
+            .read()
+            .await
+            .replay_changes(&project, query.after)?,
+    ))
 }
 
 #[cfg(test)]

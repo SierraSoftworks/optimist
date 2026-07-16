@@ -28,6 +28,11 @@ pub(super) fn classify(
             "project_revision_conflict",
             &["Refresh the project and rebuild the command against its current revision."],
         ),
+        ProjectError::InvalidReplayRevision { .. } => (
+            StatusCode::BAD_REQUEST,
+            "invalid_replay_revision",
+            &["Use a replay revision between zero and the project's current revision."],
+        ),
         ProjectError::Node(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_node",

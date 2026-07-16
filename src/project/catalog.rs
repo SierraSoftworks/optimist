@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{Project, ProjectError};
-use crate::command::CommandResult;
+use crate::command::{ChangeSet, CommandResult};
 use uuid::Uuid;
 
 pub(super) struct ProjectEntry {
@@ -19,6 +19,7 @@ pub(super) struct ProjectEntry {
     pub(super) graph_revision: u64,
     pub(super) repository: IndraDbRepository<MemoryDatastore>,
     pub(super) results: BTreeMap<Uuid, CommandResult>,
+    pub(super) changes: BTreeMap<u64, ChangeSet>,
     pub(super) next_scenario_id: Option<u64>,
     pub(super) scenarios: BTreeMap<ScenarioId, Scenario>,
     pub(super) dependence: Option<ProjectDependenceModel>,
@@ -88,6 +89,7 @@ impl ProjectCatalog {
                 graph_revision: 0,
                 repository,
                 results: BTreeMap::new(),
+                changes: BTreeMap::new(),
                 next_scenario_id: Some(0),
                 scenarios: BTreeMap::new(),
                 dependence: None,

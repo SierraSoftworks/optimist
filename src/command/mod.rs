@@ -5,10 +5,12 @@ use crate::domain::{
     Edge, FormulaDefinition, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario,
 };
 
+mod change_set;
 mod classification;
 mod metadata_operations;
 mod operations;
 
+pub use change_set::{ChangeSet, ChangeSetReplay};
 pub use metadata_operations::*;
 pub use operations::*;
 

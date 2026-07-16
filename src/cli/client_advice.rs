@@ -8,6 +8,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "project_revision_conflict" => {
             &["Refresh the project and retry the command against its current revision."]
         }
+        "invalid_replay_revision" => {
+            &["Show the project and retry with a revision no newer than its current revision."]
+        }
         "invalid_node" => &["Provide the required fields for the selected node kind."],
         "node_name_conflict" => {
             &["Choose a node name or alias which is not already used in this project."]

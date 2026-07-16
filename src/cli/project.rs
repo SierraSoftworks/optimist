@@ -4,7 +4,7 @@ use clap::{Args, Subcommand};
 
 use crate::domain::ProjectId;
 
-use super::{client::ProjectClient, output::OutputFormat};
+use super::{client::ProjectClient, output::OutputFormat, project_changes_output};
 
 #[derive(Debug, Args)]
 pub(super) struct ProjectArgs {
@@ -23,6 +23,12 @@ enum ProjectCommand {
     },
     Delete {
         project: ProjectId,
+    },
+    Changes {
+        project: ProjectId,
+        /// Replay changes strictly after this project revision.
+        #[arg(long, default_value_t = 0)]
+        after: u64,
     },
     Import {
         directory: PathBuf,
@@ -47,6 +53,9 @@ pub(super) async fn run(
         ProjectCommand::List => output.projects(&client.list().await?)?,
         ProjectCommand::Show { project } => output.project(&client.show(&project).await?)?,
         ProjectCommand::Delete { project } => output.project(&client.delete(&project).await?)?,
+        ProjectCommand::Changes { project, after } => {
+            project_changes_output::render(output, &client.replay_changes(&project, after).await?)?
+        }
         ProjectCommand::Import { .. } => {
             return super::unavailable(
                 "Markdown project import is not available yet.",
@@ -99,5 +108,12 @@ mod tests {
     fn replacement_requires_confirmation_flag() {
         let result = Cli::try_parse_from(["optimist", "project", "import", "./model", "--yes"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_change_replay_cursor() {
+        assert!(
+            Cli::try_parse_from(["optimist", "project", "changes", "A", "--after", "42",]).is_ok()
+        );
     }
 }

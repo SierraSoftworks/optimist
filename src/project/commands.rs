@@ -1,5 +1,5 @@
 use crate::{
-    command::{CommandRequest, CommandResult},
+    command::{ChangeSet, CommandRequest, CommandResult},
     domain::ProjectId,
 };
 
@@ -36,6 +36,7 @@ impl ProjectCatalog {
             .checked_add(1)
             .ok_or_else(|| ProjectError::RevisionSpaceExhausted(project_id.clone()))?;
         let changes_graph = request.command.changes_graph();
+        let command = request.command.clone();
         let next_graph_revision = if changes_graph {
             entry
                 .graph_revision
@@ -52,6 +53,17 @@ impl ProjectCatalog {
             project_revision: entry.project.revision,
             outcome,
         };
+        entry.changes.insert(
+            entry.project.revision,
+            ChangeSet {
+                request_id: request.request_id,
+                base_revision: request.expected_revision,
+                project_revision: entry.project.revision,
+                graph_revision: entry.graph_revision,
+                command,
+                outcome: result.outcome.clone(),
+            },
+        );
         entry.results.insert(request.request_id, result.clone());
         Ok(result)
     }
@@ -65,8 +77,8 @@ mod tests {
             CreateNode, DeleteEdge, DeleteNode, GraphCommand,
         },
         domain::{
-            EdgeId, EdgeKind, EdgePayload, Factor, Measurement, MeasurementPolarity, Metric,
-            NewObservation, NodePayload, Requirement,
+            EdgeId, EdgeKind, EdgePayload, EntityId, Factor, Measurement, MeasurementPolarity,
+            Metric, NewObservation, NodePayload, Requirement,
         },
     };
 
@@ -101,6 +113,67 @@ mod tests {
         assert_eq!(first.project_revision, 1);
         assert!(matches!(first.outcome, CommandOutcome::NodeCreated(_)));
         assert_eq!(catalog.list_nodes(&project.id).unwrap().len(), 1);
+        let replay = catalog.replay_changes(&project.id, 0).unwrap();
+        assert_eq!(replay.current_revision, 1);
+        assert_eq!(replay.changes.len(), 1);
+        assert_eq!(replay.changes[0].request_id, first.request_id);
+        assert_eq!(replay.changes[0].base_revision, 0);
+        assert_eq!(replay.changes[0].project_revision, 1);
+        assert_eq!(replay.changes[0].graph_revision, 1);
+    }
+
+    #[test]
+    fn replays_changes_in_revision_order_after_exclusive_cursor() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog.execute(&project.id, create_node(0)).unwrap();
+        let mut second = create_node(1);
+        let GraphCommand::CreateNode(node) = &mut second.command else {
+            unreachable!()
+        };
+        node.name = "quality".to_owned();
+        node.title = "Quality".to_owned();
+        catalog.execute(&project.id, second).unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(0),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Requires(Requirement {
+                            hard: true,
+                            satisfaction_threshold: None,
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+
+        let replay = catalog.replay_changes(&project.id, 1).unwrap();
+        assert_eq!(
+            replay
+                .changes
+                .iter()
+                .map(|change| change.project_revision)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(
+            catalog
+                .replay_changes(&project.id, 3)
+                .unwrap()
+                .changes
+                .is_empty()
+        );
+        assert!(matches!(
+            catalog.replay_changes(&project.id, 4),
+            Err(ProjectError::InvalidReplayRevision {
+                requested: 4,
+                current: 3
+            })
+        ));
     }
 
     #[test]

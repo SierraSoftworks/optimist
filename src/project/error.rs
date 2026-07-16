@@ -43,6 +43,14 @@ pub enum ProjectError {
     /// The independent graph revision counter cannot represent another mutation.
     #[error("project {0} has exhausted its graph revision space")]
     GraphRevisionSpaceExhausted(ProjectId),
+    /// A replay cursor is newer than the project's current revision.
+    #[error("change replay revision {requested} exceeds current project revision {current}")]
+    InvalidReplayRevision {
+        /// Exclusive lower revision requested by the client.
+        requested: u64,
+        /// Current committed project revision.
+        current: u64,
+    },
     /// The requested node aggregate failed local construction validation.
     #[error(transparent)]
     Node(#[from] NodeError),

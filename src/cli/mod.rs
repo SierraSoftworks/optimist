@@ -23,6 +23,8 @@ mod output_json;
 mod output_table;
 mod output_table_formula;
 mod project;
+mod project_changes_client;
+mod project_changes_output;
 mod scenario;
 mod scenario_client;
 mod server;
