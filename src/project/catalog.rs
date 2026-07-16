@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 pub(super) struct ProjectEntry {
     pub(super) project: Project,
+    pub(super) graph_revision: u64,
     pub(super) repository: IndraDbRepository<MemoryDatastore>,
     pub(super) results: BTreeMap<Uuid, CommandResult>,
     pub(super) next_scenario_id: Option<u64>,
@@ -84,6 +85,7 @@ impl ProjectCatalog {
             id,
             ProjectEntry {
                 project: project.clone(),
+                graph_revision: 0,
                 repository,
                 results: BTreeMap::new(),
                 next_scenario_id: Some(0),

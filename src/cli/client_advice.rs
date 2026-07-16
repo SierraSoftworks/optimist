@@ -94,6 +94,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "formula_in_use" => {
             &["Remove dependent or descendant formulas before removing this component."]
         }
+        "invalid_analysis" => {
+            &["Use positive cycle limits and select a scenario which still exists."]
+        }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]
         }

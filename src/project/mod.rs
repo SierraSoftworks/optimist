@@ -1,3 +1,4 @@
+mod analysis;
 mod apply;
 mod catalog;
 mod commands;
@@ -18,6 +19,7 @@ pub(crate) mod formula_primitives;
 pub(crate) mod formula_projection;
 mod formulas;
 mod model;
+mod queries;
 mod scenarios;
 
 pub use catalog::ProjectCatalog;

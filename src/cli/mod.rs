@@ -1,3 +1,5 @@
+mod analysis;
+mod analysis_client;
 mod apply;
 mod client;
 mod client_advice;
@@ -26,6 +28,7 @@ mod server;
 
 use clap::{Parser, Subcommand};
 
+use analysis::AnalysisArgs;
 use apply::ApplyArgs;
 use dependence::DependenceArgs;
 use edge::EdgeArgs;
@@ -87,6 +90,7 @@ enum Command {
     Scenario(ScenarioArgs),
     Dependence(DependenceArgs),
     Apply(ApplyArgs),
+    Analysis(AnalysisArgs),
 }
 
 /// Executes a parsed command using the appropriate server or HTTP-client path.
@@ -126,6 +130,9 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
             dependence::run(args, cli.project.as_ref(), &server_url, output).await
         }
         Command::Apply(args) => apply::run(args),
+        Command::Analysis(args) => {
+            analysis::run(args, cli.project.as_ref(), &server_url, output).await
+        }
     }
 }
 

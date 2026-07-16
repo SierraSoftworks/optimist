@@ -110,8 +110,14 @@ pub(super) fn classify(
         ),
         ProjectError::EstimateCommand(error) => estimate_error_response::classify(error),
         ProjectError::FormulaCommand(error) => formula_error_response::classify(error),
+        ProjectError::Analysis(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_analysis",
+            &["Use positive cycle limits and ensure the selected scenario still exists."],
+        ),
         ProjectError::IdentifierSpaceExhausted
         | ProjectError::RevisionSpaceExhausted(_)
+        | ProjectError::GraphRevisionSpaceExhausted(_)
         | ProjectError::EdgeRevisionSpaceExhausted(_)
         | ProjectError::ScenarioRevisionSpaceExhausted(_)
         | ProjectError::ScenarioIdentifierSpaceExhausted(_)

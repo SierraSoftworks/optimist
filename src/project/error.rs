@@ -2,8 +2,9 @@ use thiserror::Error;
 
 use crate::{
     domain::{
-        DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress, EstimateAddressError,
-        NodeError, NodeKind, ObservationError, ProjectId, ScenarioError, ScenarioId,
+        AnalysisError, DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress,
+        EstimateAddressError, NodeError, NodeKind, ObservationError, ProjectId, ScenarioError,
+        ScenarioId,
     },
     store::RepositoryError,
 };
@@ -39,6 +40,9 @@ pub enum ProjectError {
     /// The project revision counter cannot represent another committed mutation.
     #[error("project {0} has exhausted its revision space")]
     RevisionSpaceExhausted(ProjectId),
+    /// The independent graph revision counter cannot represent another mutation.
+    #[error("project {0} has exhausted its graph revision space")]
+    GraphRevisionSpaceExhausted(ProjectId),
     /// The requested node aggregate failed local construction validation.
     #[error(transparent)]
     Node(#[from] NodeError),
@@ -123,6 +127,9 @@ pub enum ProjectError {
     /// Fermi component formula authoring or lookup validation failed.
     #[error(transparent)]
     FormulaCommand(#[from] FormulaCommandError),
+    /// Exact structural analysis input or bounds are invalid.
+    #[error(transparent)]
+    Analysis(#[from] AnalysisError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

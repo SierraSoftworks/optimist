@@ -106,10 +106,10 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ## 7. Causal And Decision Analysis
 
-- [ ] Immutable analysis projection keyed by graph/scenario/dependence revisions.
+- [x] Immutable analysis projection keyed by graph/scenario/dependence/formula revisions.
 - [ ] Finite-horizon intervention-to-outcome posterior propagation.
 - [ ] Stable feedback equilibrium checks and probability of instability.
-- [ ] Tarjan SCC detection and bounded elementary-cycle enumeration.
+- [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [ ] Reinforcing/balancing, nested, and interacting loop explanations.
 - [ ] Evidence-aware impediment ranking separate from topology-only candidates.
 - [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication.

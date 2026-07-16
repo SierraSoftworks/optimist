@@ -1,3 +1,8 @@
+mod analysis;
+mod analysis_compute;
+mod analysis_cycles;
+mod analysis_graph;
+mod analysis_tarjan;
 mod bayesian;
 mod distribution_math;
 mod distribution_quantile;
@@ -25,6 +30,10 @@ mod project_dependence;
 mod project_dependence_matrix;
 mod propagation;
 mod quantile_fit;
+pub use analysis::{
+    AnalysisError, AnalysisLimits, AnalysisRevisionKey, ElementaryCycle,
+    StronglyConnectedComponent, StructuralAnalysis,
+};
 pub use distribution_math::DistributionMoments;
 pub use likelihood::{BayesianUpdateError, BetaBinomialLikelihood, NormalNormalLikelihood};
 mod quantiles;

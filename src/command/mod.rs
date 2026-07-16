@@ -95,6 +95,22 @@ pub enum GraphCommand {
     RemoveProjectDependence(RemoveProjectDependence),
 }
 
+impl GraphCommand {
+    pub(crate) const fn changes_graph(&self) -> bool {
+        matches!(
+            self,
+            Self::CreateNode(_)
+                | Self::DeleteNode(_)
+                | Self::CreateEdge(_)
+                | Self::DeleteEdge(_)
+                | Self::AppendObservation(_)
+                | Self::CorrectObservation(_)
+                | Self::SetEstimate(_)
+                | Self::RemoveEstimate(_)
+        )
+    }
+}
+
 /// Durable result of a committed command, returned identically on retries.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CommandResult {

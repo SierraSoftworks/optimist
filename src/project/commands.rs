@@ -1,10 +1,6 @@
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{
-        Edge, EdgeId, EntityId, EstimateAddress, FormulaCatalog, FormulaDefinition, Node,
-        PrimitiveEstimate, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
-    },
-    store::GraphRepository,
+    domain::ProjectId,
 };
 
 use super::{ProjectCatalog, ProjectError, apply};
@@ -39,8 +35,18 @@ impl ProjectCatalog {
             .revision
             .checked_add(1)
             .ok_or_else(|| ProjectError::RevisionSpaceExhausted(project_id.clone()))?;
+        let changes_graph = request.command.changes_graph();
+        let next_graph_revision = if changes_graph {
+            entry
+                .graph_revision
+                .checked_add(1)
+                .ok_or_else(|| ProjectError::GraphRevisionSpaceExhausted(project_id.clone()))?
+        } else {
+            entry.graph_revision
+        };
         let outcome = apply::command(entry, request.command)?;
         entry.project.revision = next_revision;
+        entry.graph_revision = next_graph_revision;
         let result = CommandResult {
             request_id: request.request_id,
             project_revision: entry.project.revision,
@@ -48,106 +54,6 @@ impl ProjectCatalog {
         };
         entry.results.insert(request.request_id, result.clone());
         Ok(result)
-    }
-
-    /// Lists complete node aggregates for one project in deterministic ID order.
-    pub fn list_nodes(&mut self, project_id: &ProjectId) -> Result<Vec<Node>, ProjectError> {
-        Ok(self.repository_mut(project_id)?.list_nodes()?)
-    }
-
-    /// Retrieves one complete node aggregate from a project-local entity ID.
-    pub fn get_node(
-        &mut self,
-        project_id: &ProjectId,
-        entity_id: EntityId,
-    ) -> Result<Option<Node>, ProjectError> {
-        Ok(self.repository_mut(project_id)?.get_node(entity_id)?)
-    }
-
-    /// Lists complete edge aggregates for one project in canonical edge-ID order.
-    pub fn list_edges(&mut self, project_id: &ProjectId) -> Result<Vec<Edge>, ProjectError> {
-        Ok(self.repository_mut(project_id)?.list_edges()?)
-    }
-
-    /// Retrieves one complete edge aggregate from its project-local tuple identity.
-    pub fn get_edge(
-        &mut self,
-        project_id: &ProjectId,
-        edge_id: &EdgeId,
-    ) -> Result<Option<Edge>, ProjectError> {
-        Ok(self.repository_mut(project_id)?.get_edge(edge_id)?)
-    }
-
-    /// Retrieves one primitive estimate by its stable project/owner-local address.
-    pub fn get_estimate(
-        &mut self,
-        project_id: &ProjectId,
-        address: &EstimateAddress,
-    ) -> Result<PrimitiveEstimate, ProjectError> {
-        let entry = self
-            .projects
-            .get_mut(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        super::estimate::get(entry, address)
-    }
-
-    /// Lists compiled Fermi component formulas and the current document revision.
-    pub fn list_formulas(
-        &mut self,
-        project_id: &ProjectId,
-    ) -> Result<FormulaCatalog, ProjectError> {
-        let entry = self
-            .projects
-            .get_mut(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        super::formulas::list(entry)
-    }
-
-    /// Retrieves one compiled Fermi component formula by nested estimate address.
-    pub fn get_formula(
-        &mut self,
-        project_id: &ProjectId,
-        address: &EstimateAddress,
-    ) -> Result<FormulaDefinition, ProjectError> {
-        let entry = self
-            .projects
-            .get_mut(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        super::formulas::show(entry, address)
-    }
-
-    /// Lists scenario documents in deterministic project-local ID order.
-    pub fn list_scenarios(&self, project_id: &ProjectId) -> Result<Vec<Scenario>, ProjectError> {
-        let entry = self
-            .projects
-            .get(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        Ok(entry.scenarios.values().cloned().collect())
-    }
-
-    /// Retrieves one scenario document without exposing graph storage internals.
-    pub fn get_scenario(
-        &self,
-        project_id: &ProjectId,
-        scenario_id: ScenarioId,
-    ) -> Result<Option<Scenario>, ProjectError> {
-        let entry = self
-            .projects
-            .get(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        Ok(entry.scenarios.get(&scenario_id).cloned())
-    }
-
-    /// Retrieves the singleton project dependence document outside graph storage.
-    pub fn get_dependence(
-        &self,
-        project_id: &ProjectId,
-    ) -> Result<Option<ProjectDependenceModel>, ProjectError> {
-        let entry = self
-            .projects
-            .get(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        Ok(entry.dependence.clone())
     }
 }
 
