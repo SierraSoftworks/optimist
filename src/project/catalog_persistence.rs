@@ -7,6 +7,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::command::{ChangeSet, CommandResult};
+
 use super::{ProjectArchive, ProjectCatalog, ProjectError};
 
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
@@ -104,6 +106,10 @@ struct PersistedProject {
     graph_revision: u64,
     next_entity_id: Option<u64>,
     next_scenario_id: Option<u64>,
+    #[serde(default)]
+    change_history_start: Option<u64>,
+    #[serde(default)]
+    changes: Vec<ChangeSet>,
 }
 
 impl ProjectCatalog {
@@ -116,7 +122,6 @@ impl ProjectCatalog {
                 .get_mut(id)
                 .expect("snapshot clone retains every project");
             cloned.results = entry.results.clone();
-            cloned.changes = entry.changes.clone();
         }
         Ok(candidate)
     }
@@ -135,6 +140,8 @@ impl ProjectCatalog {
                 graph_revision: entry.graph_revision,
                 next_entity_id: entry.repository.next_entity_id_counter(),
                 next_scenario_id: entry.next_scenario_id,
+                change_history_start: Some(entry.change_history_start),
+                changes: entry.changes.values().cloned().collect(),
             });
         }
         Ok(CatalogSnapshot {
@@ -165,6 +172,17 @@ impl ProjectCatalog {
             )?;
             entry.graph_revision = persisted.graph_revision;
             entry.next_scenario_id = persisted.next_scenario_id;
+            restore_changes(
+                entry,
+                persisted.change_history_start.unwrap_or({
+                    if persisted.changes.is_empty() {
+                        persisted.archive.project.revision
+                    } else {
+                        0
+                    }
+                }),
+                persisted.changes,
+            )?;
             entry
                 .repository
                 .restore_next_entity_id_counter(persisted.next_entity_id)
@@ -173,6 +191,55 @@ impl ProjectCatalog {
         catalog.next_project_id = snapshot.next_project_id;
         Ok(catalog)
     }
+}
+
+fn restore_changes(
+    entry: &mut super::catalog::ProjectEntry,
+    history_start: u64,
+    changes: Vec<ChangeSet>,
+) -> Result<(), CatalogPersistenceError> {
+    if history_start > entry.project.revision {
+        return Err(invalid_history("history start exceeds project revision"));
+    }
+    let mut expected = history_start.checked_add(1);
+    for change in changes {
+        if Some(change.project_revision) != expected
+            || change.base_revision.checked_add(1) != Some(change.project_revision)
+            || change.project_revision > entry.project.revision
+            || entry
+                .changes
+                .insert(change.project_revision, change.clone())
+                .is_some()
+            || entry
+                .results
+                .insert(
+                    change.request_id,
+                    CommandResult {
+                        request_id: change.request_id,
+                        project_revision: change.project_revision,
+                        outcome: change.outcome,
+                    },
+                )
+                .is_some()
+        {
+            return Err(invalid_history("changes are not unique and contiguous"));
+        }
+        expected = change.project_revision.checked_add(1);
+    }
+    let final_revision = expected
+        .and_then(|value| value.checked_sub(1))
+        .unwrap_or(history_start);
+    if final_revision != entry.project.revision {
+        return Err(invalid_history("changes do not reach the project revision"));
+    }
+    entry.change_history_start = history_start;
+    Ok(())
+}
+
+fn invalid_history(message: &str) -> CatalogPersistenceError {
+    CatalogPersistenceError::Project(ProjectError::InvalidArchivePath(format!(
+        "invalid persisted change history: {message}"
+    )))
 }
 
 fn validate_allocator(
@@ -290,14 +357,18 @@ mod tests {
         let first = catalog.create("Delivery".to_owned()).unwrap();
         let deleted_project = catalog.create("Temporary".to_owned()).unwrap();
         catalog.delete(&deleted_project.id).unwrap();
-        for (revision, name) in [(0, "first"), (1, "deleted")] {
-            catalog
-                .execute(
-                    &first.id,
-                    CommandRequest::new(revision, GraphCommand::CreateNode(factor(name))),
-                )
-                .unwrap();
-        }
+        let first_request = CommandRequest {
+            request_id: Uuid::nil(),
+            expected_revision: 0,
+            command: GraphCommand::CreateNode(factor("first")),
+        };
+        let first_result = catalog.execute(&first.id, first_request.clone()).unwrap();
+        catalog
+            .execute(
+                &first.id,
+                CommandRequest::new(1, GraphCommand::CreateNode(factor("deleted"))),
+            )
+            .unwrap();
         catalog
             .execute(
                 &first.id,
@@ -335,6 +406,22 @@ mod tests {
         store.save(&mut catalog).unwrap();
 
         let mut restored = store.load().unwrap();
+        assert_eq!(restored.get(&first.id).unwrap().revision, 5);
+        assert_eq!(restored.list_nodes(&first.id).unwrap().len(), 1);
+        let replay = restored.replay_changes(&first.id, 0).unwrap();
+        assert_eq!(replay.current_revision, 5);
+        assert_eq!(
+            replay
+                .changes
+                .iter()
+                .map(|change| change.project_revision)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5]
+        );
+        assert_eq!(
+            restored.execute(&first.id, first_request).unwrap(),
+            first_result
+        );
         assert_eq!(restored.get(&first.id).unwrap().revision, 5);
         assert_eq!(restored.list_nodes(&first.id).unwrap().len(), 1);
         let project = restored.create("Next".to_owned()).unwrap();
@@ -389,6 +476,31 @@ mod tests {
             CatalogStore::new(fixture.root.clone()).load(),
             Err(CatalogPersistenceError::UnsupportedSchema(99))
         ));
+    }
+
+    #[test]
+    fn imported_archives_report_their_unavailable_history_floor() {
+        let mut source = ProjectCatalog::new();
+        let project = source.create("Delivery".to_owned()).unwrap();
+        source
+            .execute(
+                &project.id,
+                CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
+            )
+            .unwrap();
+        let archive = source.export_archive(&project.id).unwrap();
+        let mut restored = ProjectCatalog::new();
+        restored.import_archive(&archive, false, false).unwrap();
+        assert!(matches!(
+            restored.replay_changes(&project.id, 0),
+            Err(ProjectError::ChangeHistoryGap {
+                requested: 0,
+                available_after: 1
+            })
+        ));
+        let replay = restored.replay_changes(&project.id, 1).unwrap();
+        assert_eq!(replay.current_revision, 1);
+        assert!(replay.changes.is_empty());
     }
 
     #[tokio::test]
