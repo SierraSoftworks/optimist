@@ -108,6 +108,7 @@ const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const selectedEvidence = ref<Evidence | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const mutationError = ref<Error | null>(null)
+const createProjectOption = '__create_project__'
 
 const projects = computed(() => projectsQuery.data.value ?? [])
 const nodes = computed(() => graph.nodes.data.value ?? [])
@@ -186,6 +187,16 @@ watch(visibleNodes, (next) => {
     store.selectNode(null)
   }
 })
+
+function selectProject(event: Event) {
+  const select = event.target as HTMLSelectElement
+  if (select.value === createProjectOption) {
+    projectDialogOpen.value = true
+    select.value = selectedProjectId.value ?? ''
+    return
+  }
+  store.selectProject(select.value || null)
+}
 
 async function submitProject(name: string) {
   mutationError.value = null
@@ -457,12 +468,13 @@ function retry() {
         <select
           :value="selectedProjectId ?? ''"
           aria-label="Project"
-          @change="store.selectProject(($event.target as HTMLSelectElement).value || null)"
+          @change="selectProject"
         >
           <option v-if="!projects.length" value="">No projects</option>
           <option v-for="project in projects" :key="project.id" :value="project.id">
             {{ project.name }}
           </option>
+          <option :value="createProjectOption">New project...</option>
         </select>
         <ChevronDown :size="15" />
         <span v-if="projectQuery.data.value" class="revision">r{{ projectQuery.data.value.revision }}</span>

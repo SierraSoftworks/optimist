@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 interface FixtureState {
   revision: number
   project: { id: string; name: string; revision: number } | null
+  projects?: Array<{ id: string; name: string; revision: number }>
   nodes: Array<Record<string, unknown>>
   edges: Array<Record<string, unknown>>
 }
@@ -15,10 +16,16 @@ async function mockApi(page: Page, state: FixtureState) {
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
 
     if (url.pathname === '/api/v1/projects' && request.method() === 'GET') {
-      return json(state.project ? [state.project] : [])
+      return json(state.projects ?? (state.project ? [state.project] : []))
     }
     if (url.pathname === '/api/v1/projects' && request.method() === 'POST') {
-      state.project = { id: 'A', name: JSON.parse(request.postData()!).name, revision: 0 }
+      const projects = state.projects ?? (state.project ? [state.project] : [])
+      state.project = {
+        id: String.fromCharCode(65 + projects.length),
+        name: JSON.parse(request.postData()!).name,
+        revision: 0,
+      }
+      state.projects = [...projects, state.project]
       return json(state.project, 201)
     }
     if (url.pathname === '/api/v1/projects/A' && request.method() === 'GET') {
@@ -140,6 +147,29 @@ test('creates nodes and a relationship, then filters and inspects the model', as
   await expect(page.getByText('0 relationships')).toBeVisible()
   await page.getByLabel('Search graph').fill('feedback')
   await expect(page.getByText('1 nodes')).toBeVisible()
+})
+
+test('creates another project from the project dropdown', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await page.getByLabel('Project name').fill('Existing model')
+  await page.getByRole('button', { name: 'Create project' }).last().click()
+  const projectSelect = page.getByLabel('Project', { exact: true })
+  await expect(projectSelect).toHaveValue('A')
+
+  await projectSelect.selectOption({ label: 'New project...' })
+  await expect(page.getByRole('heading', { name: 'Create project' })).toBeVisible()
+  await expect(projectSelect).toHaveValue('A')
+  await page.getByLabel('Project name').fill('Second model')
+  await page.getByRole('button', { name: 'Create project' }).last().click()
+
+  await expect(projectSelect).toHaveValue('B')
+  await expect(projectSelect.locator('option')).toHaveText([
+    'Existing model',
+    'Second model',
+    'New project...',
+  ])
 })
 
 test('keeps project and graph controls usable on mobile', async ({ page }, testInfo) => {
