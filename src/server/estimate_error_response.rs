@@ -49,6 +49,11 @@ pub(super) fn classify(
             "estimate_in_use",
             &["Replace or remove the project dependence document before removing this estimate."],
         ),
+        EstimateCommandError::ReferencedByFormula { .. } => (
+            StatusCode::CONFLICT,
+            "estimate_in_use",
+            &["Remove formulas rooted under or referencing this estimate before removing it."],
+        ),
         EstimateCommandError::Estimate(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_estimate_distribution",

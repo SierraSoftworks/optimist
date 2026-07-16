@@ -69,6 +69,13 @@ pub(super) fn remove(
     }) {
         return Err(EstimateCommandError::ReferencedByDependence(command.address).into());
     }
+    if let Some(formula) = super::estimate_formula_references::find(entry, &command.address) {
+        return Err(EstimateCommandError::ReferencedByFormula {
+            address: command.address,
+            formula: Box::new(formula),
+        }
+        .into());
+    }
     let value = match &command.address.owner {
         EstimateOwner::Node(id) => {
             let mut node = entry

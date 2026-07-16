@@ -8,6 +8,7 @@ mod estimate_address;
 mod estimate_slot;
 mod formula;
 mod formula_dependence;
+mod formula_document;
 mod formula_draw;
 mod formula_sampling;
 #[cfg(test)]
@@ -47,6 +48,7 @@ pub use estimate_address::{
 };
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};
 pub use formula::{CompiledFormula, Formula, FormulaError, FormulaSet};
+pub use formula_document::{FormulaCatalog, FormulaDefinition, FormulaDocument};
 pub use formula_sampling::MonteCarloError;
 pub use id::{EntityId, IdError, ProjectId};
 pub use monte_carlo::{MonteCarloConfig, MonteCarloConfigError};

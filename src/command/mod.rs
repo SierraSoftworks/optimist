@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{Edge, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario};
+use crate::domain::{
+    Edge, FormulaDefinition, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario,
+};
 
 mod operations;
 
@@ -77,6 +79,10 @@ pub enum GraphCommand {
     SetEstimate(SetEstimate),
     /// Removes one optional or named-cost estimate from its owner.
     RemoveEstimate(RemoveEstimate),
+    /// Creates or replaces one nested Fermi component formula.
+    SetFormula(SetFormula),
+    /// Removes one unreferenced leaf Fermi component formula.
+    RemoveFormula(RemoveFormula),
     /// Allocates an independent project-local ID and stores a scenario document.
     CreateScenario(CreateScenario),
     /// Replaces a scenario document under its own revision guard.
@@ -130,6 +136,10 @@ pub enum CommandOutcome {
     EstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].
     EstimateRemoved(PrimitiveEstimate),
+    /// Fermi component created or replaced by [`GraphCommand::SetFormula`].
+    FormulaSet(FormulaDefinition),
+    /// Fermi component removed by [`GraphCommand::RemoveFormula`].
+    FormulaRemoved(FormulaDefinition),
     /// Complete scenario document created by [`GraphCommand::CreateScenario`].
     ScenarioCreated(Scenario),
     /// Complete replacement stored by [`GraphCommand::UpdateScenario`].

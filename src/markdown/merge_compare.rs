@@ -5,6 +5,7 @@ pub(super) fn project(left: &ProjectDocument, right: &ProjectDocument) -> bool {
         && left.project.id == right.project.id
         && left.project.name == right.project.name
         && left.dependence == right.dependence
+        && left.formulas == right.formulas
         && left.description == right.description
 }
 

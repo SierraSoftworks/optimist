@@ -90,6 +90,7 @@ fn project_body_is_separate_from_frontmatter() {
                 },
             }],
         }),
+        formulas: crate::domain::FormulaDocument::default(),
         description: "# Delivery\n\nScope.\n".to_owned(),
     };
     let rendered = render_project(&document).unwrap();
@@ -199,6 +200,7 @@ fn project_document(revision: u64) -> ProjectDocument {
             revision,
         },
         dependence: None,
+        formulas: crate::domain::FormulaDocument::default(),
         description: String::new(),
     }
 }
@@ -494,4 +496,92 @@ fn directory_round_trip_is_byte_stable_and_removes_stale_files() {
         );
     }
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn project_formulas_round_trip_and_validate_against_imported_primitives() {
+    let project_id = crate::domain::ProjectId::new("A").unwrap();
+    let root = EstimateAddress::new(
+        project_id,
+        EstimateOwner::Node(EntityId::new(0)),
+        EstimateId::new(0),
+    );
+    let component = root
+        .clone()
+        .with_component(crate::domain::EstimateComponentId::new("baseline").unwrap());
+    let mut factor = node(0, "delivery");
+    let NodePayload::Factor(value) = &mut factor.payload else {
+        unreachable!()
+    };
+    value.current = Some(
+        crate::domain::Estimate::new(
+            EstimateId::new(0),
+            crate::domain::Distribution::beta(2.0, 2.0).unwrap(),
+        )
+        .unwrap(),
+    );
+    let mut project = project_document(0);
+    project.formulas = crate::domain::FormulaDocument {
+        revision: 1,
+        formulas: std::collections::BTreeMap::from([(
+            component.clone(),
+            crate::domain::Formula::Reference {
+                address: root.clone(),
+            },
+        )]),
+        provenance: std::collections::BTreeMap::from([(
+            component,
+            vec!["decomposition".to_owned()],
+        )]),
+    };
+    let rendered = render_project(&project).unwrap();
+    assert_eq!(parse_project("_project.md", &rendered).unwrap(), project);
+    ValidatedImport::new(
+        SourceDocument::new("_project.md", project),
+        vec![entity_document(factor, 0)],
+        vec![],
+    )
+    .unwrap();
+}
+
+#[test]
+fn import_rejects_formula_roots_and_provenance_without_definitions() {
+    let mut project = project_document(0);
+    let root = EstimateAddress::new(
+        project.project.id.clone(),
+        EstimateOwner::Node(EntityId::new(0)),
+        EstimateId::new(0),
+    );
+    let component = root
+        .clone()
+        .with_component(crate::domain::EstimateComponentId::new("missing").unwrap());
+    project.formulas.formulas.insert(
+        component,
+        crate::domain::Formula::Literal {
+            distribution: crate::domain::Distribution::point(1.0).unwrap(),
+            unit: crate::domain::Unit::dimensionless(),
+        },
+    );
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project),
+            vec![entity_document(node(0, "delivery"), 0)],
+            vec![],
+        ),
+        Err(ImportError::InvalidFormulas { .. })
+    ));
+
+    let mut project = project_document(0);
+    project
+        .formulas
+        .provenance
+        .insert(root, vec!["orphan".to_owned()]);
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project),
+            vec![entity_document(node(0, "delivery"), 0)],
+            vec![],
+        ),
+        Err(ImportError::OrphanFormulaProvenance { .. })
+    ));
 }

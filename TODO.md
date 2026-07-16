@@ -55,7 +55,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Revision-checked node and edge delete commands.
 - [ ] Typed node/edge metadata and Markdown description updates.
 - [x] Primitive estimate set/show/remove commands and CLI.
-- [ ] Fermi component and formula authoring commands.
+- [x] Fermi component and formula authoring commands.
 - [x] Scenario create/list/show/update/delete commands.
   - [ ] Scenario analysis command and result transport.
 - [ ] Atomic command batches and compensating undo.
@@ -67,6 +67,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Versioned `_project.md` schema foundation for project identity and base revision.
   - [ ] Extend `_project.md` with constraints, unit registry, and dependence documents.
     - [x] Persist and render project dependence documents.
+    - [x] Persist, render, and cross-validate project formula documents.
 - [x] Canonical entity document schema with outgoing edge payloads and Markdown description body.
 - [x] Canonical `scenarios/<id>-<slug>.md` schema.
 - [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.

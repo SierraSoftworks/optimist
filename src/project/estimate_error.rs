@@ -44,6 +44,14 @@ pub enum EstimateCommandError {
     /// The project dependence document still references this estimate.
     #[error("estimate {0} is referenced by the project dependence model")]
     ReferencedByDependence(EstimateAddress),
+    /// A stored Fermi component is rooted under or references this estimate.
+    #[error("estimate {address} is used by formula component {formula}")]
+    ReferencedByFormula {
+        /// Primitive estimate requested for removal.
+        address: EstimateAddress,
+        /// Formula rooted under or referencing the estimate.
+        formula: Box<EstimateAddress>,
+    },
     /// A primitive distribution does not satisfy its slot's typed support.
     #[error(transparent)]
     Estimate(#[from] EstimateError),

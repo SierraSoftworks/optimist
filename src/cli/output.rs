@@ -1,9 +1,12 @@
 use clap::ValueEnum;
 
-use crate::domain::{Edge, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario};
+use crate::domain::{
+    Edge, FormulaCatalog, FormulaDefinition, Node, Observation, PrimitiveEstimate,
+    ProjectDependenceModel, Scenario,
+};
 use crate::project::Project;
 
-use super::{output_json, output_table};
+use super::{output_json, output_table, output_table_formula};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(super) enum OutputFormat {
@@ -124,15 +127,35 @@ impl OutputFormat {
             Self::Json | Self::Jsonl => output_json::serialize(estimate),
         }
     }
+
+    pub(super) fn formula(
+        self,
+        formula: &FormulaDefinition,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => output_table_formula::render(0, std::slice::from_ref(formula)),
+            Self::Json | Self::Jsonl => output_json::serialize(formula),
+        }
+    }
+
+    pub(super) fn formulas(self, catalog: &FormulaCatalog) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => output_table_formula::render(catalog.revision, &catalog.formulas),
+            Self::Json => output_json::serialize(catalog),
+            Self::Jsonl => output_json::lines(&catalog.formulas),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         domain::{
-            Distribution, Edge, EdgePayload, EntityId, EstimateAddress, EstimateId, EstimateOwner,
-            EstimateSlot, Factor, MonteCarloConfig, Node, NodeKind, NodePayload, Observation,
-            PrimitiveEstimate, ProjectId, Requirement, Scenario, ScenarioDraft, ScenarioId,
+            CompiledFormula, Distribution, Edge, EdgePayload, EntityId, EstimateAddress,
+            EstimateComponentId, EstimateId, EstimateOwner, EstimateSlot, Factor, Formula,
+            FormulaCatalog, FormulaDefinition, MonteCarloConfig, Node, NodeKind, NodePayload,
+            Observation, PrimitiveEstimate, ProjectId, Requirement, Scenario, ScenarioDraft,
+            ScenarioId, Unit,
         },
         project::Project,
     };
@@ -216,6 +239,48 @@ mod tests {
         assert_eq!(
             OutputFormat::Table.estimate(&estimate).unwrap(),
             "ADDRESS\tSLOT\tREVISION\tDISTRIBUTION\tPROVENANCE\nA/node/A/estimate/B\tCurrent\t2\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\texpert"
+        );
+    }
+
+    #[test]
+    fn renders_formula_catalogs_stably() {
+        let root = EstimateAddress::new(
+            ProjectId::new("A").unwrap(),
+            EstimateOwner::Node(EntityId::new(0)),
+            EstimateId::new(0),
+        );
+        let formula = FormulaDefinition {
+            address: root
+                .clone()
+                .with_component(EstimateComponentId::new("base").unwrap()),
+            formula: Formula::Reference {
+                address: root.clone(),
+            },
+            compiled: CompiledFormula {
+                unit: Unit::dimensionless(),
+                dependencies: vec![root],
+            },
+            provenance: vec!["expert".to_owned()],
+        };
+        let catalog = FormulaCatalog {
+            revision: 2,
+            formulas: vec![formula],
+        };
+        assert_eq!(
+            OutputFormat::Table.formulas(&catalog).unwrap(),
+            "DOCUMENT_REVISION\tADDRESS\tUNIT\tDEPENDENCIES\tPROVENANCE\n2\tA/node/A/estimate/A/component/base\t1\t1\texpert"
+        );
+        assert!(
+            OutputFormat::Json
+                .formulas(&catalog)
+                .unwrap()
+                .contains("\"revision\":2")
+        );
+        assert!(
+            !OutputFormat::Jsonl
+                .formulas(&catalog)
+                .unwrap()
+                .contains("\"revision\":2")
         );
     }
 

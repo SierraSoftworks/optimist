@@ -2,7 +2,7 @@ use axum::http::StatusCode;
 
 use crate::project::ProjectError;
 
-use super::{estimate_error_response, repository_error_response};
+use super::{estimate_error_response, formula_error_response, repository_error_response};
 
 pub(super) fn classify(
     error: &ProjectError,
@@ -109,6 +109,7 @@ pub(super) fn classify(
             &["Use estimate addresses embedded in existing project nodes or edges."],
         ),
         ProjectError::EstimateCommand(error) => estimate_error_response::classify(error),
+        ProjectError::FormulaCommand(error) => formula_error_response::classify(error),
         ProjectError::IdentifierSpaceExhausted
         | ProjectError::RevisionSpaceExhausted(_)
         | ProjectError::EdgeRevisionSpaceExhausted(_)

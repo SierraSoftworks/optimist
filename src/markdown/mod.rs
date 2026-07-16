@@ -5,6 +5,7 @@ mod error;
 mod frontmatter;
 mod import_dependence;
 mod import_error;
+mod import_formulas;
 mod import_references;
 mod import_validation;
 mod merge;

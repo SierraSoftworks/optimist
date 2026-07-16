@@ -113,4 +113,20 @@ pub enum ImportError {
         /// Unresolved project-scoped estimate address.
         address: EstimateAddress,
     },
+    /// The project formula document is inconsistent with imported primitives or units.
+    #[error("{path}: invalid project formulas: {message}")]
+    InvalidFormulas {
+        /// Project document containing the formulas.
+        path: String,
+        /// Formula projection or validation diagnostic.
+        message: String,
+    },
+    /// Formula provenance names an address absent from the formula source map.
+    #[error("{path}: formula provenance references missing formula {address}")]
+    OrphanFormulaProvenance {
+        /// Project document containing the provenance record.
+        path: String,
+        /// Formula address absent from the formula map.
+        address: EstimateAddress,
+    },
 }

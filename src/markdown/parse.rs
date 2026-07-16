@@ -31,6 +31,7 @@ pub fn parse_project(
         schema_version: header.schema_version,
         project: header.project,
         dependence: header.dependence,
+        formulas: header.formulas,
         description: body.to_owned(),
     })
 }

@@ -8,7 +8,7 @@ use crate::{
     store::RepositoryError,
 };
 
-use super::EstimateCommandError;
+use super::{EstimateCommandError, FormulaCommandError};
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -120,6 +120,9 @@ pub enum ProjectError {
     /// Primitive estimate authoring or lookup validation failed.
     #[error(transparent)]
     EstimateCommand(#[from] EstimateCommandError),
+    /// Fermi component formula authoring or lookup validation failed.
+    #[error(transparent)]
+    FormulaCommand(#[from] FormulaCommandError),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

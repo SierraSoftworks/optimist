@@ -22,6 +22,7 @@ pub fn render_project(document: &ProjectDocument) -> Result<String, MarkdownErro
         schema_version: document.schema_version,
         project: document.project.clone(),
         dependence: document.dependence.clone(),
+        formulas: document.formulas.clone(),
     };
     render(&header, &document.description)
 }

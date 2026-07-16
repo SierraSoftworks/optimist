@@ -77,10 +77,22 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
             "Required causal effect and blocking degree estimates may be replaced but not removed.",
         ],
         "estimate_in_use" => {
-            &["Replace or remove project dependence before removing this estimate."]
+            &["Remove project dependence or formulas which reference this estimate, then retry."]
         }
         "invalid_estimate_distribution" => {
             &["Use a distribution whose complete support fits the selected slot dimension."]
+        }
+        "invalid_formula" => {
+            &["Check component/root addresses, references, formula arity, bounds, and units."]
+        }
+        "formula_not_found" => {
+            &["Run `optimist formula list` and retry with a returned component address."]
+        }
+        "formula_revision_conflict" => {
+            &["Run `optimist formula list` and retry against its current revision."]
+        }
+        "formula_in_use" => {
+            &["Remove dependent or descendant formulas before removing this component."]
         }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]

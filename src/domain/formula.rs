@@ -94,7 +94,7 @@ impl FormulaSet {
 }
 
 /// Validated dimensional and dependency metadata for a formula.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompiledFormula {
     /// Unit derived from every expression and reference.
     pub unit: Unit,

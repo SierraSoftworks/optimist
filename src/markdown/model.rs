@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Edge, Node, ProjectDependenceModel, Scenario, normalize_name},
+    domain::{Edge, FormulaDocument, Node, ProjectDependenceModel, Scenario, normalize_name},
     project::Project,
 };
 
@@ -18,6 +18,8 @@ pub struct ProjectDocument {
     pub project: Project,
     /// Optional project-level Gaussian residual dependence document.
     pub dependence: Option<ProjectDependenceModel>,
+    /// Revisioned project-scoped Fermi component formula sources.
+    pub formulas: FormulaDocument,
     /// Rich Markdown project rationale and scope.
     pub description: String,
 }

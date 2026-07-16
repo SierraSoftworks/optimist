@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, NewObservation,
-    NodePayload, ProjectDependenceModel, ScenarioDraft, ScenarioId,
+    Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, Formula,
+    NewObservation, NodePayload, ProjectDependenceModel, ScenarioDraft, ScenarioId,
 };
 
 /// Data required to construct a new structural node.
@@ -80,6 +80,29 @@ pub struct SetEstimate {
 pub struct RemoveEstimate {
     /// Existing root estimate address; nested components are unsupported.
     pub address: EstimateAddress,
+}
+
+/// Revision-checked creation or replacement of one nested Fermi component.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetFormula {
+    /// Nested component address under an existing primitive estimate root.
+    pub address: EstimateAddress,
+    /// Formula source validated against all primitive and component definitions.
+    pub formula: Formula,
+    /// Formula document revision observed by the caller.
+    pub expected_revision: u64,
+    /// Evidence or elicitation context for this decomposition.
+    #[serde(default)]
+    pub provenance: Vec<String>,
+}
+
+/// Revision-checked removal of one unreferenced leaf Fermi component.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RemoveFormula {
+    /// Existing nested component address to remove.
+    pub address: EstimateAddress,
+    /// Formula document revision observed by the caller.
+    pub expected_revision: u64,
 }
 
 /// Data required to create a scenario outside the causal graph.
