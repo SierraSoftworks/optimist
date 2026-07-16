@@ -1,7 +1,7 @@
 use crate::{
     domain::{
-        AnalysisLimits, AnalysisRevisionKey, ScenarioAnalysis, ScenarioAnalysisError, ScenarioId,
-        StructuralAnalysis,
+        AnalysisLimits, AnalysisRevisionKey, ImpedimentAnalysis, ScenarioAnalysis,
+        ScenarioAnalysisError, ScenarioId, StructuralAnalysis,
     },
     store::GraphRepository,
 };
@@ -9,6 +9,31 @@ use crate::{
 use super::{ProjectCatalog, ProjectError};
 
 impl ProjectCatalog {
+    /// Projects factor-to-outcome impediment review candidates from one snapshot.
+    ///
+    /// Topology and evidence-priority order remain separate in the result. This
+    /// method does not infer causal effects from evidence or combine evidence into
+    /// a scalar confidence score.
+    pub fn analyze_impediments(
+        &mut self,
+        project_id: &crate::domain::ProjectId,
+    ) -> Result<ImpedimentAnalysis, ProjectError> {
+        let entry = self
+            .projects
+            .get_mut(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        let revision = AnalysisRevisionKey {
+            project: project_id.clone(),
+            graph_revision: entry.graph_revision,
+            scenario: None,
+            dependence_revision: entry.dependence.as_ref().map(|model| model.revision),
+            formula_revision: entry.formulas.revision,
+        };
+        let nodes = entry.repository.list_nodes()?;
+        let edges = entry.repository.list_edges()?;
+        Ok(ImpedimentAnalysis::compute(revision, &nodes, &edges)?)
+    }
+
     /// Computes exact structural topology from one immutable project snapshot.
     ///
     /// The revision key includes the independently tracked graph revision plus the

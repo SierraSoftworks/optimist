@@ -12,6 +12,7 @@ describe('DistributionEditor', () => {
         families: ['point', 'beta'],
         support: 'probability',
       },
+      attachTo: document.body,
     })
     await wrapper.get('select').setValue('beta')
     const inputs = wrapper.findAll('input[type="number"]')
@@ -35,9 +36,11 @@ describe('DistributionEditor', () => {
     expect(familyHelp.attributes('aria-expanded')).toBe('false')
     await familyHelp.trigger('click')
     expect(familyHelp.attributes('aria-expanded')).toBe('true')
-    expect(wrapper.text()).toContain('overruns can be much larger than underruns')
+    expect(document.body.textContent).toContain('overruns can be much larger than underruns')
+    expect(wrapper.find('.parameter-popover').exists()).toBe(false)
 
     await wrapper.get('button[aria-label="Explain Log scale"]').trigger('click')
-    expect(wrapper.text()).toContain('tail risk')
+    expect(document.body.textContent).toContain('tail risk')
+    wrapper.unmount()
   })
 })

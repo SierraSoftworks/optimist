@@ -35,6 +35,7 @@ import GraphNavigator from './components/GraphNavigator.vue'
 import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
 import OptimizeAnalysisPanel from './components/OptimizeAnalysisPanel.vue'
 import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
+import ImpedimentAnalysisPanel from './components/ImpedimentAnalysisPanel.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -86,6 +87,7 @@ import {
   useScenarios,
   useScenarioAnalysis,
   useCreateScenario,
+  useImpedimentAnalysis,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -120,6 +122,7 @@ const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const selectedFeedbackCycle = ref<number | null>(null)
 const selectedScenarioId = ref<string | null>(null)
 const selectedCandidateId = ref<string | null>(null)
+const selectedImpedimentId = ref<string | null>(null)
 const highlightedNodeIds = ref<string[]>([])
 const highlightedEdgeIds = ref<string[]>([])
 const mutationError = ref<Error | null>(null)
@@ -177,6 +180,12 @@ const scenarioAnalysis = useScenarioAnalysis(
   optimizeModeEnabled,
 )
 const createScenario = useCreateScenario(projectQuery.data)
+const impedimentsModeEnabled = computed(() => mode.value === 'impediments')
+const impedimentAnalysis = useImpedimentAnalysis(
+  selectedProjectId,
+  projectRevision,
+  impedimentsModeEnabled,
+)
 const optimizePending = computed(() =>
   scenariosQuery.isPending.value ||
   (Boolean(selectedScenarioId.value) &&
@@ -201,7 +210,7 @@ const kindOptions: Array<{ kind: NodeKind; label: string; icon: typeof Goal }> =
 ]
 const modes: Array<{ id: WorkbenchMode; label: string; available: boolean }> = [
   { id: 'explore', label: 'Explore', available: true },
-  { id: 'impediments', label: 'Impediments', available: false },
+  { id: 'impediments', label: 'Impediments', available: true },
   { id: 'feedback', label: 'Feedback', available: true },
   { id: 'optimize', label: 'Optimize', available: true },
 ]
@@ -238,6 +247,7 @@ watch(
   { immediate: true },
 )
 watch([mode, selectedProjectId, selectedScenarioId], () => clearOptimizeSelection())
+watch([mode, selectedProjectId], () => clearImpedimentSelection())
 
 function selectProject(event: Event) {
   const select = event.target as HTMLSelectElement
@@ -284,6 +294,21 @@ function selectCandidate(id: string, nodes: string[]) {
 function clearOptimizeSelection() {
   selectedCandidateId.value = null
   if (mode.value === 'optimize') {
+    highlightedNodeIds.value = []
+    highlightedEdgeIds.value = []
+  }
+}
+
+function selectImpediment(factor: string, nodes: string[], edges: import('./api/types').EdgeIdentity[]) {
+  selectedImpedimentId.value = factor
+  highlightedNodeIds.value = nodes
+  highlightedEdgeIds.value = edges.map(edgeElementId)
+  store.selectNode(factor)
+}
+
+function clearImpedimentSelection() {
+  selectedImpedimentId.value = null
+  if (mode.value === 'impediments') {
     highlightedNodeIds.value = []
     highlightedEdgeIds.value = []
   }
@@ -689,6 +714,16 @@ function retry() {
         @select="selectFeedbackCycle"
         @clear="clearFeedbackSelection"
         @retry="structuralAnalysis.refetch()"
+      />
+      <ImpedimentAnalysisPanel
+        v-else-if="mode === 'impediments'"
+        :analysis="impedimentAnalysis.data.value"
+        :pending="impedimentAnalysis.isPending.value || impedimentAnalysis.isFetching.value"
+        :error="impedimentAnalysis.error.value as Error | null"
+        :nodes="nodes"
+        :selected-factor-id="selectedImpedimentId"
+        @select="selectImpediment"
+        @retry="impedimentAnalysis.refetch()"
       />
       <OptimizeAnalysisPanel
         v-else-if="mode === 'optimize'"

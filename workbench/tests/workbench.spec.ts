@@ -88,6 +88,45 @@ async function mockApi(page: Page, state: FixtureState) {
         limits: { maximum_cycle_length: 8, maximum_cycles: 1000 },
       })
     }
+    if (url.pathname === '/api/v1/projects/A/analysis/impediments') {
+      const factors = state.nodes.filter((node) => (node.payload as { kind: string }).kind === 'factor')
+      const outcomes = new Set(state.nodes.filter((node) => (node.payload as { kind: string }).kind === 'outcome').map((node) => node.id))
+      const candidates = factors.flatMap((node) => {
+        const pathEdges = state.edges.filter((edge) =>
+          edge.source === node.id && outcomes.has(edge.destination) &&
+          ['contributes', 'blocks'].includes((edge.payload as { kind: string }).kind),
+        )
+        if (!pathEdges.length) return []
+        const evidence = ((node.payload as { properties: { evidence?: unknown[] } }).properties.evidence ?? [])
+        const relationshipEvidence = pathEdges.flatMap((edge) => {
+          const references = (edge.payload as { properties?: { evidence?: string[] } }).properties?.evidence ?? []
+          return references.length ? [{ edge: { source: edge.source, kind: (edge.payload as { kind: string }).kind, destination: edge.destination }, references }] : []
+        })
+        const evidenced = new Set(relationshipEvidence.map((value) => `${value.edge.source}:${value.edge.kind}:${value.edge.destination}`))
+        return [{
+          factor: node.id,
+          controllable: Boolean((node.payload as { properties: { controllable?: boolean } }).properties.controllable),
+          reachable_outcomes: pathEdges.map((edge) => edge.destination).sort(),
+          nearest_outcome_distance: 1,
+          path_edges: pathEdges.map((edge) => ({ source: edge.source, kind: (edge.payload as { kind: string }).kind, destination: edge.destination })),
+          direct_evidence: evidence,
+          relationship_evidence: relationshipEvidence,
+          unsupported_path_edges: pathEdges
+            .map((edge) => ({ source: edge.source, kind: (edge.payload as { kind: string }).kind, destination: edge.destination }))
+            .filter((edge) => !evidenced.has(`${edge.source}:${edge.kind}:${edge.destination}`)),
+        }]
+      }).sort((left, right) => right.reachable_outcomes.length - left.reachable_outcomes.length || left.factor.localeCompare(right.factor))
+      const evidencePriority = [...candidates].sort((left, right) =>
+        right.direct_evidence.length - left.direct_evidence.length ||
+        right.relationship_evidence.length - left.relationship_evidence.length ||
+        candidates.indexOf(left) - candidates.indexOf(right),
+      ).map((candidate) => candidate.factor)
+      return json({
+        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null, formula_revision: 0 },
+        topology_candidates: candidates,
+        evidence_priority: evidencePriority,
+      })
+    }
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {
       const command = JSON.parse(request.postData()!)
       const input = command.command.payload
@@ -276,7 +315,7 @@ test('analyzes and highlights causal feedback loops', async ({ page }, testInfo)
   await expect(panel.getByRole('button', { name: /A → B → A/ })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByText('Analysis highlights 2 nodes and 2 relationships.')).toBeAttached()
   await expect(page.getByText('feedback', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Impediments' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Impediments' })).toBeEnabled()
   await expect(page.getByRole('button', { name: 'Optimize' })).toBeEnabled()
   await page.screenshot({ path: 'artifacts/workbench-feedback.png', fullPage: true })
 })
@@ -317,6 +356,47 @@ test('creates and compares finite-horizon scenario candidates', async ({ page },
   await panel.getByRole('button', { name: /Automate B converged/ }).click()
   await expect(page.getByText('Analysis highlights 2 nodes and 0 relationships.')).toBeAttached()
   await page.screenshot({ path: 'artifacts/workbench-optimize.png', fullPage: true })
+})
+
+test('separates topology and evidence impediment orders', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
+  const factor = (id: string, title: string, evidence: unknown[]) => ({
+    id, revision: 0, name: title.toLocaleLowerCase().replaceAll(' ', '_'), normalized_name: title.toLocaleLowerCase().replaceAll(' ', '_'), title,
+    description: '', aliases: [], metadata: {},
+    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: id === 'A', evidence } },
+  })
+  const outcome = (id: string) => ({
+    id, revision: 0, name: `outcome_${id}`, normalized_name: `outcome_${id}`, title: `Outcome ${id}`,
+    description: '', aliases: [], metadata: {},
+    payload: { kind: 'outcome', properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
+  })
+  const estimate = { id: 'A', revision: 0, distribution: { type: 'point', value: 0.5 }, provenance: [] }
+  const edge = (source: string, destination: string, evidence: string[]) => ({
+    source, source_kind: 'factor', destination, destination_kind: 'outcome', revision: 0,
+    description: '', metadata: {},
+    payload: { kind: 'contributes', properties: { effect: estimate, lag: null, mechanism: '', evidence } },
+  })
+  await page.unroute('**/api/v1/**')
+  await mockApi(page, {
+    project: { id: 'A', name: 'Impediment model', revision: 0 }, revision: 5,
+    nodes: [
+      factor('A', 'Wide reach', []),
+      factor('B', 'Documented', [{ id: 0, revision: 0, summary: 'Observed', source: null }]),
+      outcome('C'), outcome('D'),
+    ],
+    edges: [edge('A', 'C', []), edge('A', 'D', []), edge('B', 'C', ['ADR-1'])],
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Impediments', exact: true }).click()
+  const panel = page.getByLabel('Impediments analysis')
+  await expect(panel.locator('.impediment-title strong').first()).toHaveText('Wide reach')
+  await expect(panel.getByText('2 path edges lack typed evidence.')).toBeVisible()
+  await panel.getByRole('button', { name: /Evidence/ }).click()
+  await expect(panel.locator('.impediment-title strong').first()).toHaveText('Documented')
+  await panel.locator('.impediment-list > li > button').first().click()
+  await expect(page.getByText('Analysis highlights 2 nodes and 1 relationships.')).toBeAttached()
+  await expect(panel.getByText(/Neither is a causal confidence score/)).toBeVisible()
+  await page.screenshot({ path: 'artifacts/workbench-impediments.png', fullPage: true })
 })
 
 test('keeps project and graph controls usable on mobile', async ({ page }, testInfo) => {

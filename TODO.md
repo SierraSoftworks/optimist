@@ -112,7 +112,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Stable feedback equilibrium checks and probability of instability.
 - [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [ ] Reinforcing/balancing, nested, and interacting loop explanations.
-- [ ] Evidence-aware impediment ranking separate from topology-only candidates.
+- [x] Evidence-aware impediment ranking separate from topology-only candidates.
 - [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication.
 - [ ] Pareto impact/cost/time/risk/uncertainty frontier.
 - [ ] Scalar utility only when a scenario explicitly defines conversion preferences.
@@ -127,9 +127,9 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
 - [ ] Direct graph/property editing through typed commands.
 - [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
-- [ ] Explore, Impediments, Feedback, and Optimize analysis modes.
+- [x] Explore, Impediments, Feedback, and Optimize analysis modes.
   - [x] Feedback mode with exact SCC/cycle results, bounded-result diagnostics, and graph highlighting.
-  - [ ] Impediments mode with evidence-aware ranking.
+  - [x] Impediments mode with separate topology and evidence-aware review ordering.
   - [x] Optimize mode with scenario creation and independent finite-horizon candidate projections.
   - [ ] Optimize mode with budget-aware candidate bundles and Pareto impact/cost frontiers.
 - [x] Keyboard navigation and synchronized table/outline accessibility view.

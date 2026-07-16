@@ -63,6 +63,20 @@ export function useStructuralAnalysis(
   })
 }
 
+export function useImpedimentAnalysis(
+  projectId: Ref<string | null>,
+  projectRevision: Ref<number | undefined>,
+  enabled: Ref<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() => [
+      'analysis', 'impediments', projectId.value, projectRevision.value,
+    ]),
+    queryFn: () => api.impedimentAnalysis(projectId.value!),
+    enabled: computed(() => Boolean(projectId.value) && enabled.value),
+  })
+}
+
 export function useScenarios(
   projectId: Ref<string | null>,
   enabled: Ref<boolean>,

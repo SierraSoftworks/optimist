@@ -10,6 +10,7 @@ import type {
   Evidence,
   EvidenceInput,
   GraphEdge,
+  ImpedimentAnalysis,
   GraphNode,
   Project,
   ProjectArchive,
@@ -185,6 +186,8 @@ export const api = {
   edges: (project: string) => request<GraphEdge[]>(`/api/v1/projects/${project}/edges`),
   structuralAnalysis: (project: string) =>
     request<StructuralAnalysis>(`/api/v1/projects/${project}/analysis/structure`),
+  impedimentAnalysis: (project: string) =>
+    request<ImpedimentAnalysis>(`/api/v1/projects/${project}/analysis/impediments`),
   scenarios: (project: string) =>
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),
   scenarioAnalysis: (project: string, scenario: string) =>

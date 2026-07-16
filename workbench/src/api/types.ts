@@ -265,6 +265,28 @@ export interface ScenarioAnalysis {
   candidates: InterventionProjection[]
 }
 
+export interface RelationshipEvidence {
+  edge: EdgeIdentity
+  references: string[]
+}
+
+export interface ImpedimentCandidate {
+  factor: string
+  controllable: boolean
+  reachable_outcomes: string[]
+  nearest_outcome_distance: number
+  path_edges: EdgeIdentity[]
+  direct_evidence: Evidence[]
+  relationship_evidence: RelationshipEvidence[]
+  unsupported_path_edges: EdgeIdentity[]
+}
+
+export interface ImpedimentAnalysis {
+  revision: AnalysisRevisionKey
+  topology_candidates: ImpedimentCandidate[]
+  evidence_priority: string[]
+}
+
 export interface CreateNodeInput {
   name: string
   title: string

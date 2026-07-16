@@ -39,6 +39,35 @@ describe('Optimist API client', () => {
     expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/structure')
   })
 
+  it('reads separate topology and evidence impediment orders', async () => {
+    const analysis = {
+      revision: {
+        project: 'A', graph_revision: 4, scenario: null,
+        dependence_revision: null, formula_revision: 0,
+      },
+      topology_candidates: [{
+        factor: 'A', controllable: true, reachable_outcomes: ['B'],
+        nearest_outcome_distance: 1,
+        path_edges: [{ source: 'A', kind: 'contributes', destination: 'B' }],
+        direct_evidence: [],
+        relationship_evidence: [{
+          edge: { source: 'A', kind: 'contributes', destination: 'B' },
+          references: ['ADR-1'],
+        }],
+        unsupported_path_edges: [],
+      }],
+      evidence_priority: ['A'],
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(analysis), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    await expect(api.impedimentAnalysis('A')).resolves.toEqual(analysis)
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/impediments')
+  })
+
   it('lists, creates, and analyzes finite-horizon scenarios', async () => {
     const draft = {
       name: 'delivery', title: 'Delivery plan', rationale: '',

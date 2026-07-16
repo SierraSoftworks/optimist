@@ -222,6 +222,21 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .projection-table tbody th span { font-size: 9px; }
 .projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
 .projection-table tr.unreachable { opacity: .55; }
+.analysis-order-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 12px; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.analysis-order-tabs button { min-height: 28px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; }
+.analysis-order-tabs button[aria-pressed='true'] { background: var(--green-soft); color: var(--green); }
+.impediment-list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.impediment-list > li { overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.impediment-list > li > button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; padding: 8px; border: 0; background: transparent; text-align: left; }
+.impediment-list > li > button:hover, .impediment-list > li > button[aria-pressed='true'] { background: #edf3f9; }
+.impediment-list > li > button[aria-pressed='true'] { box-shadow: inset 3px 0 #285c91; }
+.impediment-title { min-width: 0; display: grid; gap: 2px; }
+.impediment-title strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
+.impediment-title small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.impediment-facts { grid-template-columns: 1fr; gap: 0; padding: 0 9px 7px; }
+.impediment-facts div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
+.unsupported-path { display: grid; grid-template-columns: auto 1fr; gap: 6px; margin: 0 8px 7px; padding: 6px; border-radius: 4px; background: #fff2df; color: #765b27; font-size: 8px; line-height: 1.4; }
+.reachable-outcomes { margin: 0; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.4; }
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 16px; background: rgba(25,31,28,.38); backdrop-filter: blur(3px); }
 .dialog { width: min(430px, 100%); padding: 20px; border-radius: 8px; background: var(--surface-strong); box-shadow: 0 22px 70px rgba(28,35,31,.24); }
@@ -268,7 +283,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .parameter-help-trigger { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
 .parameter-help-trigger:hover, .parameter-help-trigger[aria-expanded='true'] { background: var(--green-soft); color: var(--green); }
 .parameter-help-trigger:focus-visible { outline: 2px solid #2a7059; outline-offset: 1px; }
-.parameter-popover { position: absolute; z-index: 50; top: 24px; left: 0; width: min(280px, calc(100vw - 56px)); display: grid; gap: 5px; padding: 10px 34px 10px 11px; border: 1px solid #aeb9b1; border-radius: 6px; background: white; color: var(--ink); box-shadow: 0 10px 28px rgba(30, 40, 34, .16); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.parameter-popover { position: fixed; z-index: 80; width: 280px; display: grid; gap: 5px; padding: 10px 34px 10px 11px; border: 1px solid #aeb9b1; border-radius: 6px; background: white; color: var(--ink); box-shadow: 0 10px 28px rgba(30, 40, 34, .16); font-size: 10px; font-weight: 400; line-height: 1.5; }
 .parameter-popover strong { font-size: 10px; }
 .parameter-popover > span { color: #55605a; }
 .parameter-popover > button { position: absolute; top: 5px; right: 5px; width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
@@ -321,5 +336,5 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .field-grid, .kind-options { grid-template-columns: 1fr 1fr; }
   .estimate-dialog { max-height: calc(100svh - 24px); }
   .scenario-dialog { max-height: calc(100svh - 24px); }
-  .parameter-popover { position: fixed; top: auto; right: 18px; bottom: 18px; left: 18px; width: auto; }
+  .parameter-popover { width: min(280px, calc(100vw - 24px)); }
 }

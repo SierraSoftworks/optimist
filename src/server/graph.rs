@@ -142,10 +142,13 @@ mod tests {
 
     use crate::{
         command::{
-            CommandRequest, CreateNode, CreateScenario, GraphCommand, RemoveProjectDependence,
-            SetProjectDependence,
+            CommandRequest, CreateEdge, CreateNode, CreateScenario, GraphCommand,
+            RemoveProjectDependence, SetProjectDependence,
         },
-        domain::{Factor, MonteCarloConfig, NodePayload, ProjectDependenceModel, ScenarioDraft},
+        domain::{
+            EdgePayload, EntityId, Factor, MonteCarloConfig, NodePayload, ProjectDependenceModel,
+            ScenarioDraft,
+        },
         server::router,
     };
 
@@ -331,6 +334,103 @@ mod tests {
         assert_eq!(body["revision"]["scenario"], json!(["A", 0]));
         assert_eq!(body["planning_horizon"], 3);
         assert_eq!(body["candidates"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn analyzes_impediment_candidates_over_http() {
+        let app = router();
+        create_project(&app).await;
+        for (revision, payload) in [
+            NodePayload::Factor(Factor {
+                current: None,
+                desired: None,
+                controllable: true,
+                evidence: vec![crate::domain::Evidence {
+                    id: 0,
+                    revision: 0,
+                    summary: "Queueing observed".to_owned(),
+                    source: Some("dashboard".to_owned()),
+                }],
+            }),
+            NodePayload::Outcome(crate::domain::Outcome {
+                direction: crate::domain::OutcomeDirection::Maximize,
+                current: None,
+                desired: None,
+                evidence: vec![],
+            }),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            app.clone()
+                .oneshot(
+                    Request::post("/api/v1/projects/A/commands")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_vec(&CommandRequest::new(
+                                revision as u64,
+                                GraphCommand::CreateNode(CreateNode {
+                                    name: format!("node-{revision}"),
+                                    title: format!("Node {revision}"),
+                                    payload,
+                                }),
+                            ))
+                            .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+        app.clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CommandRequest::new(
+                            2,
+                            GraphCommand::CreateEdge(CreateEdge {
+                                source: EntityId::new(0),
+                                destination: EntityId::new(1),
+                                payload: EdgePayload::Contributes(crate::domain::CausalEffect {
+                                    effect: crate::domain::Estimate::new(
+                                        crate::domain::EstimateId::new(0),
+                                        crate::domain::Distribution::point(0.5).unwrap(),
+                                    )
+                                    .unwrap(),
+                                    lag: None,
+                                    mechanism: String::new(),
+                                    evidence: vec!["ADR-1".to_owned()],
+                                }),
+                            }),
+                        ))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let response = app
+            .oneshot(
+                Request::get("/api/v1/projects/A/analysis/impediments")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["revision"]["graph_revision"], 3);
+        assert_eq!(body["topology_candidates"][0]["factor"], "A");
+        assert_eq!(
+            body["topology_candidates"][0]["reachable_outcomes"],
+            json!(["B"])
+        );
+        assert_eq!(body["evidence_priority"], json!(["A"]));
+        assert_eq!(
+            body["topology_candidates"][0]["relationship_evidence"][0]["references"],
+            json!(["ADR-1"])
+        );
     }
 
     #[tokio::test]
