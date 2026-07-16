@@ -8,6 +8,7 @@ mod distribution_math;
 mod distribution_quantile;
 mod edge;
 mod edge_id;
+mod edge_payload;
 mod estimate;
 mod estimate_address;
 mod estimate_slot;
@@ -43,11 +44,12 @@ mod scenario_validation;
 mod unit;
 mod unit_ops;
 
-pub use edge::{
-    BlockingEffect, CausalEffect, Edge, EdgeError, EdgeId, EdgeKind, EdgePayload, Measurement,
-    MeasurementPolarity, Observation, Requirement,
+pub use edge::{Edge, EdgeError};
+pub use edge_id::{EdgeId, EdgeIdError, EdgeKind};
+pub use edge_payload::{
+    BlockingEffect, CausalEffect, EdgePayload, Measurement, MeasurementPolarity, Observation,
+    Requirement,
 };
-pub use edge_id::EdgeIdError;
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
     EstimateId, Money, NormalizedState, Probability, SignedInfluence,

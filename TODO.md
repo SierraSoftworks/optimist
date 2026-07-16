@@ -53,7 +53,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Observation add/correct/list API and CLI.
 - [x] Stable table, JSON, and JSONL agent output.
 - [x] Revision-checked node and edge delete commands.
-- [ ] Typed node/edge metadata and Markdown description updates.
+- [x] Typed node/edge metadata and Markdown description updates.
 - [x] Primitive estimate set/show/remove commands and CLI.
 - [x] Fermi component and formula authoring commands.
 - [x] Scenario create/list/show/update/delete commands.

@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 
-use crate::project::ProjectError;
+use crate::project::{AggregateUpdateError, ProjectError};
 
 use super::{estimate_error_response, formula_error_response, repository_error_response};
 
@@ -61,6 +61,21 @@ pub(super) fn classify(
             &[
                 "Check the value, RFC 3339 timestamp, source, unit, and measurement standard deviation.",
             ],
+        ),
+        ProjectError::AggregateUpdate(AggregateUpdateError::NodeRevisionConflict { .. }) => (
+            StatusCode::CONFLICT,
+            "node_revision_conflict",
+            &["Show the node and retry with its current node and project revisions."],
+        ),
+        ProjectError::AggregateUpdate(AggregateUpdateError::EdgeRevisionConflict { .. }) => (
+            StatusCode::CONFLICT,
+            "edge_revision_conflict",
+            &["Show the edge and retry with its current edge and project revisions."],
+        ),
+        ProjectError::AggregateUpdate(AggregateUpdateError::NodeRevisionSpaceExhausted(_)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "project_store_failure",
+            &["Retry the request and inspect the server logs if the problem persists."],
         ),
         ProjectError::Scenario(_) => (
             StatusCode::BAD_REQUEST,

@@ -5,8 +5,11 @@ use crate::domain::{
     Edge, FormulaDefinition, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario,
 };
 
+mod classification;
+mod metadata_operations;
 mod operations;
 
+pub use metadata_operations::*;
 pub use operations::*;
 
 /// One idempotent, revision-checked request to mutate a project graph.
@@ -67,10 +70,14 @@ pub enum GraphCommand {
     CreateNode(CreateNode),
     /// Removes a node after the repository verifies that it has no incident edges.
     DeleteNode(DeleteNode),
+    /// Replaces one node's title, Markdown description, and metadata map.
+    UpdateNodeMetadata(UpdateNodeMetadata),
     /// Validates stored endpoint kinds and inserts one canonical structural edge.
     CreateEdge(CreateEdge),
     /// Removes one structural edge while retaining both endpoint nodes.
     DeleteEdge(DeleteEdge),
+    /// Replaces one edge's Markdown description and metadata map.
+    UpdateEdgeMetadata(UpdateEdgeMetadata),
     /// Appends a validated immutable reading to a `measures` edge.
     AppendObservation(AppendObservation),
     /// Appends a correction which supersedes one existing observation.
@@ -95,22 +102,6 @@ pub enum GraphCommand {
     RemoveProjectDependence(RemoveProjectDependence),
 }
 
-impl GraphCommand {
-    pub(crate) const fn changes_graph(&self) -> bool {
-        matches!(
-            self,
-            Self::CreateNode(_)
-                | Self::DeleteNode(_)
-                | Self::CreateEdge(_)
-                | Self::DeleteEdge(_)
-                | Self::AppendObservation(_)
-                | Self::CorrectObservation(_)
-                | Self::SetEstimate(_)
-                | Self::RemoveEstimate(_)
-        )
-    }
-}
-
 /// Durable result of a committed command, returned identically on retries.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CommandResult {
@@ -130,10 +121,14 @@ pub enum CommandOutcome {
     NodeCreated(Node),
     /// Complete node aggregate removed by [`GraphCommand::DeleteNode`].
     NodeDeleted(Node),
+    /// Complete node aggregate updated by [`GraphCommand::UpdateNodeMetadata`].
+    NodeMetadataUpdated(Node),
     /// Complete canonical edge created by [`GraphCommand::CreateEdge`].
     EdgeCreated(Edge),
     /// Complete canonical edge removed by [`GraphCommand::DeleteEdge`].
     EdgeDeleted(Edge),
+    /// Complete edge aggregate updated by [`GraphCommand::UpdateEdgeMetadata`].
+    EdgeMetadataUpdated(Edge),
     /// New immutable reading and updated owning measurement edge.
     ObservationAppended {
         /// Complete updated edge aggregate after persistence.

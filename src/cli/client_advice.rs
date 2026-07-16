@@ -16,6 +16,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "node_has_edges" => &[
             "Run `optimist edge list`, delete every edge connected to the node, then retry `optimist node delete`.",
         ],
+        "node_revision_conflict" => {
+            &["Run `optimist node get <ID>` and retry against its current revision."]
+        }
         "invalid_edge_id" => {
             &["Run `optimist edge list` and use a returned ID such as `A-requires-B`."]
         }
@@ -24,6 +27,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         }
         "edge_conflict" => &["Use `optimist edge get` to inspect the existing relationship."],
         "edge_not_found" => &["Run `optimist edge list` and retry with a returned edge ID."],
+        "edge_revision_conflict" => {
+            &["Run `optimist edge get <ID>` and retry against its current revision."]
+        }
         "invalid_edge" => {
             &["Check that the relationship kind is valid for both endpoint node kinds."]
         }

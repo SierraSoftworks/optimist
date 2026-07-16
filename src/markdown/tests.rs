@@ -44,11 +44,16 @@ fn edge(source: u64, destination: u64) -> Edge {
 
 #[test]
 fn entity_render_is_deterministic_and_semantically_stable() {
+    let mut relationship = edge(0, 2);
+    relationship.description = "# Composition\n\nDelivery includes quality.".to_owned();
+    relationship
+        .metadata
+        .insert("source".to_owned(), serde_json::json!("ADR-1"));
     let document = EntityDocument {
         schema_version: SCHEMA_VERSION,
         base_project_revision: 7,
         node: node(0, "delivery"),
-        outgoing_edges: vec![edge(0, 2), edge(0, 1)],
+        outgoing_edges: vec![relationship, edge(0, 1)],
     };
     let first = render_entity(&document).unwrap();
     let second = render_entity(&document).unwrap();
@@ -56,6 +61,11 @@ fn entity_render_is_deterministic_and_semantically_stable() {
     assert!(!first.contains('\r'));
     let parsed = parse_entity("entities/A-delivery.md", &first).unwrap();
     assert_eq!(parsed.outgoing_edges[0].destination, EntityId::new(1));
+    assert_eq!(
+        parsed.outgoing_edges[1].description,
+        "# Composition\n\nDelivery includes quality."
+    );
+    assert_eq!(parsed.outgoing_edges[1].metadata["source"], "ADR-1");
     assert_eq!(render_entity(&parsed).unwrap(), first);
 }
 

@@ -50,6 +50,18 @@ enum NodeCommand {
     Delete {
         id: EntityId,
     },
+    Update {
+        id: EntityId,
+        /// Complete human-facing title replacement.
+        #[arg(long)]
+        title: String,
+        /// Complete Markdown description replacement.
+        #[arg(long, default_value = "")]
+        description: String,
+        /// Complete JSON object replacement for extensible metadata.
+        #[arg(long, default_value = "{}")]
+        metadata: String,
+    },
 }
 
 pub(super) async fn run(
@@ -81,9 +93,31 @@ pub(super) async fn run(
         NodeCommand::Get { id } => output.node(&client.show_node(project, id).await?)?,
         NodeCommand::List => output.nodes(&client.list_nodes(project).await?)?,
         NodeCommand::Delete { id } => output.node(&client.delete_node(project, id).await?)?,
+        NodeCommand::Update {
+            id,
+            title,
+            description,
+            metadata,
+        } => output.node(
+            &client
+                .update_node_metadata(project, id, title, description, parse_metadata(&metadata)?)
+                .await?,
+        )?,
     };
     println!("{rendered}");
     Ok(())
+}
+
+fn parse_metadata(
+    value: &str,
+) -> Result<std::collections::BTreeMap<String, serde_json::Value>, human_errors::Error> {
+    serde_json::from_str(value).map_err(|error| {
+        human_errors::wrap_user(
+            error,
+            "Node metadata is not a valid JSON object.",
+            &["Pass `--metadata` a JSON object such as `{\"owner\":\"delivery\"}`."],
+        )
+    })
 }
 
 #[cfg(test)]
@@ -120,6 +154,27 @@ mod tests {
         assert!(
             Cli::try_parse_from(["optimist", "--project", "A", "node", "delete", "not-an-id"])
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn parses_node_metadata_update() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "node",
+                "update",
+                "B",
+                "--title",
+                "Delivery",
+                "--description",
+                "# Delivery",
+                "--metadata",
+                r#"{"owner":"team"}"#,
+            ])
+            .is_ok()
         );
     }
 }

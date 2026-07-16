@@ -108,6 +108,10 @@ impl<D: Datastore> GraphRepository for IndraDbRepository<D> {
         nodes::update(&self.database, node)
     }
 
+    fn update_node_metadata(&mut self, node: Node) -> RepositoryResult<()> {
+        nodes::update_metadata(&self.database, node)
+    }
+
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node> {
         if self
             .list_edges()?
@@ -221,6 +225,35 @@ mod tests {
         assert_eq!(
             repository.update_node(invalid),
             Err(RepositoryError::NodeUpdateChangedMetadata(EntityId::new(0)))
+        );
+    }
+
+    #[test]
+    fn metadata_updates_preserve_typed_node_payloads() {
+        let mut repository = repository();
+        repository.create_node(factor(0, "delivery")).unwrap();
+        let mut replacement = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        replacement.revision = 1;
+        replacement.title = "Delivery flow".to_owned();
+        replacement.description = "# Flow".to_owned();
+        repository
+            .update_node_metadata(replacement.clone())
+            .unwrap();
+        assert_eq!(
+            repository.get_node(EntityId::new(0)).unwrap(),
+            Some(replacement)
+        );
+
+        let mut invalid = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        let NodePayload::Factor(factor) = &mut invalid.payload else {
+            unreachable!()
+        };
+        factor.controllable = false;
+        assert_eq!(
+            repository.update_node_metadata(invalid),
+            Err(RepositoryError::NodeMetadataUpdateChangedPayload(
+                EntityId::new(0)
+            ))
         );
     }
 

@@ -9,7 +9,7 @@ use crate::{
     store::RepositoryError,
 };
 
-use super::{EstimateCommandError, FormulaCommandError};
+use super::{AggregateUpdateError, EstimateCommandError, FormulaCommandError};
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -66,6 +66,9 @@ pub enum ProjectError {
     /// The edge aggregate cannot represent another revision.
     #[error("edge {0} has exhausted its revision space")]
     EdgeRevisionSpaceExhausted(EdgeId),
+    /// Revision-checked node or edge presentation metadata update failed.
+    #[error(transparent)]
+    AggregateUpdate(#[from] AggregateUpdateError),
     /// Observation validation or immutable correction semantics failed.
     #[error(transparent)]
     Observation(#[from] ObservationError),

@@ -1,8 +1,74 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::{EdgeId, EdgeKind, EntityId, IdError};
+use super::{EntityId, IdError};
+
+/// Structural relationship kinds supported by the causal graph.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeKind {
+    /// A signed causal effect flowing from a factor/outcome to another subject.
+    Contributes,
+    /// A metric observing a specific factor or outcome.
+    Measures,
+    /// An intervention's expected signed effect on a factor.
+    Changes,
+    /// A hard or soft prerequisite from a factor/intervention to another.
+    Requires,
+    /// Non-causal decomposition of a factor into a parent factor.
+    PartOf,
+    /// A factor preventing or reducing another factor/intervention.
+    Blocks,
+    /// Symmetric incompatibility between intervention choices.
+    ConflictsWith,
+    /// Symmetric beneficial interaction between intervention choices.
+    SynergizesWith,
+}
+
+impl EdgeKind {
+    /// Returns the stable delimiter-safe token used in IndraDB and external IDs.
+    pub const fn token(self) -> &'static str {
+        match self {
+            Self::Contributes => "contrib",
+            Self::Measures => "measures",
+            Self::Changes => "changes",
+            Self::Requires => "requires",
+            Self::PartOf => "part-of",
+            Self::Blocks => "blocks",
+            Self::ConflictsWith => "conflicts",
+            Self::SynergizesWith => "synergizes",
+        }
+    }
+
+    pub(super) const fn is_symmetric(self) -> bool {
+        matches!(self, Self::ConflictsWith | Self::SynergizesWith)
+    }
+}
+
+/// Canonical identity of an edge within one project.
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct EdgeId {
+    /// Outbound project-local entity.
+    pub source: EntityId,
+    /// Semantic relationship kind.
+    pub kind: EdgeKind,
+    /// Inbound project-local entity.
+    pub destination: EntityId,
+}
+
+impl fmt::Display for EdgeId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}-{}-{}",
+            self.source,
+            self.kind.token(),
+            self.destination
+        )
+    }
+}
 
 /// Errors returned when a canonical external edge ID cannot be parsed.
 ///

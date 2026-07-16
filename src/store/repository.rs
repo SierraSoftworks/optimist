@@ -44,6 +44,9 @@ pub trait GraphRepository {
     /// contract so an estimate mutation cannot alter unrelated fields.
     fn update_node(&mut self, node: Node) -> RepositoryResult<()>;
 
+    /// Replaces title/description/metadata without changing node identity or payload.
+    fn update_node_metadata(&mut self, node: Node) -> RepositoryResult<()>;
+
     /// Removes and returns a node only when no incident edges would dangle.
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node>;
 

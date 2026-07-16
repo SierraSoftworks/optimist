@@ -36,6 +36,9 @@ pub enum RepositoryError {
     /// A payload-only update attempted to alter node identity or presentation metadata.
     #[error("entity {0} payload update cannot change identity or presentation metadata")]
     NodeUpdateChangedMetadata(EntityId),
+    /// A metadata-only update attempted to alter node identity or typed payload.
+    #[error("entity {0} metadata update cannot change identity or typed payload")]
+    NodeMetadataUpdateChangedPayload(EntityId),
     /// An edge's declared endpoint kind disagrees with the stored node payload.
     #[error("entity {id} is {actual:?}, but the edge declares it as {declared:?}")]
     EndpointKindMismatch {

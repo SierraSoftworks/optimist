@@ -15,6 +15,7 @@ mod formula_client;
 mod node;
 mod node_client;
 mod node_payload;
+mod node_update_client;
 mod observe;
 mod observe_client;
 mod output;

@@ -1,3 +1,5 @@
+mod aggregate_update_error;
+mod aggregate_updates;
 mod analysis;
 mod apply;
 mod catalog;
@@ -22,6 +24,7 @@ mod model;
 mod queries;
 mod scenarios;
 
+pub use aggregate_update_error::AggregateUpdateError;
 pub use catalog::ProjectCatalog;
 pub use error::ProjectError;
 pub use estimate_error::EstimateCommandError;

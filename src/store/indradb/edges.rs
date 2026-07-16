@@ -14,6 +14,8 @@ pub(super) fn create<D: Datastore>(database: &Database<D>, edge: Edge) -> Reposi
     let destination = queries::get_node(database, edge.destination)?
         .ok_or(RepositoryError::MissingEntity(edge.destination))?;
     let revision = edge.revision;
+    let description = edge.description;
+    let metadata = edge.metadata;
     let mut edge = Edge::new(
         edge.source,
         source.kind(),
@@ -22,6 +24,8 @@ pub(super) fn create<D: Datastore>(database: &Database<D>, edge: Edge) -> Reposi
         edge.payload,
     )?;
     edge.revision = revision;
+    edge.description = description;
+    edge.metadata = metadata;
     let id = edge.id();
     if queries::get_edge(database, &id)?.is_some() {
         return Err(RepositoryError::DuplicateEdge(id.to_string()));

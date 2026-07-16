@@ -39,6 +39,24 @@ pub(super) fn validate_node_update(current: &Node, replacement: &Node) -> Reposi
     Ok(())
 }
 
+pub(super) fn validate_node_metadata_update(
+    current: &Node,
+    replacement: &Node,
+) -> RepositoryResult<()> {
+    if current.id != replacement.id
+        || current.kind() != replacement.kind()
+        || current.name != replacement.name
+        || current.normalized_name != replacement.normalized_name
+        || current.aliases != replacement.aliases
+        || current.payload != replacement.payload
+    {
+        return Err(RepositoryError::NodeMetadataUpdateChangedPayload(
+            current.id,
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn advance_entity_id(next: &mut Option<u64>, id: EntityId) {
     if next.is_some_and(|candidate| id.value() >= candidate) {
         *next = id.value().checked_add(1);

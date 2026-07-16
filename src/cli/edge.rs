@@ -55,6 +55,15 @@ enum EdgeCommand {
     Delete {
         id: EdgeId,
     },
+    Update {
+        id: EdgeId,
+        /// Complete Markdown description replacement.
+        #[arg(long, default_value = "")]
+        description: String,
+        /// Complete JSON object replacement for extensible metadata.
+        #[arg(long, default_value = "{}")]
+        metadata: String,
+    },
 }
 
 pub(super) async fn run(
@@ -89,9 +98,30 @@ pub(super) async fn run(
         EdgeCommand::Get { id } => output.edge(&client.show_edge(project, &id).await?)?,
         EdgeCommand::List => output.edges(&client.list_edges(project).await?)?,
         EdgeCommand::Delete { id } => output.edge(&client.delete_edge(project, id).await?)?,
+        EdgeCommand::Update {
+            id,
+            description,
+            metadata,
+        } => output.edge(
+            &client
+                .update_edge_metadata(project, id, description, parse_metadata(&metadata)?)
+                .await?,
+        )?,
     };
     println!("{rendered}");
     Ok(())
+}
+
+fn parse_metadata(
+    value: &str,
+) -> Result<std::collections::BTreeMap<String, serde_json::Value>, human_errors::Error> {
+    serde_json::from_str(value).map_err(|error| {
+        human_errors::wrap_user(
+            error,
+            "Edge metadata is not a valid JSON object.",
+            &["Pass `--metadata` a JSON object such as `{\"source\":\"ADR-1\"}`."],
+        )
+    })
 }
 
 #[cfg(test)]
@@ -129,6 +159,25 @@ mod tests {
                 "edge",
                 "delete",
                 "B-requires-A"
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_edge_metadata_update() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "edge",
+                "update",
+                "A-requires-B",
+                "--description",
+                "# Dependency",
+                "--metadata",
+                r#"{"source":"ADR-1"}"#,
             ])
             .is_ok()
         );

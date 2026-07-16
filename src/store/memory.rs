@@ -84,6 +84,16 @@ impl GraphRepository for InMemoryRepository {
         Ok(())
     }
 
+    fn update_node_metadata(&mut self, node: Node) -> RepositoryResult<()> {
+        let current = self
+            .nodes
+            .get(&node.id)
+            .ok_or(RepositoryError::MissingEntity(node.id))?;
+        super::validation::validate_node_metadata_update(current, &node)?;
+        self.nodes.insert(node.id, node);
+        Ok(())
+    }
+
     fn delete_node(&mut self, id: EntityId) -> RepositoryResult<Node> {
         if self
             .edges
@@ -203,6 +213,35 @@ mod tests {
         assert_eq!(
             repository.update_node(invalid),
             Err(RepositoryError::NodeUpdateChangedMetadata(EntityId::new(0)))
+        );
+    }
+
+    #[test]
+    fn metadata_update_preserves_typed_payload() {
+        let mut repository = repository("metadata_update");
+        repository.create_node(factor(0, "delivery")).unwrap();
+        let mut replacement = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        replacement.revision = 1;
+        replacement.title = "Delivery flow".to_owned();
+        replacement.description = "# Flow".to_owned();
+        repository
+            .update_node_metadata(replacement.clone())
+            .unwrap();
+        assert_eq!(
+            repository.get_node(EntityId::new(0)).unwrap(),
+            Some(replacement)
+        );
+
+        let mut invalid = repository.get_node(EntityId::new(0)).unwrap().unwrap();
+        let NodePayload::Factor(factor) = &mut invalid.payload else {
+            unreachable!()
+        };
+        factor.controllable = false;
+        assert_eq!(
+            repository.update_node_metadata(invalid),
+            Err(RepositoryError::NodeMetadataUpdateChangedPayload(
+                EntityId::new(0)
+            ))
         );
     }
 

@@ -1,6 +1,7 @@
 use crate::{
     command::{
         CommandOutcome, CommandRequest, CommandResult, CreateEdge, DeleteEdge, GraphCommand,
+        UpdateEdgeMetadata,
     },
     domain::{Edge, EdgeId, EdgePayload, ProjectId},
 };
@@ -79,6 +80,41 @@ impl ProjectClient {
         }
     }
 
+    pub(super) async fn update_edge_metadata(
+        &self,
+        project: &ProjectId,
+        id: EdgeId,
+        description: String,
+        metadata: std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> Result<Edge, human_errors::Error> {
+        let edge = self.show_edge(project, &id).await?;
+        let project_revision = self.show(project).await?.revision;
+        let request = CommandRequest::new(
+            project_revision,
+            GraphCommand::UpdateEdgeMetadata(UpdateEdgeMetadata {
+                id,
+                expected_revision: edge.revision,
+                description,
+                metadata,
+            }),
+        );
+        let response = self
+            .client
+            .post(self.endpoint(&format!("api/v1/projects/{project}/commands"))?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(edge_network_error)?;
+        let result: CommandResult = decode(response).await?;
+        match result.outcome {
+            CommandOutcome::EdgeMetadataUpdated(edge) => Ok(edge),
+            _ => Err(human_errors::system(
+                "The Optimist server returned an unexpected result for an edge command.",
+                &["Confirm the CLI and server versions match, then inspect the server logs."],
+            )),
+        }
+    }
+
     pub(super) async fn show_edge(
         &self,
         project: &ProjectId,
@@ -104,6 +140,9 @@ fn edge_network_error(error: reqwest::Error) -> human_errors::Error {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use serde_json::json;
     use tokio::{net::TcpListener, task::JoinHandle};
 
     use crate::{
@@ -167,14 +206,41 @@ mod tests {
             )
             .await
             .unwrap();
+        let updated_actions = client
+            .update_node_metadata(
+                &project.id,
+                actions.id,
+                "Delivery actions".to_owned(),
+                "# Actions\n\nBounded scope.".to_owned(),
+                BTreeMap::from([("owner".to_owned(), json!("delivery"))]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated_actions.revision, 1);
+        assert_eq!(updated_actions.payload, actions.payload);
+        assert_eq!(
+            client.show_node(&project.id, actions.id).await.unwrap(),
+            updated_actions
+        );
+        let updated_edge = client
+            .update_edge_metadata(
+                &project.id,
+                edge.id(),
+                "# Dependency\n\nActions precede GitHub.".to_owned(),
+                BTreeMap::from([("source".to_owned(), json!("ADR-1"))]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated_edge.revision, 1);
+        assert_eq!(updated_edge.payload, edge.payload);
 
         assert_eq!(
             client.list_edges(&project.id).await.unwrap(),
-            vec![edge.clone()]
+            vec![updated_edge.clone()]
         );
         assert_eq!(
             client.show_edge(&project.id, &edge.id()).await.unwrap(),
-            edge
+            updated_edge
         );
 
         let blocked = client
@@ -189,11 +255,11 @@ mod tests {
         );
 
         let deleted_edge = client.delete_edge(&project.id, edge.id()).await.unwrap();
-        assert_eq!(deleted_edge, edge);
+        assert_eq!(deleted_edge, updated_edge);
         assert!(client.list_edges(&project.id).await.unwrap().is_empty());
 
         let deleted_node = client.delete_node(&project.id, actions.id).await.unwrap();
-        assert_eq!(deleted_node, actions);
+        assert_eq!(deleted_node, updated_actions);
         assert_eq!(client.list_nodes(&project.id).await.unwrap(), vec![github]);
         server.abort();
     }

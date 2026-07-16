@@ -27,6 +27,8 @@ pub(super) fn validated(nodes: &BTreeMap<EntityId, Node>, edge: Edge) -> Reposit
     }
 
     let revision = edge.revision;
+    let description = edge.description;
+    let metadata = edge.metadata;
     let mut edge = Edge::new(
         edge.source,
         source_kind,
@@ -35,6 +37,8 @@ pub(super) fn validated(nodes: &BTreeMap<EntityId, Node>, edge: Edge) -> Reposit
         edge.payload,
     )?;
     edge.revision = revision;
+    edge.description = description;
+    edge.metadata = metadata;
     Ok(edge)
 }
 

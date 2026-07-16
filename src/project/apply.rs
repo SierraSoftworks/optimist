@@ -4,7 +4,10 @@ use crate::{
     store::{GraphRepository, RepositoryError},
 };
 
-use super::{ProjectError, catalog::ProjectEntry, dependence, estimate, formulas, scenarios};
+use super::{
+    ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, formulas,
+    scenarios,
+};
 
 pub(super) fn command(
     entry: &mut ProjectEntry,
@@ -21,6 +24,7 @@ pub(super) fn command(
             let node = entry.repository.delete_node(command.id)?;
             Ok(CommandOutcome::NodeDeleted(node))
         }
+        GraphCommand::UpdateNodeMetadata(command) => aggregate_updates::node(entry, command),
         GraphCommand::CreateEdge(command) => {
             let source = entry
                 .repository
@@ -45,6 +49,7 @@ pub(super) fn command(
             let edge = entry.repository.delete_edge(&command.id)?;
             Ok(CommandOutcome::EdgeDeleted(edge))
         }
+        GraphCommand::UpdateEdgeMetadata(command) => aggregate_updates::edge(entry, command),
         GraphCommand::AppendObservation(command) => {
             let mut edge = measurement_edge(entry, &command.edge)?;
             validate_metric_unit(entry, &edge, &command.observation.unit)?;
