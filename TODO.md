@@ -89,16 +89,16 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ## 6. Probability And Bayesian Statistics
 
-- [ ] Exact moments and sampling for every supported primitive distribution.
-- [ ] Conjugate Beta-Binomial and Normal-Normal updates with explicit likelihoods.
-- [ ] Exact Normal sum and LogNormal product/ratio propagation including covariance.
+- [x] Exact moments and seeded sampling for Point, Normal, LogNormal, Beta, and ScaledBeta distributions.
+- [x] Conjugate Beta-Binomial and Normal-Normal updates with explicit validated likelihood types.
+- [x] Exact Normal sum and LogNormal product/ratio propagation including covariance and numerical variance checks.
 - [ ] Gaussian copula validation with positive-semidefinite correlation matrices.
-- [ ] Deterministic seeded joint Monte Carlo or quasi-Monte Carlo engine.
-- [ ] Formula DAG compilation with one sample per shared variable per draw.
-- [ ] Monte Carlo standard errors, convergence criteria, and reproducibility metadata.
+- [x] Deterministic seeded joint Monte Carlo engine with pinned ChaCha20 sampling.
+- [x] Formula DAG validation and evaluation with one sample per shared estimate address per draw.
+- [x] Monte Carlo mean/variance standard errors, convergence criteria/status, reproducibility metadata, and invalid-sample accounting.
 - [ ] Calibration history with proper scoring rules and interval coverage.
 - [ ] Decomposition comparison using variance/entropy, covariance attribution, and value of information.
-- [ ] Law-based and analytical-vs-sampled differential tests with error-derived tolerances.
+- [x] Law-based and analytical-vs-sampled differential tests with Monte Carlo error-derived tolerances.
 
 ## 7. Causal And Decision Analysis
 
@@ -136,6 +136,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Fuzz bounded command request decoding, deterministic in-memory sequences, and retry replay.
   - [x] Fuzz bounded YAML/Markdown frontmatter parsing.
   - [x] Fuzz bounded formula, unit, and estimate-address decoding/validation.
+  - [x] Fuzz bounded distributions, formula sets, and deterministic sampling configurations.
 - [x] Add reusable `proptest` generators for valid project/entity IDs, core node/edge/observation values, and constrained endpoints.
 - [ ] Add bounded fuzz corpus regressions to pull-request CI.
 - [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.

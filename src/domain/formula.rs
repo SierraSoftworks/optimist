@@ -67,7 +67,7 @@ pub enum Formula {
 /// independent copies.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct FormulaSet(BTreeMap<EstimateAddress, Formula>);
+pub struct FormulaSet(pub(super) BTreeMap<EstimateAddress, Formula>);
 
 impl FormulaSet {
     /// Constructs a formula set, rejecting duplicate addresses.
@@ -115,7 +115,7 @@ pub enum FormulaError {
     #[error("formula reference {address} belongs to project {actual}, expected {expected}")]
     CrossProjectReference {
         /// Address which crossed the project boundary.
-        address: EstimateAddress,
+        address: Box<EstimateAddress>,
         /// Project being validated.
         expected: ProjectId,
         /// Project encoded by the address.

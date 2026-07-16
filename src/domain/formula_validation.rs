@@ -63,7 +63,7 @@ impl Context<'_> {
     fn reference(&mut self, address: &EstimateAddress) -> Result<Unit, FormulaError> {
         if &address.project != self.project {
             return Err(FormulaError::CrossProjectReference {
-                address: address.clone(),
+                address: Box::new(address.clone()),
                 expected: self.project.clone(),
                 actual: address.project.clone(),
             });

@@ -33,7 +33,7 @@ impl fmt::Display for EstimateId {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum DistributionKind {
+pub(super) enum DistributionKind {
     Point {
         value: f64,
     },
@@ -92,7 +92,7 @@ pub enum DistributionError {
 /// ```
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(transparent)]
-pub struct Distribution(DistributionKind);
+pub struct Distribution(pub(super) DistributionKind);
 
 impl Distribution {
     /// Creates a deterministic distribution concentrated at `value`.
@@ -146,37 +146,6 @@ impl Distribution {
             lower,
             upper,
         })
-    }
-
-    /// Returns the exact expected value for the represented primitive family.
-    ///
-    /// The implementation uses:
-    ///
-    /// - Point mass: `E[X] = x`
-    /// - Normal: `E[X] = μ`
-    /// - LogNormal: `E[X] = exp(μ + σ²/2)`
-    /// - Beta: `E[X] = α/(α+β)`
-    /// - Scaled Beta: `E[Y] = lower + (upper-lower)E[X]`
-    ///
-    /// These equations assume the constructor parameterizations documented above.
-    /// They are closed-form population means, not Monte Carlo approximations. See
-    /// NIST's [distribution handbook](https://www.itl.nist.gov/div898/handbook/)
-    /// for the underlying family definitions.
-    pub fn mean(&self) -> f64 {
-        match self.0 {
-            DistributionKind::Point { value } => value,
-            DistributionKind::Normal { mean, .. } => mean,
-            DistributionKind::LogNormal { location, scale } => {
-                (location + scale.powi(2) / 2.0).exp()
-            }
-            DistributionKind::Beta { alpha, beta } => alpha / (alpha + beta),
-            DistributionKind::ScaledBeta {
-                alpha,
-                beta,
-                lower,
-                upper,
-            } => lower + (upper - lower) * alpha / (alpha + beta),
-        }
     }
 
     fn validated(kind: DistributionKind) -> Result<Self, DistributionError> {

@@ -47,3 +47,10 @@ path = "fuzz_targets/formula_units.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "probability_sampling"
+path = "fuzz_targets/probability_sampling.rs"
+test = false
+doc = false
+bench = false
