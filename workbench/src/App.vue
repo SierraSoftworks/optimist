@@ -36,6 +36,7 @@ import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
 import OptimizeAnalysisPanel from './components/OptimizeAnalysisPanel.vue'
 import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
 import ImpedimentAnalysisPanel from './components/ImpedimentAnalysisPanel.vue'
+import NodeRelationshipMenu from './components/NodeRelationshipMenu.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -49,6 +50,7 @@ import type {
   Evidence,
   EvidenceInput,
   EdgeEstimateSlot,
+  EdgeKind,
   InterventionEstimateSlot,
   NodeKind,
   Observation,
@@ -104,6 +106,9 @@ const importProject = useImportProject()
 const projectDialogOpen = ref(false)
 const nodeDialogOpen = ref(false)
 const edgeDialogOpen = ref(false)
+const edgeDialogSourceId = ref<string | null>(null)
+const edgeDialogKind = ref<EdgeKind | null>(null)
+const relationshipMenu = ref<{ sourceId: string; x: number; y: number } | null>(null)
 const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
@@ -152,6 +157,9 @@ const canCreateRelationship = computed(
 )
 const selectedNode = computed<GraphNode | null>(
   () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
+)
+const relationshipMenuSource = computed<GraphNode | null>(() =>
+  nodes.value.find((node) => node.id === relationshipMenu.value?.sourceId) ?? null,
 )
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
@@ -265,6 +273,24 @@ function selectProject(event: Event) {
     return
   }
   store.selectProject(select.value || null)
+}
+
+function openRelationshipDialog() {
+  edgeDialogSourceId.value = null
+  edgeDialogKind.value = null
+  edgeDialogOpen.value = true
+}
+
+function openNodeRelationshipMenu(event: { nodeId: string; x: number; y: number }) {
+  store.selectNode(event.nodeId)
+  relationshipMenu.value = { sourceId: event.nodeId, x: event.x, y: event.y }
+}
+
+function createRelationshipFromNode(kind: EdgeKind) {
+  edgeDialogSourceId.value = relationshipMenu.value?.sourceId ?? null
+  edgeDialogKind.value = kind
+  relationshipMenu.value = null
+  edgeDialogOpen.value = true
 }
 
 function edgeElementId(edge: import('./api/types').EdgeIdentity) {
@@ -651,7 +677,7 @@ function retry() {
         <button type="button" class="icon-button header-icon" title="Export project" aria-label="Export project" :disabled="!selectedProjectId" @click="exportProject">
           <Download :size="16" />
         </button>
-        <button type="button" class="secondary-button" :disabled="!canCreateRelationship" @click="edgeDialogOpen = true">
+        <button type="button" class="secondary-button" :disabled="!canCreateRelationship" @click="openRelationshipDialog">
           <Link :size="16" /> Relationship
         </button>
         <button type="button" class="primary-button add-node-button" :disabled="!projectQuery.data.value" @click="nodeDialogOpen = true">
@@ -724,6 +750,7 @@ function retry() {
           :highlighted-node-ids="highlightedNodeIds"
           :highlighted-edge-ids="highlightedEdgeIds"
           @select="store.selectNode"
+          @node-contextmenu="openNodeRelationshipMenu"
         />
       </section>
 
@@ -799,8 +826,19 @@ function retry() {
       :open="edgeDialogOpen"
       :pending="createEdge.isPending.value"
       :nodes="nodes"
+      :initial-source-id="edgeDialogSourceId"
+      :initial-kind="edgeDialogKind"
       @close="edgeDialogOpen = false"
       @submit="submitEdge"
+    />
+    <NodeRelationshipMenu
+      :open="relationshipMenu !== null"
+      :source="relationshipMenuSource"
+      :nodes="nodes"
+      :x="relationshipMenu?.x ?? 0"
+      :y="relationshipMenu?.y ?? 0"
+      @close="relationshipMenu = null"
+      @select="createRelationshipFromNode"
     />
     <ImportProjectDialog
       :open="importDialogOpen"
