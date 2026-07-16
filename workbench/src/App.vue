@@ -29,6 +29,7 @@ import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
 import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
+import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -39,6 +40,8 @@ import type {
   GraphNode,
   GraphEdge,
   Estimate,
+  Evidence,
+  EvidenceInput,
   InterventionEstimateSlot,
   NodeKind,
   Observation,
@@ -66,6 +69,9 @@ import {
   useCorrectObservation,
   useSetInterventionEstimate,
   useRemoveInterventionEstimate,
+  useCreateEvidence,
+  useUpdateEvidence,
+  useDeleteEvidence,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -88,10 +94,12 @@ const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
 const interventionEstimateDialogOpen = ref(false)
+const evidenceDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
 const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
+const selectedEvidence = ref<Evidence | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -126,6 +134,9 @@ const appendObservation = useAppendObservation(projectQuery.data, selectedMeasur
 const correctObservation = useCorrectObservation(projectQuery.data, selectedMeasurementEdge)
 const setInterventionEstimate = useSetInterventionEstimate(projectQuery.data, selectedNode)
 const removeInterventionEstimate = useRemoveInterventionEstimate(projectQuery.data, selectedNode)
+const createEvidence = useCreateEvidence(projectQuery.data, selectedNode)
+const updateEvidence = useUpdateEvidence(projectQuery.data, selectedNode, selectedEvidence)
+const deleteEvidence = useDeleteEvidence(projectQuery.data, selectedNode, selectedEvidence)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -348,6 +359,34 @@ async function submitInterventionEstimateRemove(estimate: Estimate) {
   }
 }
 
+function editEvidence(evidence: Evidence | null) {
+  selectedEvidence.value = evidence
+  evidenceDialogOpen.value = true
+}
+
+async function submitEvidence(input: EvidenceInput) {
+  mutationError.value = null
+  try {
+    if (selectedEvidence.value) await updateEvidence.mutateAsync(input)
+    else await createEvidence.mutateAsync(input)
+    evidenceDialogOpen.value = false
+    selectedEvidence.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitEvidenceDelete() {
+  mutationError.value = null
+  try {
+    await deleteEvidence.mutateAsync()
+    evidenceDialogOpen.value = false
+    selectedEvidence.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -501,6 +540,7 @@ function retry() {
         @observe="observe"
         @correct="correct"
         @intervention-estimate="editInterventionEstimate"
+        @evidence="editEvidence"
         @delete="submitNodeDelete"
       />
     </section>
@@ -583,6 +623,15 @@ function retry() {
       @close="interventionEstimateDialogOpen = false"
       @submit="submitInterventionEstimate"
       @remove="submitInterventionEstimateRemove"
+    />
+    <EditEvidenceDialog
+      :open="evidenceDialogOpen"
+      :pending="createEvidence.isPending.value || updateEvidence.isPending.value || deleteEvidence.isPending.value"
+      :node="selectedNode"
+      :evidence="selectedEvidence"
+      @close="evidenceDialogOpen = false"
+      @submit="submitEvidence"
+      @delete="submitEvidenceDelete"
     />
   </main>
 </template>

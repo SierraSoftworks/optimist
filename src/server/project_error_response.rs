@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 
-use crate::project::{AggregateUpdateError, ProjectError};
+use crate::project::{AggregateUpdateError, EvidenceCommandError, ProjectError};
 
 use super::{estimate_error_response, formula_error_response, repository_error_response};
 
@@ -66,6 +66,23 @@ pub(super) fn classify(
             &[
                 "Check the value, RFC 3339 timestamp, source, unit, and measurement standard deviation.",
             ],
+        ),
+        ProjectError::EvidenceCommand(EvidenceCommandError::RevisionConflict { .. }) => (
+            StatusCode::CONFLICT,
+            "evidence_revision_conflict",
+            &["Refresh the node and retry with the evidence record's current revision."],
+        ),
+        ProjectError::EvidenceCommand(EvidenceCommandError::NotFound { .. }) => (
+            StatusCode::NOT_FOUND,
+            "evidence_not_found",
+            &["Refresh the node and choose an evidence record which still exists."],
+        ),
+        ProjectError::EvidenceCommand(
+            EvidenceCommandError::InvalidOwner(_) | EvidenceCommandError::EmptySummary,
+        ) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_evidence",
+            &["Choose a factor or outcome and provide a non-empty evidence summary."],
         ),
         ProjectError::AggregateUpdate(AggregateUpdateError::NodeRevisionConflict { .. }) => (
             StatusCode::CONFLICT,
@@ -168,6 +185,14 @@ pub(super) fn classify(
         | ProjectError::ScenarioRevisionSpaceExhausted(_)
         | ProjectError::ScenarioIdentifierSpaceExhausted(_)
         | ProjectError::DependenceRevisionSpaceExhausted(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "project_store_failure",
+            &["Retry the request and inspect the server logs if the problem persists."],
+        ),
+        ProjectError::EvidenceCommand(
+            EvidenceCommandError::IdentifierSpaceExhausted(_)
+            | EvidenceCommandError::RevisionSpaceExhausted { .. },
+        ) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "project_store_failure",
             &["Retry the request and inspect the server logs if the problem persists."],

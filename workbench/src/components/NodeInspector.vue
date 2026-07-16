@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Activity, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type {
   Distribution,
+  Evidence,
   GraphEdge,
   GraphNode,
   InterventionEstimateSlot,
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   observe: [edge: GraphEdge]
   correct: [edge: GraphEdge, observation: Observation]
   interventionEstimate: [slot: InterventionEstimateSlot]
+  evidence: [evidence: Evidence | null]
   delete: []
 }>()
 const confirmDelete = ref(false)
@@ -139,6 +141,17 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
+      </section>
+
+      <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section">
+        <h3>Evidence <button type="button" class="icon-button section-action" title="Add evidence" aria-label="Add evidence" @click="emit('evidence', null)"><Plus :size="14" /></button></h3>
+        <div v-for="item in node.payload.properties.evidence" :key="item.id" class="evidence-row">
+          <button type="button" :aria-label="`Edit evidence ${item.id}`" @click="emit('evidence', item)">
+            <strong>{{ item.summary }}</strong>
+            <span>{{ item.source ?? 'No source' }} · r{{ item.revision }}</span>
+          </button>
+        </div>
+        <p v-if="!node.payload.properties.evidence.length" class="muted">No qualitative evidence recorded.</p>
       </section>
 
       <section v-if="Object.keys(node.metadata).length" class="inspector-section">

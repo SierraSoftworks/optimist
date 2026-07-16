@@ -138,6 +138,11 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .acceptance-criteria { margin-top: 12px; color: var(--muted); font-size: 9px; }
 .acceptance-criteria ul { margin: 5px 0 0; padding-left: 17px; color: var(--ink); line-height: 1.55; }
 .distribution-fields { margin-top: 14px; }
+.evidence-row { margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.evidence-row button { width: 100%; display: grid; gap: 3px; padding: 8px; border: 0; background: transparent; text-align: left; }
+.evidence-row button:hover { background: var(--green-soft); }
+.evidence-row strong { font-size: 10px; line-height: 1.45; }
+.evidence-row span { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
 .empty-inspector { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }
 .empty-inspector h2 { margin-top: 12px; }
 .empty-inspector p { max-width: 210px; margin-top: 7px; font-size: 11px; line-height: 1.5; }

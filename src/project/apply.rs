@@ -5,8 +5,8 @@ use crate::{
 };
 
 use super::{
-    ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, formulas,
-    scenarios,
+    ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, evidence,
+    formulas, scenarios,
 };
 
 pub(super) fn command(
@@ -25,6 +25,9 @@ pub(super) fn command(
             Ok(CommandOutcome::NodeDeleted(node))
         }
         GraphCommand::UpdateNodeMetadata(command) => aggregate_updates::node(entry, command),
+        GraphCommand::CreateEvidence(command) => evidence::create(entry, command),
+        GraphCommand::UpdateEvidence(command) => evidence::update(entry, command),
+        GraphCommand::DeleteEvidence(command) => evidence::delete(entry, command),
         GraphCommand::CreateEdge(command) => {
             let source = entry
                 .repository

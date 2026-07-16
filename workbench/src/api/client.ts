@@ -6,6 +6,8 @@ import type {
   CreateNodeInput,
   EdgeIdentity,
   Estimate,
+  Evidence,
+  EvidenceInput,
   GraphEdge,
   GraphNode,
   Project,
@@ -87,6 +89,11 @@ function nextInterventionEstimateId(node: GraphNode) {
 interface ObservationAppendResult {
   edge: GraphEdge
   observation: Observation
+}
+
+interface EvidenceMutationResult {
+  node: GraphNode
+  evidence: Evidence
 }
 
 function edgeIdentity(edge: GraphEdge): EdgeIdentity {
@@ -478,5 +485,99 @@ export const api = {
       )
     }
     return result.outcome.value
+  },
+  async createEvidence(
+    project: Project,
+    node: GraphNode,
+    input: EvidenceInput,
+  ): Promise<Evidence> {
+    const result = await request<CommandResult<EvidenceMutationResult>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'create_evidence',
+            payload: { node: node.id, ...input },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'evidence_created') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for evidence creation.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value.evidence
+  },
+  async updateEvidence(
+    project: Project,
+    node: GraphNode,
+    evidence: Evidence,
+    input: EvidenceInput,
+  ): Promise<Evidence> {
+    const result = await request<CommandResult<EvidenceMutationResult>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'update_evidence',
+            payload: {
+              node: node.id,
+              evidence_id: evidence.id,
+              expected_revision: evidence.revision,
+              ...input,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'evidence_updated') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for evidence editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value.evidence
+  },
+  async deleteEvidence(
+    project: Project,
+    node: GraphNode,
+    evidence: Evidence,
+  ): Promise<Evidence> {
+    const result = await request<CommandResult<EvidenceMutationResult>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'delete_evidence',
+            payload: {
+              node: node.id,
+              evidence_id: evidence.id,
+              expected_revision: evidence.revision,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'evidence_deleted') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for evidence deletion.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value.evidence
   },
 }

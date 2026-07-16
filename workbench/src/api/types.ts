@@ -42,6 +42,11 @@ export interface Evidence {
   source: string | null
 }
 
+export interface EvidenceInput {
+  summary: string
+  source: string | null
+}
+
 export interface Observation {
   id: number
   revision: number

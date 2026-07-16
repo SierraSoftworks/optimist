@@ -13,6 +13,8 @@ import type {
   SetStateEstimateInput,
   SetInterventionEstimateInput,
   Estimate,
+  Evidence,
+  EvidenceInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from '../api/types'
@@ -199,6 +201,39 @@ export function useRemoveInterventionEstimate(
   return useMutation({
     mutationFn: (estimate: Estimate) =>
       api.removeInterventionEstimate(project.value!, node.value!, estimate),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useCreateEvidence(project: Ref<Project | undefined>, node: Ref<GraphNode | null>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: EvidenceInput) => api.createEvidence(project.value!, node.value!, input),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useUpdateEvidence(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+  evidence: Ref<Evidence | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: EvidenceInput) =>
+      api.updateEvidence(project.value!, node.value!, evidence.value!, input),
+    onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useDeleteEvidence(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+  evidence: Ref<Evidence | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.deleteEvidence(project.value!, node.value!, evidence.value!),
     onSuccess: async () => refetchNodeData(queryClient, project.value!),
   })
 }

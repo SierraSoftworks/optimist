@@ -23,6 +23,43 @@ pub struct DeleteNode {
     pub id: EntityId,
 }
 
+/// Data required to append qualitative evidence to a factor or outcome.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CreateEvidence {
+    /// Project-local factor or outcome which owns the evidence record.
+    pub node: EntityId,
+    /// Concise Markdown-compatible observation or symptom description.
+    pub summary: String,
+    /// Optional citation, URL, system, or person which supplied the evidence.
+    pub source: Option<String>,
+}
+
+/// Revision-checked replacement of one node-owned evidence record.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct UpdateEvidence {
+    /// Project-local factor or outcome which owns the evidence record.
+    pub node: EntityId,
+    /// Aggregate-local evidence identifier.
+    pub evidence_id: u64,
+    /// Evidence revision observed before preparing the replacement.
+    pub expected_revision: u64,
+    /// Complete replacement summary.
+    pub summary: String,
+    /// Complete replacement source, or `None` when no source is known.
+    pub source: Option<String>,
+}
+
+/// Revision-checked identity of one node-owned evidence record to remove.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeleteEvidence {
+    /// Project-local factor or outcome which owns the evidence record.
+    pub node: EntityId,
+    /// Aggregate-local evidence identifier.
+    pub evidence_id: u64,
+    /// Evidence revision observed before deletion.
+    pub expected_revision: u64,
+}
+
 /// Data required to construct a structural relationship between existing nodes.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CreateEdge {

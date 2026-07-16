@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::{
-    Edge, FormulaDefinition, Node, Observation, PrimitiveEstimate, ProjectDependenceModel, Scenario,
+    Edge, Evidence, FormulaDefinition, Node, Observation, PrimitiveEstimate,
+    ProjectDependenceModel, Scenario,
 };
 
 mod change_set;
@@ -74,6 +75,12 @@ pub enum GraphCommand {
     DeleteNode(DeleteNode),
     /// Replaces one node's title, Markdown description, and metadata map.
     UpdateNodeMetadata(UpdateNodeMetadata),
+    /// Appends qualitative evidence to a factor or outcome.
+    CreateEvidence(CreateEvidence),
+    /// Replaces one evidence record under its aggregate-local revision guard.
+    UpdateEvidence(UpdateEvidence),
+    /// Removes one evidence record under its aggregate-local revision guard.
+    DeleteEvidence(DeleteEvidence),
     /// Validates stored endpoint kinds and inserts one canonical structural edge.
     CreateEdge(CreateEdge),
     /// Removes one structural edge while retaining both endpoint nodes.
@@ -125,6 +132,27 @@ pub enum CommandOutcome {
     NodeDeleted(Node),
     /// Complete node aggregate updated by [`GraphCommand::UpdateNodeMetadata`].
     NodeMetadataUpdated(Node),
+    /// New evidence record and complete updated owning node.
+    EvidenceCreated {
+        /// Complete updated factor or outcome after persistence.
+        node: Node,
+        /// Node-local evidence record allocated by the command.
+        evidence: Evidence,
+    },
+    /// Replaced evidence record and complete updated owning node.
+    EvidenceUpdated {
+        /// Complete updated factor or outcome after persistence.
+        node: Node,
+        /// Evidence record after its revision advanced.
+        evidence: Evidence,
+    },
+    /// Removed evidence record and complete updated owning node.
+    EvidenceDeleted {
+        /// Complete updated factor or outcome after persistence.
+        node: Node,
+        /// Evidence record removed by the command.
+        evidence: Evidence,
+    },
     /// Complete canonical edge created by [`GraphCommand::CreateEdge`].
     EdgeCreated(Edge),
     /// Complete canonical edge removed by [`GraphCommand::DeleteEdge`].

@@ -10,7 +10,9 @@ use crate::{
     store::RepositoryError,
 };
 
-use super::{AggregateUpdateError, EstimateCommandError, FormulaCommandError};
+use super::{
+    AggregateUpdateError, EstimateCommandError, EvidenceCommandError, FormulaCommandError,
+};
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -81,6 +83,9 @@ pub enum ProjectError {
     /// Observation validation or immutable correction semantics failed.
     #[error(transparent)]
     Observation(#[from] ObservationError),
+    /// Node-owned evidence authoring or deletion failed.
+    #[error(transparent)]
+    EvidenceCommand(#[from] EvidenceCommandError),
     /// Scenario aggregate-local validation failed.
     #[error(transparent)]
     Scenario(#[from] ScenarioError),

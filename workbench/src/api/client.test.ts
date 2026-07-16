@@ -479,4 +479,50 @@ describe('Optimist API client', () => {
       } },
     })
   })
+
+  it('creates, revision-updates, and deletes node-owned evidence', async () => {
+    const evidence = { id: 1, revision: 0, summary: 'Queueing observed', source: 'dashboard' }
+    const updated = { ...evidence, revision: 1, summary: 'Queueing confirmed' }
+    const node = {
+      id: 'A', revision: 1, name: 'flow', normalized_name: 'flow', title: 'Flow',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'factor' as const,
+        properties: { current: null, desired: null, controllable: false, evidence: [evidence] },
+      },
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'evidence_created', value: { node, evidence } },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 9,
+        outcome: { type: 'evidence_updated', value: { node, evidence: updated } },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 10,
+        outcome: { type: 'evidence_deleted', value: { node, evidence: updated } },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await api.createEvidence(project, node, { summary: evidence.summary, source: evidence.source })
+    await api.updateEvidence(project, node, evidence, { summary: updated.summary, source: null })
+    await api.deleteEvidence(project, node, updated)
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      command: { type: 'create_evidence', payload: {
+        node: 'A', summary: 'Queueing observed', source: 'dashboard',
+      } },
+    })
+    expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      command: { type: 'update_evidence', payload: {
+        node: 'A', evidence_id: 1, expected_revision: 0, summary: 'Queueing confirmed', source: null,
+      } },
+    })
+    expect(JSON.parse((fetch.mock.calls[2]![1] as RequestInit).body as string)).toMatchObject({
+      command: { type: 'delete_evidence', payload: {
+        node: 'A', evidence_id: 1, expected_revision: 1,
+      } },
+    })
+  })
 })
