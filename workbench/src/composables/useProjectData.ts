@@ -5,10 +5,12 @@ import type {
   CreateEdgeInput,
   CreateNodeInput,
   GraphNode,
+  GraphEdge,
   Project,
   ProjectArchive,
   SetStateEstimateInput,
   UpdateNodeInput,
+  UpdateEdgeInput,
 } from '../api/types'
 
 export function useProjects() {
@@ -115,5 +117,28 @@ export function useSetStateEstimate(
     mutationFn: (input: SetStateEstimateInput) =>
       api.setStateEstimate(project.value!, node.value!, input),
     onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+async function refetchEdgeData(queryClient: ReturnType<typeof useQueryClient>, project: Project) {
+  await Promise.all([
+    queryClient.refetchQueries({ queryKey: ['project', project.id] }),
+    queryClient.refetchQueries({ queryKey: ['edges', project.id] }),
+  ])
+}
+
+export function useUpdateEdge(project: Ref<Project | undefined>, edge: Ref<GraphEdge | null>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateEdgeInput) => api.updateEdge(project.value!, edge.value!, input),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
+  })
+}
+
+export function useDeleteEdge(project: Ref<Project | undefined>, edge: Ref<GraphEdge | null>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.deleteEdge(project.value!, edge.value!),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
   })
 }

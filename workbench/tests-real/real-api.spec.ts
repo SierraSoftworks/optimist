@@ -31,6 +31,23 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await expect(page.getByText('B', { exact: true }).last()).toBeVisible()
   await expect(page.getByText('r3')).toBeVisible()
 
+  await page.getByRole('button', { name: 'Edit part of relationship A to B' }).click()
+  await page.getByLabel('Description').fill('Learning is part of feedback.')
+  await page.getByLabel('Metadata').fill('{"source":"ADR-2"}')
+  await page.getByRole('button', { name: 'Save relationship' }).click()
+  await expect(page.getByText('r4')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit part of relationship A to B' }).click()
+  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Confirm delete' }).click()
+  await expect(page.getByText('0 relationships')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByLabel('Source').selectOption('A')
+  await page.getByLabel('Destination').selectOption('B')
+  await page.getByRole('button', { name: 'Add relationship' }).click()
+  await expect(page.getByText('1 relationships')).toBeVisible()
+
   await page.getByRole('button', { name: 'Details' }).click()
   await page.getByLabel('Title').fill('Rapid feedback')
   await page.getByLabel('Description').fill('Short feedback loops.')

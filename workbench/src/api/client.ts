@@ -2,6 +2,7 @@ import type {
   ApiErrorBody,
   CreateEdgeInput,
   CreateNodeInput,
+  EdgeIdentity,
   GraphEdge,
   GraphNode,
   Project,
@@ -9,6 +10,7 @@ import type {
   SetStateEstimateInput,
   StateEstimateSlot,
   UpdateNodeInput,
+  UpdateEdgeInput,
 } from './types'
 
 interface ErrorEnvelope {
@@ -31,6 +33,14 @@ interface PrimitiveEstimate {
   revision: number
   distribution: import('./types').Distribution
   provenance: string[]
+}
+
+function edgeIdentity(edge: GraphEdge): EdgeIdentity {
+  return {
+    source: edge.source,
+    kind: edge.payload.kind,
+    destination: edge.destination,
+  }
 }
 
 export class OptimistApiError extends Error {
@@ -208,6 +218,62 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for estimate editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async updateEdge(
+    project: Project,
+    edge: GraphEdge,
+    input: UpdateEdgeInput,
+  ): Promise<GraphEdge> {
+    const result = await request<CommandResult<GraphEdge>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'update_edge_metadata',
+            payload: {
+              id: edgeIdentity(edge),
+              expected_revision: edge.revision,
+              ...input,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'edge_metadata_updated') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for relationship editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async deleteEdge(project: Project, edge: GraphEdge): Promise<GraphEdge> {
+    const result = await request<CommandResult<GraphEdge>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'delete_edge',
+            payload: { id: edgeIdentity(edge) },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'edge_deleted') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for relationship deletion.',
         ['Confirm the workbench and server versions match.'],
       )
     }

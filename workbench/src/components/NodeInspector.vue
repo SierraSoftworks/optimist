@@ -4,7 +4,7 @@ import { Activity, Gauge, Goal, Pencil, Sigma, Wrench } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
-const emit = defineEmits<{ edit: []; estimate: [] }>()
+const emit = defineEmits<{ edit: []; estimate: []; relationship: [edge: GraphEdge] }>()
 
 const incidentEdges = computed(() =>
   props.node
@@ -121,10 +121,12 @@ function provenance(node: GraphNode, slot: 'current' | 'desired') {
       <section class="inspector-section">
         <h3>Relationships <span>{{ incidentEdges.length }}</span></h3>
         <ul v-if="incidentEdges.length" class="relationship-list">
-          <li v-for="(edge, index) in incidentEdges" :key="`${edge.source}-${edge.destination}-${index}`">
-            <span>{{ edge.source }}</span>
-            <strong>{{ edge.payload.kind.replaceAll('_', ' ') }}</strong>
-            <span>{{ edge.destination }}</span>
+          <li v-for="edge in incidentEdges" :key="`${edge.source}-${edge.payload.kind}-${edge.destination}`">
+            <button type="button" :aria-label="`Edit ${edge.payload.kind.replaceAll('_', ' ')} relationship ${edge.source} to ${edge.destination}`" @click="emit('relationship', edge)">
+              <span>{{ edge.source }}</span>
+              <strong>{{ edge.payload.kind.replaceAll('_', ' ') }}</strong>
+              <span>{{ edge.destination }}</span>
+            </button>
           </li>
         </ul>
         <p v-else class="muted">No connected relationships.</p>

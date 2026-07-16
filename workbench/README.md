@@ -4,6 +4,8 @@ The Vue workbench is the interactive client for Optimist's typed systems model. 
 
 Select a node and use **Details** to edit its title, Markdown description, and JSON metadata with project/node revision guards. Factors and outcomes also expose **Estimate** for current/desired normalized-state Point or Beta priors with provenance. Broader edge effects, intervention costs, measurements, deletion, and scenario editing remain under development.
 
+Incident relationships in the inspector are selectable. Their Markdown description and JSON metadata can be edited with edge revision guards, and relationships can be deleted after an explicit confirmation without deleting endpoint nodes. Typed causal effect/lag payload editing remains under development.
+
 Use the header download button to save the selected project as `.optimist.json`. The upload button previews archive identity/counts before restore. Replacing an existing project requires typing its project ID; replacement discards current process-local replay history after the canonical Markdown snapshot validates successfully.
 
 ## Run locally

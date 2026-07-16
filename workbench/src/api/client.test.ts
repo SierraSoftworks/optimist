@@ -271,4 +271,67 @@ describe('Optimist API client', () => {
       },
     })
   })
+
+  it('sends revision-checked relationship edit and delete commands', async () => {
+    const edge = {
+      source: 'A',
+      source_kind: 'factor' as const,
+      destination: 'B',
+      destination_kind: 'factor' as const,
+      revision: 2,
+      description: '',
+      metadata: {},
+      payload: { kind: 'requires' as const, properties: { hard: true } },
+    }
+    const updated = { ...edge, revision: 3, description: 'Required first.' }
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            request_id: '00000000-0000-4000-8000-000000000000',
+            project_revision: 8,
+            outcome: { type: 'edge_metadata_updated', value: updated },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            request_id: '00000000-0000-4000-8000-000000000000',
+            project_revision: 9,
+            outcome: { type: 'edge_deleted', value: updated },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', {
+      randomUUID: () => '00000000-0000-4000-8000-000000000000',
+    })
+
+    await api.updateEdge(project, edge, {
+      description: 'Required first.',
+      metadata: { source: 'ADR-1' },
+    })
+    await api.deleteEdge(project, updated)
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      command: {
+        type: 'update_edge_metadata',
+        payload: {
+          id: { source: 'A', kind: 'requires', destination: 'B' },
+          expected_revision: 2,
+          description: 'Required first.',
+          metadata: { source: 'ADR-1' },
+        },
+      },
+    })
+    expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      command: {
+        type: 'delete_edge',
+        payload: { id: { source: 'A', kind: 'requires', destination: 'B' } },
+      },
+    })
+  })
 })

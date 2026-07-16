@@ -1,4 +1,13 @@
 export type NodeKind = 'outcome' | 'metric' | 'factor' | 'intervention'
+export type EdgeKind =
+  | 'contributes'
+  | 'measures'
+  | 'changes'
+  | 'requires'
+  | 'part_of'
+  | 'blocks'
+  | 'conflicts_with'
+  | 'synergizes_with'
 
 export interface Project {
   id: string
@@ -86,7 +95,13 @@ export interface GraphEdge {
   revision: number
   description: string
   metadata: Record<string, unknown>
-  payload: { kind: string; properties?: Record<string, unknown> }
+  payload: { kind: EdgeKind; properties?: Record<string, unknown> }
+}
+
+export interface EdgeIdentity {
+  source: string
+  kind: EdgeKind
+  destination: string
 }
 
 export interface CreateNodeInput {
@@ -107,6 +122,11 @@ export interface SetStateEstimateInput {
   slot: StateEstimateSlot
   distribution: Distribution
   provenance: string[]
+}
+
+export interface UpdateEdgeInput {
+  description: string
+  metadata: Record<string, unknown>
 }
 
 export type EditableEdgePayload =

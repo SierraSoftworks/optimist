@@ -25,16 +25,19 @@ import CreateEdgeDialog from './components/CreateEdgeDialog.vue'
 import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
+import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
   CreateEdgeInput,
   CreateNodeInput,
   GraphNode,
+  GraphEdge,
   NodeKind,
   ProjectArchive,
   SetStateEstimateInput,
   UpdateNodeInput,
+  UpdateEdgeInput,
 } from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
 import {
@@ -47,6 +50,8 @@ import {
   useProjects,
   useSetStateEstimate,
   useUpdateNode,
+  useUpdateEdge,
+  useDeleteEdge,
 } from './composables/useProjectData'
 
 const store = useWorkbenchStore()
@@ -64,6 +69,8 @@ const edgeDialogOpen = ref(false)
 const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
+const edgeEditDialogOpen = ref(false)
+const selectedEdge = ref<GraphEdge | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -87,6 +94,8 @@ const selectedNode = computed<GraphNode | null>(
 )
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
+const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
+const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -207,6 +216,32 @@ async function submitStateEstimate(input: SetStateEstimateInput) {
   try {
     await setStateEstimate.mutateAsync(input)
     estimateDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+function editRelationship(edge: GraphEdge) {
+  selectedEdge.value = edge
+  edgeEditDialogOpen.value = true
+}
+
+async function submitEdgeEdit(input: UpdateEdgeInput) {
+  mutationError.value = null
+  try {
+    await updateEdge.mutateAsync(input)
+    edgeEditDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitEdgeDelete() {
+  mutationError.value = null
+  try {
+    await deleteEdge.mutateAsync()
+    edgeEditDialogOpen.value = false
+    selectedEdge.value = null
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -361,6 +396,7 @@ function retry() {
         :edges="edges"
         @edit="editNodeDialogOpen = true"
         @estimate="estimateDialogOpen = true"
+        @relationship="editRelationship"
       />
     </section>
 
@@ -409,6 +445,14 @@ function retry() {
       :node="selectedNode"
       @close="estimateDialogOpen = false"
       @submit="submitStateEstimate"
+    />
+    <EditEdgeDialog
+      :open="edgeEditDialogOpen"
+      :pending="updateEdge.isPending.value || deleteEdge.isPending.value"
+      :edge="selectedEdge"
+      @close="edgeEditDialogOpen = false"
+      @submit="submitEdgeEdit"
+      @delete="submitEdgeDelete"
     />
   </main>
 </template>
