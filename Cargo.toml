@@ -8,10 +8,11 @@ default = []
 rocksdb = ["indradb-lib/rocksdb-datastore"]
 
 [dependencies]
-axum = "0.8.4"
+axum = { version = "0.8.4", features = ["ws"] }
 chrono = { version = "0.4.41", default-features = false }
 clap = { version = "4.5.41", features = ["derive", "env"] }
 human-errors = { version = "0.2.4", features = ["pretty"] }
+futures-util = "0.3.31"
 indradb-lib = "5.0.0"
 nalgebra = "=0.33.3"
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
@@ -30,3 +31,4 @@ uuid = { version = "1.17.0", features = ["serde", "v4", "v5"] }
 [dev-dependencies]
 proptest = "1.7.0"
 tower = { version = "0.5.2", features = ["util"] }
+tokio-tungstenite = "0.29.0"

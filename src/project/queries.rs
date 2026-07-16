@@ -1,5 +1,4 @@
 use crate::{
-    command::ChangeSetReplay,
     domain::{
         Edge, EdgeId, EntityId, EstimateAddress, FormulaCatalog, FormulaDefinition, Node,
         PrimitiveEstimate, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
@@ -10,36 +9,6 @@ use crate::{
 use super::{ProjectCatalog, ProjectError};
 
 impl ProjectCatalog {
-    /// Replays committed changes after an exclusive project revision.
-    pub fn replay_changes(
-        &self,
-        project: &ProjectId,
-        after_revision: u64,
-    ) -> Result<ChangeSetReplay, ProjectError> {
-        let entry = self
-            .projects
-            .get(project)
-            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
-        if after_revision > entry.project.revision {
-            return Err(ProjectError::InvalidReplayRevision {
-                requested: after_revision,
-                current: entry.project.revision,
-            });
-        }
-        Ok(ChangeSetReplay {
-            after_revision,
-            current_revision: entry.project.revision,
-            changes: entry
-                .changes
-                .range((
-                    std::ops::Bound::Excluded(after_revision),
-                    std::ops::Bound::Unbounded,
-                ))
-                .map(|(_, change)| change.clone())
-                .collect(),
-        })
-    }
-
     /// Lists complete node aggregates for one project in deterministic ID order.
     pub fn list_nodes(&mut self, project: &ProjectId) -> Result<Vec<Node>, ProjectError> {
         Ok(self.repository_mut(project)?.list_nodes()?)

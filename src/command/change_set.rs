@@ -35,3 +35,21 @@ pub struct ChangeSetReplay {
     /// Committed changes in ascending project-revision order.
     pub changes: Vec<ChangeSet>,
 }
+
+/// Server-to-client message on a project ChangeSet WebSocket stream.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ChangeStreamMessage {
+    /// One replayed or newly committed change in project-revision order.
+    Change(Box<ChangeSet>),
+    /// Replay is complete and live events begin after this revision.
+    CaughtUp {
+        /// Latest project revision included in replay.
+        revision: u64,
+    },
+    /// The bounded live receiver lagged and the client must reconnect from this cursor.
+    ReplayRequired {
+        /// Last project revision delivered successfully to this client.
+        after_revision: u64,
+    },
+}

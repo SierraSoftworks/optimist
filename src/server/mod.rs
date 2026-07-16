@@ -1,5 +1,6 @@
 mod analysis;
 mod api_error;
+mod commands;
 mod error;
 mod estimate_error_response;
 mod formula_error_response;
@@ -9,6 +10,7 @@ mod project_error_response;
 mod projects;
 mod repository_error_response;
 mod state;
+mod websocket_changes;
 
 use std::{net::SocketAddr, path::PathBuf};
 
@@ -64,8 +66,10 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
     Router::new()
         .route("/api/v1/health", get(health))
         .merge(projects::router())
+        .merge(commands::router())
         .merge(graph::router())
         .merge(analysis::router())
+        .merge(websocket_changes::router())
         .with_state(AppState::new(catalog))
 }
 

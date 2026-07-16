@@ -3,6 +3,7 @@ mod aggregate_updates;
 mod analysis;
 mod apply;
 mod catalog;
+mod change_queries;
 mod commands;
 mod dependence;
 mod dependence_addresses;

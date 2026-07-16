@@ -1,12 +1,10 @@
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
-    routing::{get, post},
+    routing::get,
 };
 
 use crate::{
-    command::{CommandRequest, CommandResult},
     domain::{
         Edge, EdgeId, EntityId, EstimateAddress, Node, PrimitiveEstimate, ProjectDependenceModel,
         ProjectId, Scenario, ScenarioId,
@@ -19,7 +17,6 @@ use super::{AppState, api_error::ApiError, formulas};
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/projects/{project}/commands", post(execute_command))
         .route("/api/v1/projects/{project}/nodes", get(list_nodes))
         .route("/api/v1/projects/{project}/nodes/{entity}", get(show_node))
         .route("/api/v1/projects/{project}/edges", get(list_edges))
@@ -35,15 +32,6 @@ pub(super) fn router() -> Router<AppState> {
             "/api/v1/projects/{project}/dependence",
             get(show_dependence),
         )
-}
-
-async fn execute_command(
-    State(state): State<AppState>,
-    Path(project): Path<ProjectId>,
-    Json(request): Json<CommandRequest>,
-) -> Result<(StatusCode, Json<CommandResult>), ApiError> {
-    let result = state.catalog.write().await.execute(&project, request)?;
-    Ok((StatusCode::CREATED, Json(result)))
 }
 
 async fn list_nodes(
