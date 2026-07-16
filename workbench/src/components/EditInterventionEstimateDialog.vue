@@ -8,6 +8,7 @@ import type {
   InterventionEstimateSlot,
   SetInterventionEstimateInput,
 } from '../api/types'
+import DistributionEditor from './DistributionEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -22,18 +23,16 @@ const emit = defineEmits<{
 }>()
 const form = reactive({
   dimension: '',
-  family: 'point' as 'point' | 'log_normal' | 'beta' | 'scaled_beta',
-  value: 0,
-  location: 0,
-  scale: 0.25,
-  alpha: 2,
-  beta: 2,
-  lower: 0,
-  upper: 1,
   provenance: '',
 })
+const distribution = ref<Distribution>({ type: 'point', value: 0 })
 const confirmRemove = ref(false)
 const probability = computed(() => props.slot?.kind === 'probability_of_success')
+const families = computed<Array<Distribution['type']>>(() =>
+  probability.value
+    ? ['point', 'beta', 'scaled_beta']
+    : ['point', 'log_normal', 'beta', 'scaled_beta'],
+)
 const duplicateCost = computed(() =>
   props.node?.payload.kind === 'intervention' &&
   props.slot?.kind === 'cost' &&
@@ -63,41 +62,13 @@ watch(
   () => [props.open, props.node, props.slot] as const,
   ([open]) => {
     if (!open || !props.slot) return
-    const distribution = existing.value?.distribution
+    const currentDistribution = existing.value?.distribution
     form.dimension = props.slot.kind === 'cost' ? props.slot.value : ''
-    form.family = distribution?.type === 'log_normal' || distribution?.type === 'beta' || distribution?.type === 'scaled_beta'
-      ? distribution.type
-      : 'point'
-    form.value = distribution?.value ?? (probability.value ? 0.5 : 0)
-    form.location = distribution?.location ?? 0
-    form.scale = distribution?.scale ?? 0.25
-    form.alpha = distribution?.alpha ?? 2
-    form.beta = distribution?.beta ?? 2
-    form.lower = distribution?.lower ?? 0
-    form.upper = distribution?.upper ?? 1
+    distribution.value = currentDistribution ?? { type: 'point', value: probability.value ? 0.5 : 0 }
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     confirmRemove.value = false
   },
 )
-
-function distribution(): Distribution {
-  switch (form.family) {
-    case 'log_normal':
-      return { type: 'log_normal', location: form.location, scale: form.scale }
-    case 'beta':
-      return { type: 'beta', alpha: form.alpha, beta: form.beta }
-    case 'scaled_beta':
-      return {
-        type: 'scaled_beta',
-        alpha: form.alpha,
-        beta: form.beta,
-        lower: form.lower,
-        upper: form.upper,
-      }
-    default:
-      return { type: 'point', value: form.value }
-  }
-}
 
 function submit() {
   if (!props.slot) return
@@ -107,7 +78,7 @@ function submit() {
   if ((slot.kind === 'cost' && !slot.value) || duplicateCost.value) return
   emit('submit', {
     slot,
-    distribution: distribution(),
+    distribution: distribution.value,
     provenance: form.provenance
       .split('\n')
       .map((value) => value.trim())
@@ -129,28 +100,7 @@ function submit() {
         </header>
         <label v-if="slot.kind === 'cost'">Dimension<input v-model="form.dimension" :readonly="Boolean(existing)" placeholder="usd, engineer_days, risk" required /></label>
         <p v-if="duplicateCost" class="form-error">This cost dimension already exists. Edit it from the inspector.</p>
-        <label>
-          Distribution
-          <select v-model="form.family">
-            <option value="point">Point</option>
-            <option v-if="!probability" value="log_normal">LogNormal</option>
-            <option value="beta">Beta</option>
-            <option value="scaled_beta">Scaled Beta</option>
-          </select>
-        </label>
-        <label v-if="form.family === 'point'">Value<input v-model.number="form.value" type="number" min="0" :max="probability ? 1 : undefined" step="any" required /></label>
-        <div v-else-if="form.family === 'log_normal'" class="field-grid distribution-fields">
-          <label>Log location<input v-model.number="form.location" type="number" step="any" required /></label>
-          <label>Log scale<input v-model.number="form.scale" type="number" min="0.000001" step="any" required /></label>
-        </div>
-        <div v-else class="field-grid distribution-fields">
-          <label>Alpha<input v-model.number="form.alpha" type="number" min="0.000001" step="any" required /></label>
-          <label>Beta<input v-model.number="form.beta" type="number" min="0.000001" step="any" required /></label>
-          <template v-if="form.family === 'scaled_beta'">
-            <label>Lower bound<input v-model.number="form.lower" type="number" min="0" :max="probability ? 1 : undefined" step="any" required /></label>
-            <label>Upper bound<input v-model.number="form.upper" type="number" min="0" :max="probability ? 1 : undefined" step="any" required /></label>
-          </template>
-        </div>
+        <DistributionEditor v-model="distribution" :families="families" :support="probability ? 'probability' : 'non_negative'" />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
           <Trash2 :size="18" />

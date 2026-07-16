@@ -5,6 +5,7 @@ import type {
   CreateEdgeInput,
   CreateNodeInput,
   EdgeIdentity,
+  EdgeEstimateSlot,
   Estimate,
   Evidence,
   EvidenceInput,
@@ -14,6 +15,7 @@ import type {
   ProjectArchive,
   SetStateEstimateInput,
   SetInterventionEstimateInput,
+  SetEdgeEstimateInput,
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -33,10 +35,10 @@ interface CommandResult<T> {
 interface PrimitiveEstimate {
   address: {
     project: string
-    owner: { kind: 'node'; id: string }
+    owner: { kind: 'node'; id: string } | { kind: 'edge'; id: EdgeIdentity }
     estimate: string
   }
-  slot: { kind: StateEstimateSlot }
+  slot: { kind: StateEstimateSlot } | EdgeEstimateSlot
   revision: number
   distribution: import('./types').Distribution
   provenance: string[]
@@ -83,6 +85,36 @@ function nextInterventionEstimateId(node: GraphNode) {
     'estimate_identifier_space_exhausted',
     'The intervention has exhausted its estimate identifier space.',
     ['Remove an unused estimate and retry.'],
+  )
+}
+
+function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
+  if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
+    if (slot.kind === 'effect') return edge.payload.properties.effect
+    if (slot.kind === 'lag') return edge.payload.properties.lag
+  }
+  if (edge.payload.kind === 'blocks' && slot.kind === 'degree') {
+    return edge.payload.properties.degree
+  }
+  return null
+}
+
+function nextEdgeEstimateId(edge: GraphEdge) {
+  const used = new Set<string>()
+  if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
+    used.add(edge.payload.properties.effect.id)
+    if (edge.payload.properties.lag) used.add(edge.payload.properties.lag.id)
+  } else if (edge.payload.kind === 'blocks') {
+    used.add(edge.payload.properties.degree.id)
+  }
+  for (let value = 0; value < Number.MAX_SAFE_INTEGER; value += 1) {
+    const id = encodeEstimateId(value)
+    if (!used.has(id)) return id
+  }
+  throw new OptimistApiError(
+    'estimate_identifier_space_exhausted',
+    'The relationship has exhausted its estimate identifier space.',
+    ['Remove its optional lag and retry.'],
   )
 }
 
@@ -579,5 +611,78 @@ export const api = {
       )
     }
     return result.outcome.value.evidence
+  },
+  async setEdgeEstimate(
+    project: Project,
+    edge: GraphEdge,
+    input: SetEdgeEstimateInput,
+  ): Promise<PrimitiveEstimate> {
+    const existing = edgeEstimate(edge, input.slot)
+    const estimate = existing?.id ?? nextEdgeEstimateId(edge)
+    const result = await request<CommandResult<PrimitiveEstimate>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_estimate',
+            payload: {
+              address: {
+                project: project.id,
+                owner: { kind: 'edge', id: edgeIdentity(edge) },
+                estimate,
+              },
+              slot: input.slot,
+              distribution: input.distribution,
+              provenance: input.provenance,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'estimate_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for relationship estimate editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async removeEdgeEstimate(
+    project: Project,
+    edge: GraphEdge,
+    estimate: Estimate,
+  ): Promise<PrimitiveEstimate> {
+    const result = await request<CommandResult<PrimitiveEstimate>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'remove_estimate',
+            payload: {
+              address: {
+                project: project.id,
+                owner: { kind: 'edge', id: edgeIdentity(edge) },
+                estimate: estimate.id,
+              },
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'estimate_removed') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for relationship estimate removal.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
   },
 }

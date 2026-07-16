@@ -124,7 +124,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Generated API client and project selector.
 - [x] Cytoscape renderer adapter for the four core node kinds and structural edges.
 - [ ] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
-- [ ] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
+- [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
 - [ ] Direct graph/property editing through typed commands.
 - [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [ ] Explore, Impediments, Feedback, and Optimize analysis modes.

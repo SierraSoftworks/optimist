@@ -30,6 +30,7 @@ import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
 import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
 import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
+import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -42,12 +43,14 @@ import type {
   Estimate,
   Evidence,
   EvidenceInput,
+  EdgeEstimateSlot,
   InterventionEstimateSlot,
   NodeKind,
   Observation,
   ProjectArchive,
   SetStateEstimateInput,
   SetInterventionEstimateInput,
+  SetEdgeEstimateInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from './api/types'
@@ -72,6 +75,8 @@ import {
   useCreateEvidence,
   useUpdateEvidence,
   useDeleteEvidence,
+  useSetEdgeEstimate,
+  useRemoveEdgeEstimate,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -95,11 +100,13 @@ const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
 const interventionEstimateDialogOpen = ref(false)
 const evidenceDialogOpen = ref(false)
+const edgeEstimateDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
 const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const selectedEvidence = ref<Evidence | null>(null)
+const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -137,6 +144,8 @@ const removeInterventionEstimate = useRemoveInterventionEstimate(projectQuery.da
 const createEvidence = useCreateEvidence(projectQuery.data, selectedNode)
 const updateEvidence = useUpdateEvidence(projectQuery.data, selectedNode, selectedEvidence)
 const deleteEvidence = useDeleteEvidence(projectQuery.data, selectedNode, selectedEvidence)
+const setEdgeEstimate = useSetEdgeEstimate(projectQuery.data, selectedEdge)
+const removeEdgeEstimate = useRemoveEdgeEstimate(projectQuery.data, selectedEdge)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -387,6 +396,43 @@ async function submitEvidenceDelete() {
   }
 }
 
+function editEdgeEstimate(slot: EdgeEstimateSlot) {
+  selectedEdgeEstimateSlot.value = slot
+  edgeEstimateDialogOpen.value = true
+}
+
+async function submitEdgeEstimate(input: SetEdgeEstimateInput) {
+  mutationError.value = null
+  try {
+    await setEdgeEstimate.mutateAsync(input)
+    selectedEdge.value = edges.value.find((edge) =>
+      edge.source === selectedEdge.value?.source &&
+      edge.destination === selectedEdge.value?.destination &&
+      edge.payload.kind === selectedEdge.value?.payload.kind,
+    ) ?? selectedEdge.value
+    edgeEstimateDialogOpen.value = false
+    selectedEdgeEstimateSlot.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitEdgeEstimateRemove(estimate: Estimate) {
+  mutationError.value = null
+  try {
+    await removeEdgeEstimate.mutateAsync(estimate)
+    selectedEdge.value = edges.value.find((edge) =>
+      edge.source === selectedEdge.value?.source &&
+      edge.destination === selectedEdge.value?.destination &&
+      edge.payload.kind === selectedEdge.value?.payload.kind,
+    ) ?? selectedEdge.value
+    edgeEstimateDialogOpen.value = false
+    selectedEdgeEstimateSlot.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -598,6 +644,7 @@ function retry() {
       @close="edgeEditDialogOpen = false"
       @submit="submitEdgeEdit"
       @delete="submitEdgeDelete"
+      @estimate="editEdgeEstimate"
     />
     <AddObservationDialog
       :open="observationDialogOpen"
@@ -632,6 +679,15 @@ function retry() {
       @close="evidenceDialogOpen = false"
       @submit="submitEvidence"
       @delete="submitEvidenceDelete"
+    />
+    <EditEdgeEstimateDialog
+      :open="edgeEstimateDialogOpen"
+      :pending="setEdgeEstimate.isPending.value || removeEdgeEstimate.isPending.value"
+      :edge="selectedEdge"
+      :slot="selectedEdgeEstimateSlot"
+      @close="edgeEstimateDialogOpen = false"
+      @submit="submitEdgeEstimate"
+      @remove="submitEdgeEstimateRemove"
     />
   </main>
 </template>

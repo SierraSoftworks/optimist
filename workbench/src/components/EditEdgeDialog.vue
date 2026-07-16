@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { Trash2, X } from '@lucide/vue'
-import type { GraphEdge, UpdateEdgeInput } from '../api/types'
+import { Pencil, Trash2, X } from '@lucide/vue'
+import type { Distribution, EdgeEstimateSlot, GraphEdge, UpdateEdgeInput } from '../api/types'
 
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
 const emit = defineEmits<{
   close: []
   submit: [input: UpdateEdgeInput]
   delete: []
+  estimate: [slot: EdgeEstimateSlot]
 }>()
 const form = reactive({ description: '', metadata: '{}' })
 const error = ref<string | null>(null)
@@ -38,6 +39,14 @@ function submit() {
     error.value = reason instanceof Error ? reason.message : 'Metadata is invalid JSON.'
   }
 }
+
+function distributionLabel(value: Distribution) {
+  if (value.type === 'point') return `Point · ${value.value}`
+  if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
+  if (value.type === 'scaled_beta') return `Scaled Beta · [${value.lower}, ${value.upper}]`
+  if (value.type === 'normal') return `Normal · μ ${value.mean}, σ ${value.standard_deviation}`
+  return `LogNormal · μ ${value.location}, σ ${value.scale}`
+}
 </script>
 
 <template>
@@ -51,6 +60,26 @@ function submit() {
           </div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
+        <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
+          <div class="estimate-row">
+            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong></div>
+            <button type="button" class="icon-button" aria-label="Edit relationship effect estimate" @click="emit('estimate', { kind: 'effect' })"><Pencil :size="13" /></button>
+          </div>
+          <div class="estimate-row">
+            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong></div>
+            <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
+          </div>
+          <dl class="relationship-context">
+            <div><dt>Mechanism</dt><dd>{{ edge.payload.properties.mechanism || 'Not documented' }}</dd></div>
+            <div><dt>Evidence</dt><dd>{{ edge.payload.properties.evidence.join('; ') || 'None' }}</dd></div>
+          </dl>
+        </section>
+        <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
+          <div class="estimate-row">
+            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong></div>
+            <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
+          </div>
+        </section>
         <label>
           Description
           <textarea v-model="form.description" rows="6" placeholder="Markdown mechanism or relationship context"></textarea>

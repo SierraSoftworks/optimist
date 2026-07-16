@@ -15,6 +15,7 @@ import type {
   Estimate,
   Evidence,
   EvidenceInput,
+  SetEdgeEstimateInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from '../api/types'
@@ -235,5 +236,29 @@ export function useDeleteEvidence(
   return useMutation({
     mutationFn: () => api.deleteEvidence(project.value!, node.value!, evidence.value!),
     onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useSetEdgeEstimate(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SetEdgeEstimateInput) =>
+      api.setEdgeEstimate(project.value!, edge.value!, input),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
+  })
+}
+
+export function useRemoveEdgeEstimate(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (estimate: Estimate) =>
+      api.removeEdgeEstimate(project.value!, edge.value!, estimate),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
   })
 }

@@ -126,13 +126,29 @@ export interface GraphEdge {
   metadata: Record<string, unknown>
   payload:
     | {
+        kind: 'contributes' | 'changes'
+        properties: {
+          effect: Estimate
+          lag: Estimate | null
+          mechanism: string
+          evidence: string[]
+        }
+      }
+    | {
+        kind: 'blocks'
+        properties: { degree: Estimate }
+      }
+    | {
         kind: 'measures'
         properties: {
           polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
           observations: Observation[]
         }
       }
-    | { kind: Exclude<EdgeKind, 'measures'>; properties?: Record<string, unknown> }
+    | {
+        kind: Exclude<EdgeKind, 'contributes' | 'changes' | 'blocks' | 'measures'>
+        properties?: Record<string, unknown>
+      }
 }
 
 export interface EdgeIdentity {
@@ -168,6 +184,14 @@ export type InterventionEstimateSlot =
 
 export interface SetInterventionEstimateInput {
   slot: InterventionEstimateSlot
+  distribution: Distribution
+  provenance: string[]
+}
+
+export type EdgeEstimateSlot = { kind: 'effect' | 'lag' | 'degree' }
+
+export interface SetEdgeEstimateInput {
+  slot: EdgeEstimateSlot
   distribution: Distribution
   provenance: string[]
 }
