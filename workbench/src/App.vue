@@ -33,6 +33,8 @@ import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
 import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
 import GraphNavigator from './components/GraphNavigator.vue'
 import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
+import OptimizeAnalysisPanel from './components/OptimizeAnalysisPanel.vue'
+import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -53,6 +55,7 @@ import type {
   SetStateEstimateInput,
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
+  ScenarioDraft,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from './api/types'
@@ -80,6 +83,9 @@ import {
   useSetEdgeEstimate,
   useRemoveEdgeEstimate,
   useStructuralAnalysis,
+  useScenarios,
+  useScenarioAnalysis,
+  useCreateScenario,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -104,6 +110,7 @@ const correctionDialogOpen = ref(false)
 const interventionEstimateDialogOpen = ref(false)
 const evidenceDialogOpen = ref(false)
 const edgeEstimateDialogOpen = ref(false)
+const scenarioDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
@@ -111,6 +118,8 @@ const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const selectedEvidence = ref<Evidence | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const selectedFeedbackCycle = ref<number | null>(null)
+const selectedScenarioId = ref<string | null>(null)
+const selectedCandidateId = ref<string | null>(null)
 const highlightedNodeIds = ref<string[]>([])
 const highlightedEdgeIds = ref<string[]>([])
 const mutationError = ref<Error | null>(null)
@@ -160,6 +169,19 @@ const structuralAnalysis = useStructuralAnalysis(
   projectRevision,
   feedbackModeEnabled,
 )
+const optimizeModeEnabled = computed(() => mode.value === 'optimize')
+const scenariosQuery = useScenarios(selectedProjectId, optimizeModeEnabled)
+const scenarioAnalysis = useScenarioAnalysis(
+  selectedProjectId,
+  selectedScenarioId,
+  optimizeModeEnabled,
+)
+const createScenario = useCreateScenario(projectQuery.data)
+const optimizePending = computed(() =>
+  scenariosQuery.isPending.value ||
+  (Boolean(selectedScenarioId.value) &&
+    (scenarioAnalysis.isPending.value || scenarioAnalysis.isFetching.value)),
+)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -181,7 +203,7 @@ const modes: Array<{ id: WorkbenchMode; label: string; available: boolean }> = [
   { id: 'explore', label: 'Explore', available: true },
   { id: 'impediments', label: 'Impediments', available: false },
   { id: 'feedback', label: 'Feedback', available: true },
-  { id: 'optimize', label: 'Optimize', available: false },
+  { id: 'optimize', label: 'Optimize', available: true },
 ]
 
 watch(
@@ -202,6 +224,20 @@ watch(visibleNodes, (next) => {
 })
 
 watch([mode, selectedProjectId], () => clearFeedbackSelection())
+watch(
+  () => scenariosQuery.data.value,
+  (scenarios) => {
+    if (!scenarios?.length) {
+      selectedScenarioId.value = null
+      return
+    }
+    if (!selectedScenarioId.value || !scenarios.some((scenario) => scenario.id === selectedScenarioId.value)) {
+      selectedScenarioId.value = scenarios[0]!.id
+    }
+  },
+  { immediate: true },
+)
+watch([mode, selectedProjectId, selectedScenarioId], () => clearOptimizeSelection())
 
 function selectProject(event: Event) {
   const select = event.target as HTMLSelectElement
@@ -232,6 +268,36 @@ function clearFeedbackSelection() {
   selectedFeedbackCycle.value = null
   highlightedNodeIds.value = []
   highlightedEdgeIds.value = []
+}
+
+function selectScenario(id: string) {
+  selectedScenarioId.value = id
+}
+
+function selectCandidate(id: string, nodes: string[]) {
+  selectedCandidateId.value = id
+  highlightedNodeIds.value = nodes
+  highlightedEdgeIds.value = []
+  store.selectNode(id)
+}
+
+function clearOptimizeSelection() {
+  selectedCandidateId.value = null
+  if (mode.value === 'optimize') {
+    highlightedNodeIds.value = []
+    highlightedEdgeIds.value = []
+  }
+}
+
+async function submitScenario(scenario: ScenarioDraft) {
+  mutationError.value = null
+  try {
+    const created = await createScenario.mutateAsync(scenario)
+    selectedScenarioId.value = created.id
+    scenarioDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
 }
 
 async function submitProject(name: string) {
@@ -624,6 +690,20 @@ function retry() {
         @clear="clearFeedbackSelection"
         @retry="structuralAnalysis.refetch()"
       />
+      <OptimizeAnalysisPanel
+        v-else-if="mode === 'optimize'"
+        :scenarios="scenariosQuery.data.value ?? []"
+        :selected-scenario-id="selectedScenarioId"
+        :analysis="scenarioAnalysis.data.value"
+        :pending="optimizePending"
+        :error="(scenariosQuery.error.value ?? scenarioAnalysis.error.value) as Error | null"
+        :nodes="nodes"
+        :selected-candidate-id="selectedCandidateId"
+        @select-scenario="selectScenario"
+        @select-candidate="selectCandidate"
+        @create="scenarioDialogOpen = true"
+        @retry="scenariosQuery.error.value ? scenariosQuery.refetch() : scenarioAnalysis.refetch()"
+      />
       <NodeInspector
         v-else
         :node="selectedNode"
@@ -736,6 +816,13 @@ function retry() {
       @close="edgeEstimateDialogOpen = false"
       @submit="submitEdgeEstimate"
       @remove="submitEdgeEstimateRemove"
+    />
+    <CreateScenarioDialog
+      :open="scenarioDialogOpen"
+      :pending="createScenario.isPending.value"
+      :nodes="nodes"
+      @close="scenarioDialogOpen = false"
+      @submit="submitScenario"
     />
   </main>
 </template>

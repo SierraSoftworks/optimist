@@ -187,6 +187,84 @@ export interface StructuralAnalysis {
   }
 }
 
+export interface MonteCarloConfig {
+  seed: number
+  minimum_samples: number
+  maximum_samples: number
+  absolute_tolerance: number
+  relative_tolerance: number
+}
+
+export interface ScenarioObjective {
+  outcome_id: string
+  direction: 'maximize' | 'minimize'
+  importance: number
+}
+
+export interface ScenarioDraft {
+  name: string
+  title: string
+  rationale: string
+  objectives: ScenarioObjective[]
+  planning_horizon: number
+  budgets: Array<{ unit: Record<string, number>; amount: number }>
+  candidate_interventions: string[]
+  monte_carlo: MonteCarloConfig
+  scalar_preferences?: Array<{
+    unit: Record<string, number>
+    utility_per_unit: number
+  }>
+}
+
+export interface Scenario extends ScenarioDraft {
+  id: string
+  revision: number
+}
+
+export interface MonteCarloEstimate {
+  mean: number | null
+  variance: number | null
+  mean_standard_error: number | null
+  variance_standard_error: number | null
+}
+
+export interface MonteCarloDiagnostics {
+  seed: number
+  attempted_samples: number
+  valid_samples: number
+  invalid_samples: {
+    zero_denominator: number
+    non_finite_primitive: number
+    non_finite_result: number
+  }
+  criterion: MonteCarloConfig
+  status: 'converged' | 'maximum_samples_reached' | 'insufficient_valid_samples'
+}
+
+export interface ObjectiveProjection {
+  outcome: string
+  direction: 'maximize' | 'minimize'
+  importance: number
+  reachable: boolean
+  baseline: MonteCarloEstimate
+  final_state: MonteCarloEstimate
+  improvement: MonteCarloEstimate
+}
+
+export interface InterventionProjection {
+  intervention: string
+  objectives: ObjectiveProjection[]
+  improvement_covariance: Array<Array<number | null>>
+  clamped_state_updates: number
+  diagnostics: MonteCarloDiagnostics
+}
+
+export interface ScenarioAnalysis {
+  revision: AnalysisRevisionKey
+  planning_horizon: number
+  candidates: InterventionProjection[]
+}
+
 export interface CreateNodeInput {
   name: string
   title: string

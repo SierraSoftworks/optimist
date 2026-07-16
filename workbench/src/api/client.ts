@@ -14,6 +14,9 @@ import type {
   Project,
   ProjectArchive,
   SetStateEstimateInput,
+  Scenario,
+  ScenarioAnalysis,
+  ScenarioDraft,
   StructuralAnalysis,
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
@@ -182,6 +185,10 @@ export const api = {
   edges: (project: string) => request<GraphEdge[]>(`/api/v1/projects/${project}/edges`),
   structuralAnalysis: (project: string) =>
     request<StructuralAnalysis>(`/api/v1/projects/${project}/analysis/structure`),
+  scenarios: (project: string) =>
+    request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),
+  scenarioAnalysis: (project: string, scenario: string) =>
+    request<ScenarioAnalysis>(`/api/v1/projects/${project}/scenarios/${scenario}/analysis`),
   createProject: (name: string) =>
     request<Project>('/api/v1/projects', {
       method: 'POST',
@@ -210,6 +217,27 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for node creation.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async createScenario(project: Project, scenario: ScenarioDraft): Promise<Scenario> {
+    const result = await request<CommandResult<Scenario>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: { type: 'create_scenario', payload: { scenario } },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'scenario_created') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for scenario creation.',
         ['Confirm the workbench and server versions match.'],
       )
     }

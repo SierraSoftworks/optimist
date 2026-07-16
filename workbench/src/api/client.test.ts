@@ -39,6 +39,49 @@ describe('Optimist API client', () => {
     expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/structure')
   })
 
+  it('lists, creates, and analyzes finite-horizon scenarios', async () => {
+    const draft = {
+      name: 'delivery', title: 'Delivery plan', rationale: '',
+      objectives: [{ outcome_id: 'A', direction: 'maximize' as const, importance: 1 }],
+      planning_horizon: 12, budgets: [], candidate_interventions: ['B'],
+      monte_carlo: {
+        seed: 42, minimum_samples: 100, maximum_samples: 1000,
+        absolute_tolerance: 0.01, relative_tolerance: 0.01,
+      },
+    }
+    const scenario = { id: 'A', revision: 0, ...draft }
+    const analysis = {
+      revision: {
+        project: 'A', graph_revision: 5, scenario: ['A', 0],
+        dependence_revision: null, formula_revision: 0,
+      },
+      planning_horizon: 12,
+      candidates: [],
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([scenario]), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'scenario_created', value: scenario },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(analysis), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await expect(api.scenarios('A')).resolves.toEqual([scenario])
+    await expect(api.createScenario(project, draft)).resolves.toEqual(scenario)
+    await expect(api.scenarioAnalysis('A', 'A')).resolves.toEqual(analysis)
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/scenarios')
+    expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: { type: 'create_scenario', payload: { scenario: draft } },
+    })
+    expect(fetch.mock.calls[2]![0]).toBe('/api/v1/projects/A/scenarios/A/analysis')
+  })
+
   it('sends revision-checked idempotent node commands', async () => {
     const node = {
       id: 'B',

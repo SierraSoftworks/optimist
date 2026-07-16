@@ -6,6 +6,7 @@ interface FixtureState {
   projects?: Array<{ id: string; name: string; revision: number }>
   nodes: Array<Record<string, unknown>>
   edges: Array<Record<string, unknown>>
+  scenarios?: Array<Record<string, unknown>>
 }
 
 async function mockApi(page: Page, state: FixtureState) {
@@ -34,6 +35,36 @@ async function mockApi(page: Page, state: FixtureState) {
     }
     if (url.pathname === '/api/v1/projects/A/nodes') return json(state.nodes)
     if (url.pathname === '/api/v1/projects/A/edges') return json(state.edges)
+    if (url.pathname === '/api/v1/projects/A/scenarios') return json(state.scenarios ?? [])
+    if (url.pathname === '/api/v1/projects/A/scenarios/A/analysis') {
+      const scenario = state.scenarios?.[0] as {
+        id: string
+        revision: number
+        planning_horizon: number
+        objectives: Array<{ outcome_id: string; direction: string; importance: number }>
+        candidate_interventions: string[]
+        monte_carlo: { seed: number; minimum_samples: number; maximum_samples: number; absolute_tolerance: number; relative_tolerance: number }
+      }
+      const estimate = { mean: 0.12, variance: 0.02, mean_standard_error: 0.004, variance_standard_error: 0.003 }
+      return json({
+        revision: { project: 'A', graph_revision: state.revision, scenario: [scenario.id, scenario.revision], dependence_revision: null, formula_revision: 0 },
+        planning_horizon: scenario.planning_horizon,
+        candidates: scenario.candidate_interventions.map((intervention) => ({
+          intervention,
+          objectives: scenario.objectives.map((objective) => ({
+            outcome: objective.outcome_id, direction: objective.direction,
+            importance: objective.importance, reachable: true,
+            baseline: estimate, final_state: estimate, improvement: estimate,
+          })),
+          improvement_covariance: [[0.02]], clamped_state_updates: 0,
+          diagnostics: {
+            seed: scenario.monte_carlo.seed, attempted_samples: 120, valid_samples: 120,
+            invalid_samples: { zero_denominator: 0, non_finite_primitive: 0, non_finite_result: 0 },
+            criterion: scenario.monte_carlo, status: 'converged',
+          },
+        })),
+      })
+    }
     if (url.pathname === '/api/v1/projects/A/analysis/structure') {
       const causal = state.edges.filter((edge) =>
         ['contributes', 'changes', 'blocks'].includes((edge.payload as { kind: string }).kind),
@@ -60,6 +91,16 @@ async function mockApi(page: Page, state: FixtureState) {
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {
       const command = JSON.parse(request.postData()!)
       const input = command.command.payload
+      if (command.command.type === 'create_scenario') {
+        const scenario = { id: 'A', revision: 0, ...input.scenario }
+        state.scenarios = [...(state.scenarios ?? []), scenario]
+        state.revision += 1
+        return json({
+          request_id: command.request_id,
+          project_revision: state.revision,
+          outcome: { type: 'scenario_created', value: scenario },
+        }, 201)
+      }
       if (command.command.type === 'create_edge') {
         const source = state.nodes.find((node) => node.id === input.source)!
         const destination = state.nodes.find((node) => node.id === input.destination)!
@@ -236,8 +277,46 @@ test('analyzes and highlights causal feedback loops', async ({ page }, testInfo)
   await expect(page.getByText('Analysis highlights 2 nodes and 2 relationships.')).toBeAttached()
   await expect(page.getByText('feedback', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Impediments' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Optimize' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Optimize' })).toBeEnabled()
   await page.screenshot({ path: 'artifacts/workbench-feedback.png', fullPage: true })
+})
+
+test('creates and compares finite-horizon scenario candidates', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
+  const nodes = [
+    {
+      id: 'A', revision: 0, name: 'reliability', normalized_name: 'reliability', title: 'Reliability',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'outcome', properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
+    },
+    {
+      id: 'B', revision: 0, name: 'automate', normalized_name: 'automate', title: 'Automate',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'intervention', properties: { costs: [], duration: null, probability_of_success: null, acceptance_criteria: [] } },
+    },
+  ]
+  await page.unroute('**/api/v1/**')
+  await mockApi(page, {
+    project: { id: 'A', name: 'Optimize model', revision: 0 },
+    revision: 2, nodes, edges: [], scenarios: [],
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Optimize', exact: true }).click()
+  await page.getByLabel('Optimize analysis').getByRole('button', { name: 'Create scenario', exact: true }).last().click()
+  await page.getByLabel('Title').fill('Reliable delivery')
+  await page.getByRole('group', { name: 'Outcome objectives' }).getByText('Reliability', { exact: true }).click()
+  await page.getByRole('group', { name: 'Candidate interventions' }).getByText('Automate', { exact: true }).click()
+  const scenarioForm = page.getByRole('form', { name: 'Create scenario' })
+  await expect.poll(() => scenarioForm.evaluate((form) => (form as HTMLFormElement).checkValidity())).toBe(true)
+  await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
+  const panel = page.getByLabel('Optimize analysis')
+  await expect(panel.getByText('Automate', { exact: true })).toBeVisible()
+  await expect(panel.getByText('0.12')).toBeVisible()
+  await expect(panel.getByText('0.004')).toBeVisible()
+  await expect(panel.getByText(/No budget, bundle, conflict, synergy, or scalar ranking/)).toBeVisible()
+  await panel.getByRole('button', { name: /Automate B converged/ }).click()
+  await expect(page.getByText('Analysis highlights 2 nodes and 0 relationships.')).toBeAttached()
+  await page.screenshot({ path: 'artifacts/workbench-optimize.png', fullPage: true })
 })
 
 test('keeps project and graph controls usable on mobile', async ({ page }, testInfo) => {

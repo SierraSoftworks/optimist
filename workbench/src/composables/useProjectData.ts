@@ -10,6 +10,7 @@ import type {
   GraphEdge,
   Project,
   ProjectArchive,
+  ScenarioDraft,
   SetStateEstimateInput,
   SetInterventionEstimateInput,
   Estimate,
@@ -62,6 +63,33 @@ export function useStructuralAnalysis(
   })
 }
 
+export function useScenarios(
+  projectId: Ref<string | null>,
+  enabled: Ref<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() => ['scenarios', projectId.value]),
+    queryFn: () => api.scenarios(projectId.value!),
+    enabled: computed(() => Boolean(projectId.value) && enabled.value),
+  })
+}
+
+export function useScenarioAnalysis(
+  projectId: Ref<string | null>,
+  scenarioId: Ref<string | null>,
+  enabled: Ref<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() => [
+      'analysis', 'scenario', projectId.value, scenarioId.value,
+    ]),
+    queryFn: () => api.scenarioAnalysis(projectId.value!, scenarioId.value!),
+    enabled: computed(() =>
+      Boolean(projectId.value) && Boolean(scenarioId.value) && enabled.value,
+    ),
+  })
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -70,6 +98,19 @@ export function useCreateProject() {
       queryClient.setQueryData<Project[]>(['projects'], (projects = []) => [
         ...projects,
         project,
+      ])
+    },
+  })
+}
+
+export function useCreateScenario(project: Ref<Project | undefined>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (scenario: ScenarioDraft) => api.createScenario(project.value!, scenario),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['project', project.value!.id] }),
+        queryClient.refetchQueries({ queryKey: ['scenarios', project.value!.id] }),
       ])
     },
   })
