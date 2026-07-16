@@ -128,7 +128,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Direct graph/property editing through typed commands.
 - [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [ ] Explore, Impediments, Feedback, and Optimize analysis modes.
-- [ ] Keyboard navigation and synchronized table/outline accessibility view.
+- [x] Keyboard navigation and synchronized table/outline accessibility view.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
 - [ ] Serve production assets from Axum with SPA fallback and immutable caching.
 

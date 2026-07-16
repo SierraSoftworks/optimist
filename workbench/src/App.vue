@@ -31,6 +31,7 @@ import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
 import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
 import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
 import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
+import GraphNavigator from './components/GraphNavigator.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -533,22 +534,7 @@ function retry() {
           </button>
         </div>
 
-        <div class="outline-section">
-          <div class="section-title"><span class="section-label">Outline</span><span>{{ visibleNodes.length }}</span></div>
-          <div class="node-outline">
-            <button
-              v-for="node in visibleNodes"
-              :key="node.id"
-              type="button"
-              :class="{ selected: selectedNodeId === node.id }"
-              @click="store.selectNode(node.id)"
-            >
-              <span class="kind-dot" :data-kind="node.payload.kind"><CircleDot :size="13" /></span>
-              <span><strong>{{ node.title }}</strong><small>{{ node.name }}</small></span>
-              <code>{{ node.id }}</code>
-            </button>
-          </div>
-        </div>
+        <GraphNavigator :nodes="visibleNodes" :selected-node-id="selectedNodeId" @select="store.selectNode" />
       </aside>
 
       <section class="canvas-panel">
