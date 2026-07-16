@@ -38,7 +38,9 @@ Use JSON Lines for agent ingestion:
 cargo run -- --output jsonl project changes A --after 12
 ```
 
-The current event history is process-local. Restarting the server loses projects and their event logs. Durable write-ahead persistence remains under development.
+Committed event history and idempotent results are published atomically with the project snapshot under `--data-dir`. Restarting restores ordered replay and returns the original command result for a repeated pre-restart request ID.
+
+Imported archives do not contain the source server's event log. Their retained-history floor is the archived project revision. A replay request older than that floor returns `change_history_gap` with advice to fetch a current project snapshot and reconnect from the available revision.
 
 ## WebSocket change stream
 
@@ -87,7 +89,7 @@ Each live receiver is bounded. If it falls behind, the server sends:
 
 The stream then closes. Reconnect from that revision to replay missing events.
 
-Snapshot fallback for a future retained-history gap is not implemented yet. Today the process-local history retains every event for the life of the server.
+Automatic snapshot fallback for a retained-history gap is not implemented yet. Persisted native projects retain every committed event; imported projects explicitly report their history floor rather than returning an incomplete replay.
 
 ## Conflict handling
 

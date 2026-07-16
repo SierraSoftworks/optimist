@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn delete_import_export_is_byte_stable_and_resets_ephemeral_history() {
+    fn delete_import_export_is_byte_stable_and_resets_replay_floor() {
         let (mut catalog, project) = populated_catalog();
         let before = catalog.export_archive(&project).unwrap();
         catalog.delete(&project).unwrap();
@@ -203,9 +203,16 @@ mod tests {
         assert_eq!(restored.id, project);
         assert_eq!(catalog.export_archive(&project).unwrap(), before);
         assert_eq!(catalog.create("Next".to_owned()).unwrap().id.as_str(), "B");
+        assert!(matches!(
+            catalog.replay_changes(&project, 0),
+            Err(ProjectError::ChangeHistoryGap {
+                available_after,
+                ..
+            }) if available_after == restored.revision
+        ));
         assert!(
             catalog
-                .replay_changes(&project, 0)
+                .replay_changes(&project, restored.revision)
                 .unwrap()
                 .changes
                 .is_empty()

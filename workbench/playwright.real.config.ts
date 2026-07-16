@@ -11,7 +11,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'cargo run --manifest-path ../Cargo.toml -- server --bind 127.0.0.1:3100 --data-dir ../target/workbench-e2e',
+      command: 'cargo run --manifest-path ../Cargo.toml -- server --bind 127.0.0.1:3100 --data-dir "$(mktemp -d ../target/workbench-e2e.XXXXXX)"',
       url: 'http://127.0.0.1:3100/api/v1/health',
       reuseExistingServer: false,
     },

@@ -54,6 +54,16 @@ pub enum ProjectError {
         /// Current committed project revision.
         current: u64,
     },
+    /// Requested replay predates the earliest retained ChangeSet.
+    #[error(
+        "change history starts at revision {available_after}; requested replay after {requested}"
+    )]
+    ChangeHistoryGap {
+        /// Cursor supplied by the caller.
+        requested: u64,
+        /// Earliest cursor from which complete replay is available.
+        available_after: u64,
+    },
     /// The requested node aggregate failed local construction validation.
     #[error(transparent)]
     Node(#[from] NodeError),

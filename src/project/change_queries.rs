@@ -35,6 +35,12 @@ impl ProjectCatalog {
                 current: entry.project.revision,
             });
         }
+        if after_revision < entry.change_history_start {
+            return Err(ProjectError::ChangeHistoryGap {
+                requested: after_revision,
+                available_after: entry.change_history_start,
+            });
+        }
         Ok(ChangeSetReplay {
             after_revision,
             current_revision: entry.project.revision,

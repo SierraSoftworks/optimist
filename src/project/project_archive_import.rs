@@ -55,6 +55,7 @@ fn entry_from_import(
         repository,
         results: BTreeMap::new(),
         changes: BTreeMap::new(),
+        change_history_start: import.project.document.project.revision,
         next_scenario_id,
         scenarios: import
             .scenarios

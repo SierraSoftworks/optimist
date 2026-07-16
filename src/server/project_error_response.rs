@@ -33,6 +33,13 @@ pub(super) fn classify(
             "invalid_replay_revision",
             &["Use a replay revision between zero and the project's current revision."],
         ),
+        ProjectError::ChangeHistoryGap { .. } => (
+            StatusCode::CONFLICT,
+            "change_history_gap",
+            &[
+                "Fetch a current project snapshot, replace local state, and reconnect from the reported available revision.",
+            ],
+        ),
         ProjectError::Node(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_node",
