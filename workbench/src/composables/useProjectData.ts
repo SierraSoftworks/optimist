@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '../api/client'
 import type {
   AppendObservationInput,
+  CorrectObservationInput,
   CreateEdgeInput,
   CreateNodeInput,
   GraphNode,
@@ -160,6 +161,18 @@ export function useAppendObservation(
   return useMutation({
     mutationFn: (input: AppendObservationInput) =>
       api.appendObservation(project.value!, edge.value!, input),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
+  })
+}
+
+export function useCorrectObservation(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CorrectObservationInput) =>
+      api.correctObservation(project.value!, edge.value!, input),
     onSuccess: async () => refetchEdgeData(queryClient, project.value!),
   })
 }

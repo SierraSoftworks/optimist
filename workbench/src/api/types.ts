@@ -61,6 +61,11 @@ export interface AppendObservationInput {
   measurement_standard_deviation: number | null
 }
 
+export interface CorrectObservationInput {
+  observation_id: number
+  value: number
+}
+
 export type NodePayload =
   | {
       kind: 'outcome'

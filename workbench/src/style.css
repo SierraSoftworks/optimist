@@ -122,9 +122,13 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .observation-series-header strong { font: 11px 'IBM Plex Mono', monospace; }
 .observation-series-header span { color: var(--muted); font-size: 9px; text-transform: capitalize; }
 .observation-list { margin: 9px 0 0; padding: 9px 0 0; border-top: 1px solid var(--line); list-style: none; display: grid; gap: 9px; }
-.observation-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 10px; }
+.observation-list li { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding-right: 30px; font-size: 10px; }
 .observation-list li > span { color: var(--muted); font-size: 9px; text-align: right; }
 .observation-list small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.observation-list li.superseded > strong { color: var(--muted); text-decoration: line-through; }
+.observation-correct { position: absolute; top: 0; right: 0; width: 24px; height: 24px; }
+.correction-note { margin: 0 0 16px; }
+.correction-context { margin-top: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: #f7f9f5; }
 .empty-inspector { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }
 .empty-inspector h2 { margin-top: 12px; }
 .empty-inspector p { max-width: 210px; margin-top: 7px; font-size: 11px; line-height: 1.5; }

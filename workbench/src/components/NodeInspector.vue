@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Activity, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
-import type { GraphEdge, GraphNode } from '../api/types'
+import type { GraphEdge, GraphNode, Observation } from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -9,6 +9,7 @@ const emit = defineEmits<{
   estimate: []
   relationship: [edge: GraphEdge]
   observe: [edge: GraphEdge]
+  correct: [edge: GraphEdge, observation: Observation]
   delete: []
 }>()
 const confirmDelete = ref(false)
@@ -63,6 +64,13 @@ function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
 function provenance(node: GraphNode, slot: 'current' | 'desired') {
   if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return []
   return node.payload.properties[slot]?.provenance ?? []
+}
+
+function replacement(edge: GraphEdge, observation: Observation) {
+  if (edge.payload.kind !== 'measures') return null
+  return edge.payload.properties.observations.find(
+    (candidate) => candidate.supersedes === observation.id,
+  ) ?? null
 }
 </script>
 
@@ -146,10 +154,13 @@ function provenance(node: GraphNode, slot: 'current' | 'desired') {
             <button type="button" class="icon-button" :aria-label="`Add observation for ${edge.destination}`" title="Add observation" @click="emit('observe', edge)"><Plus :size="15" /></button>
           </div>
           <ol v-if="edge.payload.kind === 'measures' && edge.payload.properties.observations.length" class="observation-list">
-            <li v-for="observation in edge.payload.properties.observations" :key="observation.id">
+            <li v-for="observation in edge.payload.properties.observations" :key="observation.id" :class="{ superseded: replacement(edge, observation) }">
               <strong>{{ observation.value }} {{ observation.unit }}</strong>
               <span>{{ new Date(observation.observed_at).toLocaleString() }}</span>
               <small>{{ observation.source }}<template v-if="observation.measurement_standard_deviation !== null"> · σ {{ observation.measurement_standard_deviation }}</template></small>
+              <small v-if="replacement(edge, observation)">Superseded by #{{ replacement(edge, observation)?.id }}</small>
+              <small v-else-if="observation.supersedes !== null">Correction of #{{ observation.supersedes }}</small>
+              <button v-if="!replacement(edge, observation)" type="button" class="icon-button observation-correct" :aria-label="`Correct observation ${observation.id} for ${edge.destination}`" title="Correct observation" @click="emit('correct', edge, observation)"><Pencil :size="13" /></button>
             </li>
           </ol>
           <p v-else class="muted">No readings recorded.</p>

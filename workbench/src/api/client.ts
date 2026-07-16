@@ -1,5 +1,6 @@
 import type {
   AppendObservationInput,
+  CorrectObservationInput,
   ApiErrorBody,
   CreateEdgeInput,
   CreateNodeInput,
@@ -330,6 +331,34 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for observation creation.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value.observation
+  },
+  async correctObservation(
+    project: Project,
+    edge: GraphEdge,
+    input: CorrectObservationInput,
+  ): Promise<Observation> {
+    const result = await request<CommandResult<ObservationAppendResult>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'correct_observation',
+            payload: { edge: edgeIdentity(edge), ...input },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'observation_corrected') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for observation correction.',
         ['Confirm the workbench and server versions match.'],
       )
     }

@@ -27,15 +27,18 @@ import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
 import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
+import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
   CreateEdgeInput,
   AppendObservationInput,
+  CorrectObservationInput,
   CreateNodeInput,
   GraphNode,
   GraphEdge,
   NodeKind,
+  Observation,
   ProjectArchive,
   SetStateEstimateInput,
   UpdateNodeInput,
@@ -56,6 +59,7 @@ import {
   useDeleteEdge,
   useDeleteNode,
   useAppendObservation,
+  useCorrectObservation,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -76,8 +80,10 @@ const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
 const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
+const correctionDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
+const selectedObservation = ref<Observation | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -109,6 +115,7 @@ const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
 const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
+const correctObservation = useCorrectObservation(projectQuery.data, selectedMeasurementEdge)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -286,6 +293,24 @@ async function submitObservation(input: AppendObservationInput) {
   }
 }
 
+function correct(edge: GraphEdge, observation: Observation) {
+  selectedMeasurementEdge.value = edge
+  selectedObservation.value = observation
+  correctionDialogOpen.value = true
+}
+
+async function submitCorrection(input: CorrectObservationInput) {
+  mutationError.value = null
+  try {
+    await correctObservation.mutateAsync(input)
+    correctionDialogOpen.value = false
+    selectedMeasurementEdge.value = null
+    selectedObservation.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -437,6 +462,7 @@ function retry() {
         @estimate="estimateDialogOpen = true"
         @relationship="editRelationship"
         @observe="observe"
+        @correct="correct"
         @delete="submitNodeDelete"
       />
     </section>
@@ -502,6 +528,14 @@ function retry() {
       :unit="selectedNode?.payload.kind === 'metric' ? selectedNode.payload.properties.unit : ''"
       @close="observationDialogOpen = false"
       @submit="submitObservation"
+    />
+    <CorrectObservationDialog
+      :open="correctionDialogOpen"
+      :pending="correctObservation.isPending.value"
+      :edge="selectedMeasurementEdge"
+      :observation="selectedObservation"
+      @close="correctionDialogOpen = false"
+      @submit="submitCorrection"
     />
   </main>
 </template>

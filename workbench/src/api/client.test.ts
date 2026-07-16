@@ -393,4 +393,43 @@ describe('Optimist API client', () => {
       },
     })
   })
+
+  it('appends immutable corrections to measurement observations', async () => {
+    const edge = {
+      source: 'A', source_kind: 'metric' as const, destination: 'B',
+      destination_kind: 'factor' as const, revision: 1, description: '', metadata: {},
+      payload: {
+        kind: 'measures' as const,
+        properties: { polarity: 'lower_is_better' as const, observations: [] },
+      },
+    }
+    const observation = {
+      id: 1, revision: 0, value: 3.9, unit: 'days',
+      observed_at: '2026-07-16T12:30:00.000Z', source: 'delivery dashboard',
+      measurement_standard_deviation: 0.2, supersedes: 0,
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'observation_corrected', value: { edge, observation } },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await expect(api.correctObservation(project, edge, {
+      observation_id: 0,
+      value: 3.9,
+    })).resolves.toEqual(observation)
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: {
+        type: 'correct_observation',
+        payload: {
+          edge: { source: 'A', kind: 'measures', destination: 'B' },
+          observation_id: 0,
+          value: 3.9,
+        },
+      },
+    })
+  })
 })
