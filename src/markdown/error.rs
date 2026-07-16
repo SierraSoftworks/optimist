@@ -93,6 +93,14 @@ pub enum MarkdownError {
         /// Domain validation diagnostic.
         message: String,
     },
+    /// A project dependence document violates project, membership, or matrix rules.
+    #[error("{path}: invalid project dependence: {message}")]
+    InvalidDependence {
+        /// Source path or render boundary.
+        path: String,
+        /// Domain validation diagnostic.
+        message: String,
+    },
     /// YAML serialization failed for an already validated document.
     #[error("could not render Markdown frontmatter: {0}")]
     Render(String),

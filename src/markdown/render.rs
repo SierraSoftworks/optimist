@@ -10,9 +10,18 @@ use super::{
 /// Renders `_project.md` bytes with deterministic field order and LF endings.
 pub fn render_project(document: &ProjectDocument) -> Result<String, MarkdownError> {
     schema(document.schema_version)?;
+    if let Some(dependence) = &document.dependence {
+        dependence
+            .validate_for_project(&document.project.id)
+            .map_err(|error| MarkdownError::InvalidDependence {
+                path: "<render>".to_owned(),
+                message: error.to_string(),
+            })?;
+    }
     let header = ProjectHeader {
         schema_version: document.schema_version,
         project: document.project.clone(),
+        dependence: document.dependence.clone(),
     };
     render(&header, &document.description)
 }

@@ -19,9 +19,18 @@ pub fn parse_project(
     let (frontmatter, body) = split(&path, input)?;
     let header: ProjectHeader = decode_yaml(&path, frontmatter)?;
     schema(&path, header.schema_version)?;
+    if let Some(dependence) = &header.dependence {
+        dependence
+            .validate_for_project(&header.project.id)
+            .map_err(|error| MarkdownError::InvalidDependence {
+                path: path.clone(),
+                message: error.to_string(),
+            })?;
+    }
     Ok(ProjectDocument {
         schema_version: header.schema_version,
         project: header.project,
+        dependence: header.dependence,
         description: body.to_owned(),
     })
 }

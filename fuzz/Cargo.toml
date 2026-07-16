@@ -54,3 +54,10 @@ path = "fuzz_targets/probability_sampling.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "dependence_model"
+path = "fuzz_targets/dependence_model.rs"
+test = false
+doc = false
+bench = false

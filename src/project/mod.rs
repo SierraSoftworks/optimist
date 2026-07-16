@@ -1,6 +1,8 @@
 mod apply;
 mod catalog;
 mod commands;
+mod dependence;
+mod dependence_addresses;
 mod error;
 mod model;
 mod scenarios;

@@ -1,6 +1,8 @@
 mod apply;
 mod client;
 mod client_advice;
+mod dependence;
+mod dependence_client;
 mod edge;
 mod edge_client;
 mod edge_payload;
@@ -20,6 +22,7 @@ mod server;
 use clap::{Parser, Subcommand};
 
 use apply::ApplyArgs;
+use dependence::DependenceArgs;
 use edge::EdgeArgs;
 use estimate::EstimateArgs;
 use node::NodeArgs;
@@ -75,6 +78,7 @@ enum Command {
     Observe(ObserveArgs),
     Estimate(EstimateArgs),
     Scenario(ScenarioArgs),
+    Dependence(DependenceArgs),
     Apply(ApplyArgs),
 }
 
@@ -105,6 +109,9 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         Command::Estimate(args) => estimate::run(args),
         Command::Scenario(args) => {
             scenario::run(args, cli.project.as_ref(), &server_url, output).await
+        }
+        Command::Dependence(args) => {
+            dependence::run(args, cli.project.as_ref(), &server_url, output).await
         }
         Command::Apply(args) => apply::run(args),
     }

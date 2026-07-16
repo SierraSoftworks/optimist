@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 
-use crate::domain::{Edge, Node, Observation, Scenario};
+use crate::domain::{Edge, Node, Observation, ProjectDependenceModel, Scenario};
 use crate::project::Project;
 
 use super::output_table;
@@ -113,6 +113,25 @@ impl OutputFormat {
                 .map(serialize)
                 .collect::<Result<Vec<_>, _>>()
                 .map(|lines| lines.join("\n")),
+        }
+    }
+
+    pub(super) fn dependence(
+        self,
+        model: &ProjectDependenceModel,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(format!(
+                "REVISION\tGROUPS\tADDRESSES\n{}\t{}\t{}",
+                model.revision,
+                model.residual_groups.len(),
+                model
+                    .residual_groups
+                    .iter()
+                    .map(|group| group.members.len())
+                    .sum::<usize>()
+            )),
+            Self::Json | Self::Jsonl => serialize(model),
         }
     }
 }

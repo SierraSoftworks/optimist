@@ -1,7 +1,8 @@
 use crate::{
     domain::{
-        Edge, EdgePayload, EntityId, Factor, MonteCarloConfig, Node, NodeKind, NodePayload,
-        Scenario, ScenarioDraft, ScenarioId,
+        CorrelationScale, Edge, EdgePayload, EntityId, EstimateAddress, EstimateId, EstimateOwner,
+        Factor, GaussianCopulaCorrelation, MonteCarloConfig, Node, NodeKind, NodePayload,
+        ProjectDependenceModel, ResidualDependenceGroup, Scenario, ScenarioDraft, ScenarioId,
     },
     markdown::{
         EntityDocument, MarkdownError, ProjectDocument, SCHEMA_VERSION, ScenarioDocument,
@@ -58,13 +59,35 @@ fn entity_render_is_deterministic_and_semantically_stable() {
 
 #[test]
 fn project_body_is_separate_from_frontmatter() {
+    let project_id = crate::domain::ProjectId::new("A").unwrap();
     let document = ProjectDocument {
         schema_version: SCHEMA_VERSION,
         project: Project {
-            id: crate::domain::ProjectId::new("A").unwrap(),
+            id: project_id.clone(),
             name: "Delivery".to_owned(),
             revision: 3,
         },
+        dependence: Some(ProjectDependenceModel {
+            revision: 2,
+            residual_groups: vec![ResidualDependenceGroup {
+                members: vec![
+                    EstimateAddress::new(
+                        project_id.clone(),
+                        EstimateOwner::Node(EntityId::new(0)),
+                        EstimateId::new(0),
+                    ),
+                    EstimateAddress::new(
+                        project_id,
+                        EstimateOwner::Node(EntityId::new(1)),
+                        EstimateId::new(0),
+                    ),
+                ],
+                correlation: GaussianCopulaCorrelation {
+                    scale: CorrelationScale::Rank,
+                    matrix: vec![vec![1.0, 0.5], vec![0.5, 1.0]],
+                },
+            }],
+        }),
         description: "# Delivery\n\nScope.\n".to_owned(),
     };
     let rendered = render_project(&document).unwrap();

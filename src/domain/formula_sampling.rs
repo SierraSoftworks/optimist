@@ -4,11 +4,13 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
+use super::formula_dependence;
 use super::formula_draw::{SampleFailure, draw};
 use super::online_moments::OnlineJointMoments;
 use super::{
-    ConvergenceStatus, Formula, FormulaError, FormulaSet, InvalidSampleCounts,
-    JointMonteCarloReport, MonteCarloConfig, MonteCarloDiagnostics, MonteCarloEstimate, ProjectId,
+    ConvergenceStatus, DependenceError, EstimateAddress, Formula, FormulaError, FormulaSet,
+    InvalidSampleCounts, JointMonteCarloReport, MonteCarloConfig, MonteCarloDiagnostics,
+    MonteCarloEstimate, ProjectDependenceModel, ProjectId,
 };
 
 /// Failures that prevent a Monte Carlo run from starting.
@@ -20,6 +22,15 @@ pub enum MonteCarloError {
     /// A formula failed project, cycle, arity, bounds, or unit validation.
     #[error(transparent)]
     Formula(#[from] FormulaError),
+    /// The dependence document failed project, membership, or matrix validation.
+    #[error(transparent)]
+    Dependence(#[from] DependenceError),
+    /// A dependence member is absent from the formula definitions.
+    #[error("dependence member {0} is absent from the formula set")]
+    MissingDependenceMember(EstimateAddress),
+    /// A dependence member does not directly identify a primitive marginal.
+    #[error("dependence member {0} must identify a literal marginal distribution")]
+    NonMarginalDependenceMember(EstimateAddress),
 }
 
 impl FormulaSet {
@@ -40,11 +51,45 @@ impl FormulaSet {
         roots: &[Formula],
         config: MonteCarloConfig,
     ) -> Result<JointMonteCarloReport, MonteCarloError> {
+        self.sample_joint_inner(project, roots, config, None)
+    }
+
+    /// Samples formula roots with project-level Gaussian copula dependence.
+    ///
+    /// For each group, $Z\sim N(0,R)$ is transformed to $U_i=\Phi(Z_i)$ and then
+    /// to addressed marginals $X_i=F_i^{-1}(U_i)$. These values pre-populate the
+    /// per-draw address memo, so every reference reuses its joint marginal draw.
+    /// Members must identify literal formula definitions; composite formulas do
+    /// not declare a marginal inverse CDF and are rejected. Point masses remain
+    /// constant, and resulting ties can reduce empirical rank correlation. Uniforms
+    /// are clamped to the representable open interval, truncating only extreme
+    /// floating-point tails. See Nelsen, *An Introduction to Copulas*, section 5.1.
+    pub fn sample_joint_with_dependence(
+        &self,
+        project: &ProjectId,
+        roots: &[Formula],
+        config: MonteCarloConfig,
+        dependence: &ProjectDependenceModel,
+    ) -> Result<JointMonteCarloReport, MonteCarloError> {
+        self.sample_joint_inner(project, roots, config, Some(dependence))
+    }
+
+    fn sample_joint_inner(
+        &self,
+        project: &ProjectId,
+        roots: &[Formula],
+        config: MonteCarloConfig,
+        dependence: Option<&ProjectDependenceModel>,
+    ) -> Result<JointMonteCarloReport, MonteCarloError> {
         if roots.is_empty() {
             return Err(MonteCarloError::EmptyRoots);
         }
         for root in roots {
             self.validate(project, root)?;
+        }
+        if let Some(model) = dependence {
+            model.validate_for_project(project)?;
+            formula_dependence::validate(self, model)?;
         }
         let mut rng = ChaCha20Rng::seed_from_u64(config.seed());
         let mut moments = OnlineJointMoments::new(roots.len());
@@ -53,6 +98,9 @@ impl FormulaSet {
         while attempted < config.maximum_samples() {
             attempted += 1;
             let mut memo = BTreeMap::new();
+            if let Some(model) = dependence {
+                formula_dependence::populate(self, model, &mut rng, &mut memo);
+            }
             let draw: Result<Vec<_>, _> = roots
                 .iter()
                 .map(|root| draw(self, root, &mut rng, &mut memo))
@@ -117,7 +165,10 @@ fn report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Distribution, EntityId, EstimateAddress, EstimateId, EstimateOwner, Unit};
+    use crate::domain::{
+        CorrelationScale, Distribution, EntityId, EstimateAddress, EstimateId, EstimateOwner,
+        GaussianCopulaCorrelation, ProjectDependenceModel, ResidualDependenceGroup, Unit,
+    };
 
     fn project() -> ProjectId {
         ProjectId::new("sampling").unwrap()
@@ -343,6 +394,87 @@ mod tests {
         assert!(matches!(
             FormulaSet::default().sample_joint(&project(), &[mismatched], config(1)),
             Err(MonteCarloError::Formula(FormulaError::UnitMismatch { .. }))
+        ));
+    }
+
+    #[test]
+    fn dependence_jointly_samples_addressed_marginals() {
+        let left = address();
+        let right = EstimateAddress::new(
+            project(),
+            EstimateOwner::Node(EntityId::new(2)),
+            EstimateId::new(1),
+        );
+        let formulas = FormulaSet::new([
+            (
+                left.clone(),
+                literal(Distribution::normal(0.0, 1.0).unwrap()),
+            ),
+            (
+                right.clone(),
+                literal(Distribution::normal(0.0, 1.0).unwrap()),
+            ),
+        ])
+        .unwrap();
+        let dependence = ProjectDependenceModel {
+            revision: 0,
+            residual_groups: vec![ResidualDependenceGroup {
+                members: vec![left.clone(), right.clone()],
+                correlation: GaussianCopulaCorrelation {
+                    scale: CorrelationScale::Latent,
+                    matrix: vec![vec![1.0, 1.0], vec![1.0, 1.0]],
+                },
+            }],
+        };
+        let roots = [
+            Formula::Reference { address: left },
+            Formula::Reference { address: right },
+        ];
+        let first = formulas
+            .sample_joint_with_dependence(&project(), &roots, config(88), &dependence)
+            .unwrap();
+        let second = formulas
+            .sample_joint_with_dependence(&project(), &roots, config(88), &dependence)
+            .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.estimates[0], first.estimates[1]);
+        assert_eq!(first.covariance[0][1], first.estimates[0].variance);
+    }
+
+    #[test]
+    fn dependence_requires_declared_literal_marginals() {
+        let left = address();
+        let right = EstimateAddress::new(
+            project(),
+            EstimateOwner::Node(EntityId::new(2)),
+            EstimateId::new(1),
+        );
+        let group = ResidualDependenceGroup {
+            members: vec![left.clone(), right.clone()],
+            correlation: GaussianCopulaCorrelation {
+                scale: CorrelationScale::Latent,
+                matrix: vec![vec![1.0, 0.0], vec![0.0, 1.0]],
+            },
+        };
+        let model = ProjectDependenceModel {
+            revision: 0,
+            residual_groups: vec![group],
+        };
+        let formulas = FormulaSet::new([(
+            left.clone(),
+            Formula::Bounded {
+                input: Box::new(literal(Distribution::normal(0.0, 1.0).unwrap())),
+                lower: -1.0,
+                upper: 1.0,
+            },
+        )])
+        .unwrap();
+        let roots = [Formula::Reference {
+            address: left.clone(),
+        }];
+        assert!(matches!(
+            formulas.sample_joint_with_dependence(&project(), &roots, config(1), &model),
+            Err(MonteCarloError::NonMarginalDependenceMember(address)) if address == left
         ));
     }
 }

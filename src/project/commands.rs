@@ -1,6 +1,8 @@
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{Edge, EdgeId, EntityId, Node, ProjectId, Scenario, ScenarioId},
+    domain::{
+        Edge, EdgeId, EntityId, Node, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
+    },
     store::GraphRepository,
 };
 
@@ -95,6 +97,18 @@ impl ProjectCatalog {
             .get(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
         Ok(entry.scenarios.get(&scenario_id).cloned())
+    }
+
+    /// Retrieves the singleton project dependence document outside graph storage.
+    pub fn get_dependence(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<ProjectDependenceModel>, ProjectError> {
+        let entry = self
+            .projects
+            .get(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        Ok(entry.dependence.clone())
     }
 }
 

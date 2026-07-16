@@ -25,7 +25,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Stable addresses for estimates embedded in nodes, edges, and nested Fermi components.
 - [x] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
 - [x] Quantile-based Normal/LogNormal prior elicitation with retained inputs and residual diagnostics.
-- [ ] Project dependence model for shared variables and residual correlations.
+- [x] Project dependence model for shared variables and residual correlations.
 - [x] Typed scenario/project documents outside the causal graph.
 
 ## 2. Storage And Project Isolation
@@ -66,6 +66,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 - [x] Versioned `_project.md` schema foundation for project identity and base revision.
   - [ ] Extend `_project.md` with constraints, unit registry, and dependence documents.
+    - [x] Persist and render project dependence documents.
 - [x] Canonical entity document schema with outgoing edge payloads and Markdown description body.
 - [x] Canonical `scenarios/<id>-<slug>.md` schema.
 - [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.
@@ -93,7 +94,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Exact moments and seeded sampling for Point, Normal, LogNormal, Beta, and ScaledBeta distributions.
 - [x] Conjugate Beta-Binomial and Normal-Normal updates with explicit validated likelihood types.
 - [x] Exact Normal sum and LogNormal product/ratio propagation including covariance and numerical variance checks.
-- [ ] Gaussian copula validation with positive-semidefinite correlation matrices.
+- [x] Gaussian copula validation with positive-semidefinite correlation matrices.
 - [x] Deterministic seeded joint Monte Carlo engine with pinned ChaCha20 sampling.
 - [x] Formula DAG validation and evaluation with one sample per shared estimate address per draw.
 - [x] Monte Carlo mean/variance standard errors, convergence criteria/status, reproducibility metadata, and invalid-sample accounting.
@@ -138,6 +139,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Fuzz bounded YAML/Markdown frontmatter parsing.
   - [x] Fuzz bounded formula, unit, and estimate-address decoding/validation.
   - [x] Fuzz bounded distributions, formula sets, and deterministic sampling configurations.
+  - [x] Fuzz bounded Gaussian dependence documents and seeded correlated draws.
 - [x] Add reusable `proptest` generators for valid project/entity IDs, core node/edge/observation values, and constrained endpoints.
 - [ ] Add bounded fuzz corpus regressions to pull-request CI.
 - [ ] Add scheduled long fuzz, sanitizer, and expanded property-test jobs.

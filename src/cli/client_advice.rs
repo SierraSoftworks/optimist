@@ -43,6 +43,18 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_scenario_reference" => {
             &["Use outcome IDs for objectives and intervention IDs for candidate interventions."]
         }
+        "invalid_dependence" => &[
+            "Check unique same-project members and the symmetric positive-semidefinite correlation matrix.",
+        ],
+        "dependence_not_found" => &[
+            "Run `optimist dependence set --document <JSON>` before showing or removing dependence.",
+        ],
+        "dependence_revision_conflict" => {
+            &["Run `optimist dependence show` and retry with its current `revision`."]
+        }
+        "missing_estimate_address" => {
+            &["Use estimate addresses embedded in existing project nodes or edges."]
+        }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]
         }

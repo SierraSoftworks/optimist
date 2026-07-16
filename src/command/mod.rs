@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::domain::{
-    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation, Scenario,
-    ScenarioDraft, ScenarioId,
+    Edge, EdgeId, EdgePayload, EntityId, NewObservation, Node, NodePayload, Observation,
+    ProjectDependenceModel, Scenario, ScenarioDraft, ScenarioId,
 };
 
 /// One idempotent, revision-checked request to mutate a project graph.
@@ -78,6 +78,10 @@ pub enum GraphCommand {
     UpdateScenario(UpdateScenario),
     /// Removes a scenario document under its own revision guard.
     DeleteScenario(DeleteScenario),
+    /// Creates or replaces the project's Gaussian residual dependence document.
+    SetProjectDependence(SetProjectDependence),
+    /// Removes the project's Gaussian residual dependence document.
+    RemoveProjectDependence(RemoveProjectDependence),
 }
 
 /// Data required to construct a new structural node.
@@ -167,6 +171,20 @@ pub struct DeleteScenario {
     pub expected_revision: u64,
 }
 
+/// Complete revision-checked replacement for project residual dependence.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetProjectDependence {
+    /// Complete model whose revision must match the stored document on replacement.
+    pub model: ProjectDependenceModel,
+}
+
+/// Revision-checked request to remove project residual dependence.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RemoveProjectDependence {
+    /// Dependence document revision observed by the caller.
+    pub expected_revision: u64,
+}
+
 /// Durable result of a committed command, returned identically on retries.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CommandResult {
@@ -210,6 +228,10 @@ pub enum CommandOutcome {
     ScenarioUpdated(Scenario),
     /// Complete document removed by [`GraphCommand::DeleteScenario`].
     ScenarioDeleted(Scenario),
+    /// Complete dependence document stored by [`GraphCommand::SetProjectDependence`].
+    ProjectDependenceSet(ProjectDependenceModel),
+    /// Complete dependence document removed by [`GraphCommand::RemoveProjectDependence`].
+    ProjectDependenceRemoved(ProjectDependenceModel),
 }
 
 #[cfg(test)]

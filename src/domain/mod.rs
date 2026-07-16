@@ -1,10 +1,12 @@
 mod bayesian;
 mod distribution_math;
+mod distribution_quantile;
 mod edge;
 mod edge_id;
 mod estimate;
 mod estimate_address;
 mod formula;
+mod formula_dependence;
 mod formula_draw;
 mod formula_sampling;
 #[cfg(test)]
@@ -17,6 +19,8 @@ mod monte_carlo_report;
 mod node;
 mod observation;
 mod online_moments;
+mod project_dependence;
+mod project_dependence_matrix;
 mod propagation;
 mod quantile_fit;
 pub use distribution_math::DistributionMoments;
@@ -34,8 +38,8 @@ pub use edge::{
 };
 pub use edge_id::EdgeIdError;
 pub use estimate::{
-    Distribution, DistributionError, Duration, Estimate, EstimateError, EstimateId, Money,
-    NormalizedState, Probability, SignedInfluence,
+    Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
+    EstimateId, Money, NormalizedState, Probability, SignedInfluence,
 };
 pub use estimate_address::{
     EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
@@ -53,6 +57,10 @@ pub use node::{
     Outcome, OutcomeDirection, normalize_name,
 };
 pub use observation::{NewObservation, ObservationError};
+pub use project_dependence::{
+    CorrelationScale, DependenceError, GaussianCopulaCorrelation, GaussianCopulaDraw,
+    ProjectDependenceModel, ResidualDependenceGroup,
+};
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use scenario::{

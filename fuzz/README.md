@@ -8,6 +8,7 @@ This cargo-fuzz package contains only targets backed by implemented Optimist beh
 - `markdown_frontmatter` parses bounded project/entity Markdown documents.
 - `formula_units` decodes and validates formulas, units, and estimate addresses.
 - `probability_sampling` decodes distributions and formula sets, validates raw sampling controls, runs at most 64 joint draws, and checks deterministic reports and invalid-sample accounting.
+- `dependence_model` decodes bounded project dependence documents, round-trips them, and checks deterministic matrix/project validation.
 
 The checked-in seed files and dictionaries use the `v1_` prefix. Keep old seeds when adding a new corpus version so previously discovered shapes remain covered.
 
@@ -20,4 +21,5 @@ cargo +nightly fuzz run entity_edge_ids fuzz/corpus/entity_edge_ids -- -max_len=
 cargo +nightly fuzz run tagged_aggregates fuzz/corpus/tagged_aggregates -- -max_len=16384 -runs=1000 -dict=fuzz/dictionaries/tagged_aggregates_v1.dict
 cargo +nightly fuzz run command_replay fuzz/corpus/command_replay -- -max_len=16384 -runs=1000 -dict=fuzz/dictionaries/command_replay_v1.dict
 cargo +nightly fuzz run probability_sampling fuzz/corpus/probability_sampling -- -max_len=16384 -runs=1000 -dict=fuzz/dictionaries/probability_sampling_v1.dict
+cargo +nightly fuzz run dependence_model fuzz/corpus/dependence_model -- -max_len=16384 -runs=1000 -dict=fuzz/dictionaries/dependence_model_v1.dict
 ```

@@ -75,6 +75,30 @@ pub(super) fn classify(
             "invalid_scenario_reference",
             &["Use outcome IDs for objectives and intervention IDs for candidate interventions."],
         ),
+        ProjectError::Dependence(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_dependence",
+            &[
+                "Check unique same-project members and provide a finite symmetric positive-semidefinite correlation matrix.",
+            ],
+        ),
+        ProjectError::DependenceNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "dependence_not_found",
+            &["Set a project dependence document before trying to show or remove it."],
+        ),
+        ProjectError::DependenceRevisionConflict { .. } => (
+            StatusCode::CONFLICT,
+            "dependence_revision_conflict",
+            &[
+                "Show project dependence and retry with its current dependence and project revisions.",
+            ],
+        ),
+        ProjectError::MissingEstimateAddress(_) => (
+            StatusCode::BAD_REQUEST,
+            "missing_estimate_address",
+            &["Use estimate addresses embedded in existing project nodes or edges."],
+        ),
         ProjectError::Repository(RepositoryError::DuplicateName(_)) => (
             StatusCode::CONFLICT,
             "node_name_conflict",
@@ -113,6 +137,7 @@ pub(super) fn classify(
         | ProjectError::EdgeRevisionSpaceExhausted(_)
         | ProjectError::ScenarioRevisionSpaceExhausted(_)
         | ProjectError::ScenarioIdentifierSpaceExhausted(_)
+        | ProjectError::DependenceRevisionSpaceExhausted(_)
         | ProjectError::Repository(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "project_store_failure",

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     domain::{
-        Edge, EntityId, MonteCarloConfig, Node, NodePayload, ScalarPreference, Scenario,
-        ScenarioBudget, ScenarioDraft, ScenarioId, ScenarioObjective,
+        Edge, EntityId, MonteCarloConfig, Node, NodePayload, ProjectDependenceModel,
+        ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioId, ScenarioObjective,
     },
     project::Project,
 };
@@ -15,6 +15,8 @@ use crate::{
 pub(super) struct ProjectHeader {
     pub(super) schema_version: u32,
     pub(super) project: Project,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) dependence: Option<ProjectDependenceModel>,
 }
 
 #[derive(Deserialize, Serialize)]

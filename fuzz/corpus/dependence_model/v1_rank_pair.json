@@ -1,0 +1,1 @@
+{"revision":0,"residual_groups":[{"members":[{"project":"fuzz","owner":{"kind":"node","id":"A"},"estimate":"A"},{"project":"fuzz","owner":{"kind":"node","id":"B"},"estimate":"A"}],"correlation":{"scale":"rank","matrix":[[1.0,0.5],[0.5,1.0]]}}]}

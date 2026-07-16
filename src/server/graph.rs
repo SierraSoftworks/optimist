@@ -7,7 +7,9 @@ use axum::{
 
 use crate::{
     command::{CommandRequest, CommandResult},
-    domain::{Edge, EdgeId, EntityId, Node, ProjectId, Scenario, ScenarioId},
+    domain::{
+        Edge, EdgeId, EntityId, Node, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
+    },
     project::ProjectError,
     store::RepositoryError,
 };
@@ -25,6 +27,10 @@ pub(super) fn router() -> Router<AppState> {
         .route(
             "/api/v1/projects/{project}/scenarios/{scenario}",
             get(show_scenario),
+        )
+        .route(
+            "/api/v1/projects/{project}/dependence",
+            get(show_dependence),
         )
 }
 
@@ -98,6 +104,19 @@ async fn show_scenario(
         .ok_or_else(|| ProjectError::ScenarioNotFound(scenario).into())
 }
 
+async fn show_dependence(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+) -> Result<Json<ProjectDependenceModel>, ApiError> {
+    state
+        .catalog
+        .read()
+        .await
+        .get_dependence(&project)?
+        .map(Json)
+        .ok_or_else(|| ProjectError::DependenceNotFound(project).into())
+}
+
 #[cfg(test)]
 mod tests {
     use axum::{
@@ -108,8 +127,11 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        command::{CommandRequest, CreateNode, CreateScenario, GraphCommand},
-        domain::{Factor, MonteCarloConfig, NodePayload, ScenarioDraft},
+        command::{
+            CommandRequest, CreateNode, CreateScenario, GraphCommand, RemoveProjectDependence,
+            SetProjectDependence,
+        },
+        domain::{Factor, MonteCarloConfig, NodePayload, ProjectDependenceModel, ScenarioDraft},
         server::router,
     };
 
@@ -249,6 +271,75 @@ mod tests {
         assert_eq!(
             response_json(missing).await["error"]["code"],
             "scenario_not_found"
+        );
+    }
+
+    #[tokio::test]
+    async fn sets_shows_and_removes_project_dependence() {
+        let app = router();
+        create_project(&app).await;
+        let model = ProjectDependenceModel {
+            revision: 0,
+            residual_groups: vec![],
+        };
+        let set = CommandRequest::new(
+            0,
+            GraphCommand::SetProjectDependence(SetProjectDependence {
+                model: model.clone(),
+            }),
+        );
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&set).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let shown = app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/projects/A/dependence")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response_json(shown).await,
+            serde_json::to_value(&model).unwrap()
+        );
+
+        let remove = CommandRequest::new(
+            1,
+            GraphCommand::RemoveProjectDependence(RemoveProjectDependence {
+                expected_revision: 0,
+            }),
+        );
+        app.clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&remove).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let missing = app
+            .oneshot(
+                Request::get("/api/v1/projects/A/dependence")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response_json(missing).await["error"]["code"],
+            "dependence_not_found"
         );
     }
 }

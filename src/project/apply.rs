@@ -4,7 +4,7 @@ use crate::{
     store::{GraphRepository, RepositoryError},
 };
 
-use super::{ProjectError, catalog::ProjectEntry, scenarios};
+use super::{ProjectError, catalog::ProjectEntry, dependence, scenarios};
 
 pub(super) fn command(
     entry: &mut ProjectEntry,
@@ -71,6 +71,8 @@ pub(super) fn command(
         GraphCommand::CreateScenario(command) => scenarios::create(entry, command),
         GraphCommand::UpdateScenario(command) => scenarios::update(entry, command),
         GraphCommand::DeleteScenario(command) => scenarios::delete(entry, command),
+        GraphCommand::SetProjectDependence(command) => dependence::set(entry, command),
+        GraphCommand::RemoveProjectDependence(command) => dependence::remove(entry, command),
     }
 }
 

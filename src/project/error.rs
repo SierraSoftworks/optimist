@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use crate::{
     domain::{
-        EdgeId, EdgeIdError, EntityId, NodeError, NodeKind, ObservationError, ProjectId,
-        ScenarioError, ScenarioId,
+        DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress, NodeError, NodeKind,
+        ObservationError, ProjectId, ScenarioError, ScenarioId,
     },
     store::RepositoryError,
 };
@@ -92,6 +92,26 @@ pub enum ProjectError {
         /// Stored kind, or `None` when no such entity exists.
         actual: Option<NodeKind>,
     },
+    /// Project dependence matrix or membership validation failed.
+    #[error(transparent)]
+    Dependence(#[from] DependenceError),
+    /// No dependence document exists for a show or remove operation.
+    #[error("project {0} has no dependence document")]
+    DependenceNotFound(ProjectId),
+    /// A dependence replacement/removal used an older document revision.
+    #[error("dependence revision conflict: expected {expected}, current {current}")]
+    DependenceRevisionConflict {
+        /// Revision supplied by the caller.
+        expected: u64,
+        /// Revision currently stored in the project.
+        current: u64,
+    },
+    /// The dependence document revision cannot represent another replacement.
+    #[error("project {0} has exhausted its dependence revision space")]
+    DependenceRevisionSpaceExhausted(ProjectId),
+    /// An address does not resolve to an estimate embedded in the project graph.
+    #[error("dependence address {0} does not identify a stored estimate")]
+    MissingEstimateAddress(EstimateAddress),
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

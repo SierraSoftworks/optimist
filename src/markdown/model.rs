@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Edge, Node, Scenario, normalize_name},
+    domain::{Edge, Node, ProjectDependenceModel, Scenario, normalize_name},
     project::Project,
 };
 
@@ -16,6 +16,8 @@ pub struct ProjectDocument {
     pub schema_version: u32,
     /// Project metadata at the exported base revision.
     pub project: Project,
+    /// Optional project-level Gaussian residual dependence document.
+    pub dependence: Option<ProjectDependenceModel>,
     /// Rich Markdown project rationale and scope.
     pub description: String,
 }
