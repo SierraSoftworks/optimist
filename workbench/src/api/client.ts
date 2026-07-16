@@ -1,4 +1,5 @@
 import type {
+  AppendObservationInput,
   ApiErrorBody,
   CreateEdgeInput,
   CreateNodeInput,
@@ -11,6 +12,7 @@ import type {
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
+  Observation,
 } from './types'
 
 interface ErrorEnvelope {
@@ -33,6 +35,11 @@ interface PrimitiveEstimate {
   revision: number
   distribution: import('./types').Distribution
   provenance: string[]
+}
+
+interface ObservationAppendResult {
+  edge: GraphEdge
+  observation: Observation
 }
 
 function edgeIdentity(edge: GraphEdge): EdgeIdentity {
@@ -299,5 +306,33 @@ export const api = {
       )
     }
     return result.outcome.value
+  },
+  async appendObservation(
+    project: Project,
+    edge: GraphEdge,
+    input: AppendObservationInput,
+  ): Promise<Observation> {
+    const result = await request<CommandResult<ObservationAppendResult>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'append_observation',
+            payload: { edge: edgeIdentity(edge), observation: input },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'observation_appended') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for observation creation.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value.observation
   },
 }

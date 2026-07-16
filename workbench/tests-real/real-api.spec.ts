@@ -17,7 +17,7 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await page.getByLabel('Title').fill('Learning rate')
   await page.getByRole('button', { name: 'Add node' }).last().click()
 
-  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
@@ -43,7 +43,7 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await page.getByRole('button', { name: 'Confirm delete' }).click()
   await expect(page.getByText('0 relationships')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
@@ -105,7 +105,7 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
     await page.getByRole('button', { name: 'Add node' }).last().click()
   }
 
-  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('contributes')
   await page.getByLabel('Source').selectOption('A')
   await page.getByLabel('Destination').selectOption('B')
@@ -113,14 +113,25 @@ test('creates and reads a typed model through the real Axum API', async ({ page 
   await page.getByLabel('Mechanism').fill('Short loops increase learning.')
   await page.getByRole('button', { name: 'Add relationship' }).click()
 
-  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('measures')
   await page.getByLabel('Source').selectOption('C')
   await page.getByLabel('Destination').selectOption('A')
   await page.getByLabel('Measurement polarity').selectOption('lower_is_better')
   await page.getByRole('button', { name: 'Add relationship' }).click()
 
-  await page.getByRole('button', { name: 'Relationship' }).click()
+  await page.getByRole('button', { name: /Cycle time/ }).click()
+  await page.getByRole('button', { name: 'Add observation for A' }).click()
+  await page.getByLabel('Value').fill('4.2')
+  await expect(page.getByLabel('Unit')).toHaveValue('days')
+  await page.getByLabel('Source').fill('Delivery dashboard')
+  await page.getByLabel('Include known measurement error').check()
+  await page.getByLabel('Standard deviation').fill('0.2')
+  await page.getByRole('button', { name: 'Add observation', exact: true }).click()
+  await expect(page.getByText('4.2 days')).toBeVisible()
+  await expect(page.getByText(/Delivery dashboard · σ 0.2/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('synergizes_with')
   await page.getByLabel('Source').selectOption('D')
   await page.getByLabel('Destination').selectOption('E')

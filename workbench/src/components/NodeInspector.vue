@@ -1,16 +1,29 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Activity, Gauge, Goal, Pencil, Sigma, Trash2, Wrench } from '@lucide/vue'
+import { Activity, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
-const emit = defineEmits<{ edit: []; estimate: []; relationship: [edge: GraphEdge]; delete: [] }>()
+const emit = defineEmits<{
+  edit: []
+  estimate: []
+  relationship: [edge: GraphEdge]
+  observe: [edge: GraphEdge]
+  delete: []
+}>()
 const confirmDelete = ref(false)
 
 const incidentEdges = computed(() =>
   props.node
     ? props.edges.filter(
         (edge) => edge.source === props.node?.id || edge.destination === props.node?.id,
+      )
+    : [],
+)
+const measurementEdges = computed(() =>
+  props.node?.payload.kind === 'metric'
+    ? props.edges.filter(
+        (edge) => edge.source === props.node?.id && edge.payload.kind === 'measures',
       )
     : [],
 )
@@ -120,6 +133,28 @@ function provenance(node: GraphNode, slot: 'current' | 'desired') {
           <div><dt>Unit</dt><dd>{{ node.payload.properties.unit }}</dd></div>
           <div><dt>Aggregation</dt><dd>{{ node.payload.properties.aggregation ?? 'Not set' }}</dd></div>
         </dl>
+      </section>
+
+      <section v-if="node.payload.kind === 'metric'" class="inspector-section">
+        <h3>Observation series <span>{{ measurementEdges.length }}</span></h3>
+        <div v-for="edge in measurementEdges" :key="edge.destination" class="observation-series">
+          <div class="observation-series-header">
+            <div>
+              <strong>{{ edge.destination }}</strong>
+              <span>{{ edge.payload.kind === 'measures' ? edge.payload.properties.polarity.replaceAll('_', ' ') : '' }}</span>
+            </div>
+            <button type="button" class="icon-button" :aria-label="`Add observation for ${edge.destination}`" title="Add observation" @click="emit('observe', edge)"><Plus :size="15" /></button>
+          </div>
+          <ol v-if="edge.payload.kind === 'measures' && edge.payload.properties.observations.length" class="observation-list">
+            <li v-for="observation in edge.payload.properties.observations" :key="observation.id">
+              <strong>{{ observation.value }} {{ observation.unit }}</strong>
+              <span>{{ new Date(observation.observed_at).toLocaleString() }}</span>
+              <small>{{ observation.source }}<template v-if="observation.measurement_standard_deviation !== null"> · σ {{ observation.measurement_standard_deviation }}</template></small>
+            </li>
+          </ol>
+          <p v-else class="muted">No readings recorded.</p>
+        </div>
+        <p v-if="!measurementEdges.length" class="muted">Create a measurement relationship to start a series.</p>
       </section>
 
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">

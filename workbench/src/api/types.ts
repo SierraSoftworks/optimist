@@ -42,6 +42,25 @@ export interface Evidence {
   source: string | null
 }
 
+export interface Observation {
+  id: number
+  revision: number
+  value: number
+  unit: string
+  observed_at: string
+  source: string
+  measurement_standard_deviation: number | null
+  supersedes: number | null
+}
+
+export interface AppendObservationInput {
+  value: number
+  unit: string
+  observed_at: string
+  source: string
+  measurement_standard_deviation: number | null
+}
+
 export type NodePayload =
   | {
       kind: 'outcome'
@@ -95,7 +114,15 @@ export interface GraphEdge {
   revision: number
   description: string
   metadata: Record<string, unknown>
-  payload: { kind: EdgeKind; properties?: Record<string, unknown> }
+  payload:
+    | {
+        kind: 'measures'
+        properties: {
+          polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
+          observations: Observation[]
+        }
+      }
+    | { kind: Exclude<EdgeKind, 'measures'>; properties?: Record<string, unknown> }
 }
 
 export interface EdgeIdentity {

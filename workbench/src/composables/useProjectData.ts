@@ -2,6 +2,7 @@ import { computed, type Ref } from 'vue'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { api } from '../api/client'
 import type {
+  AppendObservationInput,
   CreateEdgeInput,
   CreateNodeInput,
   GraphNode,
@@ -148,5 +149,17 @@ export function useDeleteNode(project: Ref<Project | undefined>, node: Ref<Graph
   return useMutation({
     mutationFn: () => api.deleteNode(project.value!, node.value!),
     onSuccess: async () => refetchNodeData(queryClient, project.value!),
+  })
+}
+
+export function useAppendObservation(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AppendObservationInput) =>
+      api.appendObservation(project.value!, edge.value!, input),
+    onSuccess: async () => refetchEdgeData(queryClient, project.value!),
   })
 }

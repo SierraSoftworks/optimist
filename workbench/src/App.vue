@@ -26,10 +26,12 @@ import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
 import EditEdgeDialog from './components/EditEdgeDialog.vue'
+import AddObservationDialog from './components/AddObservationDialog.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
   CreateEdgeInput,
+  AppendObservationInput,
   CreateNodeInput,
   GraphNode,
   GraphEdge,
@@ -53,7 +55,9 @@ import {
   useUpdateEdge,
   useDeleteEdge,
   useDeleteNode,
+  useAppendObservation,
 } from './composables/useProjectData'
+import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
 const store = useWorkbenchStore()
 const { mode, search, selectedNodeId, selectedProjectId, visibleKinds } = storeToRefs(store)
@@ -71,7 +75,9 @@ const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
 const edgeEditDialogOpen = ref(false)
+const observationDialogOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
+const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const mutationError = ref<Error | null>(null)
 
 const projects = computed(() => projectsQuery.data.value ?? [])
@@ -85,10 +91,14 @@ const visibleEdges = computed(() => {
   )
 })
 const canCreateRelationship = computed(
-  () =>
-    nodes.value.filter((node) =>
-      ['factor', 'intervention'].includes(node.payload.kind),
-    ).length >= 2,
+  () => nodes.value.some((source) =>
+    nodes.value.some((destination) =>
+      source.id !== destination.id &&
+      edgeKinds.some(({ kind }) =>
+        endpointsAreValid(kind, source.payload.kind, destination.payload.kind),
+      ),
+    ),
+  ),
 )
 const selectedNode = computed<GraphNode | null>(
   () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
@@ -98,6 +108,7 @@ const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
+const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -259,6 +270,22 @@ async function submitNodeDelete() {
   }
 }
 
+function observe(edge: GraphEdge) {
+  selectedMeasurementEdge.value = edge
+  observationDialogOpen.value = true
+}
+
+async function submitObservation(input: AppendObservationInput) {
+  mutationError.value = null
+  try {
+    await appendObservation.mutateAsync(input)
+    observationDialogOpen.value = false
+    selectedMeasurementEdge.value = null
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
@@ -409,6 +436,7 @@ function retry() {
         @edit="editNodeDialogOpen = true"
         @estimate="estimateDialogOpen = true"
         @relationship="editRelationship"
+        @observe="observe"
         @delete="submitNodeDelete"
       />
     </section>
@@ -466,6 +494,14 @@ function retry() {
       @close="edgeEditDialogOpen = false"
       @submit="submitEdgeEdit"
       @delete="submitEdgeDelete"
+    />
+    <AddObservationDialog
+      :open="observationDialogOpen"
+      :pending="appendObservation.isPending.value"
+      :edge="selectedMeasurementEdge"
+      :unit="selectedNode?.payload.kind === 'metric' ? selectedNode.payload.properties.unit : ''"
+      @close="observationDialogOpen = false"
+      @submit="submitObservation"
     />
   </main>
 </template>

@@ -355,4 +355,42 @@ describe('Optimist API client', () => {
       command: { type: 'delete_node', payload: { id: 'A' } },
     })
   })
+
+  it('appends typed observations to their measurement edge', async () => {
+    const edge = {
+      source: 'A', source_kind: 'metric' as const, destination: 'B',
+      destination_kind: 'factor' as const, revision: 0, description: '', metadata: {},
+      payload: {
+        kind: 'measures' as const,
+        properties: { polarity: 'lower_is_better' as const, observations: [] },
+      },
+    }
+    const observation = {
+      id: 0, revision: 0, value: 4.2, unit: 'days',
+      observed_at: '2026-07-16T12:30:00.000Z', source: 'delivery dashboard',
+      measurement_standard_deviation: 0.2, supersedes: null,
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
+        outcome: { type: 'observation_appended', value: { edge, observation } },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    await expect(api.appendObservation(project, edge, {
+      value: 4.2, unit: 'days', observed_at: '2026-07-16T12:30:00.000Z',
+      source: 'delivery dashboard', measurement_standard_deviation: 0.2,
+    })).resolves.toEqual(observation)
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: {
+        type: 'append_observation',
+        payload: {
+          edge: { source: 'A', kind: 'measures', destination: 'B' },
+          observation: { value: 4.2, unit: 'days', source: 'delivery dashboard' },
+        },
+      },
+    })
+  })
 })
