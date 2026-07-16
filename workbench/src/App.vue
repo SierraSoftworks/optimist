@@ -87,6 +87,7 @@ import {
   useScenarios,
   useScenarioAnalysis,
   useCreateScenario,
+  useUpdateScenario,
   useImpedimentAnalysis,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
@@ -121,6 +122,7 @@ const selectedEvidence = ref<Evidence | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const selectedFeedbackCycle = ref<number | null>(null)
 const selectedScenarioId = ref<string | null>(null)
+const scenarioDialogScenario = ref<import('./api/types').Scenario | null>(null)
 const selectedCandidateId = ref<string | null>(null)
 const selectedImpedimentId = ref<string | null>(null)
 const highlightedNodeIds = ref<string[]>([])
@@ -174,12 +176,18 @@ const structuralAnalysis = useStructuralAnalysis(
 )
 const optimizeModeEnabled = computed(() => mode.value === 'optimize')
 const scenariosQuery = useScenarios(selectedProjectId, optimizeModeEnabled)
+const selectedScenario = computed(() =>
+  scenariosQuery.data.value?.find((scenario) => scenario.id === selectedScenarioId.value) ?? null,
+)
+const selectedScenarioRevision = computed(() => selectedScenario.value?.revision)
 const scenarioAnalysis = useScenarioAnalysis(
   selectedProjectId,
   selectedScenarioId,
+  selectedScenarioRevision,
   optimizeModeEnabled,
 )
 const createScenario = useCreateScenario(projectQuery.data)
+const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)
 const impedimentsModeEnabled = computed(() => mode.value === 'impediments')
 const impedimentAnalysis = useImpedimentAnalysis(
   selectedProjectId,
@@ -317,12 +325,26 @@ function clearImpedimentSelection() {
 async function submitScenario(scenario: ScenarioDraft) {
   mutationError.value = null
   try {
-    const created = await createScenario.mutateAsync(scenario)
-    selectedScenarioId.value = created.id
+    const saved = scenarioDialogScenario.value
+      ? await updateScenario.mutateAsync(scenario)
+      : await createScenario.mutateAsync(scenario)
+    selectedScenarioId.value = saved.id
     scenarioDialogOpen.value = false
+    scenarioDialogScenario.value = null
   } catch (error) {
     mutationError.value = error as Error
   }
+}
+
+function createNewScenario() {
+  scenarioDialogScenario.value = null
+  scenarioDialogOpen.value = true
+}
+
+function editSelectedScenario() {
+  if (!selectedScenario.value) return
+  scenarioDialogScenario.value = selectedScenario.value
+  scenarioDialogOpen.value = true
 }
 
 async function submitProject(name: string) {
@@ -736,7 +758,8 @@ function retry() {
         :selected-candidate-id="selectedCandidateId"
         @select-scenario="selectScenario"
         @select-candidate="selectCandidate"
-        @create="scenarioDialogOpen = true"
+        @create="createNewScenario"
+        @edit="editSelectedScenario"
         @retry="scenariosQuery.error.value ? scenariosQuery.refetch() : scenarioAnalysis.refetch()"
       />
       <NodeInspector
@@ -854,9 +877,10 @@ function retry() {
     />
     <CreateScenarioDialog
       :open="scenarioDialogOpen"
-      :pending="createScenario.isPending.value"
+      :pending="createScenario.isPending.value || updateScenario.isPending.value"
       :nodes="nodes"
-      @close="scenarioDialogOpen = false"
+      :scenario="scenarioDialogScenario"
+      @close="scenarioDialogOpen = false; scenarioDialogScenario = null"
       @submit="submitScenario"
     />
   </main>

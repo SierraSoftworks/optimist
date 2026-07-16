@@ -87,6 +87,7 @@ describe('Optimist API client', () => {
       planning_horizon: 12,
       candidates: [],
     }
+    const updated = { ...scenario, revision: 1, title: 'Updated delivery plan' }
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([scenario]), {
         status: 200, headers: { 'Content-Type': 'application/json' },
@@ -98,17 +99,36 @@ describe('Optimist API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify(analysis), {
         status: 200, headers: { 'Content-Type': 'application/json' },
       }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: '00000000-0000-4000-8000-000000000000', project_revision: 9,
+        outcome: { type: 'scenario_updated', value: updated },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
     await expect(api.scenarios('A')).resolves.toEqual([scenario])
     await expect(api.createScenario(project, draft)).resolves.toEqual(scenario)
     await expect(api.scenarioAnalysis('A', 'A')).resolves.toEqual(analysis)
+    await expect(api.updateScenario(project, scenario, {
+      ...draft,
+      title: 'Updated delivery plan',
+    })).resolves.toEqual(updated)
     expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/scenarios')
     expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
       expected_revision: 7,
       command: { type: 'create_scenario', payload: { scenario: draft } },
     })
     expect(fetch.mock.calls[2]![0]).toBe('/api/v1/projects/A/scenarios/A/analysis')
+    expect(JSON.parse((fetch.mock.calls[3]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: {
+        type: 'update_scenario',
+        payload: {
+          id: 'A',
+          expected_revision: 0,
+          scenario: { title: 'Updated delivery plan' },
+        },
+      },
+    })
   })
 
   it('sends revision-checked idempotent node commands', async () => {

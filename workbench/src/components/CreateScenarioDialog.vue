@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { GraphNode, ScenarioDraft } from '../api/types'
+import type { GraphNode, Scenario, ScenarioDraft } from '../api/types'
 
 const props = defineProps<{
   open: boolean
   pending: boolean
   nodes: GraphNode[]
+  scenario: Scenario | null
 }>()
 const emit = defineEmits<{ close: []; submit: [scenario: ScenarioDraft] }>()
 const form = reactive({
@@ -35,16 +36,27 @@ const selectedObjectives = computed(() => outcomes.value.filter((node) => form.o
 const selectedCandidates = computed(() => interventions.value.filter((node) => form.candidates[node.id]))
 
 watch(
-  () => props.open,
-  (open) => {
+  () => [props.open, props.scenario] as const,
+  ([open, scenario]) => {
     if (!open) return
     Object.assign(form, {
-      title: '', name: '', rationale: '', planningHorizon: 12,
+      title: scenario?.title ?? '', name: scenario?.name ?? '',
+      rationale: scenario?.rationale ?? '', planningHorizon: scenario?.planning_horizon ?? 12,
       objectives: {}, importance: {}, candidates: {},
-      seed: 42, minimumSamples: 100, maximumSamples: 1000,
-      absoluteTolerance: 0.01, relativeTolerance: 0.01,
+      seed: scenario?.monte_carlo.seed ?? 42,
+      minimumSamples: scenario?.monte_carlo.minimum_samples ?? 100,
+      maximumSamples: scenario?.monte_carlo.maximum_samples ?? 1000,
+      absoluteTolerance: scenario?.monte_carlo.absolute_tolerance ?? 0.01,
+      relativeTolerance: scenario?.monte_carlo.relative_tolerance ?? 0.01,
     })
     for (const outcome of outcomes.value) form.importance[outcome.id] = 1
+    for (const objective of scenario?.objectives ?? []) {
+      form.objectives[objective.outcome_id] = true
+      form.importance[objective.outcome_id] = objective.importance
+    }
+    for (const candidate of scenario?.candidate_interventions ?? []) {
+      form.candidates[candidate] = true
+    }
   },
 )
 
@@ -64,7 +76,7 @@ function submit() {
       importance: form.importance[node.id] ?? 1,
     })),
     planning_horizon: form.planningHorizon,
-    budgets: [],
+    budgets: props.scenario?.budgets ?? [],
     candidate_interventions: selectedCandidates.value.map((node) => node.id),
     monte_carlo: {
       seed: form.seed,
@@ -73,6 +85,9 @@ function submit() {
       absolute_tolerance: form.absoluteTolerance,
       relative_tolerance: form.relativeTolerance,
     },
+    ...(props.scenario?.scalar_preferences
+      ? { scalar_preferences: props.scenario.scalar_preferences }
+      : {}),
   })
 }
 </script>
@@ -82,7 +97,7 @@ function submit() {
     <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
       <form class="dialog scenario-dialog" aria-labelledby="create-scenario-title" @submit.prevent="submit">
         <header>
-          <div><span class="eyebrow">Finite-horizon comparison</span><h2 id="create-scenario-title">Create scenario</h2></div>
+          <div><span class="eyebrow">Finite-horizon comparison</span><h2 id="create-scenario-title">{{ scenario ? 'Edit scenario' : 'Create scenario' }}</h2></div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
         <div class="field-grid">
@@ -124,7 +139,7 @@ function submit() {
 
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending || !selectedObjectives.length || !selectedCandidates.length">{{ pending ? 'Creating…' : 'Create scenario' }}</button>
+          <button type="submit" class="primary-button" :disabled="pending || !selectedObjectives.length || !selectedCandidates.length">{{ pending ? 'Saving…' : scenario ? 'Save scenario' : 'Create scenario' }}</button>
         </footer>
       </form>
     </div>

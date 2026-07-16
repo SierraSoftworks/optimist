@@ -140,6 +140,17 @@ async function mockApi(page: Page, state: FixtureState) {
           outcome: { type: 'scenario_created', value: scenario },
         }, 201)
       }
+      if (command.command.type === 'update_scenario') {
+        const current = state.scenarios?.find((scenario) => scenario.id === input.id) as { id: string; revision: number }
+        const scenario = { id: current.id, revision: current.revision + 1, ...input.scenario }
+        state.scenarios = state.scenarios?.map((value) => value.id === scenario.id ? scenario : value)
+        state.revision += 1
+        return json({
+          request_id: command.request_id,
+          project_revision: state.revision,
+          outcome: { type: 'scenario_updated', value: scenario },
+        }, 201)
+      }
       if (command.command.type === 'create_edge') {
         const source = state.nodes.find((node) => node.id === input.source)!
         const destination = state.nodes.find((node) => node.id === input.destination)!
@@ -355,6 +366,17 @@ test('creates and compares finite-horizon scenario candidates', async ({ page },
   await expect(panel.getByText(/No budget, bundle, conflict, synergy, or scalar ranking/)).toBeVisible()
   await panel.getByRole('button', { name: /Automate B converged/ }).click()
   await expect(page.getByText('Analysis highlights 2 nodes and 0 relationships.')).toBeAttached()
+  await panel.getByRole('button', { name: /Reliable delivery A · r0 · 12 periods/ }).click()
+  const scenarioMenu = page.getByRole('listbox', { name: 'Scenarios' })
+  await expect(scenarioMenu.getByRole('option', { name: /Reliable delivery A · r0/ })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Escape')
+  await panel.getByRole('button', { name: 'Edit selected scenario' }).click()
+  await expect(page.getByRole('heading', { name: 'Edit scenario' })).toBeVisible()
+  await page.getByLabel('Title').fill('Updated delivery')
+  await page.getByLabel('Planning horizon in periods').fill('8')
+  await page.getByRole('button', { name: 'Save scenario' }).click()
+  await expect(panel.getByRole('button', { name: /Updated delivery A · r1 · 8 periods/ })).toBeVisible()
+  await expect(panel.getByText('8', { exact: true }).last()).toBeVisible()
   await page.screenshot({ path: 'artifacts/workbench-optimize.png', fullPage: true })
 })
 

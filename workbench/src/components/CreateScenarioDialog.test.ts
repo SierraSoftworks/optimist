@@ -19,7 +19,7 @@ const nodes: GraphNode[] = [
 describe('CreateScenarioDialog', () => {
   it('emits a typed deterministic scenario draft', async () => {
     const wrapper = mount(CreateScenarioDialog, {
-      props: { open: false, pending: false, nodes },
+      props: { open: false, pending: false, nodes, scenario: null },
       global: { stubs: { Teleport: true } },
     })
     await wrapper.setProps({ open: true })
@@ -48,6 +48,34 @@ describe('CreateScenarioDialog', () => {
         absolute_tolerance: 0.01,
         relative_tolerance: 0.01,
       },
+    })
+  })
+
+  it('prefills an existing scenario for complete replacement editing', async () => {
+    const scenario = {
+      id: 'A', revision: 2, name: 'delivery', title: 'Delivery', rationale: 'Current plan',
+      objectives: [{ outcome_id: 'A', direction: 'maximize' as const, importance: 2 }],
+      planning_horizon: 8, budgets: [], candidate_interventions: ['B'],
+      monte_carlo: {
+        seed: 7, minimum_samples: 20, maximum_samples: 200,
+        absolute_tolerance: 0.02, relative_tolerance: 0.03,
+      },
+    }
+    const wrapper = mount(CreateScenarioDialog, {
+      props: { open: false, pending: false, nodes, scenario },
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.setProps({ open: true })
+    expect(wrapper.get('h2').text()).toBe('Edit scenario')
+    expect((wrapper.get('input[placeholder="Reliable delivery"]').element as HTMLInputElement).value).toBe('Delivery')
+    expect((wrapper.get('input[aria-label="Importance"]').element as HTMLInputElement).value).toBe('2')
+    expect(wrapper.findAll('input[type="checkbox"]').every((input) => (input.element as HTMLInputElement).checked)).toBe(true)
+    await wrapper.get('input[placeholder="Reliable delivery"]').setValue('Updated delivery')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')![0]![0]).toMatchObject({
+      name: 'delivery', title: 'Updated delivery', planning_horizon: 8,
+      objectives: [{ outcome_id: 'A', importance: 2 }], candidate_interventions: ['B'],
+      monte_carlo: { seed: 7, minimum_samples: 20, maximum_samples: 200 },
     })
   })
 })

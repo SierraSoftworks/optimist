@@ -246,6 +246,38 @@ export const api = {
     }
     return result.outcome.value
   },
+  async updateScenario(
+    project: Project,
+    current: Scenario,
+    scenario: ScenarioDraft,
+  ): Promise<Scenario> {
+    const result = await request<CommandResult<Scenario>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'update_scenario',
+            payload: {
+              id: current.id,
+              expected_revision: current.revision,
+              scenario,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'scenario_updated') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for scenario editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
   async createEdge(project: Project, input: CreateEdgeInput): Promise<GraphEdge> {
     const result = await request<CommandResult<GraphEdge>>(
       `/api/v1/projects/${project.id}/commands`,

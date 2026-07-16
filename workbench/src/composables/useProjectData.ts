@@ -10,6 +10,7 @@ import type {
   GraphEdge,
   Project,
   ProjectArchive,
+  Scenario,
   ScenarioDraft,
   SetStateEstimateInput,
   SetInterventionEstimateInput,
@@ -91,11 +92,12 @@ export function useScenarios(
 export function useScenarioAnalysis(
   projectId: Ref<string | null>,
   scenarioId: Ref<string | null>,
+  scenarioRevision: Ref<number | undefined>,
   enabled: Ref<boolean>,
 ) {
   return useQuery({
     queryKey: computed(() => [
-      'analysis', 'scenario', projectId.value, scenarioId.value,
+      'analysis', 'scenario', projectId.value, scenarioId.value, scenarioRevision.value,
     ]),
     queryFn: () => api.scenarioAnalysis(projectId.value!, scenarioId.value!),
     enabled: computed(() =>
@@ -121,6 +123,23 @@ export function useCreateScenario(project: Ref<Project | undefined>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (scenario: ScenarioDraft) => api.createScenario(project.value!, scenario),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['project', project.value!.id] }),
+        queryClient.refetchQueries({ queryKey: ['scenarios', project.value!.id] }),
+      ])
+    },
+  })
+}
+
+export function useUpdateScenario(
+  project: Ref<Project | undefined>,
+  scenario: Ref<Scenario | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (draft: ScenarioDraft) =>
+      api.updateScenario(project.value!, scenario.value!, draft),
     onSuccess: async () => {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['project', project.value!.id] }),

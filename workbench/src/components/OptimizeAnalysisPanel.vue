@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, BarChart3, Plus, RefreshCw } from '@lucide/vue'
+import { AlertTriangle, BarChart3, Pencil, Plus, RefreshCw } from '@lucide/vue'
 import type { GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
+import ScenarioPicker from './ScenarioPicker.vue'
 
 const props = defineProps<{
   scenarios: Scenario[]
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   selectScenario: [id: string]
   selectCandidate: [id: string, highlightedNodes: string[]]
   create: []
+  edit: []
   retry: []
 }>()
 const selectedScenario = computed(() =>
@@ -51,12 +53,10 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
       <button type="button" class="icon-button" title="Create scenario" aria-label="Create scenario" @click="emit('create')"><Plus :size="16" /></button>
     </header>
 
-    <label v-if="scenarios.length" class="scenario-select">
-      Scenario
-      <select :value="selectedScenarioId ?? ''" @change="emit('selectScenario', ($event.target as HTMLSelectElement).value)">
-        <option v-for="scenario in scenarios" :key="scenario.id" :value="scenario.id">{{ scenario.title }}</option>
-      </select>
-    </label>
+    <div v-if="scenarios.length" class="scenario-selector-row">
+      <ScenarioPicker :scenarios="scenarios" :selected-scenario-id="selectedScenarioId" @select="emit('selectScenario', $event)" @create="emit('create')" />
+      <button type="button" class="icon-button scenario-edit-button" title="Edit selected scenario" aria-label="Edit selected scenario" @click="emit('edit')"><Pencil :size="15" /></button>
+    </div>
 
     <div v-if="!scenarios.length && !pending" class="analysis-empty">
       <BarChart3 :size="22" />
