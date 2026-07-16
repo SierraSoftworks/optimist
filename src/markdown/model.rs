@@ -39,6 +39,17 @@ pub struct EntityDocument {
     pub outgoing_edges: Vec<Edge>,
 }
 
+impl EntityDocument {
+    /// Returns the deterministic relative export path for this document.
+    pub fn canonical_path(&self) -> String {
+        format!(
+            "entities/{}-{}.md",
+            self.node.id,
+            slug(&self.node.name, "entity")
+        )
+    }
+}
+
 /// Versioned canonical `scenarios/<id>-<slug>.md` content.
 ///
 /// Structured scenario fields live in YAML frontmatter while the scenario's
@@ -57,23 +68,31 @@ pub struct ScenarioDocument {
 impl ScenarioDocument {
     /// Returns the deterministic relative export path for this document.
     pub fn canonical_path(&self) -> String {
-        let normalized = normalize_name(&self.scenario.draft.name);
-        let mut slug = String::new();
-        let mut separator = false;
-        for character in normalized.chars() {
-            if character.is_alphanumeric() {
-                if separator && !slug.is_empty() {
-                    slug.push('-');
-                }
-                separator = false;
-                slug.push(character);
-            } else {
-                separator = true;
-            }
-        }
-        if slug.is_empty() {
-            slug.push_str("scenario");
-        }
-        format!("scenarios/{}-{slug}.md", self.scenario.id)
+        format!(
+            "scenarios/{}-{}.md",
+            self.scenario.id,
+            slug(&self.scenario.draft.name, "scenario")
+        )
     }
+}
+
+fn slug(value: &str, fallback: &str) -> String {
+    let normalized = normalize_name(value);
+    let mut result = String::new();
+    let mut separator = false;
+    for character in normalized.chars() {
+        if character.is_alphanumeric() {
+            if separator && !result.is_empty() {
+                result.push('-');
+            }
+            separator = false;
+            result.push(character);
+        } else {
+            separator = true;
+        }
+    }
+    if result.is_empty() {
+        result.push_str(fallback);
+    }
+    result
 }

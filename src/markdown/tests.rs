@@ -1,13 +1,15 @@
 use crate::{
     domain::{
         CorrelationScale, Edge, EdgePayload, EntityId, EstimateAddress, EstimateId, EstimateOwner,
-        Factor, GaussianCopulaCorrelation, MonteCarloConfig, Node, NodeKind, NodePayload,
-        ProjectDependenceModel, ResidualDependenceGroup, Scenario, ScenarioDraft, ScenarioId,
+        Factor, GaussianCopulaCorrelation, Intervention, MonteCarloConfig, Node, NodeKind,
+        NodePayload, Outcome, OutcomeDirection, ProjectDependenceModel, ResidualDependenceGroup,
+        Scenario, ScenarioDraft, ScenarioId, ScenarioObjective, UtilityDirection,
     },
     markdown::{
-        EntityDocument, MarkdownError, ProjectDocument, SCHEMA_VERSION, ScenarioDocument,
-        parse_entity, parse_project, parse_scenario, render_entity, render_project,
-        render_scenario,
+        EntityDocument, ImportError, MarkdownError, MergeAction, MergeConflict, MergePlan,
+        ProjectDocument, RenderedSnapshot, SCHEMA_VERSION, ScenarioDocument, SourceDocument,
+        ValidatedImport, parse_entity, parse_project, parse_scenario, read_directory,
+        render_entity, render_project, render_scenario, write_directory,
     },
     project::Project,
 };
@@ -186,4 +188,310 @@ fn scenario_render_is_canonical_and_semantically_stable() {
     let parsed = parse_scenario(document.canonical_path(), &rendered).unwrap();
     assert_eq!(parsed, document);
     assert_eq!(render_scenario(&parsed).unwrap(), rendered);
+}
+
+fn project_document(revision: u64) -> ProjectDocument {
+    ProjectDocument {
+        schema_version: SCHEMA_VERSION,
+        project: Project {
+            id: crate::domain::ProjectId::new("A").unwrap(),
+            name: "Delivery".to_owned(),
+            revision,
+        },
+        dependence: None,
+        description: String::new(),
+    }
+}
+
+fn entity_document(node: Node, revision: u64) -> SourceDocument<EntityDocument> {
+    let path = format!("entities/{}.md", node.id);
+    SourceDocument::new(
+        path,
+        EntityDocument {
+            schema_version: SCHEMA_VERSION,
+            base_project_revision: revision,
+            node,
+            outgoing_edges: vec![],
+        },
+    )
+}
+
+#[test]
+fn validates_complete_snapshot_references_in_a_second_pass() {
+    let outcome = Node::new(
+        EntityId::new(0),
+        "reliability",
+        "Reliability",
+        NodePayload::Outcome(Outcome {
+            direction: OutcomeDirection::Maximize,
+            current: None,
+            desired: None,
+            evidence: vec![],
+        }),
+    )
+    .unwrap();
+    let intervention = Node::new(
+        EntityId::new(1),
+        "automation",
+        "Automation",
+        NodePayload::Intervention(Intervention {
+            costs: vec![],
+            duration: None,
+            probability_of_success: None,
+            acceptance_criteria: vec![],
+        }),
+    )
+    .unwrap();
+    let scenario = Scenario::new(
+        ScenarioId::new(0),
+        ScenarioDraft {
+            name: "plan".to_owned(),
+            title: "Plan".to_owned(),
+            rationale: String::new(),
+            objectives: vec![ScenarioObjective {
+                outcome_id: outcome.id,
+                direction: UtilityDirection::Maximize,
+                importance: 1.0,
+            }],
+            planning_horizon: 4,
+            budgets: vec![],
+            candidate_interventions: vec![intervention.id],
+            monte_carlo: MonteCarloConfig::new(1, 10, 20, 0.1, 0.1).unwrap(),
+            scalar_preferences: None,
+        },
+    )
+    .unwrap();
+    let validated = ValidatedImport::new(
+        SourceDocument::new("_project.md", project_document(3)),
+        vec![
+            entity_document(outcome, 3),
+            entity_document(intervention, 3),
+        ],
+        vec![SourceDocument::new(
+            "scenarios/A-plan.md",
+            ScenarioDocument {
+                schema_version: SCHEMA_VERSION,
+                base_project_revision: 3,
+                scenario,
+            },
+        )],
+    )
+    .unwrap();
+    assert_eq!(validated.entities.len(), 2);
+    assert_eq!(validated.scenarios.len(), 1);
+}
+
+#[test]
+fn rejects_duplicate_names_and_inconsistent_revisions() {
+    let mut alias = node(1, "other");
+    alias.aliases.push("DELIVERY".to_owned());
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project_document(2)),
+            vec![
+                entity_document(node(0, "delivery"), 2),
+                entity_document(alias, 2)
+            ],
+            vec![],
+        ),
+        Err(ImportError::DuplicateNodeName { .. })
+    ));
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project_document(2)),
+            vec![entity_document(node(0, "delivery"), 1)],
+            vec![],
+        ),
+        Err(ImportError::InconsistentBaseRevision { .. })
+    ));
+}
+
+#[test]
+fn rejects_missing_edge_and_wrong_scenario_reference_kind() {
+    let mut source = entity_document(node(0, "delivery"), 0);
+    source.document.outgoing_edges.push(edge(0, 1));
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project_document(0)),
+            vec![source],
+            vec![],
+        ),
+        Err(ImportError::MissingEdgeEndpoint { .. })
+    ));
+
+    let factor = node(0, "delivery");
+    let scenario = Scenario::new(
+        ScenarioId::new(0),
+        ScenarioDraft {
+            name: "plan".to_owned(),
+            title: "Plan".to_owned(),
+            rationale: String::new(),
+            objectives: vec![ScenarioObjective {
+                outcome_id: factor.id,
+                direction: UtilityDirection::Maximize,
+                importance: 1.0,
+            }],
+            planning_horizon: 1,
+            budgets: vec![],
+            candidate_interventions: vec![],
+            monte_carlo: MonteCarloConfig::new(1, 10, 20, 0.1, 0.1).unwrap(),
+            scalar_preferences: None,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project_document(0)),
+            vec![entity_document(factor, 0)],
+            vec![SourceDocument::new(
+                "scenarios/A-plan.md",
+                ScenarioDocument {
+                    schema_version: SCHEMA_VERSION,
+                    base_project_revision: 0,
+                    scenario,
+                },
+            )],
+        ),
+        Err(ImportError::InvalidScenarioReference { .. })
+    ));
+}
+
+fn import_with_node(project: ProjectDocument, node: Node) -> ValidatedImport {
+    let revision = project.project.revision;
+    ValidatedImport::new(
+        SourceDocument::new("_project.md", project),
+        vec![entity_document(node, revision)],
+        vec![],
+    )
+    .unwrap()
+}
+
+#[test]
+fn merge_plan_distinguishes_unchanged_create_and_update() {
+    let current = import_with_node(project_document(2), node(0, "delivery"));
+    let mut unchanged_from_stale_base = current.clone();
+    unchanged_from_stale_base.project.document.project.revision = 1;
+    unchanged_from_stale_base
+        .entities
+        .get_mut(&EntityId::new(0))
+        .unwrap()
+        .document
+        .base_project_revision = 1;
+    let plan = MergePlan::between(&current, &unchanged_from_stale_base);
+    assert_eq!(plan.project, MergeAction::Unchanged);
+    assert_eq!(plan.entities[&EntityId::new(0)], MergeAction::Unchanged);
+    assert!(!plan.has_conflicts());
+
+    let mut imported = current.clone();
+    imported.project.document.description = "# Revised scope\n".to_owned();
+    imported
+        .entities
+        .get_mut(&EntityId::new(0))
+        .unwrap()
+        .document
+        .node
+        .title = "Delivery flow".to_owned();
+    imported
+        .entities
+        .insert(EntityId::new(1), entity_document(node(1, "quality"), 2));
+    let plan = MergePlan::between(&current, &imported);
+    assert_eq!(plan.project, MergeAction::Update);
+    assert_eq!(plan.entities[&EntityId::new(0)], MergeAction::Update);
+    assert_eq!(plan.entities[&EntityId::new(1)], MergeAction::Create);
+    assert!(!plan.has_conflicts());
+}
+
+#[test]
+fn merge_plan_conflicts_on_concurrent_or_cross_project_changes() {
+    let current = import_with_node(project_document(2), node(0, "delivery"));
+    let mut stale = current.clone();
+    stale.project.document.project.revision = 1;
+    let stale_node = &mut stale.entities.get_mut(&EntityId::new(0)).unwrap().document;
+    stale_node.base_project_revision = 1;
+    stale_node.node.title = "Stale edit".to_owned();
+    assert!(matches!(
+        MergePlan::between(&current, &stale).entities[&EntityId::new(0)],
+        MergeAction::Conflict(MergeConflict::BaseRevision { .. })
+    ));
+
+    let mut aggregate_conflict = current.clone();
+    let imported = &mut aggregate_conflict
+        .entities
+        .get_mut(&EntityId::new(0))
+        .unwrap()
+        .document
+        .node;
+    imported.revision = 1;
+    imported.title = "Concurrent edit".to_owned();
+    assert!(matches!(
+        MergePlan::between(&current, &aggregate_conflict).entities[&EntityId::new(0)],
+        MergeAction::Conflict(MergeConflict::AggregateRevision { .. })
+    ));
+
+    let mut foreign = current.clone();
+    foreign.project.document.project.id = crate::domain::ProjectId::new("B").unwrap();
+    assert!(matches!(
+        MergePlan::between(&current, &foreign).project,
+        MergeAction::Conflict(MergeConflict::DifferentProject { .. })
+    ));
+}
+
+#[test]
+fn rejects_dependence_addresses_without_an_imported_estimate() {
+    let project_id = crate::domain::ProjectId::new("A").unwrap();
+    let mut project = project_document(0);
+    project.dependence = Some(ProjectDependenceModel {
+        revision: 0,
+        residual_groups: vec![ResidualDependenceGroup {
+            members: vec![
+                EstimateAddress::new(
+                    project_id.clone(),
+                    EstimateOwner::Node(EntityId::new(0)),
+                    EstimateId::new(0),
+                ),
+                EstimateAddress::new(
+                    project_id,
+                    EstimateOwner::Node(EntityId::new(1)),
+                    EstimateId::new(0),
+                ),
+            ],
+            correlation: GaussianCopulaCorrelation {
+                scale: CorrelationScale::Latent,
+                matrix: vec![vec![1.0, 0.5], vec![0.5, 1.0]],
+            },
+        }],
+    });
+    assert!(matches!(
+        ValidatedImport::new(
+            SourceDocument::new("_project.md", project),
+            vec![
+                entity_document(node(0, "delivery"), 0),
+                entity_document(node(1, "quality"), 0),
+            ],
+            vec![],
+        ),
+        Err(ImportError::MissingDependenceEstimate { .. })
+    ));
+}
+
+#[test]
+fn directory_round_trip_is_byte_stable_and_removes_stale_files() {
+    let import = import_with_node(project_document(2), node(0, "delivery"));
+    let expected = RenderedSnapshot::from_import(&import).unwrap();
+    let root = std::env::temp_dir().join(format!("optimist-markdown-{}", uuid::Uuid::new_v4()));
+    write_directory(&root, &expected).unwrap();
+    let loaded = read_directory(&root).unwrap();
+    assert_eq!(RenderedSnapshot::from_import(&loaded).unwrap(), expected);
+
+    let stale = root.join("entities/stale.md");
+    std::fs::write(&stale, "stale").unwrap();
+    write_directory(&root, &expected).unwrap();
+    assert!(!stale.exists());
+    for (relative, content) in expected.files() {
+        assert_eq!(
+            std::fs::read_to_string(root.join(relative)).unwrap(),
+            content
+        );
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }

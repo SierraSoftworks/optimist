@@ -71,11 +71,12 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Canonical `scenarios/<id>-<slug>.md` schema.
 - [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.
   - [x] Deterministic in-memory rendering and parse-render-parse semantic stability.
-- [ ] Two-pass reference and project-constraint validation.
-- [ ] Safe merge import plan with create/update/unchanged/conflict reporting.
+- [x] Two-pass reference and project-constraint validation.
+- [x] Safe merge import plan with create/update/unchanged/conflict reporting.
 - [ ] Explicit `--replace --yes` destructive restore semantics.
 - [ ] Deterministic atomic directory export from one immutable revision.
-- [ ] Export-import-export semantic and byte-stability tests.
+  - [x] Deterministic rendered snapshots with bounded directory loading and staged rollback-aware publication.
+- [x] Export-import-export semantic and byte-stability tests.
 - [ ] Implement `optimist project import|export` as HTTP clients.
 
 ## 5. Real-Time Collaboration

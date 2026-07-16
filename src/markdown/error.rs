@@ -2,6 +2,8 @@ use thiserror::Error;
 
 use crate::domain::{EdgeId, EntityId, ScenarioId};
 
+use super::ImportError;
+
 /// Source-aware failures returned by bounded Markdown parsing and rendering.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum MarkdownError {
@@ -101,6 +103,15 @@ pub enum MarkdownError {
         /// Domain validation diagnostic.
         message: String,
     },
+    /// Two imported documents use the same relative source path.
+    #[error("{path}: duplicate imported document path")]
+    DuplicatePath {
+        /// Repeated relative source path.
+        path: String,
+    },
+    /// Collection-level identity, revision, or cross-reference validation failed.
+    #[error(transparent)]
+    Import(#[from] ImportError),
     /// YAML serialization failed for an already validated document.
     #[error("could not render Markdown frontmatter: {0}")]
     Render(String),
