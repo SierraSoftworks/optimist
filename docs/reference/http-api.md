@@ -93,6 +93,14 @@ GET /api/v1/projects/{project}/analysis/structure
 
 The response contains an immutable revision key, exact SCCs, canonical cycles, limits, and a truncation flag.
 
+## Scenario analysis
+
+```http
+GET /api/v1/projects/{project}/scenarios/{scenario}/analysis
+```
+
+The response contains the immutable graph/scenario/dependence/formula revision key, planning horizon, and independently sampled candidate/objective projections. A `422 scenario_analysis_unavailable` response identifies missing baselines or unsupported non-empty dynamic dependence.
+
 ## Change replay
 
 ```http

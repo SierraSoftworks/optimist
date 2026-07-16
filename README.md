@@ -5,7 +5,7 @@ Optimist helps teams model complex systems, preserve uncertainty, identify feedb
 It combines a typed causal graph, project-scoped estimates and formulas, Bayesian updates, dependence-aware Monte Carlo sampling, structural feedback analysis, an HTTP/CLI workflow, deterministic Markdown documents, and ordered collaboration events.
 
 > [!IMPORTANT]
-> Optimist is under active development. The modelling and statistical core is usable today, but the default server stores projects in process memory. Durable RocksDB projects, complete Markdown import/export commands, decision propagation, and the visual workbench remain in progress.
+> Optimist is under active development. The modelling and statistical core is usable today, but the default server stores projects in process memory. Durable RocksDB projects, complete Markdown import/export commands, decision optimization, and the visual workbench remain in progress.
 
 ## What it provides
 
@@ -15,6 +15,7 @@ It combines a typed causal graph, project-scoped estimates and formulas, Bayesia
 - **Bayesian updating:** validated Beta-Binomial and Normal-Normal conjugate updates.
 - **Dependence modelling:** Gaussian copulas with positive-semidefinite correlation validation.
 - **Feedback discovery:** exact strongly connected components and bounded elementary-cycle enumeration.
+- **Scenario projection:** deterministic finite-horizon Monte Carlo impact for individual candidate interventions.
 - **Reproducible collaboration:** revision-checked commands, idempotent retries, ordered `ChangeSet` replay, and project WebSocket streams.
 - **Agent-friendly interfaces:** table, JSON, and JSONL CLI output plus typed HTTP APIs and canonical short IDs.
 
@@ -82,6 +83,7 @@ A fresh server allocates project `A` and entity IDs `A`, `B`, and so on. IDs are
 cargo run -- --output json --project A node list
 cargo run -- --output json project changes A --after 0
 cargo run -- --project A analysis structure
+cargo run -- --project A scenario analyze A
 ```
 
 ## Core concepts
@@ -146,7 +148,7 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 
 - The default server catalog and graph databases are process-local; restarting the server loses its data.
 - The RocksDB feature is blocked on the current macOS bindgen target mismatch and is not part of the default quality gate.
-- Structural SCC/cycle analysis is exact, but finite-horizon posterior intervention propagation and optimization are not implemented yet.
+- Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
 - The Markdown parser, renderer, validation, and merge planner are available in the Rust library; complete HTTP/CLI import and export workflows remain pending.
 - Authentication, retained-history snapshot fallback, and the Vue workbench are planned but not complete.
 

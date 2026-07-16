@@ -42,7 +42,7 @@ A delivery team wants to understand why lead time remains high. It models:
 4. Current states, desired states, costs, durations, and causal effects as typed uncertain estimates.
 5. A scenario containing objectives, budget, planning horizon, and candidate interventions.
 
-Optimist can already validate and store that model, detect structural feedback loops, update selected priors with conjugate Bayesian evidence, and evaluate unit-checked Fermi decompositions. Finite-horizon decision propagation and the visual workbench are the next major implementation stage.
+Optimist can validate and store that model, detect structural feedback loops, update selected priors with conjugate Bayesian evidence, evaluate unit-checked Fermi decompositions, and project each candidate over a finite scenario horizon. Dependence-aware decision optimization and the visual workbench are the next major implementation stage.
 
 ## Try the core
 
@@ -67,5 +67,5 @@ cargo run -- --project A node create \
 Continue with the [getting-started guide](./guide/README.md).
 
 ::: warning Development status
-The default server keeps projects in memory. Restarting it loses project data. The modelling, probability, structural-analysis, command-replay, and WebSocket cores are implemented and tested; durable project storage, full Markdown import/export transport, decision propagation, and the Vue workbench remain under development.
+The default server keeps projects in memory. Restarting it loses project data. The modelling, probability, structural analysis, finite-horizon candidate projection, command-replay, and WebSocket cores are implemented and tested; durable project storage, full Markdown import/export transport, decision optimization, and the Vue workbench remain under development.
 :::

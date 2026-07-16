@@ -117,13 +117,14 @@ optimist --project A scenario show <ID>
 optimist --project A scenario list
 optimist --project A scenario update <ID> --revision <REV> --document <JSON>
 optimist --project A scenario delete <ID> --revision <REV>
+optimist --project A scenario analyze <ID>
 
 optimist --project A dependence set --document <PROJECT_DEPENDENCE_MODEL_JSON>
 optimist --project A dependence show
 optimist --project A dependence remove --revision <REV>
 ```
 
-`scenario analyze` remains unavailable until posterior decision propagation is implemented.
+`scenario analyze` evaluates each candidate independently over the scenario horizon. Table output reports objective baseline, final state, direction-oriented improvement, uncertainty, sample count, and convergence status. JSON returns the complete revision-keyed result, including improvement covariance; JSONL emits one candidate/objective row per line.
 
 ### Structural analysis
 
