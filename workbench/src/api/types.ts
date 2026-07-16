@@ -157,6 +157,36 @@ export interface EdgeIdentity {
   destination: string
 }
 
+export interface AnalysisRevisionKey {
+  project: string
+  graph_revision: number
+  scenario: [string, number] | null
+  dependence_revision: number | null
+  formula_revision: number
+}
+
+export interface StronglyConnectedComponent {
+  nodes: string[]
+  edges: EdgeIdentity[]
+  is_feedback: boolean
+}
+
+export interface ElementaryCycle {
+  nodes: string[]
+  edges: EdgeIdentity[]
+}
+
+export interface StructuralAnalysis {
+  revision: AnalysisRevisionKey
+  components: StronglyConnectedComponent[]
+  cycles: ElementaryCycle[]
+  cycles_truncated: boolean
+  limits: {
+    maximum_cycle_length: number
+    maximum_cycles: number
+  }
+}
+
 export interface CreateNodeInput {
   name: string
   title: string

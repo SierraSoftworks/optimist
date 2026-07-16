@@ -7,6 +7,38 @@ const project: Project = { id: 'A', name: 'Delivery', revision: 7 }
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Optimist API client', () => {
+  it('reads exact structural feedback analysis', async () => {
+    const analysis = {
+      revision: {
+        project: 'A', graph_revision: 4, scenario: null,
+        dependence_revision: null, formula_revision: 0,
+      },
+      components: [{
+        nodes: ['A', 'B'],
+        edges: [{ source: 'A', kind: 'contributes', destination: 'B' }],
+        is_feedback: true,
+      }],
+      cycles: [{
+        nodes: ['A', 'B'],
+        edges: [
+          { source: 'A', kind: 'contributes', destination: 'B' },
+          { source: 'B', kind: 'contributes', destination: 'A' },
+        ],
+      }],
+      cycles_truncated: false,
+      limits: { maximum_cycle_length: 8, maximum_cycles: 1000 },
+    }
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(analysis), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetch)
+    await expect(api.structuralAnalysis('A')).resolves.toEqual(analysis)
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/structure')
+  })
+
   it('sends revision-checked idempotent node commands', async () => {
     const node = {
       id: 'B',

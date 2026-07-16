@@ -48,6 +48,20 @@ export function useGraph(projectId: Ref<string | null>) {
   return { nodes, edges }
 }
 
+export function useStructuralAnalysis(
+  projectId: Ref<string | null>,
+  projectRevision: Ref<number | undefined>,
+  enabled: Ref<boolean>,
+) {
+  return useQuery({
+    queryKey: computed(() => [
+      'analysis', 'structure', projectId.value, projectRevision.value,
+    ]),
+    queryFn: () => api.structuralAnalysis(projectId.value!),
+    enabled: computed(() => Boolean(projectId.value) && enabled.value),
+  })
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({

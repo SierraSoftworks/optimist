@@ -14,6 +14,7 @@ import type {
   Project,
   ProjectArchive,
   SetStateEstimateInput,
+  StructuralAnalysis,
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
   StateEstimateSlot,
@@ -179,6 +180,8 @@ export const api = {
   project: (project: string) => request<Project>(`/api/v1/projects/${project}`),
   nodes: (project: string) => request<GraphNode[]>(`/api/v1/projects/${project}/nodes`),
   edges: (project: string) => request<GraphEdge[]>(`/api/v1/projects/${project}/edges`),
+  structuralAnalysis: (project: string) =>
+    request<StructuralAnalysis>(`/api/v1/projects/${project}/analysis/structure`),
   createProject: (name: string) =>
     request<Project>('/api/v1/projects', {
       method: 'POST',

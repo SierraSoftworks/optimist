@@ -32,6 +32,7 @@ import EditInterventionEstimateDialog from './components/EditInterventionEstimat
 import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
 import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
 import GraphNavigator from './components/GraphNavigator.vue'
+import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -78,6 +79,7 @@ import {
   useDeleteEvidence,
   useSetEdgeEstimate,
   useRemoveEdgeEstimate,
+  useStructuralAnalysis,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 
@@ -108,6 +110,9 @@ const selectedObservation = ref<Observation | null>(null)
 const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const selectedEvidence = ref<Evidence | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
+const selectedFeedbackCycle = ref<number | null>(null)
+const highlightedNodeIds = ref<string[]>([])
+const highlightedEdgeIds = ref<string[]>([])
 const mutationError = ref<Error | null>(null)
 const createProjectOption = '__create_project__'
 
@@ -148,6 +153,13 @@ const updateEvidence = useUpdateEvidence(projectQuery.data, selectedNode, select
 const deleteEvidence = useDeleteEvidence(projectQuery.data, selectedNode, selectedEvidence)
 const setEdgeEstimate = useSetEdgeEstimate(projectQuery.data, selectedEdge)
 const removeEdgeEstimate = useRemoveEdgeEstimate(projectQuery.data, selectedEdge)
+const feedbackModeEnabled = computed(() => mode.value === 'feedback')
+const projectRevision = computed(() => projectQuery.data.value?.revision)
+const structuralAnalysis = useStructuralAnalysis(
+  selectedProjectId,
+  projectRevision,
+  feedbackModeEnabled,
+)
 const loading = computed(
   () =>
     projectsQuery.isPending.value ||
@@ -165,11 +177,11 @@ const kindOptions: Array<{ kind: NodeKind; label: string; icon: typeof Goal }> =
   { kind: 'factor', label: 'Factors', icon: Activity },
   { kind: 'intervention', label: 'Interventions', icon: Wrench },
 ]
-const modes: Array<{ id: WorkbenchMode; label: string }> = [
-  { id: 'explore', label: 'Explore' },
-  { id: 'impediments', label: 'Impediments' },
-  { id: 'feedback', label: 'Feedback' },
-  { id: 'optimize', label: 'Optimize' },
+const modes: Array<{ id: WorkbenchMode; label: string; available: boolean }> = [
+  { id: 'explore', label: 'Explore', available: true },
+  { id: 'impediments', label: 'Impediments', available: false },
+  { id: 'feedback', label: 'Feedback', available: true },
+  { id: 'optimize', label: 'Optimize', available: false },
 ]
 
 watch(
@@ -189,6 +201,8 @@ watch(visibleNodes, (next) => {
   }
 })
 
+watch([mode, selectedProjectId], () => clearFeedbackSelection())
+
 function selectProject(event: Event) {
   const select = event.target as HTMLSelectElement
   if (select.value === createProjectOption) {
@@ -197,6 +211,27 @@ function selectProject(event: Event) {
     return
   }
   store.selectProject(select.value || null)
+}
+
+function edgeElementId(edge: import('./api/types').EdgeIdentity) {
+  return `${edge.source}:${edge.kind}:${edge.destination}`
+}
+
+function selectFeedbackCycle(
+  index: number,
+  nodes: string[],
+  edges: import('./api/types').EdgeIdentity[],
+) {
+  selectedFeedbackCycle.value = index
+  highlightedNodeIds.value = nodes
+  highlightedEdgeIds.value = edges.map(edgeElementId)
+  store.selectNode(nodes[0] ?? null)
+}
+
+function clearFeedbackSelection() {
+  selectedFeedbackCycle.value = null
+  highlightedNodeIds.value = []
+  highlightedEdgeIds.value = []
 }
 
 async function submitProject(name: string) {
@@ -488,6 +523,8 @@ function retry() {
           type="button"
           :class="{ active: mode === item.id }"
           :aria-pressed="mode === item.id"
+          :disabled="!item.available"
+          :title="item.available ? undefined : 'Analysis mode not yet available'"
           @click="mode = item.id"
         >
           {{ item.label }}
@@ -571,11 +608,24 @@ function retry() {
           :nodes="visibleNodes"
           :edges="visibleEdges"
           :selected-node-id="selectedNodeId"
+          :highlighted-node-ids="highlightedNodeIds"
+          :highlighted-edge-ids="highlightedEdgeIds"
           @select="store.selectNode"
         />
       </section>
 
+      <FeedbackAnalysisPanel
+        v-if="mode === 'feedback'"
+        :analysis="structuralAnalysis.data.value"
+        :pending="structuralAnalysis.isPending.value || structuralAnalysis.isFetching.value"
+        :error="structuralAnalysis.error.value as Error | null"
+        :selected-cycle="selectedFeedbackCycle"
+        @select="selectFeedbackCycle"
+        @clear="clearFeedbackSelection"
+        @retry="structuralAnalysis.refetch()"
+      />
       <NodeInspector
+        v-else
         :node="selectedNode"
         :edges="edges"
         @edit="editNodeDialogOpen = true"

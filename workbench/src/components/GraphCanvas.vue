@@ -8,6 +8,8 @@ const props = defineProps<{
   nodes: GraphNode[]
   edges: GraphEdge[]
   selectedNodeId: string | null
+  highlightedNodeIds?: string[]
+  highlightedEdgeIds?: string[]
 }>()
 
 const emit = defineEmits<{ select: [id: string | null] }>()
@@ -73,6 +75,16 @@ const styles: CytoscapeStyle = [
     },
   },
   {
+    selector: 'node.analysis-highlight',
+    style: {
+      'border-width': 5,
+      'border-color': '#a83f31',
+      'underlay-color': '#d35a47',
+      'underlay-opacity': 0.16,
+      'underlay-padding': 11,
+    },
+  },
+  {
     selector: 'edge',
     style: {
       width: 1.5,
@@ -87,6 +99,16 @@ const styles: CytoscapeStyle = [
   {
     selector: 'edge[kind = "contributes"], edge[kind = "changes"], edge[kind = "blocks"]',
     style: { width: 2.5, 'line-color': '#4f5b55', 'target-arrow-color': '#4f5b55' },
+  },
+  {
+    selector: 'edge.analysis-highlight',
+    style: {
+      width: 5,
+      'line-color': '#a83f31',
+      'target-arrow-color': '#a83f31',
+      opacity: 1,
+      'z-index': 20,
+    },
   },
 ]
 
@@ -131,12 +153,24 @@ function syncElements() {
   graph.add(elements())
   layout()
   syncSelection()
+  syncHighlights()
 }
 
 function syncSelection() {
   if (!graph) return
   graph.nodes().unselect()
   if (props.selectedNodeId) graph.getElementById(props.selectedNodeId).select()
+}
+
+function syncHighlights() {
+  if (!graph) return
+  graph.elements().removeClass('analysis-highlight')
+  for (const id of props.highlightedNodeIds ?? []) {
+    graph.getElementById(id).addClass('analysis-highlight')
+  }
+  for (const id of props.highlightedEdgeIds ?? []) {
+    graph.getElementById(id).addClass('analysis-highlight')
+  }
 }
 
 function zoom(factor: number) {
@@ -169,10 +203,12 @@ onMounted(async () => {
   if (container.value) resizeObserver.observe(container.value)
   layout()
   syncSelection()
+  syncHighlights()
 })
 
 watch(graphSignature, syncElements)
 watch(() => props.selectedNodeId, syncSelection)
+watch(() => [props.highlightedNodeIds, props.highlightedEdgeIds], syncHighlights, { deep: true })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
@@ -184,6 +220,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="graph-surface" data-testid="graph-surface">
     <div ref="container" class="graph-canvas" aria-label="System graph"></div>
+    <p v-if="highlightedNodeIds?.length || highlightedEdgeIds?.length" class="sr-only" aria-live="polite">
+      Analysis highlights {{ highlightedNodeIds?.length ?? 0 }} nodes and {{ highlightedEdgeIds?.length ?? 0 }} relationships.
+    </p>
     <div class="zoom-controls" aria-label="Graph zoom controls">
       <button type="button" title="Zoom in" aria-label="Zoom in" @click="zoom(1.2)">
         <Plus :size="17" />

@@ -34,6 +34,29 @@ async function mockApi(page: Page, state: FixtureState) {
     }
     if (url.pathname === '/api/v1/projects/A/nodes') return json(state.nodes)
     if (url.pathname === '/api/v1/projects/A/edges') return json(state.edges)
+    if (url.pathname === '/api/v1/projects/A/analysis/structure') {
+      const causal = state.edges.filter((edge) =>
+        ['contributes', 'changes', 'blocks'].includes((edge.payload as { kind: string }).kind),
+      )
+      const forward = causal.find((edge) => edge.source === 'A' && edge.destination === 'B')
+      const backward = causal.find((edge) => edge.source === 'B' && edge.destination === 'A')
+      const cycleEdges = forward && backward
+        ? [forward, backward].map((edge) => ({
+            source: edge.source,
+            kind: (edge.payload as { kind: string }).kind,
+            destination: edge.destination,
+          }))
+        : []
+      return json({
+        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null, formula_revision: 0 },
+        components: cycleEdges.length
+          ? [{ nodes: ['A', 'B'], edges: cycleEdges, is_feedback: true }]
+          : state.nodes.map((node) => ({ nodes: [node.id], edges: [], is_feedback: false })),
+        cycles: cycleEdges.length ? [{ nodes: ['A', 'B'], edges: cycleEdges }] : [],
+        cycles_truncated: false,
+        limits: { maximum_cycle_length: 8, maximum_cycles: 1000 },
+      })
+    }
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {
       const command = JSON.parse(request.postData()!)
       const input = command.command.payload
@@ -178,6 +201,43 @@ test('creates another project from the project dropdown', async ({ page }, testI
     'Second model',
     'New project...',
   ])
+})
+
+test('analyzes and highlights causal feedback loops', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
+  const estimate = { id: 'A', revision: 0, distribution: { type: 'point', value: 0.5 }, provenance: [] }
+  const nodes = ['A', 'B'].map((id) => ({
+    id, revision: 0, name: `factor_${id}`, normalized_name: `factor_${id}`, title: `Factor ${id}`,
+    description: '', aliases: [], metadata: {},
+    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
+  }))
+  const edges = [
+    { source: 'A', destination: 'B' },
+    { source: 'B', destination: 'A' },
+  ].map(({ source, destination }) => ({
+    source, source_kind: 'factor', destination, destination_kind: 'factor', revision: 0,
+    description: '', metadata: {},
+    payload: { kind: 'contributes', properties: { effect: estimate, lag: null, mechanism: '', evidence: [] } },
+  }))
+  await page.unroute('**/api/v1/**')
+  await mockApi(page, {
+    project: { id: 'A', name: 'Feedback model', revision: 0 },
+    revision: 4,
+    nodes,
+    edges,
+  })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Feedback', exact: true }).click()
+  const panel = page.getByLabel('Feedback analysis')
+  await expect(panel.getByText('1', { exact: true }).first()).toBeVisible()
+  await expect(panel.getByText('A → B → A')).toBeVisible()
+  await panel.getByRole('button', { name: /A → B → A/ }).click()
+  await expect(panel.getByRole('button', { name: /A → B → A/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('Analysis highlights 2 nodes and 2 relationships.')).toBeAttached()
+  await expect(page.getByText('feedback', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Impediments' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Optimize' })).toBeDisabled()
+  await page.screenshot({ path: 'artifacts/workbench-feedback.png', fullPage: true })
 })
 
 test('keeps project and graph controls usable on mobile', async ({ page }, testInfo) => {
