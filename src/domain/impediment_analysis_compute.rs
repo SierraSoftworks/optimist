@@ -206,7 +206,7 @@ mod tests {
             NodePayload::Factor(Factor {
                 current: None,
                 desired: None,
-                controllable: id % 2 == 0,
+                controllable: id.is_multiple_of(2),
                 evidence: (0..evidence)
                     .map(|record| super::super::Evidence {
                         id: record as u64,
