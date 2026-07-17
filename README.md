@@ -86,7 +86,7 @@ cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
 
-The server atomically writes a versioned `catalog.json` under `--data-dir` after every successful project or command mutation. Restarting with the same data directory restores project metadata, graph contents, estimates, Fermi sources, scenarios, formulas, dependence documents, revisions, monotonic project/entity/scenario allocators, committed `ChangeSet` events, and idempotent command results. Startup rejects malformed, discontinuous, or unsupported snapshots instead of serving partial state.
+The server atomically writes a versioned `catalog.json` under `--data-dir` after every successful project or command mutation. Restarting with the same data directory restores project metadata, graph contents, estimates, Fermi sources, scenarios, formulas, dependence documents, revisions, monotonic project/entity/scenario allocators, committed `ChangeSet` events, and idempotent command results. Startup migrates known older schemas forward only after the transformed catalog passes complete archive, allocator, formula, dependence, and replay-continuity checks. The upgraded snapshot is then atomically rewritten. Malformed state and unknown future or legacy schemas fail startup without modifying the original file.
 
 ### Serve the production workbench
 

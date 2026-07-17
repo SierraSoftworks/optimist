@@ -11,7 +11,7 @@ use crate::command::{ChangeSet, CommandResult};
 
 use super::{ProjectArchive, ProjectCatalog, ProjectError};
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 const SNAPSHOT_FILE: &str = "catalog.json";
 const MAX_SNAPSHOT_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -45,6 +45,14 @@ pub enum CatalogPersistenceError {
     /// The snapshot declares an unsupported forward or legacy schema version.
     #[error("catalog snapshot schema {0} is unsupported")]
     UnsupportedSchema(u32),
+    /// A known older snapshot could not be transformed into the next schema.
+    #[error("could not migrate catalog snapshot schema {version}: {reason}")]
+    Migration {
+        /// Schema version being migrated.
+        version: u32,
+        /// Structural problem which made the migration unsafe.
+        reason: String,
+    },
     /// One embedded canonical project archive or allocator failed validation.
     #[error("catalog snapshot contains invalid project state")]
     Project(#[from] ProjectError),
@@ -72,12 +80,22 @@ impl CatalogStore {
             return Err(CatalogPersistenceError::TooLarge { path });
         }
         let bytes = fs::read(&path).map_err(|source| io_error(path.clone(), source))?;
-        let snapshot: CatalogSnapshot =
+        let mut document: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|source| CatalogPersistenceError::Json {
                 path: path.clone(),
                 source,
             })?;
-        ProjectCatalog::from_persisted_snapshot(snapshot)
+        let migrated = migrate(&mut document)?;
+        let snapshot: CatalogSnapshot =
+            serde_json::from_value(document).map_err(|source| CatalogPersistenceError::Json {
+                path: path.clone(),
+                source,
+            })?;
+        let mut catalog = ProjectCatalog::from_persisted_snapshot(snapshot)?;
+        if migrated {
+            self.save(&mut catalog)?;
+        }
+        Ok(catalog)
     }
 
     pub(crate) fn save(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
@@ -106,9 +124,7 @@ struct PersistedProject {
     graph_revision: u64,
     next_entity_id: Option<u64>,
     next_scenario_id: Option<u64>,
-    #[serde(default)]
-    change_history_start: Option<u64>,
-    #[serde(default)]
+    change_history_start: u64,
     changes: Vec<ChangeSet>,
 }
 
@@ -140,7 +156,7 @@ impl ProjectCatalog {
                 graph_revision: entry.graph_revision,
                 next_entity_id: entry.repository.next_entity_id_counter(),
                 next_scenario_id: entry.next_scenario_id,
-                change_history_start: Some(entry.change_history_start),
+                change_history_start: entry.change_history_start,
                 changes: entry.changes.values().cloned().collect(),
             });
         }
@@ -172,17 +188,7 @@ impl ProjectCatalog {
             )?;
             entry.graph_revision = persisted.graph_revision;
             entry.next_scenario_id = persisted.next_scenario_id;
-            restore_changes(
-                entry,
-                persisted.change_history_start.unwrap_or({
-                    if persisted.changes.is_empty() {
-                        persisted.archive.project.revision
-                    } else {
-                        0
-                    }
-                }),
-                persisted.changes,
-            )?;
+            restore_changes(entry, persisted.change_history_start, persisted.changes)?;
             entry
                 .repository
                 .restore_next_entity_id_counter(persisted.next_entity_id)
@@ -190,6 +196,68 @@ impl ProjectCatalog {
         }
         catalog.next_project_id = snapshot.next_project_id;
         Ok(catalog)
+    }
+}
+
+fn migrate(document: &mut serde_json::Value) -> Result<bool, CatalogPersistenceError> {
+    let version = document
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| migration_error(0, "schema_version must be a u32"))?;
+    match version {
+        SNAPSHOT_SCHEMA_VERSION => Ok(false),
+        1 => {
+            migrate_v1_to_v2(document)?;
+            Ok(true)
+        }
+        unsupported => Err(CatalogPersistenceError::UnsupportedSchema(unsupported)),
+    }
+}
+
+fn migrate_v1_to_v2(document: &mut serde_json::Value) -> Result<(), CatalogPersistenceError> {
+    let projects = document
+        .get_mut("projects")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| migration_error(1, "projects must be an array"))?;
+    for project in projects {
+        let object = project
+            .as_object_mut()
+            .ok_or_else(|| migration_error(1, "each project must be an object"))?;
+        let project_revision = object
+            .get("archive")
+            .and_then(|archive| archive.get("project"))
+            .and_then(|project| project.get("revision"))
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| migration_error(1, "archive project revision must be a u64"))?;
+        let history_start_missing = object
+            .get("change_history_start")
+            .is_none_or(serde_json::Value::is_null);
+        let changes = object
+            .entry("changes")
+            .or_insert_with(|| serde_json::Value::Array(vec![]))
+            .as_array()
+            .ok_or_else(|| migration_error(1, "changes must be an array"))?;
+        if history_start_missing {
+            let history_start = changes
+                .first()
+                .and_then(|change| change.get("base_revision"))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(project_revision);
+            object.insert(
+                "change_history_start".to_owned(),
+                serde_json::Value::from(history_start),
+            );
+        }
+    }
+    document["schema_version"] = serde_json::Value::from(SNAPSHOT_SCHEMA_VERSION);
+    Ok(())
+}
+
+fn migration_error(version: u32, reason: &str) -> CatalogPersistenceError {
+    CatalogPersistenceError::Migration {
+        version,
+        reason: reason.to_owned(),
     }
 }
 
@@ -476,6 +544,129 @@ mod tests {
             CatalogStore::new(fixture.root.clone()).load(),
             Err(CatalogPersistenceError::UnsupportedSchema(99))
         ));
+    }
+
+    #[test]
+    fn migrates_v1_replay_and_idempotency_then_rewrites_v2() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        let request = CommandRequest {
+            request_id: Uuid::nil(),
+            expected_revision: 0,
+            command: GraphCommand::CreateNode(factor("flow")),
+        };
+        let first = catalog.execute(&project.id, request.clone()).unwrap();
+        store.save(&mut catalog).unwrap();
+        let path = fixture.root.join(SNAPSHOT_FILE);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        value["schema_version"] = serde_json::Value::from(1);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let mut migrated = store.load().unwrap();
+        assert_eq!(
+            migrated
+                .replay_changes(&project.id, 0)
+                .unwrap()
+                .changes
+                .len(),
+            1
+        );
+        assert_eq!(migrated.execute(&project.id, request).unwrap(), first);
+        let rewritten: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(rewritten["schema_version"], SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(rewritten["projects"][0]["change_history_start"], 0);
+        assert_eq!(
+            rewritten["projects"][0]["changes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn migrates_pre_replay_v1_to_a_safe_history_floor() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
+            )
+            .unwrap();
+        store.save(&mut catalog).unwrap();
+        let path = fixture.root.join(SNAPSHOT_FILE);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        value["schema_version"] = serde_json::Value::from(1);
+        value["projects"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("change_history_start");
+        value["projects"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("changes");
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        let mut migrated = store.load().unwrap();
+        assert!(matches!(
+            migrated.replay_changes(&project.id, 0),
+            Err(ProjectError::ChangeHistoryGap {
+                available_after: 1,
+                ..
+            })
+        ));
+        assert!(
+            migrated
+                .replay_changes_with_snapshot(&project.id, 0)
+                .unwrap()
+                .snapshot
+                .is_some()
+        );
+        let rewritten: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(rewritten["schema_version"], SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(rewritten["projects"][0]["change_history_start"], 1);
+        assert!(
+            rewritten["projects"][0]["changes"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn failed_v1_integrity_validation_does_not_rewrite_snapshot() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
+            )
+            .unwrap();
+        store.save(&mut catalog).unwrap();
+        let path = fixture.root.join(SNAPSHOT_FILE);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        value["schema_version"] = serde_json::Value::from(1);
+        value["projects"][0]["change_history_start"] = serde_json::Value::from(0);
+        value["projects"][0]["changes"] = serde_json::json!([]);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+
+        assert!(store.load().is_err());
+        let unchanged: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(unchanged["schema_version"], 1);
     }
 
     #[test]
