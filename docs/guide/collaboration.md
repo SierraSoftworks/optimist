@@ -40,7 +40,15 @@ cargo run -- --output jsonl project changes A --after 12
 
 Committed event history and idempotent results are published atomically with the project snapshot under `--data-dir`. Restarting restores ordered replay and returns the original command result for a repeated pre-restart request ID.
 
-Imported archives do not contain the source server's event log. Their retained-history floor is the archived project revision. A replay request older than that floor returns `change_history_gap` with advice to fetch a current project snapshot and reconnect from the available revision.
+Imported archives do not contain the source server's event log. Their retained-history floor is the archived project revision. A replay request older than that floor returns a canonical project snapshot in the replay envelope instead of an incomplete event list. Clients replace local project state with the snapshot, persist its revision, and resume incremental replay from there.
+
+REST replay responses retain `after_revision`, `current_revision`, and `changes`. Ordinary replay omits `snapshot`. Gap recovery leaves `changes` empty and includes the complete canonical archive:
+
+```json
+{"snapshot":{"revision":13,"archive":{"schema_version":1,"project":{},"files":{},"summary":{}}}}
+```
+
+Table CLI output reports snapshot revision and aggregate counts. JSON returns the complete envelope, while JSON Lines emits one tagged `snapshot` record.
 
 ## WebSocket change stream
 
@@ -89,7 +97,7 @@ Each live receiver is bounded. If it falls behind, the server sends:
 
 The stream then closes. Reconnect from that revision to replay missing events.
 
-Automatic snapshot fallback for a retained-history gap is not implemented yet. Persisted native projects retain every committed event; imported projects explicitly report their history floor rather than returning an incomplete replay.
+On WebSocket startup, a history gap sends `snapshot`, then `caught_up` at the snapshot revision, then queued/live changes above that revision. A lagged receiver still gets `replay_required`; reconnecting from its last applied revision automatically receives incremental replay or snapshot fallback as appropriate.
 
 ## Conflict handling
 

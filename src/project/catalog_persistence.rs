@@ -501,6 +501,16 @@ mod tests {
         let replay = restored.replay_changes(&project.id, 1).unwrap();
         assert_eq!(replay.current_revision, 1);
         assert!(replay.changes.is_empty());
+        assert!(replay.snapshot.is_none());
+
+        let fallback = restored
+            .replay_changes_with_snapshot(&project.id, 0)
+            .unwrap();
+        let snapshot = fallback.snapshot.expect("history gap returns snapshot");
+        assert_eq!(snapshot.revision, fallback.current_revision);
+        assert_eq!(snapshot.archive.project.revision, fallback.current_revision);
+        assert_eq!(snapshot.archive.project.id, project.id);
+        assert!(fallback.changes.is_empty());
     }
 
     #[tokio::test]

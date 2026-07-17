@@ -171,11 +171,11 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 
 ## Current limitations
 
-- Projects, retained `ChangeSet` replay, and command idempotency results restore from one atomic canonical snapshot. Imported archives begin a new replay lineage at their archived revision; clients with older cursors receive `change_history_gap` and must fetch a current snapshot.
+- Projects, retained `ChangeSet` replay, and command idempotency results restore from one atomic canonical snapshot. Imported archives begin a new replay lineage at their archived revision; older cursors receive a canonical snapshot fallback through REST or WebSocket replay.
 - The RocksDB feature is blocked on the current macOS bindgen target mismatch and is not part of the default quality gate.
 - Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
 - Complete canonical project archives can be exported/imported through CLI, HTTP, and the workbench. Import is full-snapshot restore; safe merge application remains pending.
-- Authentication and retained-history snapshot fallback remain planned. The Vue workbench is available, but several roadmap workflows remain incomplete.
+- Authentication remains planned. The Vue workbench is available, but several roadmap workflows remain incomplete.
 
 The tracked implementation status is maintained in [TODO.md](TODO.md).
 
