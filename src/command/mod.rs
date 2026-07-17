@@ -11,7 +11,7 @@ mod classification;
 mod metadata_operations;
 mod operations;
 
-pub use change_set::{ChangeSet, ChangeSetReplay, ChangeStreamMessage};
+pub use change_set::{ChangeSet, ChangeSetReplay, ChangeSnapshot, ChangeStreamMessage};
 pub use metadata_operations::*;
 pub use operations::*;
 

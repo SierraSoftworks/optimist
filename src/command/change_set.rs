@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{CommandOutcome, GraphCommand};
+use crate::project::ProjectArchive;
 
 /// One committed, ordered project mutation suitable for deterministic replay.
 ///
 /// The event is appended only after command application succeeds. An idempotent
 /// retry with the same request ID returns its original result and does not append
-/// another event. Current storage is process-local; durable backends must persist
-/// this exact event before acknowledging multi-item mutations.
+/// another event. Persistent servers publish this event atomically with the project
+/// snapshot before acknowledging the mutation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ChangeSet {
     /// Client-generated idempotency key from the original command request.
@@ -34,12 +35,26 @@ pub struct ChangeSetReplay {
     pub current_revision: u64,
     /// Committed changes in ascending project-revision order.
     pub changes: Vec<ChangeSet>,
+    /// Complete replacement state when [`ChangeSetReplay::after_revision`] predates retained history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<ChangeSnapshot>,
+}
+
+/// Canonical project replacement supplied when incremental replay cannot bridge a history gap.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ChangeSnapshot {
+    /// Project revision represented by [`ChangeSnapshot::archive`].
+    pub revision: u64,
+    /// Complete validated project state to install before resuming live changes.
+    pub archive: ProjectArchive,
 }
 
 /// Server-to-client message on a project ChangeSet WebSocket stream.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum ChangeStreamMessage {
+    /// Complete project replacement required before subsequent live changes are applied.
+    Snapshot(Box<ChangeSnapshot>),
     /// One replayed or newly committed change in project-revision order.
     Change(Box<ChangeSet>),
     /// Replay is complete and live events begin after this revision.

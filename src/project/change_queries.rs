@@ -1,5 +1,5 @@
 use crate::{
-    command::{ChangeSet, ChangeSetReplay},
+    command::{ChangeSet, ChangeSetReplay, ChangeSnapshot},
     domain::ProjectId,
 };
 
@@ -52,6 +52,29 @@ impl ProjectCatalog {
                 ))
                 .map(|(_, change)| change.clone())
                 .collect(),
+            snapshot: None,
         })
+    }
+
+    /// Replays retained changes or returns a canonical replacement snapshot when history has a gap.
+    pub fn replay_changes_with_snapshot(
+        &mut self,
+        project: &ProjectId,
+        after_revision: u64,
+    ) -> Result<ChangeSetReplay, ProjectError> {
+        match self.replay_changes(project, after_revision) {
+            Ok(replay) => Ok(replay),
+            Err(ProjectError::ChangeHistoryGap { .. }) => {
+                let archive = self.export_archive(project)?;
+                let revision = archive.project.revision;
+                Ok(ChangeSetReplay {
+                    after_revision,
+                    current_revision: revision,
+                    changes: vec![],
+                    snapshot: Some(ChangeSnapshot { revision, archive }),
+                })
+            }
+            Err(error) => Err(error),
+        }
     }
 }

@@ -93,9 +93,9 @@ async fn changes(
     Ok(Json(
         state
             .catalog
-            .read()
+            .write()
             .await
-            .replay_changes(&project, query.after)?,
+            .replay_changes_with_snapshot(&project, query.after)?,
     ))
 }
 
@@ -183,6 +183,39 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(created.status(), StatusCode::CREATED);
+        let command = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "request_id": "00000000-0000-4000-8000-000000000001",
+                            "expected_revision": 0,
+                            "command": {
+                                "type": "create_node",
+                                "payload": {
+                                    "name": "flow",
+                                    "title": "Flow",
+                                    "payload": {
+                                        "kind": "factor",
+                                        "properties": {
+                                            "current": null,
+                                            "desired": null,
+                                            "controllable": false,
+                                            "evidence": []
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(command.status(), StatusCode::CREATED);
         let archive = app
             .clone()
             .oneshot(
@@ -212,6 +245,7 @@ mod tests {
         );
 
         let replaced = app
+            .clone()
             .oneshot(
                 Request::post("/api/v1/project-archives?replace=true&yes=true")
                     .header("content-type", "application/json")
@@ -222,5 +256,23 @@ mod tests {
             .unwrap();
         assert_eq!(replaced.status(), StatusCode::CREATED);
         assert_eq!(body(replaced).await["id"], "A");
+
+        let fallback = app
+            .oneshot(
+                Request::get("/api/v1/projects/A/changes?after=0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(fallback.status(), StatusCode::OK);
+        let fallback = body(fallback).await;
+        assert_eq!(fallback["current_revision"], archive["project"]["revision"]);
+        assert_eq!(
+            fallback["snapshot"]["revision"],
+            archive["project"]["revision"]
+        );
+        assert_eq!(fallback["snapshot"]["archive"], archive);
+        assert!(fallback["changes"].as_array().unwrap().is_empty());
     }
 }

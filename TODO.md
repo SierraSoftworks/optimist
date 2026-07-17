@@ -85,7 +85,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Persist committed `ChangeSet` events and replay by project revision.
   - [x] Record process-local committed `ChangeSet` events exactly once and expose ordered revision replay over API/CLI.
 - [x] Per-project WebSocket subscription and ordered broadcast.
-- [ ] Snapshot fallback when retained event history has a gap.
+- [x] Snapshot fallback when retained event history has a gap.
 - [ ] Ephemeral anonymous presence, selection, and editing state with expiry.
 - [ ] Merge disjoint nested fields and conflict on same-field edits.
 - [ ] Structured base/current/proposed conflict responses.

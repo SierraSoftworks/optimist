@@ -40,6 +40,8 @@ optimist project import <DIRECTORY> --replace --yes
 
 Export downloads one immutable canonical Markdown snapshot and publishes it through a staged directory replacement. Import validates every document and reference before restoring the archive. Restoring over an existing project requires both `--replace` and `--yes`; replacement clears process-local command/replay history.
 
+`project changes` normally renders retained events after the requested revision. If that cursor predates retained history, the server returns a canonical snapshot fallback. Table output identifies the snapshot revision/counts, JSON includes the complete archive, and JSON Lines emits one tagged snapshot object.
+
 ### Nodes
 
 ```sh

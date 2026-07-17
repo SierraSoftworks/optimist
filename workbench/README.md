@@ -24,6 +24,8 @@ The graph navigator provides synchronized Outline and Table views. Selecting a r
 
 Use the header download button to save the selected project as `.optimist.json`. The upload button previews archive identity/counts before restore. Replacing an existing project requires typing its project ID. Imported archives start a new replay lineage at their archived revision because portable archives do not carry server event logs. Native server snapshots retain complete projects, allocator positions, committed changes, and idempotent command results across ordinary restarts.
 
+REST and WebSocket replay automatically provide a canonical project snapshot when a client's cursor predates retained history. Clients replace local project state at the supplied revision before applying later live events.
+
 ## Run locally
 
 Start the Optimist API from the repository root:

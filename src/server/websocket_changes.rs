@@ -33,9 +33,9 @@ async fn connect(
     let receiver = state.subscribe(&project).await;
     let replay = state
         .catalog
-        .read()
+        .write()
         .await
-        .replay_changes(&project, query.after)?;
+        .replay_changes_with_snapshot(&project, query.after)?;
     Ok(upgrade.on_upgrade(move |socket| stream(socket, receiver, replay)))
 }
 
@@ -45,6 +45,18 @@ async fn stream(
     replay: crate::command::ChangeSetReplay,
 ) {
     let mut delivered = replay.after_revision;
+    if let Some(snapshot) = replay.snapshot {
+        delivered = snapshot.revision;
+        if send(
+            &mut socket,
+            ChangeStreamMessage::Snapshot(Box::new(snapshot)),
+        )
+        .await
+        .is_err()
+        {
+            return;
+        }
+    }
     for change in replay.changes {
         delivered = change.project_revision;
         if send(&mut socket, ChangeStreamMessage::Change(Box::new(change)))
@@ -241,6 +253,62 @@ mod tests {
             .unwrap();
         assert_eq!(replay.current_revision, 2);
         assert_eq!(replay.changes.len(), 1);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn sends_snapshot_before_live_changes_when_history_has_a_gap() {
+        let (base, server) = server().await;
+        let client = reqwest::Client::new();
+        let project: Project = client
+            .post(format!("{base}/api/v1/projects"))
+            .json(&CreateProject {
+                name: "Delivery".to_owned(),
+            })
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        commit(&client, &base, &CommandRequest::new(0, node("first"))).await;
+        let archive: crate::project::ProjectArchive = client
+            .get(format!("{base}/api/v1/projects/A/archive"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        client
+            .post(format!(
+                "{base}/api/v1/project-archives?replace=true&yes=true"
+            ))
+            .json(&archive)
+            .send()
+            .await
+            .unwrap();
+
+        let websocket = base.replacen("http://", "ws://", 1);
+        let (mut socket, _) = tokio_tungstenite::connect_async(format!(
+            "{websocket}/api/v1/projects/A/changes/ws?after=0"
+        ))
+        .await
+        .unwrap();
+        assert!(matches!(
+            message(&mut socket).await,
+            ChangeStreamMessage::Snapshot(snapshot)
+                if snapshot.revision == 1 && snapshot.archive.project.id == project.id
+        ));
+        assert_eq!(
+            message(&mut socket).await,
+            ChangeStreamMessage::CaughtUp { revision: 1 }
+        );
+        commit(&client, &base, &CommandRequest::new(1, node("second"))).await;
+        assert!(matches!(
+            message(&mut socket).await,
+            ChangeStreamMessage::Change(change) if change.project_revision == 2
+        ));
         server.abort();
     }
 }
