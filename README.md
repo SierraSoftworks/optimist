@@ -88,6 +88,20 @@ cargo run -- --project A scenario analyze A
 
 The server atomically writes a versioned `catalog.json` under `--data-dir` after every successful project or command mutation. Restarting with the same data directory restores project metadata, graph contents, estimates, Fermi sources, scenarios, formulas, dependence documents, revisions, monotonic project/entity/scenario allocators, committed `ChangeSet` events, and idempotent command results. Startup migrates known older schemas forward only after the transformed catalog passes complete archive, allocator, formula, dependence, and replay-continuity checks. The upgraded snapshot is then atomically rewritten. Malformed state and unknown future or legacy schemas fail startup without modifying the original file.
 
+Create and restore immutable full-catalog backups, or capture one project at an exact revision:
+
+```sh
+cargo run -- project backup create
+cargo run -- project backup list
+cargo run -- project backup restore <BACKUP_ID> --yes
+
+cargo run -- project snapshot A create
+cargo run -- project snapshot A list
+cargo run -- --output json project snapshot A show <REVISION>
+```
+
+Full restores validate the selected catalog before acquiring it as live state and automatically create a safety backup of the catalog being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content.
+
 ### Serve the production workbench
 
 Build the Vue application, then start Optimist from the repository root:

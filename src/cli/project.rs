@@ -8,7 +8,12 @@ use crate::{
     project::ProjectArchive,
 };
 
-use super::{client::ProjectClient, output::OutputFormat, project_changes_output};
+use super::{
+    client::ProjectClient,
+    output::OutputFormat,
+    project_backup::{BackupCommand, SnapshotCommand},
+    project_changes_output,
+};
 
 #[derive(Debug, Args)]
 pub(super) struct ProjectArgs {
@@ -44,6 +49,15 @@ enum ProjectCommand {
     Export {
         project: ProjectId,
         directory: PathBuf,
+    },
+    Backup {
+        #[command(subcommand)]
+        command: BackupCommand,
+    },
+    Snapshot {
+        project: ProjectId,
+        #[command(subcommand)]
+        command: SnapshotCommand,
     },
 }
 
@@ -124,6 +138,12 @@ pub(super) async fn run(
             })?;
             output.project(&client.show(&project).await?)?
         }
+        ProjectCommand::Backup { command } => {
+            super::project_backup::run_backup(command, &client, output).await?
+        }
+        ProjectCommand::Snapshot { project, command } => {
+            super::project_backup::run_snapshot(command, &project, &client, output).await?
+        }
     };
     println!("{rendered}");
     Ok(())
@@ -176,6 +196,28 @@ mod tests {
     fn parses_change_replay_cursor() {
         assert!(
             Cli::try_parse_from(["optimist", "project", "changes", "A", "--after", "42",]).is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_backup_restore_confirmation() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "project",
+                "backup",
+                "restore",
+                "00000000-0000-4000-8000-000000000001",
+                "--yes",
+            ])
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_project_snapshot_revision() {
+        assert!(
+            Cli::try_parse_from(["optimist", "project", "snapshot", "A", "show", "42"]).is_ok()
         );
     }
 

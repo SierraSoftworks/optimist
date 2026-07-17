@@ -20,6 +20,18 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "project_import_requires_replace" => {
             &["Retry with explicit replacement confirmation only after reviewing the archive."]
         }
+        "backup_storage_unavailable" => {
+            &["Start `optimist server` with a persistent data directory and retry."]
+        }
+        "backup_restore_requires_confirmation" => {
+            &["Review the selected backup, then repeat the command with `--yes`."]
+        }
+        "backup_not_found" => {
+            &["Run `optimist project backup list` and retry with a returned backup ID."]
+        }
+        "project_snapshot_not_found" => {
+            &["Run `optimist project snapshot <PROJECT> list` and retry with a returned revision."]
+        }
         "invalid_node" => &["Provide the required fields for the selected node kind."],
         "node_name_conflict" => {
             &["Choose a node name or alias which is not already used in this project."]

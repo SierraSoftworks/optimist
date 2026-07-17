@@ -28,6 +28,22 @@ Create body:
 
 Archive responses are bounded JSON envelopes containing validated project metadata, summary counts, and a `files` map of canonical Markdown paths to UTF-8 content. Import validates envelope metadata, file/path/byte limits, every Markdown document, cross-references, formulas, and dependence before atomically publishing a fresh in-memory project entry. Existing IDs return `project_import_requires_replace` unless both replacement flags are true.
 
+## Backups and immutable snapshots
+
+```http
+POST /api/v1/backups
+GET  /api/v1/backups
+POST /api/v1/backups/{backup}/restore?yes=true
+
+POST /api/v1/projects/{project}/snapshots
+GET  /api/v1/projects/{project}/snapshots
+GET  /api/v1/projects/{project}/snapshots/{revision}
+```
+
+Backup routes are available only on a server configured with persistent `--data-dir` storage. A full backup is an immutable copy of the validated versioned catalog plus bounded metadata. Restore first validates the selected catalog, then creates a safety backup of current state, atomically publishes the replacement, and closes existing project change streams so clients reconnect against restored revisions. Omitting `yes=true` returns `backup_restore_requires_confirmation` without changing state.
+
+Project snapshots are canonical `ProjectArchive` documents keyed by project and revision. Creating a snapshot at an already captured revision is idempotent when the content matches and never overwrites different content.
+
 ## Commands
 
 ```http

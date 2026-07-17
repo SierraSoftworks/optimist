@@ -6,7 +6,10 @@ use tokio::sync::{RwLock, broadcast};
 use crate::{
     command::ChangeSet,
     domain::ProjectId,
-    project::{CatalogPersistenceError, CatalogStore, ProjectCatalog, ProjectError},
+    project::{
+        BackupError, CatalogBackup, CatalogPersistenceError, CatalogRestore, CatalogStore,
+        ProjectArchive, ProjectCatalog, ProjectError, ProjectSnapshot,
+    },
 };
 
 #[derive(Clone)]
@@ -67,6 +70,71 @@ impl AppState {
         if let Some(channel) = channels.get(project) {
             let _ = channel.send(change);
         }
+    }
+
+    pub(super) async fn create_backup(&self) -> Result<CatalogBackup, BackupError> {
+        let store = self.store.as_ref().ok_or(BackupError::Unavailable)?;
+        let mut catalog = self.catalog.write().await;
+        store.create_backup(&mut catalog)
+    }
+
+    pub(super) fn list_backups(&self) -> Result<Vec<CatalogBackup>, BackupError> {
+        self.store
+            .as_ref()
+            .ok_or(BackupError::Unavailable)?
+            .list_backups()
+    }
+
+    pub(super) async fn restore_backup(
+        &self,
+        id: uuid::Uuid,
+        confirmed: bool,
+    ) -> Result<CatalogRestore, BackupError> {
+        if !confirmed {
+            return Err(BackupError::ConfirmationRequired);
+        }
+        let store = self.store.as_ref().ok_or(BackupError::Unavailable)?;
+        let mut catalog = self.catalog.write().await;
+        let (restored, mut replacement) = store.load_backup(id)?;
+        let safety_backup = store.create_backup(&mut catalog)?;
+        store.save(&mut replacement)?;
+        *catalog = replacement;
+        self.channels.write().await.clear();
+        Ok(CatalogRestore {
+            restored,
+            safety_backup,
+            projects: catalog.list(),
+        })
+    }
+
+    pub(super) async fn create_project_snapshot(
+        &self,
+        project: &ProjectId,
+    ) -> Result<ProjectSnapshot, BackupError> {
+        let store = self.store.as_ref().ok_or(BackupError::Unavailable)?;
+        let mut catalog = self.catalog.write().await;
+        store.create_project_snapshot(&mut catalog, project)
+    }
+
+    pub(super) fn list_project_snapshots(
+        &self,
+        project: &ProjectId,
+    ) -> Result<Vec<ProjectSnapshot>, BackupError> {
+        self.store
+            .as_ref()
+            .ok_or(BackupError::Unavailable)?
+            .list_project_snapshots(project)
+    }
+
+    pub(super) fn get_project_snapshot(
+        &self,
+        project: &ProjectId,
+        revision: u64,
+    ) -> Result<ProjectArchive, BackupError> {
+        self.store
+            .as_ref()
+            .ok_or(BackupError::Unavailable)?
+            .get_project_snapshot(project, revision)
     }
 }
 

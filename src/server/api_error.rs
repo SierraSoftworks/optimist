@@ -1,7 +1,7 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
-use crate::project::ProjectError;
+use crate::project::{BackupError, ProjectError};
 
 use super::project_error_response;
 use super::state::CatalogMutationError;
@@ -53,6 +53,70 @@ impl From<CatalogMutationError> for ApiError {
                             "Check that the server data directory is writable and has free space, then retry.",
                         ],
                     },
+                },
+            },
+        }
+    }
+}
+
+impl From<BackupError> for ApiError {
+    fn from(error: BackupError) -> Self {
+        match error {
+            BackupError::Project(error) => Self::from(error),
+            BackupError::Unavailable => Self::backup(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "backup_storage_unavailable",
+                error.to_string(),
+                vec!["Start the server with a persistent data directory before using backup APIs."],
+            ),
+            BackupError::ConfirmationRequired => Self::backup(
+                StatusCode::CONFLICT,
+                "backup_restore_requires_confirmation",
+                error.to_string(),
+                vec![
+                    "Repeat the restore request with `yes=true` after confirming the selected backup.",
+                ],
+            ),
+            BackupError::BackupNotFound(_) => Self::backup(
+                StatusCode::NOT_FOUND,
+                "backup_not_found",
+                error.to_string(),
+                vec!["List catalog backups and retry with an available backup ID."],
+            ),
+            BackupError::SnapshotNotFound { .. } => Self::backup(
+                StatusCode::NOT_FOUND,
+                "project_snapshot_not_found",
+                error.to_string(),
+                vec!["List snapshots for the project and retry with an available revision."],
+            ),
+            BackupError::Io { .. } | BackupError::Json { .. } | BackupError::Catalog(_) => {
+                Self::backup(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "backup_storage_failure",
+                    error.to_string(),
+                    vec![
+                        "Inspect the server data directory and logs before retrying the backup operation.",
+                    ],
+                )
+            }
+        }
+    }
+}
+
+impl ApiError {
+    fn backup(
+        status: StatusCode,
+        code: &'static str,
+        message: String,
+        advice: Vec<&'static str>,
+    ) -> Self {
+        Self {
+            status,
+            body: ErrorEnvelope {
+                error: ErrorBody {
+                    code,
+                    message,
+                    advice,
                 },
             },
         }

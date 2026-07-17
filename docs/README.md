@@ -67,5 +67,5 @@ cargo run -- --project A node create \
 Continue with the [getting-started guide](./guide/README.md).
 
 ::: warning Development status
-The default server keeps projects in memory. Restarting it loses project data. The modelling, probability, structural analysis, finite-horizon candidate projection, command-replay, and WebSocket cores are implemented and tested; durable project storage, full Markdown import/export transport, decision optimization, and the Vue workbench remain under development.
+The default server atomically persists complete projects, replay history, retry results, and allocator state under `--data-dir`; it also provides immutable catalog backups and per-project revision snapshots. RocksDB-backed project handles, dependence-aware decision optimization, and several advanced workbench workflows remain under development.
 :::

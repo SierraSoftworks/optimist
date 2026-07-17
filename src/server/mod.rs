@@ -1,5 +1,6 @@
 mod analysis;
 mod api_error;
+mod backups;
 mod commands;
 mod error;
 mod estimate_error_response;
@@ -76,6 +77,7 @@ pub fn router_with_catalog(catalog: ProjectCatalog) -> Router {
 fn router_with_state(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/health", get(health))
+        .merge(backups::router())
         .merge(projects::router())
         .merge(commands::router())
         .merge(graph::router())

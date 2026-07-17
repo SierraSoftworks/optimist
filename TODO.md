@@ -41,7 +41,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
 - [x] Add forward-only schema migrations and startup integrity checks.
 - [ ] Add lazy project open/close handles and idle eviction.
-- [ ] Add backup/restore hooks and immutable graph snapshots.
+- [x] Add backup/restore hooks and immutable graph snapshots.
 - [ ] Run the repository contract suite against memory and temporary RocksDB.
 
 ## 3. Commands, API, And CLI

@@ -59,7 +59,7 @@ pub enum CatalogPersistenceError {
 }
 
 pub(crate) struct CatalogStore {
-    root: PathBuf,
+    pub(super) root: PathBuf,
 }
 
 impl CatalogStore {
@@ -69,6 +69,15 @@ impl CatalogStore {
 
     pub(crate) fn load(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
         let path = self.root.join(SNAPSHOT_FILE);
+        self.load_file(&path, true)
+    }
+
+    pub(super) fn load_file(
+        &self,
+        path: &Path,
+        rewrite_migration: bool,
+    ) -> Result<ProjectCatalog, CatalogPersistenceError> {
+        let path = path.to_path_buf();
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
             Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
@@ -92,10 +101,14 @@ impl CatalogStore {
                 source,
             })?;
         let mut catalog = ProjectCatalog::from_persisted_snapshot(snapshot)?;
-        if migrated {
+        if migrated && rewrite_migration {
             self.save(&mut catalog)?;
         }
         Ok(catalog)
+    }
+
+    pub(super) fn snapshot_path(&self) -> PathBuf {
+        self.root.join(SNAPSHOT_FILE)
     }
 
     pub(crate) fn save(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
