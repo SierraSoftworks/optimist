@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Activity, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
+import { Activity, AlertTriangle, CheckCircle2, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type {
   Distribution,
   Evidence,
@@ -10,6 +10,8 @@ import type {
   Observation,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
+import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
+import { edgeMetadataLabel } from '../domain/edgePresentation'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   delete: []
 }>()
 const confirmDelete = ref(false)
+const readiness = computed(() => props.node ? simulationReadiness(props.node) : null)
 
 const incidentEdges = computed(() =>
   props.node
@@ -115,6 +118,22 @@ function replacement(edge: GraphEdge, observation: Observation) {
           @click="emit('estimate')"
         ><Sigma :size="14" /> Estimate</button>
       </div>
+
+      <section class="readiness-panel" :data-level="readiness?.level">
+        <CheckCircle2 v-if="readiness?.level === 'ready'" :size="17" />
+        <AlertTriangle v-else :size="17" />
+        <div>
+          <strong>{{ readiness ? readinessLabel(readiness) : '' }}</strong>
+          <div v-if="readiness?.issues.length" class="readiness-actions">
+            <button
+              v-for="issue in readiness.issues"
+              :key="issue.key"
+              type="button"
+              @click="issue.key === 'current_state' ? emit('estimate') : emit('interventionEstimate', { kind: issue.key === 'duration' ? 'duration' : 'probability_of_success' })"
+            >{{ issue.label }} <Pencil :size="11" /></button>
+          </div>
+        </div>
+      </section>
 
       <p v-if="node.description" class="description">{{ node.description }}</p>
       <p v-else class="muted">No description has been added.</p>
@@ -231,7 +250,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <li v-for="edge in incidentEdges" :key="`${edge.source}-${edge.payload.kind}-${edge.destination}`">
             <button type="button" :aria-label="`Edit ${edge.payload.kind.replaceAll('_', ' ')} relationship ${edge.source} to ${edge.destination}`" @click="emit('relationship', edge)">
               <span>{{ edge.source }}</span>
-              <strong>{{ edge.payload.kind.replaceAll('_', ' ') }}</strong>
+              <span class="relationship-summary"><strong>{{ edge.payload.kind.replaceAll('_', ' ') }}</strong><small>{{ edgeMetadataLabel(edge) }}</small></span>
               <span>{{ edge.destination }}</span>
             </button>
           </li>

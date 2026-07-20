@@ -36,7 +36,7 @@ test('calibrates metric readings and explicitly adopts one as factor state', asy
   await page.getByRole('button', { name: 'Use reading' }).click()
   await expect(page.getByLabel('Value on [0, 1]')).toHaveValue('0.5')
   await expect(page.getByLabel('Provenance')).toHaveValue(/Calibrated observation #0/)
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
   await expect(page.getByText('Point · 0.5')).toBeVisible()
   await expect(page.getByText(/Calibrated observation #0/)).toBeVisible()
 })

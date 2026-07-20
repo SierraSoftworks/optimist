@@ -9,7 +9,8 @@ test('keeps project and graph controls usable on mobile', async ({ page }, testI
   await page.getByRole('button', { name: 'Add node' }).last().click()
   await page.getByLabel('Title').fill('Customer trust')
   await page.getByText('outcome', { exact: true }).click()
-  await page.getByRole('button', { name: 'Add node' }).last().click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Add ready node' }).click()
 
   await expect(page.getByLabel('Project', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Search graph')).toBeVisible()

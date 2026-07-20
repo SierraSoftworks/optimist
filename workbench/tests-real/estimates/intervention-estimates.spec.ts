@@ -9,7 +9,7 @@ test('sets, replaces, and removes intervention estimates', async ({ page }) => {
   await page.getByLabel('Distribution', { exact: true }).selectOption('log_normal')
   await page.getByRole('spinbutton', { name: 'Log location', exact: true }).fill('2')
   await page.getByRole('spinbutton', { name: 'Log scale', exact: true }).fill('0.3')
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
   await expect(page.getByText('LogNormal · μ 2, σ 0.3')).toBeVisible()
 
   await page.getByRole('button', { name: 'Add cost dimension' }).click()

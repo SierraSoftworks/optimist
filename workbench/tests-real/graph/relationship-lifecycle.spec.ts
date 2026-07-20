@@ -9,7 +9,8 @@ test('creates, edits, deletes, and recreates a relationship', async ({ page }) =
   await expect(page.getByText('1 relationships')).toBeVisible()
 
   await page.getByRole('button', { name: /Fast feedback/ }).click()
-  await page.getByRole('button', { name: 'Edit part of relationship A to B' }).click()
+  await page.getByRole('button', { name: 'Edit focused relationship A part of B' }).click()
+  await expect(page.getByRole('heading', { name: 'Edit relationship' })).toBeVisible()
   await page.getByLabel('Description').fill('Learning is part of feedback.')
   await page.getByLabel('Metadata').fill('{"source":"ADR-2"}')
   await page.getByRole('button', { name: 'Save relationship' }).click()

@@ -14,7 +14,7 @@ test('creates a typed relationship directly from a right-clicked source node', a
       {
         id: 'B', revision: 0, name: 'automation', normalized_name: 'automation', title: 'Automation',
         description: '', aliases: [], metadata: {},
-        payload: { kind: 'intervention', properties: { cost: null, duration: null, capacity: null } },
+        payload: { kind: 'intervention', properties: { costs: [], duration: null, probability_of_success: null, acceptance_criteria: [] } },
       },
     ],
     edges: [],

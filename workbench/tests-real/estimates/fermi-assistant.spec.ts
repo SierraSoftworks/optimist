@@ -17,7 +17,7 @@ test('derives a normalized state estimate from a Fermi decomposition', async ({ 
   await expect(page.locator('.fermi-result').getByText('Derived unit1', { exact: true })).toBeVisible()
   await expect(page.getByText(/preserves sampled mean and variance/)).toBeVisible()
   await page.getByRole('button', { name: 'Use Fermi equation' }).click()
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
 
   await expect(page.getByText(/Beta · α/)).toBeVisible()
   await expect(page.getByText(/adoption \* completion · 2 variables · converged/)).toBeVisible()

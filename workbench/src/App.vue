@@ -95,6 +95,7 @@ import {
   useSetMeasurementCalibration,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
+import { simulationReadiness } from './domain/simulationReadiness'
 
 const store = useWorkbenchStore()
 const { mode, search, selectedNodeId, selectedProjectId, visibleKinds } = storeToRefs(store)
@@ -147,6 +148,9 @@ const visibleEdges = computed(() => {
     (edge) => visible.has(edge.source) && visible.has(edge.destination),
   )
 })
+const nodesNeedingSetup = computed(() =>
+  visibleNodes.value.filter((node) => simulationReadiness(node).level !== 'ready'),
+)
 const canCreateRelationship = computed(
   () => nodes.value.some((source) =>
     nodes.value.some((destination) =>
@@ -465,6 +469,15 @@ function editRelationship(edge: GraphEdge) {
   edgeEditDialogOpen.value = true
 }
 
+function editRelationshipById(id: string) {
+  const edge = edges.value.find((candidate) => edgeElementId({
+    source: candidate.source,
+    kind: candidate.payload.kind,
+    destination: candidate.destination,
+  }) === id)
+  if (edge) editRelationship(edge)
+}
+
 async function submitEdgeEdit(input: UpdateEdgeInput) {
   mutationError.value = null
   try {
@@ -729,6 +742,7 @@ function retry() {
         <div class="canvas-status">
           <span><strong>{{ visibleNodes.length }}</strong> nodes</span>
           <span><strong>{{ visibleEdges.length }}</strong> relationships</span>
+          <span v-if="nodesNeedingSetup.length" class="readiness-status"><AlertTriangle :size="11" /><strong>{{ nodesNeedingSetup.length }}</strong> need setup</span>
           <span class="mode-note">{{ mode }}</span>
         </div>
 
@@ -762,6 +776,7 @@ function retry() {
           :highlighted-node-ids="highlightedNodeIds"
           :highlighted-edge-ids="highlightedEdgeIds"
           @select="store.selectNode"
+          @edit-edge="editRelationshipById"
           @node-contextmenu="openNodeRelationshipMenu"
         />
       </section>

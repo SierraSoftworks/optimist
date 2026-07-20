@@ -22,7 +22,8 @@ export async function addNode(
   if (kind !== 'factor') await page.getByLabel(kind).check()
   await page.getByLabel('Title').fill(title)
   if (kind === 'metric') await page.getByLabel('Unit').fill(unit ?? 'count')
-  await page.getByRole('form', { name: 'Add node' }).getByRole('button', { name: 'Add node' }).click()
+  await page.getByRole('form', { name: 'Add node' }).getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Add ready node' }).click()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
 }
 
@@ -48,6 +49,7 @@ export async function addRelationship(
 
 export async function setPointEstimate(page: Page, value: number) {
   await page.getByRole('button', { name: 'Estimate', exact: true }).click()
+  await page.getByLabel('Distribution', { exact: true }).selectOption('point')
   await page.getByLabel('Value on [0, 1]').fill(String(value))
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
 }

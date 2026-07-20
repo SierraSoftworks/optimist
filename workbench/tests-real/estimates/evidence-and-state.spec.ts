@@ -21,9 +21,10 @@ test('edits node metadata, evidence, and state estimates', async ({ page }) => {
   await expect(page.getByText(/Delivery dashboard · r1/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Estimate' }).click()
+  await page.getByLabel('Distribution', { exact: true }).selectOption('point')
   await page.getByLabel('Value on [0, 1]').fill('0.65')
   await page.getByLabel('Provenance').fill('Weekly review')
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
   await expect(page.getByText('Point · 0.65')).toBeVisible()
   await expect(page.getByText('Weekly review')).toBeVisible()
 })

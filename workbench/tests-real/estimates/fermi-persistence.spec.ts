@@ -14,7 +14,7 @@ test('persists, reviews, reopens, and replaces a Fermi estimate source', async (
   await page.getByRole('button', { name: 'Assess equation' }).click()
   await expect(page.getByText(/samples · converged/)).toBeVisible()
   await page.getByRole('button', { name: 'Use Fermi equation' }).click()
-  await page.getByRole('button', { name: 'Set estimate' }).click()
+  await page.getByRole('button', { name: 'Replace estimate' }).click()
 
   await expect(page.getByText(/Current Fermi/)).toBeVisible()
   await expect(page.getByText(/adoption \* completion · 2 variables · converged/)).toBeVisible()

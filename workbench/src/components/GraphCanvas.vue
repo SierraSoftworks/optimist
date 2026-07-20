@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Core, CytoscapeOptions, ElementDefinition } from 'cytoscape'
-import { Focus, Minus, Plus } from '@lucide/vue'
+import { Focus, Minus, Pencil, Plus } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
+import { simulationReadiness } from '../domain/simulationReadiness'
+import { edgeDisplayLabel } from '../domain/edgePresentation'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -14,6 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [id: string | null]
+  editEdge: [id: string]
   nodeContextmenu: [event: { nodeId: string; x: number; y: number }]
 }>()
 const container = ref<HTMLDivElement>()
@@ -23,10 +26,31 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null
 
 const graphSignature = computed(() =>
   JSON.stringify({
-    nodes: props.nodes.map((node) => [node.id, node.title, node.payload.kind]),
-    edges: props.edges.map((edge) => [edge.source, edge.payload.kind, edge.destination]),
+    nodes: props.nodes.map((node) => [
+      node.id,
+      node.title,
+      node.payload.kind,
+      simulationReadiness(node).level,
+    ]),
+    edges: props.edges.map((edge) => [
+      edge.source,
+      edge.payload.kind,
+      edge.destination,
+      edgeDisplayLabel(edge),
+    ]),
   }),
 )
+const focusedEdges = computed(() =>
+  props.selectedNodeId
+    ? props.edges.filter(
+        (edge) => edge.source === props.selectedNodeId || edge.destination === props.selectedNodeId,
+      )
+    : [],
+)
+
+function edgeId(edge: GraphEdge) {
+  return `${edge.source}:${edge.payload.kind}:${edge.destination}`
+}
 
 type CytoscapeStyle = NonNullable<CytoscapeOptions['style']>
 
@@ -88,6 +112,22 @@ const styles: CytoscapeStyle = [
     },
   },
   {
+    selector: 'node[readiness = "required"]',
+    style: {
+      'border-color': '#a83f31',
+      'border-style': 'dashed',
+      'border-width': 4,
+    },
+  },
+  {
+    selector: 'node[readiness = "recommended"]',
+    style: {
+      'border-color': '#9a6a12',
+      'border-style': 'dotted',
+      'border-width': 3,
+    },
+  },
+  {
     selector: 'edge',
     style: {
       width: 1.5,
@@ -97,6 +137,8 @@ const styles: CytoscapeStyle = [
       'curve-style': 'bezier',
       'arrow-scale': 0.75,
       opacity: 0.8,
+      'overlay-opacity': 0,
+      'overlay-padding': 10,
     },
   },
   {
@@ -113,22 +155,59 @@ const styles: CytoscapeStyle = [
       'z-index': 20,
     },
   },
+  {
+    selector: 'edge.incident-edge',
+    style: {
+      width: 4,
+      'line-color': '#245746',
+      'target-arrow-color': '#245746',
+      opacity: 1,
+      label: 'data(detailLabel)',
+      color: '#183f33',
+      'font-family': 'IBM Plex Mono, monospace',
+      'font-size': 9,
+      'font-weight': 600,
+      'text-background-color': '#ffffff',
+      'text-background-opacity': 0.94,
+      'text-background-padding': '4px',
+      'text-border-color': '#b9c7bf',
+      'text-border-width': 1,
+      'text-border-opacity': 1,
+      'text-rotation': 'none',
+      'text-margin-y': -11,
+      'z-index': 16,
+    },
+  },
+  {
+    selector: 'node.connected-node',
+    style: {
+      'underlay-color': '#4a8a70',
+      'underlay-opacity': 0.09,
+      'underlay-padding': 7,
+    },
+  },
 ]
 
 function elements(): ElementDefinition[] {
   const visible = new Set(props.nodes.map((node) => node.id))
   return [
     ...props.nodes.map((node) => ({
-      data: { id: node.id, label: node.title, kind: node.payload.kind },
+      data: {
+        id: node.id,
+        label: node.title,
+        kind: node.payload.kind,
+        readiness: simulationReadiness(node).level,
+      },
     })),
     ...props.edges
       .filter((edge) => visible.has(edge.source) && visible.has(edge.destination))
       .map((edge) => ({
         data: {
-          id: `${edge.source}:${edge.payload.kind}:${edge.destination}`,
+          id: edgeId(edge),
           source: edge.source,
           target: edge.destination,
           kind: edge.payload.kind,
+          detailLabel: edgeDisplayLabel(edge),
         },
       })),
   ]
@@ -136,18 +215,41 @@ function elements(): ElementDefinition[] {
 
 function layout() {
   if (!graph || graph.nodes().length === 0) return
+  const interventions = graph.nodes('[kind = "intervention"]')
   graph.layout({
     name: 'breadthfirst',
     directed: true,
+    roots: interventions.length ? interventions.map((node) => node.id()) : undefined,
+    circle: false,
     padding: 48,
-    spacingFactor: 1.35,
+    spacingFactor: 1.5,
     animate: false,
   }).run()
+  enforceKindBands()
   graph.fit(undefined, 48)
   if (graph.zoom() > 1.4) {
     graph.zoom(1.4)
     graph.center()
   }
+}
+
+function enforceKindBands() {
+  if (!graph || graph.nodes().length < 2) return
+  const positions = graph.nodes().map((node) => node.position('y'))
+  const top = Math.min(...positions)
+  const bottom = Math.max(Math.max(...positions), top + 220)
+  const middleTop = top + 82
+  const middleBottom = bottom - 82
+  graph.nodes('[kind = "intervention"]').forEach((node) => {
+    node.position('y', top)
+  })
+  graph.nodes('[kind = "outcome"]').forEach((node) => {
+    node.position('y', bottom)
+  })
+  graph.nodes().forEach((node) => {
+    if (node.data('kind') === 'intervention' || node.data('kind') === 'outcome') return
+    node.position('y', Math.min(middleBottom, Math.max(middleTop, node.position('y'))))
+  })
 }
 
 function syncElements() {
@@ -156,6 +258,7 @@ function syncElements() {
   graph.add(elements())
   layout()
   syncSelection()
+  syncFocus()
   syncHighlights()
 }
 
@@ -163,6 +266,15 @@ function syncSelection() {
   if (!graph) return
   graph.nodes().unselect()
   if (props.selectedNodeId) graph.getElementById(props.selectedNodeId).select()
+}
+
+function syncFocus() {
+  if (!graph) return
+  graph.elements().removeClass('incident-edge connected-node')
+  if (!props.selectedNodeId) return
+  const selected = graph.getElementById(props.selectedNodeId)
+  selected.connectedEdges().addClass('incident-edge')
+  selected.neighborhood('node').addClass('connected-node')
 }
 
 function syncHighlights() {
@@ -196,6 +308,7 @@ onMounted(async () => {
     selectionType: 'single',
   })
   graph.on('tap', 'node', (event) => emit('select', event.target.id()))
+  graph.on('tap', 'edge', (event) => emit('editEdge', event.target.id()))
   graph.on('cxttap', 'node', (event) => {
     const bounds = container.value?.getBoundingClientRect()
     if (!bounds) return
@@ -215,11 +328,15 @@ onMounted(async () => {
   if (container.value) resizeObserver.observe(container.value)
   layout()
   syncSelection()
+  syncFocus()
   syncHighlights()
 })
 
 watch(graphSignature, syncElements)
-watch(() => props.selectedNodeId, syncSelection)
+watch(() => props.selectedNodeId, () => {
+  syncSelection()
+  syncFocus()
+})
 watch(() => [props.highlightedNodeIds, props.highlightedEdgeIds], syncHighlights, { deep: true })
 
 onBeforeUnmount(() => {
@@ -235,6 +352,19 @@ onBeforeUnmount(() => {
     <p v-if="highlightedNodeIds?.length || highlightedEdgeIds?.length" class="sr-only" aria-live="polite">
       Analysis highlights {{ highlightedNodeIds?.length ?? 0 }} nodes and {{ highlightedEdgeIds?.length ?? 0 }} relationships.
     </p>
+    <section v-if="focusedEdges.length" class="focused-relationships" aria-label="Focused relationships">
+      <header><strong>Focused relationships</strong><span>{{ focusedEdges.length }}</span></header>
+      <button
+        v-for="edge in focusedEdges"
+        :key="edgeId(edge)"
+        type="button"
+        :aria-label="`Edit focused relationship ${edge.source} ${edge.payload.kind.replaceAll('_', ' ')} ${edge.destination}`"
+        @click="emit('editEdge', edgeId(edge))"
+      >
+        <span><code>{{ edge.source }} → {{ edge.destination }}</code><small>{{ edgeDisplayLabel(edge) }}</small></span>
+        <Pencil :size="13" />
+      </button>
+    </section>
     <div class="zoom-controls" aria-label="Graph zoom controls">
       <button type="button" title="Zoom in" aria-label="Zoom in" @click="zoom(1.2)">
         <Plus :size="17" />

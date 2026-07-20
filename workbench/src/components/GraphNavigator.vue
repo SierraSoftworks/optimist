@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { CircleDot, List, Table2 } from '@lucide/vue'
+import { AlertTriangle, CircleDot, List, Table2 } from '@lucide/vue'
 import type { GraphNode } from '../api/types'
+import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -60,12 +61,15 @@ function tabIndex(node: GraphNode, index: number) {
         type="button"
         :tabindex="tabIndex(node, index)"
         :class="{ selected: selectedNodeId === node.id }"
+        :data-readiness="simulationReadiness(node).level"
+        :title="readinessLabel(simulationReadiness(node))"
         :aria-current="selectedNodeId === node.id ? 'true' : undefined"
         @click="select(node)"
         @keydown="move($event, index)"
       >
         <span class="kind-dot" :data-kind="node.payload.kind"><CircleDot :size="13" /></span>
         <span><strong>{{ node.title }}</strong><small>{{ node.name }}</small></span>
+        <AlertTriangle v-if="simulationReadiness(node).level !== 'ready'" class="readiness-icon" :size="12" />
         <code>{{ node.id }}</code>
       </button>
     </div>
@@ -75,7 +79,7 @@ function tabIndex(node: GraphNode, index: number) {
         <caption class="sr-only">Visible graph nodes</caption>
         <thead><tr><th scope="col">ID</th><th scope="col">Title</th><th scope="col">Kind</th></tr></thead>
         <tbody>
-          <tr v-for="(node, index) in nodes" :key="node.id" :class="{ selected: selectedNodeId === node.id }">
+          <tr v-for="(node, index) in nodes" :key="node.id" :class="{ selected: selectedNodeId === node.id }" :data-readiness="simulationReadiness(node).level">
             <td><code>{{ node.id }}</code></td>
             <th scope="row">
               <button
@@ -87,7 +91,7 @@ function tabIndex(node: GraphNode, index: number) {
                 @keydown="move($event, index)"
               >{{ node.title }}</button>
             </th>
-            <td>{{ node.payload.kind }}</td>
+            <td><AlertTriangle v-if="simulationReadiness(node).level !== 'ready'" class="readiness-icon" :size="10" />{{ node.payload.kind }}</td>
           </tr>
         </tbody>
       </table>
