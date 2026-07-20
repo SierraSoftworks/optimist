@@ -6,6 +6,7 @@ mod catalog;
 mod catalog_backup;
 mod catalog_backup_files;
 mod catalog_backup_store;
+mod catalog_command_journal;
 mod catalog_persistence;
 mod change_queries;
 mod commands;

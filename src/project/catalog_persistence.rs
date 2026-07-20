@@ -45,6 +45,9 @@ pub enum CatalogPersistenceError {
     /// The snapshot declares an unsupported forward or legacy schema version.
     #[error("catalog snapshot schema {0} is unsupported")]
     UnsupportedSchema(u32),
+    /// A pending command uses a journal schema this server cannot safely replay.
+    #[error("command journal schema {0} is unsupported")]
+    UnsupportedJournalSchema(u32),
     /// A known older snapshot could not be transformed into the next schema.
     #[error("could not migrate catalog snapshot schema {version}: {reason}")]
     Migration {
@@ -69,7 +72,9 @@ impl CatalogStore {
 
     pub(crate) fn load(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
         let path = self.root.join(SNAPSHOT_FILE);
-        self.load_file(&path, true)
+        let mut catalog = self.load_file(&path, true)?;
+        let _ = self.recover_pending_command(&mut catalog)?;
+        Ok(catalog)
     }
 
     pub(super) fn load_file(
@@ -347,7 +352,11 @@ fn validate_allocator(
     Ok(())
 }
 
-fn atomic_write(root: &Path, name: &str, bytes: &[u8]) -> Result<(), CatalogPersistenceError> {
+pub(super) fn atomic_write(
+    root: &Path,
+    name: &str,
+    bytes: &[u8],
+) -> Result<(), CatalogPersistenceError> {
     let target = root.join(name);
     let temporary = root.join(format!(".{name}.tmp"));
     let mut file =
@@ -818,5 +827,27 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["current_revision"], 1);
         assert_eq!(value["changes"].as_array().unwrap().len(), 1);
+        assert!(!fixture.root.join("command-journal.json").exists());
+
+        let restarted_store = CatalogStore::new(fixture.root.clone());
+        let rejected =
+            router_with_persistent_catalog(restarted_store.load().unwrap(), restarted_store)
+                .oneshot(
+                    Request::post("/api/v1/projects/A/commands")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_vec(&CommandRequest {
+                                request_id: Uuid::new_v4(),
+                                expected_revision: 0,
+                                command: GraphCommand::CreateNode(factor("stale")),
+                            })
+                            .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        assert_eq!(rejected.status(), StatusCode::CONFLICT);
+        assert!(!fixture.root.join("command-journal.json").exists());
     }
 }

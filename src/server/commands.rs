@@ -21,21 +21,9 @@ async fn execute(
     Path(project): Path<ProjectId>,
     Json(request): Json<CommandRequest>,
 ) -> Result<(StatusCode, Json<CommandResult>), ApiError> {
-    let command_project = project.clone();
-    let (result, change) = state
-        .mutate(move |catalog| {
-            let before = catalog.get(&command_project)?.revision;
-            let result = catalog.execute(&command_project, request)?;
-            let change = if result.project_revision > before {
-                catalog.get_change(&command_project, result.project_revision)?
-            } else {
-                None
-            };
-            Ok((result, change))
-        })
-        .await?;
-    if let Some(change) = change {
-        state.publish(&project, change).await;
+    let (result, changes) = state.execute_command(&project, request).await?;
+    for (changed_project, change) in changes {
+        state.publish(&changed_project, change).await;
     }
     Ok((StatusCode::CREATED, Json(result)))
 }

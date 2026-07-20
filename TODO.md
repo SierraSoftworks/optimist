@@ -38,7 +38,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Persist project catalog metadata and complete canonical project snapshots under `--data-dir`.
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
   - [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
-- [ ] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
+- [x] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
 - [x] Add forward-only schema migrations and startup integrity checks.
 - [ ] Add lazy project open/close handles and idle eviction.
 - [x] Add backup/restore hooks and immutable graph snapshots.

@@ -21,7 +21,7 @@ optimist server --bind 127.0.0.1:3000 --data-dir .optimist
 optimist server --web-root workbench/dist
 ```
 
-`--data-dir` stores a versioned atomic `catalog.json` snapshot containing complete canonical project archives, allocator metadata, committed `ChangeSet` events, and idempotent command results. The server restores it before binding its listener. Schema v1 snapshots migrate to v2 by making retained replay floors and event lists explicit, then are atomically rewritten after full validation. Corrupt, discontinuous, unknown older, and future schemas are rejected without modifying the original snapshot.
+`--data-dir` stores a versioned atomic `catalog.json` snapshot containing complete canonical project archives, allocator metadata, committed `ChangeSet` events, and idempotent command results. Validated commands are written ahead to `command-journal.json`; startup idempotently completes any retained request before binding its listener. Schema v1 snapshots migrate to v2 by making retained replay floors and event lists explicit, then are atomically rewritten after full validation. Corrupt, discontinuous, unknown older, and future catalog or journal schemas are rejected without modifying the original files.
 
 `--web-root` points to a completed Vite build containing `index.html`; `OPTIMIST_WEB_ROOT` provides the environment equivalent. When omitted, Optimist uses `workbench/dist` if it exists relative to the process working directory. The server gives browser routes SPA fallback, keeps `/api` JSON-only, revalidates HTML, and serves generated `/assets` with immutable caching.
 

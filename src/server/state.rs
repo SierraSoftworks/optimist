@@ -12,6 +12,8 @@ use crate::{
     },
 };
 
+mod command;
+
 #[derive(Clone)]
 pub(super) struct AppState {
     pub(super) catalog: Arc<RwLock<ProjectCatalog>>,

@@ -38,7 +38,9 @@ Use JSON Lines for agent ingestion:
 cargo run -- --output jsonl project changes A --after 12
 ```
 
-Committed event history and idempotent results are published atomically with the project snapshot under `--data-dir`. Restarting restores ordered replay and returns the original command result for a repeated pre-restart request ID.
+Committed event history and idempotent results are published atomically with the project snapshot under `--data-dir`. Before durable catalog publication, the server fsyncs the validated project ID and complete `CommandRequest` to `command-journal.json`. After a crash, startup applies that request to the restored catalog and clears the journal only after the recovered catalog is durable. If the catalog publication had already completed, UUID idempotency returns the retained result without appending another event. Restarting therefore restores ordered replay and returns the original command result for a repeated pre-restart request ID across both crash windows.
+
+Rejected commands are never journaled. Corrupt, oversized, or unknown-version journal documents stop startup and remain untouched for diagnosis rather than being skipped.
 
 Imported archives do not contain the source server's event log. Their retained-history floor is the archived project revision. A replay request older than that floor returns a canonical project snapshot in the replay envelope instead of an incomplete event list. Clients replace local project state with the snapshot, persist its revision, and resume incremental replay from there.
 
