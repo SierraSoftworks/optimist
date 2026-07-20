@@ -50,6 +50,24 @@ Export downloads one immutable canonical Markdown snapshot and publishes it thro
 
 Catalog backups retain complete project archives, replay history, retry results, and allocator state. Restore validates the selected backup before changing live state, requires `--yes`, and creates an immutable safety backup of the catalog being replaced. Project snapshots retain one canonical archive at an exact revision; repeated creation is idempotent, and `show` returns that archive without changing the live project.
 
+### Command batches
+
+```sh
+optimist --project A batch apply \
+  --request-id <UUID> \
+  --expected-revision <REVISION> \
+  --commands '<GRAPH_COMMAND_JSON_ARRAY>'
+
+optimist --project A batch undo <ORIGINAL_BATCH_UUID> \
+  --request-id <NEW_UUID> \
+  --expected-revision <CURRENT_REVISION> \
+  --commands '<COMPENSATION_COMMAND_JSON_ARRAY>'
+```
+
+Batch request IDs derive stable child command IDs, so an exact retry returns the original result. A batch contains 1 to 100 commands and commits all commands in order or none. Reusing an ID with different content is rejected.
+
+Undo requires a caller-reviewed compensation plan. The plan commits as a new atomic batch and advances normal project, graph, and aggregate revisions; it does not delete immutable facts or rewrite replay history. Only retained forward batches may be compensated, and each forward batch accepts one compensation batch.
+
 ### Nodes
 
 ```sh

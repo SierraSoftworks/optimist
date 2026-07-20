@@ -1,26 +1,18 @@
 use std::{fs, path::PathBuf};
 
-use serde::{Deserialize, Serialize};
-
 use crate::{
-    command::{ChangeSet, CommandRequest},
+    command::{ChangeSet, CommandBatchRequest, CommandRequest},
     domain::ProjectId,
 };
 
 use super::{
-    CatalogPersistenceError, CatalogStore, ProjectCatalog, catalog_persistence::atomic_write,
+    CatalogPersistenceError, CatalogStore, ProjectCatalog,
+    catalog_persistence::atomic_write,
+    command_journal_document::{PendingMutation, decode, encode},
 };
 
 const JOURNAL_FILE: &str = "command-journal.json";
-const JOURNAL_SCHEMA_VERSION: u32 = 1;
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
-
-#[derive(Deserialize, Serialize)]
-struct PendingCommand {
-    schema_version: u32,
-    project: ProjectId,
-    request: CommandRequest,
-}
 
 impl CatalogStore {
     pub(crate) fn write_pending_command(
@@ -28,12 +20,30 @@ impl CatalogStore {
         project: &ProjectId,
         request: &CommandRequest,
     ) -> Result<(), CatalogPersistenceError> {
-        let pending = PendingCommand {
-            schema_version: JOURNAL_SCHEMA_VERSION,
+        self.write_pending_mutation(PendingMutation::Command {
+            project: project.clone(),
+            request: Box::new(request.clone()),
+        })
+    }
+
+    pub(crate) fn write_pending_batch(
+        &self,
+        project: &ProjectId,
+        request: &CommandBatchRequest,
+        compensates: Option<uuid::Uuid>,
+    ) -> Result<(), CatalogPersistenceError> {
+        self.write_pending_mutation(PendingMutation::Batch {
             project: project.clone(),
             request: request.clone(),
-        };
-        let bytes = serde_json::to_vec(&pending).expect("pending commands serialize");
+            compensates,
+        })
+    }
+
+    fn write_pending_mutation(
+        &self,
+        mutation: PendingMutation,
+    ) -> Result<(), CatalogPersistenceError> {
+        let bytes = encode(mutation);
         if bytes.len() as u64 > MAX_JOURNAL_BYTES {
             return Err(CatalogPersistenceError::TooLarge {
                 path: self.journal_path(),
@@ -43,25 +53,51 @@ impl CatalogStore {
         atomic_write(&self.root, JOURNAL_FILE, &bytes)
     }
 
-    pub(crate) fn recover_pending_command(
+    pub(crate) fn recover_pending_mutation(
         &self,
         catalog: &mut ProjectCatalog,
-    ) -> Result<Option<(ProjectId, ChangeSet)>, CatalogPersistenceError> {
-        let Some(pending) = self.read_pending_command()? else {
-            return Ok(None);
+    ) -> Result<Vec<(ProjectId, ChangeSet)>, CatalogPersistenceError> {
+        let Some(pending) = self.read_pending_mutation()? else {
+            return Ok(vec![]);
         };
-        let before = catalog.get(&pending.project)?.revision;
-        let result = catalog.execute(&pending.project, pending.request)?;
-        let change = if result.project_revision > before {
-            catalog
-                .get_change(&pending.project, result.project_revision)?
-                .map(|change| (pending.project, change))
-        } else {
-            None
+        let changes = match pending {
+            PendingMutation::Command { project, request } => {
+                let before = catalog.get(&project)?.revision;
+                let result = catalog.execute(&project, *request)?;
+                if result.project_revision > before {
+                    catalog
+                        .get_change(&project, result.project_revision)?
+                        .map(|change| vec![(project, change)])
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                }
+            }
+            PendingMutation::Batch {
+                project,
+                request,
+                compensates,
+            } => {
+                let before = catalog.get(&project)?.revision;
+                let result = catalog.execute_batch(&project, request, compensates)?;
+                result
+                    .results
+                    .into_iter()
+                    .filter(|result| result.project_revision > before)
+                    .filter_map(|result| {
+                        catalog
+                            .get_change(&project, result.project_revision)
+                            .transpose()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .map(|change| (project.clone(), change))
+                    .collect()
+            }
         };
         self.save(catalog)?;
         self.clear_pending_command()?;
-        Ok(change)
+        Ok(changes)
     }
 
     pub(crate) fn clear_pending_command(&self) -> Result<(), CatalogPersistenceError> {
@@ -75,7 +111,7 @@ impl CatalogStore {
         }
     }
 
-    fn read_pending_command(&self) -> Result<Option<PendingCommand>, CatalogPersistenceError> {
+    fn read_pending_mutation(&self) -> Result<Option<PendingMutation>, CatalogPersistenceError> {
         let path = self.journal_path();
         let metadata = match fs::metadata(&path) {
             Ok(metadata) => metadata,
@@ -86,17 +122,7 @@ impl CatalogStore {
             return Err(CatalogPersistenceError::TooLarge { path });
         }
         let bytes = fs::read(&path).map_err(|source| journal_io(path.clone(), source))?;
-        let pending: PendingCommand =
-            serde_json::from_slice(&bytes).map_err(|source| CatalogPersistenceError::Json {
-                path: path.clone(),
-                source,
-            })?;
-        if pending.schema_version != JOURNAL_SCHEMA_VERSION {
-            return Err(CatalogPersistenceError::UnsupportedJournalSchema(
-                pending.schema_version,
-            ));
-        }
-        Ok(Some(pending))
+        decode(&bytes, &path).map(Some)
     }
 
     fn journal_path(&self) -> PathBuf {
@@ -115,7 +141,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        command::{CommandRequest, CreateNode, GraphCommand},
+        command::{CommandBatchRequest, CommandRequest, CreateNode, GraphCommand},
         domain::{Factor, NodePayload, ProjectId},
         project::{CatalogPersistenceError, CatalogStore, ProjectCatalog},
     };
@@ -146,6 +172,26 @@ mod tests {
                     evidence: vec![],
                 }),
             }),
+        }
+    }
+
+    fn batch() -> CommandBatchRequest {
+        CommandBatchRequest {
+            request_id: Uuid::new_v4(),
+            expected_revision: 0,
+            commands: vec![
+                request().command,
+                GraphCommand::CreateNode(CreateNode {
+                    name: "quality".to_owned(),
+                    title: "Quality".to_owned(),
+                    payload: NodePayload::Factor(Factor {
+                        current: None,
+                        desired: None,
+                        controllable: false,
+                        evidence: vec![],
+                    }),
+                }),
+            ],
         }
     }
 
@@ -191,11 +237,61 @@ mod tests {
     }
 
     #[test]
+    fn startup_recovers_each_batch_command_once_across_both_crash_windows() {
+        for snapshot_published in [false, true] {
+            let (root, store, mut catalog, project) = fixture();
+            let batch = batch();
+            store.write_pending_batch(&project, &batch, None).unwrap();
+            if snapshot_published {
+                catalog
+                    .execute_batch(&project, batch.clone(), None)
+                    .unwrap();
+                store.save(&mut catalog).unwrap();
+            }
+
+            let mut restored = store.load().unwrap();
+            assert_eq!(restored.get(&project).unwrap().revision, 2);
+            assert_eq!(restored.list_nodes(&project).unwrap().len(), 2);
+            let changes = restored.replay_changes(&project, 0).unwrap().changes;
+            assert_eq!(changes.len(), 2);
+            assert!(
+                changes
+                    .iter()
+                    .all(|change| change.batch_id == Some(batch.request_id))
+            );
+            assert!(!root.join(JOURNAL_FILE).exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn startup_recovers_legacy_v1_command_journals() {
+        let (root, store, _catalog, project) = fixture();
+        let path = root.join(JOURNAL_FILE);
+        fs::write(
+            &path,
+            serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "project": project,
+                "request": request(),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let mut restored = store.load().unwrap();
+        assert_eq!(restored.get(&project).unwrap().revision, 1);
+        assert_eq!(restored.list_nodes(&project).unwrap().len(), 1);
+        assert!(!path.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn unsupported_journal_schema_stops_startup_without_rewriting_it() {
         let (root, store, _catalog, project) = fixture();
         let path = root.join(JOURNAL_FILE);
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 3,
             "project": project,
             "request": request(),
         }))
@@ -204,7 +300,7 @@ mod tests {
 
         assert!(matches!(
             store.load(),
-            Err(CatalogPersistenceError::UnsupportedJournalSchema(2))
+            Err(CatalogPersistenceError::UnsupportedJournalSchema(3))
         ));
         assert_eq!(fs::read(&path).unwrap(), bytes);
         fs::remove_dir_all(root).unwrap();

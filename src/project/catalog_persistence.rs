@@ -73,7 +73,7 @@ impl CatalogStore {
     pub(crate) fn load(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
         let path = self.root.join(SNAPSHOT_FILE);
         let mut catalog = self.load_file(&path, true)?;
-        let _ = self.recover_pending_command(&mut catalog)?;
+        let _ = self.recover_pending_mutation(&mut catalog)?;
         Ok(catalog)
     }
 
@@ -287,6 +287,7 @@ fn restore_changes(
     if history_start > entry.project.revision {
         return Err(invalid_history("history start exceeds project revision"));
     }
+    super::command_batch_history::validate_persisted_batches(&changes).map_err(invalid_history)?;
     let mut expected = history_start.checked_add(1);
     for change in changes {
         if Some(change.project_revision) != expected
@@ -386,7 +387,8 @@ mod tests {
 
     use crate::{
         command::{
-            CommandRequest, CreateNode, CreateScenario, DeleteNode, DeleteScenario, GraphCommand,
+            CommandBatchRequest, CommandRequest, CreateNode, CreateScenario, DeleteNode,
+            DeleteScenario, GraphCommand,
         },
         domain::{EntityId, Factor, MonteCarloConfig, NodePayload, ScenarioDraft, ScenarioId},
         server::router_with_persistent_catalog,
@@ -566,6 +568,39 @@ mod tests {
             CatalogStore::new(fixture.root.clone()).load(),
             Err(CatalogPersistenceError::UnsupportedSchema(99))
         ));
+    }
+
+    #[test]
+    fn rejects_corrupt_batch_lineage_without_rewriting_the_snapshot() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog
+            .execute_batch(
+                &project.id,
+                CommandBatchRequest {
+                    request_id: Uuid::new_v4(),
+                    expected_revision: 0,
+                    commands: vec![GraphCommand::CreateNode(factor("flow"))],
+                },
+                None,
+            )
+            .unwrap();
+        store.save(&mut catalog).unwrap();
+        let path = fixture.root.join(SNAPSHOT_FILE);
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        value["projects"][0]["changes"][0]["request_id"] =
+            serde_json::Value::String(Uuid::nil().to_string());
+        let corrupted = serde_json::to_vec(&value).unwrap();
+        fs::write(&path, &corrupted).unwrap();
+
+        assert!(matches!(
+            store.load(),
+            Err(CatalogPersistenceError::Project(_))
+        ));
+        assert_eq!(fs::read(path).unwrap(), corrupted);
     }
 
     #[test]

@@ -102,6 +102,22 @@ cargo run -- --output json project snapshot A show <REVISION>
 
 Full restores validate the selected catalog before acquiring it as live state and automatically create a safety backup of the catalog being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content.
 
+Apply up to 100 typed commands atomically, or submit a reviewed compensation plan for one committed batch:
+
+```sh
+cargo run -- --project A batch apply \
+  --request-id 00000000-0000-4000-8000-000000000001 \
+  --expected-revision 3 \
+  --commands '[{"type":"delete_node","payload":{"id":"A"}}]'
+
+cargo run -- --project A batch undo 00000000-0000-4000-8000-000000000001 \
+  --request-id 00000000-0000-4000-8000-000000000002 \
+  --expected-revision 4 \
+  --commands '[{"type":"create_node","payload":{...}}]'
+```
+
+A failed command publishes none of the batch. Compensation never erases history: it is a second atomic batch with new project/graph revisions and `ChangeSet` events linked to the original batch. Callers provide the plan because immutable observations and externally visible actions require domain-specific correction rather than mechanical deletion.
+
 ### Serve the production workbench
 
 Build the Vue application, then start Optimist from the repository root:

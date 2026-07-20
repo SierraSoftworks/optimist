@@ -57,6 +57,8 @@ impl ProjectCatalog {
             entry.project.revision,
             ChangeSet {
                 request_id: request.request_id,
+                batch_id: None,
+                compensates: None,
                 base_revision: request.expected_revision,
                 project_revision: entry.project.revision,
                 graph_revision: entry.graph_revision,

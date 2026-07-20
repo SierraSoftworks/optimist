@@ -161,6 +161,8 @@ mod tests {
     fn change(revision: u64) -> ChangeSet {
         ChangeSet {
             request_id: uuid::Uuid::new_v4(),
+            batch_id: None,
+            compensates: None,
             base_revision: revision - 1,
             project_revision: revision,
             graph_revision: revision,

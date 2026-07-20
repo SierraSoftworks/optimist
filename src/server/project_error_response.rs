@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 
-use crate::project::{AggregateUpdateError, EvidenceCommandError, ProjectError};
+use crate::project::{AggregateUpdateError, CommandBatchError, EvidenceCommandError, ProjectError};
 
 use super::{estimate_error_response, formula_error_response, repository_error_response};
 
@@ -27,6 +27,34 @@ pub(super) fn classify(
             StatusCode::CONFLICT,
             "project_revision_conflict",
             &["Refresh the project and rebuild the command against its current revision."],
+        ),
+        ProjectError::CommandBatch(CommandBatchError::NotFound(_)) => (
+            StatusCode::NOT_FOUND,
+            "command_batch_not_found",
+            &["Use the ID of a retained, committed forward command batch."],
+        ),
+        ProjectError::CommandBatch(
+            CommandBatchError::RequestConflict(_) | CommandBatchError::AlreadyCompensated { .. },
+        ) => (
+            StatusCode::CONFLICT,
+            "command_batch_conflict",
+            &[
+                "Use a fresh batch request ID, or inspect replay history before preparing compensation.",
+            ],
+        ),
+        ProjectError::CommandBatch(
+            CommandBatchError::Empty
+            | CommandBatchError::TooLarge { .. }
+            | CommandBatchError::CompensationTarget(_),
+        ) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_command_batch",
+            &["Submit between 1 and 100 commands and compensate only a retained forward batch."],
+        ),
+        ProjectError::CommandBatch(CommandBatchError::RevisionSpaceExhausted) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "project_store_failure",
+            &["Create a replacement project because its revision space is exhausted."],
         ),
         ProjectError::InvalidReplayRevision { .. } => (
             StatusCode::BAD_REQUEST,

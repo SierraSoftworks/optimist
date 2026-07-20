@@ -1,6 +1,8 @@
 mod analysis;
 mod analysis_client;
 mod apply;
+mod batch;
+mod batch_client;
 mod client;
 mod client_advice;
 mod dependence;
@@ -20,6 +22,7 @@ mod observe;
 mod observe_client;
 mod output;
 mod output_backup;
+mod output_batch;
 mod output_json;
 mod output_scenario_analysis;
 mod output_table;
@@ -39,6 +42,7 @@ use clap::{Parser, Subcommand};
 
 use analysis::AnalysisArgs;
 use apply::ApplyArgs;
+use batch::BatchArgs;
 use dependence::DependenceArgs;
 use edge::EdgeArgs;
 use estimate::EstimateArgs;
@@ -99,6 +103,7 @@ enum Command {
     Scenario(ScenarioArgs),
     Dependence(DependenceArgs),
     Apply(ApplyArgs),
+    Batch(BatchArgs),
     Analysis(AnalysisArgs),
 }
 
@@ -139,6 +144,7 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
             dependence::run(args, cli.project.as_ref(), &server_url, output).await
         }
         Command::Apply(args) => apply::run(args),
+        Command::Batch(args) => batch::run(args, cli.project.as_ref(), &server_url, output).await,
         Command::Analysis(args) => {
             analysis::run(args, cli.project.as_ref(), &server_url, output).await
         }

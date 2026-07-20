@@ -58,7 +58,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Fermi component and formula authoring commands.
 - [x] Scenario create/list/show/update/delete commands.
   - [x] Scenario analysis command and result transport.
-- [ ] Atomic command batches and compensating undo.
+- [x] Atomic command batches and compensating undo.
 - [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
 - [ ] Add pagination/filter/search endpoints and CLI flags.
 

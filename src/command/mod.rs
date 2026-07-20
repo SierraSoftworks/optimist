@@ -8,10 +8,15 @@ use crate::domain::{
 
 mod change_set;
 mod classification;
+mod command_batch;
 mod metadata_operations;
 mod operations;
 
 pub use change_set::{ChangeSet, ChangeSetReplay, ChangeSnapshot, ChangeStreamMessage};
+pub(crate) use command_batch::child_request_id;
+pub use command_batch::{
+    CommandBatchRequest, CommandBatchResult, CompensatingUndoRequest, MAX_COMMAND_BATCH_SIZE,
+};
 pub use metadata_operations::*;
 pub use operations::*;
 

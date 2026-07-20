@@ -14,6 +14,12 @@ use crate::project::ProjectArchive;
 pub struct ChangeSet {
     /// Client-generated idempotency key from the original command request.
     pub request_id: Uuid,
+    /// Atomic batch containing this command, when it was not submitted alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_id: Option<Uuid>,
+    /// Earlier batch compensated by this command's batch, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compensates: Option<Uuid>,
     /// Project revision on which the client based the command.
     pub base_revision: u64,
     /// Project revision assigned after the command committed.

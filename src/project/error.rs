@@ -11,7 +11,8 @@ use crate::{
 };
 
 use super::{
-    AggregateUpdateError, EstimateCommandError, EvidenceCommandError, FormulaCommandError,
+    AggregateUpdateError, CommandBatchError, EstimateCommandError, EvidenceCommandError,
+    FormulaCommandError,
 };
 
 /// Failures which prevent project lifecycle operations from completing.
@@ -40,6 +41,9 @@ pub enum ProjectError {
         /// Revision currently stored by the serialized project executor.
         current: u64,
     },
+    /// An atomic command batch is empty, oversized, conflicting, or cannot be compensated.
+    #[error(transparent)]
+    CommandBatch(#[from] CommandBatchError),
     /// The project revision counter cannot represent another committed mutation.
     #[error("project {0} has exhausted its revision space")]
     RevisionSpaceExhausted(ProjectId),

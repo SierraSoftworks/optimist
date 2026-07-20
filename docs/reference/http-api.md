@@ -78,6 +78,27 @@ Successful response:
 }
 ```
 
+## Atomic command batches
+
+```http
+POST /api/v1/projects/{project}/command-batches
+POST /api/v1/projects/{project}/command-batches/{batch}/undo
+```
+
+Forward request:
+
+```json
+{
+  "request_id": "00000000-0000-4000-8000-000000000001",
+  "expected_revision": 12,
+  "commands": [{"type":"delete_node","payload":{"id":"A"}}]
+}
+```
+
+The server accepts 1 to 100 commands, validates and applies them on an isolated catalog, writes the complete batch ahead, and publishes the catalog once. Any command failure leaves project state and replay unchanged. Each committed `ChangeSet` includes `batch_id`; deterministic child request IDs make exact retries idempotent.
+
+The undo route accepts the same body shape and treats `commands` as an explicit compensation plan. Its `ChangeSet`s include both their new `batch_id` and `compensates` pointing to the selected forward batch. Compensation advances history instead of restoring an old snapshot. Missing, already-compensated, or compensation target batches are rejected.
+
 ## Graph reads
 
 ```http

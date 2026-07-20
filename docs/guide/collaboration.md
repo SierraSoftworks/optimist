@@ -26,6 +26,10 @@ Each newly committed command appends one `ChangeSet` containing:
 - typed command,
 - committed outcome.
 
+Commands may be grouped into a bounded atomic batch. Every child event retains its own consecutive project revision and also carries the shared `batch_id`. The catalog and write-ahead journal publish the complete sequence together; validation failure in any child publishes no events.
+
+Compensating undo is another atomic batch linked through `compensates`. It never removes the original events or lowers revisions. Clients submit an explicit plan against current state because append-only observations and real-world actions cannot be safely inverted by a generic algorithm. A retained forward batch can be compensated once; retrying the same compensation UUID remains idempotent.
+
 Replay changes strictly after an observed project revision:
 
 ```sh

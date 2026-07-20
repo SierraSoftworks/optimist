@@ -8,6 +8,15 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "project_revision_conflict" => {
             &["Refresh the project and retry the command against its current revision."]
         }
+        "invalid_command_batch" => {
+            &["Submit a JSON array containing between 1 and 100 typed graph commands."]
+        }
+        "command_batch_not_found" => {
+            &["Inspect project change replay and choose a retained forward batch ID."]
+        }
+        "command_batch_conflict" => {
+            &["Use a fresh request ID, or inspect replay before compensating a committed batch."]
+        }
         "invalid_replay_revision" => {
             &["Show the project and retry with a revision no newer than its current revision."]
         }

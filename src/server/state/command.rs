@@ -1,5 +1,5 @@
 use crate::{
-    command::{ChangeSet, CommandRequest, CommandResult},
+    command::{ChangeSet, CommandBatchRequest, CommandBatchResult, CommandRequest, CommandResult},
     domain::ProjectId,
     project::{ProjectCatalog, ProjectError},
 };
@@ -23,10 +23,10 @@ impl AppState {
             return Ok((result, changes));
         };
 
-        let mut changes = store
-            .recover_pending_command(&mut catalog)?
-            .into_iter()
-            .collect::<Vec<_>>();
+        let recovered = store.recover_pending_mutation(&mut catalog)?;
+        for (recovered_project, change) in recovered {
+            self.publish(&recovered_project, change).await;
+        }
         let before = catalog.get(project)?.revision;
         let mut candidate = catalog.transaction_clone()?;
         let result = candidate.execute(project, request.clone())?;
@@ -36,8 +36,47 @@ impl AppState {
             store.save(&mut candidate)?;
             store.clear_pending_command()?;
             *catalog = candidate;
-            changes.push((project.clone(), change));
+            return Ok((result, vec![(project.clone(), change)]));
         }
+        Ok((result, vec![]))
+    }
+
+    pub(in crate::server) async fn execute_batch(
+        &self,
+        project: &ProjectId,
+        request: CommandBatchRequest,
+        compensates: Option<uuid::Uuid>,
+    ) -> Result<(CommandBatchResult, Vec<ChangeSet>), CatalogMutationError> {
+        let mut catalog = self.catalog.write().await;
+        if let Some(store) = &self.store {
+            let recovered = store.recover_pending_mutation(&mut catalog)?;
+            for (recovered_project, change) in recovered {
+                self.publish(&recovered_project, change).await;
+            }
+        }
+
+        let before = catalog.get(project)?.revision;
+        let mut candidate = catalog.transaction_clone()?;
+        let result = candidate.execute_batch(project, request.clone(), compensates)?;
+        let changes = result
+            .results
+            .iter()
+            .filter(|result| result.project_revision > before)
+            .filter_map(|result| {
+                candidate
+                    .get_change(project, result.project_revision)
+                    .transpose()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if changes.is_empty() {
+            return Ok((result, changes));
+        }
+        if let Some(store) = &self.store {
+            store.write_pending_batch(project, &request, compensates)?;
+            store.save(&mut candidate)?;
+            store.clear_pending_command()?;
+        }
+        *catalog = candidate;
         Ok((result, changes))
     }
 }
