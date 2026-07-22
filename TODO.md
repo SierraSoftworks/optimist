@@ -129,7 +129,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Persist and review exclusive Fermi estimate sources with server-assessed effective distributions and diagnostics.
   - [x] Metric-to-state calibration with visible observation translation and explicit estimate adoption.
 - [x] Direct graph/property editing through typed commands.
-- [ ] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
+- [x] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [x] Explore, Impediments, Feedback, and Optimize analysis modes.
   - [x] Feedback mode with exact SCC/cycle results, bounded-result diagnostics, and graph highlighting.
   - [x] Impediments mode with separate topology and evidence-aware review ordering.

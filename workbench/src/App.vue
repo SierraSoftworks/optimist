@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   Activity,
@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SquareTerminal,
   Wrench,
 } from '@lucide/vue'
 import GraphCanvas from './components/GraphCanvas.vue'
@@ -37,6 +38,7 @@ import OptimizeAnalysisPanel from './components/OptimizeAnalysisPanel.vue'
 import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
 import ImpedimentAnalysisPanel from './components/ImpedimentAnalysisPanel.vue'
 import NodeRelationshipMenu from './components/NodeRelationshipMenu.vue'
+import CommandBar from './components/CommandBar.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -96,8 +98,11 @@ import {
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 import { simulationReadiness } from './domain/simulationReadiness'
+import type { WorkbenchCommand } from './domain/commandBar'
+import { commandShortcutLabel } from './domain/platformShortcut'
 
 const store = useWorkbenchStore()
+const commandShortcutHint = commandShortcutLabel()
 const { mode, search, selectedNodeId, selectedProjectId, setupOnly, visibleKinds } = storeToRefs(store)
 const projectsQuery = useProjects()
 const projectQuery = useProject(selectedProjectId)
@@ -122,6 +127,7 @@ const interventionEstimateDialogOpen = ref(false)
 const evidenceDialogOpen = ref(false)
 const edgeEstimateDialogOpen = ref(false)
 const scenarioDialogOpen = ref(false)
+const commandBarOpen = ref(false)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
@@ -220,6 +226,7 @@ const loading = computed(
     (Boolean(selectedProjectId.value) &&
       (graph.nodes.isPending.value || graph.edges.isPending.value)),
 )
+const commandPending = computed(() => createNode.isPending.value || createEdge.isPending.value)
 const error = computed(() =>
   [projectsQuery.error.value, projectQuery.error.value, graph.nodes.error.value, graph.edges.error.value]
     .find(Boolean),
@@ -271,6 +278,16 @@ watch(
 )
 watch([mode, selectedProjectId, selectedScenarioId], () => clearOptimizeSelection())
 watch([mode, selectedProjectId], () => clearImpedimentSelection())
+watch(selectedProjectId, () => { commandBarOpen.value = false })
+
+function commandShortcut(event: KeyboardEvent) {
+  if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'k') return
+  event.preventDefault()
+  if (selectedProjectId.value) commandBarOpen.value = true
+}
+
+onMounted(() => document.addEventListener('keydown', commandShortcut))
+onBeforeUnmount(() => document.removeEventListener('keydown', commandShortcut))
 
 function selectProject(event: Event) {
   const select = event.target as HTMLSelectElement
@@ -397,6 +414,29 @@ async function submitNode(input: CreateNodeInput) {
     const node = await createNode.mutateAsync(input)
     store.selectNode(node.id)
     nodeDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function applyWorkbenchCommand(command: WorkbenchCommand) {
+  mutationError.value = null
+  try {
+    if (command.type === 'create_node') {
+      const node = await createNode.mutateAsync(command.input)
+      mode.value = 'explore'
+      store.selectNode(node.id)
+    } else if (command.type === 'create_edge') {
+      await createEdge.mutateAsync(command.input)
+      mode.value = 'explore'
+      store.selectNode(command.input.source)
+    } else if (command.type === 'select_node') {
+      mode.value = 'explore'
+      store.selectNode(command.node.id)
+    } else {
+      mode.value = command.mode
+    }
+    commandBarOpen.value = false
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -696,6 +736,10 @@ function retry() {
       </nav>
 
       <div class="header-actions">
+        <button type="button" class="command-bar-trigger header-icon" :title="`Command bar (${commandShortcutHint})`" :aria-label="`Open command bar (${commandShortcutHint})`" :disabled="!selectedProjectId" @click="commandBarOpen = true">
+          <SquareTerminal :size="16" />
+          <kbd>{{ commandShortcutHint }}</kbd>
+        </button>
         <button type="button" class="icon-button header-icon" title="Import project" aria-label="Import project" @click="importDialogOpen = true">
           <Upload :size="16" />
         </button>
@@ -853,6 +897,14 @@ function retry() {
       @close="projectDialogOpen = false"
       @submit="submitProject"
     />
+    <CommandBar
+      :open="commandBarOpen"
+      :pending="commandPending"
+      :nodes="nodes"
+      :edges="edges"
+      @close="commandBarOpen = false"
+      @apply="applyWorkbenchCommand"
+    />
     <CreateNodeDialog
       :open="nodeDialogOpen"
       :pending="createNode.isPending.value"
@@ -986,6 +1038,9 @@ function retry() {
 .header-actions { display: flex; align-items: center; gap: 7px; justify-self: end; }
 .header-actions button:disabled { opacity: .42; cursor: not-allowed; }
 .header-icon { border: 1px solid var(--line); background: white; }
+.command-bar-trigger { min-width: 76px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: 4px; color: var(--muted); }
+.command-bar-trigger:hover { background: #edf0eb; color: var(--ink); }
+.command-bar-trigger kbd { min-width: 39px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: 8px 'IBM Plex Mono', monospace; text-align: center; }
 .workbench-body { min-height: 0; display: grid; grid-template-columns: 226px minmax(360px, 1fr) 286px; overflow: hidden; }
 .navigator { min-height: 0; padding: 14px 12px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
 .canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
@@ -1025,6 +1080,8 @@ function retry() {
   .project-switcher { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
   .header-actions { grid-column: 2; grid-row: 1; }
   .header-actions .secondary-button { display: none; }
+  .command-bar-trigger { min-width: 30px; width: 30px; padding: 0; }
+  .command-bar-trigger kbd { display: none; }
   .workbench-body { min-height: calc(100svh - 112px); grid-template-columns: 1fr; grid-template-rows: auto minmax(330px, 48svh) auto; overflow: visible; }
   .navigator { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; overflow: visible; }
   .filter-section { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }

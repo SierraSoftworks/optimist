@@ -12,6 +12,20 @@ Graph layout reserves a top band for interventions and a bottom band for outcome
 
 Dense graphs use semantic zoom automatically: overview hides labels and softens non-focused edges, context restores compact labels, and detail shows the complete graph vocabulary. Selected neighborhoods and analysis highlights remain legible at every level. The canvas layout control switches between causal hierarchy and deterministic kind clusters, with a cluster legend reporting visible actions, factors, metrics, and objectives.
 
+The header command bar displays `Cmd+K` on Apple platforms and `Ctrl+K` elsewhere so its keyboard shortcut is discoverable before first use. It applies a deterministic typed grammar rather than natural language, provides context-aware completion, validates endpoint kinds and numeric bounds, shows the exact typed action and generated setup assumptions, and enables Apply only for a complete command:
+
+```text
+add factor "Fast feedback" controllable
+add outcome "Reliable delivery" maximize
+add metric "Cycle time" days
+add intervention "Automate review"
+connect A changes B 0.35
+select B
+mode optimize
+```
+
+Node commands use the same simulation-ready defaults as the creation wizard and retain an explicit provenance warning for later review. Relationship commands resolve an exact ID, semantic name, or quoted exact title. After a source is selected, autocomplete only offers relationship kinds which that node can originate and for which at least one compatible destination currently exists; destination completion applies the same endpoint rules. Duplicate or invalid relationships are still rejected before mutation. The command bar delegates apply to the existing typed node/edge APIs, so revision checks, persistence, replay, and mutation error handling remain unchanged.
+
 Estimate editors render a live relative-density preview for Point, Beta, Scaled Beta, Normal, and LogNormal distributions. Accessible parameter popovers explain support, shape, spread, and tail behavior in operational terms. Popovers are portaled to the viewport so scrolling dialogs cannot clip them. Each typed estimate slot still limits selection to distribution families whose full support is valid for that quantity.
 
 Every estimate editor also offers a **Fermi decomposition** assistant. Define named variables with compact estimates such as `1.5M` and human unit expressions such as `people/household`, then compose them with `+`, `-`, `*`, `/`, integer powers, and parentheses. New variables default to a LogNormal 90% interval from one tenth to ten times the entered estimate. Expand a variable only when a custom low/likely/high Beta-PERT range is justified. The assistant continuously evaluates the central arithmetic, composes and canonicalizes units, highlights malformed or unused variables, and reports residual dimensions before Monte Carlo is available.
@@ -70,7 +84,7 @@ npm run test:e2e:real
 npm audit
 ```
 
-`test:e2e` uses deterministic mocked API state for desktop/mobile layout, screenshots, intervention-to-outcome hierarchy, semantic zoom transitions, deterministic kind clusters, dense-graph viewport containment, readiness markers and setup wizard, focused relationship metadata/editing, analysis-mode highlighting, impediment ordering, scenario projection results, canvas-pixel checks, and a 100-node render bound. `test:e2e:real` starts Axum and Vite on isolated ports and verifies exact structural feedback analysis, evidence-aware impediment projection, finite-horizon scenario analysis, direct relationship editing, estimate lifecycles, evidence records, observation correction chains, edge/node deletion, archive download, mutation, and confirmed restore through the real proxy. Both Playwright configurations use a non-interactive line reporter and exit after completion.
+`test:e2e` uses deterministic mocked API state for desktop/mobile layout, screenshots, command completion/diagnostics/preview/apply, intervention-to-outcome hierarchy, semantic zoom transitions, deterministic kind clusters, dense-graph viewport containment, readiness markers and setup wizard, focused relationship metadata/editing, analysis-mode highlighting, impediment ordering, scenario projection results, canvas-pixel checks, and a 100-node render bound. `test:e2e:real` starts Axum and Vite on isolated ports and verifies command-bar mutations, exact structural feedback analysis, evidence-aware impediment projection, finite-horizon scenario analysis, direct relationship editing, estimate lifecycles, evidence records, observation correction chains, edge/node deletion, archive download, mutation, and confirmed restore through the real proxy. Both Playwright configurations use a non-interactive line reporter and exit after completion.
 
 Playwright scenarios are organized one per file under domain directories. Mocked workflows live in `tests/{analysis,graph,performance,projects,responsive}` with reusable routing/canvas helpers in `tests/support`. Real-Axum workflows live in `tests-real/{analysis,estimates,graph,observations,projects}` with UI setup helpers in `tests-real/support`; every real scenario creates its own isolated project.
 
