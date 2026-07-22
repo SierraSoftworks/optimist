@@ -1,0 +1,388 @@
+//! Runtime values produced by Squiggle evaluation.
+
+use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
+
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
+
+use super::{
+    ast::{Expression, Parameter},
+    distribution::Distribution,
+};
+
+/// A dynamically typed Squiggle value.
+#[derive(Clone, Debug)]
+pub enum Value {
+    /// IEEE-754 scalar number.
+    Number(f64),
+    /// Boolean truth value.
+    Boolean(bool),
+    /// UTF-8 string.
+    String(String),
+    /// Ordered heterogeneous collection.
+    Array(Vec<Value>),
+    /// String-keyed insertion-independent dictionary.
+    Dictionary(BTreeMap<String, Value>),
+    /// Scalar probability distribution.
+    Distribution(Distribution),
+    /// UTC calendar date represented at midnight.
+    Date(DateValue),
+    /// Signed elapsed time.
+    Duration(DurationValue),
+    /// Runtime argument-validation domain.
+    Domain(Domain),
+    /// Builtin or lexically scoped callable.
+    Function(Function),
+    /// Absence of a module result.
+    Void,
+}
+
+impl Value {
+    /// Returns the stable runtime type name used in diagnostics.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Number(_) => "Number",
+            Self::Boolean(_) => "Boolean",
+            Self::String(_) => "String",
+            Self::Array(_) => "Array",
+            Self::Dictionary(_) => "Dictionary",
+            Self::Distribution(_) => "Distribution",
+            Self::Date(_) => "Date",
+            Self::Duration(_) => "Duration",
+            Self::Domain(_) => "Domain",
+            Self::Function(_) => "Function",
+            Self::Void => "Void",
+        }
+    }
+
+    /// Borrows this value as a number.
+    pub fn as_number(&self) -> Option<f64> {
+        if let Self::Number(value) = self {
+            Some(*value)
+        } else {
+            None
+        }
+    }
+
+    /// Borrows this value as a probability distribution.
+    pub fn as_distribution(&self) -> Option<&Distribution> {
+        if let Self::Distribution(value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Number(left), Self::Number(right)) => left == right,
+            (Self::Boolean(left), Self::Boolean(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
+            (Self::Array(left), Self::Array(right)) => left == right,
+            (Self::Dictionary(left), Self::Dictionary(right)) => left == right,
+            (Self::Distribution(left), Self::Distribution(right)) => left == right,
+            (Self::Date(left), Self::Date(right)) => left == right,
+            (Self::Duration(left), Self::Duration(right)) => left == right,
+            (Self::Domain(left), Self::Domain(right)) => left == right,
+            (Self::Void, Self::Void) => true,
+            (Self::Function(left), Self::Function(right)) => left.identity() == right.identity(),
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Number(value) => write!(formatter, "{value}"),
+            Self::Boolean(value) => write!(formatter, "{value}"),
+            Self::String(value) => write!(formatter, "{value}"),
+            Self::Array(values) => write!(
+                formatter,
+                "[{}]",
+                values
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::Dictionary(values) => write!(
+                formatter,
+                "{{{}}}",
+                values
+                    .iter()
+                    .map(|(key, value)| format!("{key}: {value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::Distribution(value) => write!(formatter, "<{} distribution>", value.family()),
+            Self::Date(value) => write!(formatter, "{value}"),
+            Self::Duration(value) => write!(formatter, "{} days", value.as_days()),
+            Self::Domain(value) => write!(formatter, "{value}"),
+            Self::Function(value) => write!(formatter, "<function {}>", value.name()),
+            Self::Void => formatter.write_str("void"),
+        }
+    }
+}
+
+/// A bounded scalar domain used by function parameter annotations.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Domain {
+    /// Inclusive numeric interval.
+    NumberRange {
+        /// Inclusive lower bound.
+        minimum: f64,
+        /// Inclusive upper bound.
+        maximum: f64,
+    },
+    /// Inclusive UTC date interval.
+    DateRange {
+        /// Inclusive earliest date.
+        minimum: DateValue,
+        /// Inclusive latest date.
+        maximum: DateValue,
+    },
+}
+
+impl Domain {
+    /// Returns whether `value` belongs to this domain.
+    pub fn contains(&self, value: &Value) -> bool {
+        match (self, value) {
+            (Self::NumberRange { minimum, maximum }, Value::Number(value)) => {
+                (*minimum..=*maximum).contains(value)
+            }
+            (Self::DateRange { minimum, maximum }, Value::Date(value)) => {
+                (*minimum..=*maximum).contains(value)
+            }
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Domain {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NumberRange { minimum, maximum } => write!(formatter, "{minimum} to {maximum}"),
+            Self::DateRange { minimum, maximum } => write!(formatter, "{minimum} to {maximum}"),
+        }
+    }
+}
+
+/// A UTC calendar date stored as Unix milliseconds.
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct DateValue(f64);
+
+impl DateValue {
+    /// Creates a date from a finite Unix timestamp in seconds.
+    pub fn from_unix_seconds(seconds: f64) -> Result<Self, String> {
+        if !seconds.is_finite() {
+            return Err("Unix timestamp must be finite".into());
+        }
+        let milliseconds = seconds * 1_000.0;
+        milliseconds
+            .is_finite()
+            .then_some(Self(milliseconds))
+            .ok_or_else(|| "Unix timestamp is outside the supported range".into())
+    }
+
+    /// Creates a midnight UTC date from Gregorian components.
+    pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, String> {
+        let date = NaiveDate::from_ymd_opt(year, month, day)
+            .ok_or_else(|| "invalid Gregorian date".to_owned())?;
+        let midnight = date
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| "failed to construct midnight for Gregorian date".to_owned())?;
+        Ok(Self(midnight.and_utc().timestamp_millis() as f64))
+    }
+
+    /// Parses an ISO `YYYY-MM-DD` date.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let date =
+            NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|error| error.to_string())?;
+        Self::from_ymd(
+            chrono::Datelike::year(&date),
+            chrono::Datelike::month(&date),
+            chrono::Datelike::day(&date),
+        )
+    }
+
+    /// Returns Unix time in seconds.
+    pub fn unix_seconds(self) -> f64 {
+        self.0 / 1_000.0
+    }
+
+    pub(crate) fn add(self, duration: DurationValue) -> Self {
+        Self(self.0 + duration.0)
+    }
+
+    pub(crate) fn subtract(self, other: Self) -> DurationValue {
+        DurationValue(self.0 - other.0)
+    }
+}
+
+impl fmt::Display for DateValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(date) = DateTime::<Utc>::from_timestamp_millis(self.0 as i64) else {
+            return formatter.write_str("invalid date");
+        };
+        let date = date.date_naive();
+        write!(
+            formatter,
+            "{:04}-{:02}-{:02}",
+            date.year(),
+            date.month(),
+            date.day()
+        )
+    }
+}
+
+/// A signed duration stored in milliseconds.
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct DurationValue(f64);
+
+impl DurationValue {
+    /// Creates a finite duration from milliseconds.
+    pub fn from_milliseconds(milliseconds: f64) -> Result<Self, String> {
+        milliseconds
+            .is_finite()
+            .then_some(Self(milliseconds))
+            .ok_or_else(|| "duration must be finite".into())
+    }
+
+    /// Creates a duration from minutes.
+    pub fn from_minutes(value: f64) -> Result<Self, String> {
+        Self::from_milliseconds(value * 60_000.0)
+    }
+    /// Creates a duration from hours.
+    pub fn from_hours(value: f64) -> Result<Self, String> {
+        Self::from_milliseconds(value * 3_600_000.0)
+    }
+    /// Creates a duration from days.
+    pub fn from_days(value: f64) -> Result<Self, String> {
+        Self::from_milliseconds(value * 86_400_000.0)
+    }
+    /// Creates a duration from 365.25-day years.
+    pub fn from_years(value: f64) -> Result<Self, String> {
+        Self::from_days(value * 365.25)
+    }
+    /// Returns this duration in minutes.
+    pub fn as_minutes(self) -> f64 {
+        self.0 / 60_000.0
+    }
+    /// Returns this duration in hours.
+    pub fn as_hours(self) -> f64 {
+        self.0 / 3_600_000.0
+    }
+    /// Returns this duration in days.
+    pub fn as_days(self) -> f64 {
+        self.0 / 86_400_000.0
+    }
+    /// Returns this duration in 365.25-day years.
+    pub fn as_years(self) -> f64 {
+        self.as_days() / 365.25
+    }
+    pub(crate) fn milliseconds(self) -> f64 {
+        self.0
+    }
+}
+
+/// A callable builtin or user-defined closure.
+#[derive(Clone, Debug)]
+pub struct Function(pub(crate) Rc<FunctionKind>);
+
+impl Function {
+    /// Returns the diagnostic name of this function.
+    pub fn name(&self) -> &str {
+        match self.0.as_ref() {
+            FunctionKind::Builtin(name) => name,
+            FunctionKind::User { name, .. } => name.as_deref().unwrap_or("anonymous"),
+        }
+    }
+
+    /// Returns the declared arity for user functions, if statically known.
+    pub fn arity(&self) -> Option<usize> {
+        match self.0.as_ref() {
+            FunctionKind::Builtin(_) => None,
+            FunctionKind::User { parameters, .. } => Some(parameters.len()),
+        }
+    }
+
+    pub(crate) fn builtin(name: &'static str) -> Self {
+        Self(Rc::new(FunctionKind::Builtin(name)))
+    }
+
+    pub(crate) fn user(
+        name: Option<String>,
+        parameters: Vec<Parameter>,
+        body: Expression,
+        environment: Environment,
+    ) -> Self {
+        Self(Rc::new(FunctionKind::User {
+            name,
+            parameters,
+            body,
+            environment,
+        }))
+    }
+
+    fn identity(&self) -> *const FunctionKind {
+        Rc::as_ptr(&self.0)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum FunctionKind {
+    Builtin(&'static str),
+    User {
+        name: Option<String>,
+        parameters: Vec<Parameter>,
+        body: Expression,
+        environment: Environment,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Environment(Rc<Frame>);
+
+#[derive(Debug)]
+struct Frame {
+    parent: Option<Environment>,
+    values: RefCell<BTreeMap<String, Value>>,
+}
+
+impl Environment {
+    pub(crate) fn root() -> Self {
+        Self(Rc::new(Frame {
+            parent: None,
+            values: RefCell::new(BTreeMap::new()),
+        }))
+    }
+
+    pub(crate) fn child(&self) -> Self {
+        Self(Rc::new(Frame {
+            parent: Some(self.clone()),
+            values: RefCell::new(BTreeMap::new()),
+        }))
+    }
+
+    pub(crate) fn snapshot(&self) -> Self {
+        Self(Rc::new(Frame {
+            parent: self.0.parent.as_ref().map(Environment::snapshot),
+            values: RefCell::new(self.0.values.borrow().clone()),
+        }))
+    }
+
+    pub(crate) fn define(&self, name: impl Into<String>, value: Value) {
+        self.0.values.borrow_mut().insert(name.into(), value);
+    }
+
+    pub(crate) fn get(&self, name: &str) -> Option<Value> {
+        self.0
+            .values
+            .borrow()
+            .get(name)
+            .cloned()
+            .or_else(|| self.0.parent.as_ref()?.get(name))
+    }
+}

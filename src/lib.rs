@@ -19,5 +19,7 @@ pub mod markdown;
 pub mod project;
 /// HTTP routing and server process lifecycle.
 pub mod server;
+/// Squiggle-compatible probabilistic language parsing and evaluation.
+pub mod squiggle;
 /// Backend-independent graph persistence contracts and implementations.
 pub mod store;
