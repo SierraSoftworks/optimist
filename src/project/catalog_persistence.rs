@@ -1,7 +1,12 @@
 use std::{
+    collections::BTreeSet,
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use serde::{Deserialize, Serialize};
@@ -13,8 +18,14 @@ use indradb::MemoryDatastore;
 
 use super::{ProjectArchive, ProjectCatalog, ProjectError, catalog::ProjectEntry};
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
-const SNAPSHOT_FILE: &str = "catalog.json";
+const LEGACY_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+const PROJECT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;
+const LEGACY_SNAPSHOT_FILE: &str = "catalog.json";
+const PROJECTS_DIRECTORY: &str = "projects";
+const PROJECT_METADATA_FILE: &str = "meta.json";
+const PROJECT_SNAPSHOT_FILE: &str = "project.json";
+const MAX_PROJECT_METADATA_BYTES: u64 = 64 * 1024;
 const MAX_SNAPSHOT_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Failures while loading, validating, or atomically publishing a catalog snapshot.
@@ -65,18 +76,72 @@ pub enum CatalogPersistenceError {
 
 pub(crate) struct CatalogStore {
     pub(super) root: PathBuf,
+    pub(super) journal_lock: Mutex<()>,
+    snapshot_lock: Mutex<()>,
 }
 
 impl CatalogStore {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            journal_lock: Mutex::new(()),
+            snapshot_lock: Mutex::new(()),
+        }
     }
 
     pub(crate) fn load(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
-        let path = self.root.join(SNAPSHOT_FILE);
-        let mut catalog = self.load_file(&path, true)?;
-        let _ = self.recover_pending_mutation(&mut catalog)?;
+        let legacy = self.root.join(LEGACY_SNAPSHOT_FILE);
+        let mut catalog = if legacy.exists() {
+            let mut catalog = self.load_file(&legacy, false)?;
+            self.save(&mut catalog)?;
+            fs::remove_file(&legacy).map_err(|source| io_error(legacy, source))?;
+            catalog
+        } else {
+            self.load_project_directories()?
+        };
+        let _ = self.recover_pending_mutations(&mut catalog)?;
         Ok(catalog)
+    }
+
+    pub(crate) fn list_project_metadata(
+        &self,
+    ) -> Result<Vec<super::Project>, CatalogPersistenceError> {
+        let directory = self.root.join(PROJECTS_DIRECTORY);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(source) => return Err(io_error(directory, source)),
+        };
+        let mut projects = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|source| io_error(directory.clone(), source))?;
+            if !entry
+                .file_type()
+                .map_err(|source| io_error(entry.path(), source))?
+                .is_dir()
+            {
+                continue;
+            }
+            let metadata_path = entry.path().join(PROJECT_METADATA_FILE);
+            let metadata_bytes = read_bounded_to(&metadata_path, MAX_PROJECT_METADATA_BYTES)?;
+            let metadata: ProjectMetadataDocument = serde_json::from_slice(&metadata_bytes)
+                .map_err(|source| CatalogPersistenceError::Json {
+                    path: metadata_path.clone(),
+                    source,
+                })?;
+            if metadata.schema_version != PROJECT_METADATA_SCHEMA_VERSION {
+                return Err(CatalogPersistenceError::UnsupportedSchema(
+                    metadata.schema_version,
+                ));
+            }
+            if !metadata.deleted
+                && let Some(project) = metadata.project
+            {
+                projects.push(project);
+            }
+        }
+        projects.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(projects)
     }
 
     pub(super) fn load_file(
@@ -101,38 +166,286 @@ impl CatalogStore {
                 path: path.clone(),
                 source,
             })?;
-        let migrated = migrate(&mut document)?;
-        let snapshot: CatalogSnapshot =
+        migrate_legacy(&mut document)?;
+        let snapshot: LegacyCatalogSnapshot =
             serde_json::from_value(document).map_err(|source| CatalogPersistenceError::Json {
                 path: path.clone(),
                 source,
             })?;
-        let mut catalog = ProjectCatalog::from_persisted_snapshot(snapshot)?;
-        if migrated && rewrite_migration {
+        let mut catalog = ProjectCatalog::from_legacy_snapshot(snapshot)?;
+        if rewrite_migration {
             self.save(&mut catalog)?;
         }
         Ok(catalog)
     }
 
-    pub(super) fn snapshot_path(&self) -> PathBuf {
-        self.root.join(SNAPSHOT_FILE)
+    pub(crate) fn save(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
+        let _guard = self.snapshot_lock.lock().expect("snapshot lock poisoned");
+        self.save_unlocked(catalog)
     }
 
-    pub(crate) fn save(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
-        fs::create_dir_all(&self.root).map_err(|source| io_error(self.root.clone(), source))?;
-        let snapshot = catalog.persisted_snapshot()?;
-        let bytes = serde_json::to_vec(&snapshot).expect("catalog snapshots serialize");
-        if bytes.len() as u64 > MAX_SNAPSHOT_BYTES {
-            return Err(CatalogPersistenceError::TooLarge {
-                path: self.root.join(SNAPSHOT_FILE),
-            });
+    pub(crate) fn save_if_current(
+        &self,
+        catalog: &mut ProjectCatalog,
+        projects: &BTreeSet<crate::domain::ProjectId>,
+        generation: &AtomicU64,
+        expected_generation: u64,
+    ) -> Result<bool, CatalogPersistenceError> {
+        let _guard = self.snapshot_lock.lock().expect("snapshot lock poisoned");
+        if generation.load(Ordering::Acquire) != expected_generation {
+            return Ok(false);
         }
-        atomic_write(&self.root, SNAPSHOT_FILE, &bytes)
+        self.save_projects_unlocked(catalog, projects)?;
+        Ok(true)
+    }
+
+    fn save_unlocked(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
+        fs::create_dir_all(&self.root).map_err(|source| io_error(self.root.clone(), source))?;
+        let projects = catalog.projects.keys().cloned().collect::<BTreeSet<_>>();
+        self.save_projects_unlocked(catalog, &projects)?;
+        self.remove_orphan_projects(&projects)?;
+        if let Some(last_allocated) = catalog
+            .next_project_id
+            .and_then(|value| value.checked_sub(1))
+        {
+            let project = crate::domain::ProjectId::new(
+                crate::domain::EntityId::new(last_allocated).to_string(),
+            )
+            .expect("generated entity IDs are valid project IDs");
+            if !projects.contains(&project) {
+                self.write_project_tombstone(&project)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn save_projects_unlocked(
+        &self,
+        catalog: &mut ProjectCatalog,
+        projects: &BTreeSet<crate::domain::ProjectId>,
+    ) -> Result<(), CatalogPersistenceError> {
+        let directory = self.root.join(PROJECTS_DIRECTORY);
+        fs::create_dir_all(&directory).map_err(|source| io_error(directory.clone(), source))?;
+        for project in projects {
+            let project_directory = project_directory(&directory, project);
+            fs::create_dir_all(&project_directory)
+                .map_err(|source| io_error(project_directory.clone(), source))?;
+            let document = ProjectSnapshotDocument {
+                schema_version: PROJECT_SNAPSHOT_SCHEMA_VERSION,
+                project: catalog.persisted_project(project)?,
+            };
+            let bytes = serde_json::to_vec(&document).expect("project snapshots serialize");
+            if bytes.len() as u64 > MAX_SNAPSHOT_BYTES {
+                return Err(CatalogPersistenceError::TooLarge {
+                    path: project_directory.join(PROJECT_SNAPSHOT_FILE),
+                });
+            }
+            atomic_write(&project_directory, PROJECT_SNAPSHOT_FILE, &bytes)?;
+            let metadata = ProjectMetadataDocument {
+                schema_version: PROJECT_METADATA_SCHEMA_VERSION,
+                project: Some(document.project.archive.project.clone()),
+                deleted: false,
+            };
+            atomic_write(
+                &project_directory,
+                PROJECT_METADATA_FILE,
+                &serde_json::to_vec(&metadata).expect("project metadata serializes"),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn remove_orphan_projects(
+        &self,
+        projects: &BTreeSet<crate::domain::ProjectId>,
+    ) -> Result<(), CatalogPersistenceError> {
+        let directory = self.root.join(PROJECTS_DIRECTORY);
+        let entries =
+            fs::read_dir(&directory).map_err(|source| io_error(directory.clone(), source))?;
+        for entry in entries {
+            let entry = entry.map_err(|source| io_error(directory.clone(), source))?;
+            let path = entry.path();
+            if !entry
+                .file_type()
+                .map_err(|source| io_error(path.clone(), source))?
+                .is_dir()
+                || entry.file_name().to_string_lossy().starts_with('.')
+            {
+                continue;
+            }
+            let retained = crate::domain::ProjectId::new(entry.file_name().to_string_lossy())
+                .ok()
+                .is_some_and(|project| projects.contains(&project));
+            if !retained {
+                let Ok(project) =
+                    crate::domain::ProjectId::new(entry.file_name().to_string_lossy())
+                else {
+                    continue;
+                };
+                for name in [PROJECT_SNAPSHOT_FILE, "journal.json"] {
+                    let file = path.join(name);
+                    match fs::remove_file(&file) {
+                        Ok(()) => {}
+                        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(source) => return Err(io_error(file, source)),
+                    }
+                }
+                self.write_project_tombstone(&project)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn write_project_tombstone(
+        &self,
+        project: &crate::domain::ProjectId,
+    ) -> Result<(), CatalogPersistenceError> {
+        let directory = self.root.join(PROJECTS_DIRECTORY).join(project.as_str());
+        fs::create_dir_all(&directory).map_err(|source| io_error(directory.clone(), source))?;
+        let metadata = ProjectMetadataDocument {
+            schema_version: PROJECT_METADATA_SCHEMA_VERSION,
+            project: None,
+            deleted: true,
+        };
+        atomic_write(
+            &directory,
+            PROJECT_METADATA_FILE,
+            &serde_json::to_vec(&metadata).expect("project tombstones serialize"),
+        )
+    }
+
+    fn load_project_directories(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
+        let directory = self.root.join(PROJECTS_DIRECTORY);
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(ProjectCatalog::new());
+            }
+            Err(source) => return Err(io_error(directory, source)),
+        };
+        let mut projects = Vec::new();
+        let mut allocated_ids = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|source| io_error(directory.clone(), source))?;
+            let path = entry.path();
+            if !entry
+                .file_type()
+                .map_err(|source| io_error(path.clone(), source))?
+                .is_dir()
+                || entry.file_name().to_string_lossy().starts_with('.')
+            {
+                continue;
+            }
+            let id = crate::domain::ProjectId::new(entry.file_name().to_string_lossy()).map_err(
+                |error| {
+                    CatalogPersistenceError::Project(ProjectError::InvalidArchivePath(format!(
+                        "invalid project directory: {error}"
+                    )))
+                },
+            )?;
+            allocated_ids.push(id.clone());
+            let metadata_path = path.join(PROJECT_METADATA_FILE);
+            let metadata: ProjectMetadataDocument = serde_json::from_slice(&read_bounded_to(
+                &metadata_path,
+                MAX_PROJECT_METADATA_BYTES,
+            )?)
+            .map_err(|source| CatalogPersistenceError::Json {
+                path: metadata_path.clone(),
+                source,
+            })?;
+            if metadata.schema_version != PROJECT_METADATA_SCHEMA_VERSION {
+                return Err(CatalogPersistenceError::Project(
+                    ProjectError::InvalidArchivePath(format!(
+                        "invalid project metadata {}",
+                        metadata_path.display()
+                    )),
+                ));
+            }
+            if metadata.deleted {
+                if metadata.project.is_some() {
+                    return Err(CatalogPersistenceError::Project(
+                        ProjectError::InvalidArchivePath(format!(
+                            "deleted project metadata contains a project {}",
+                            metadata_path.display()
+                        )),
+                    ));
+                }
+                continue;
+            }
+            let metadata_project = metadata.project.ok_or_else(|| {
+                CatalogPersistenceError::Project(ProjectError::InvalidArchivePath(format!(
+                    "active project metadata is empty {}",
+                    metadata_path.display()
+                )))
+            })?;
+            if metadata_project.id != id {
+                return Err(CatalogPersistenceError::Project(
+                    ProjectError::InvalidArchivePath(format!(
+                        "project metadata ID does not match {}",
+                        metadata_path.display()
+                    )),
+                ));
+            }
+            let snapshot_path = path.join(PROJECT_SNAPSHOT_FILE);
+            let document: ProjectSnapshotDocument =
+                serde_json::from_slice(&read_bounded(&snapshot_path)?).map_err(|source| {
+                    CatalogPersistenceError::Json {
+                        path: snapshot_path.clone(),
+                        source,
+                    }
+                })?;
+            let snapshot_project = &document.project.archive.project;
+            if document.schema_version != PROJECT_SNAPSHOT_SCHEMA_VERSION
+                || snapshot_project.id != metadata_project.id
+                || snapshot_project.name != metadata_project.name
+            {
+                return Err(CatalogPersistenceError::Project(
+                    ProjectError::InvalidArchivePath(format!(
+                        "project metadata does not match {}",
+                        snapshot_path.display()
+                    )),
+                ));
+            }
+            if snapshot_project.revision != metadata_project.revision {
+                let repaired = ProjectMetadataDocument {
+                    schema_version: PROJECT_METADATA_SCHEMA_VERSION,
+                    project: Some(snapshot_project.clone()),
+                    deleted: false,
+                };
+                atomic_write(
+                    &path,
+                    PROJECT_METADATA_FILE,
+                    &serde_json::to_vec(&repaired).expect("project metadata serializes"),
+                )?;
+            }
+            projects.push(document.project);
+        }
+        let next_project_id = allocated_ids
+            .iter()
+            .filter_map(|project| project.as_str().parse::<crate::domain::EntityId>().ok())
+            .map(crate::domain::EntityId::value)
+            .max()
+            .map_or(Some(0), |value| value.checked_add(1));
+        ProjectCatalog::from_persisted_projects(next_project_id, projects)
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct CatalogSnapshot {
+struct ProjectMetadataDocument {
+    schema_version: u32,
+    project: Option<super::Project>,
+    #[serde(default)]
+    deleted: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ProjectSnapshotDocument {
+    schema_version: u32,
+    project: PersistedProject,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct LegacyCatalogSnapshot {
     schema_version: u32,
     next_project_id: Option<u64>,
     projects: Vec<PersistedProject>,
@@ -158,39 +471,85 @@ impl ProjectCatalog {
         Ok(candidate)
     }
 
-    fn persisted_snapshot(&mut self) -> Result<CatalogSnapshot, ProjectError> {
-        let ids = self.projects.keys().cloned().collect::<Vec<_>>();
-        let mut projects = Vec::with_capacity(ids.len());
-        for id in ids {
-            let archive = self.export_archive(&id)?;
+    pub(crate) fn transaction_clone_projects(
+        &self,
+        projects: &BTreeSet<crate::domain::ProjectId>,
+    ) -> Result<Self, CatalogPersistenceError> {
+        let mut candidate = Self::new();
+        candidate.next_project_id = self.next_project_id;
+        for project in projects {
             let entry = self
                 .projects
-                .get(&id)
-                .expect("project ID came from catalog");
-            projects.push(PersistedProject {
-                archive,
-                graph_revision: entry.graph_revision,
-                next_entity_id: entry.repository.next_entity_id_counter(),
-                next_scenario_id: entry.next_scenario_id,
-                change_history_start: entry.change_history_start,
-                changes: entry.changes.values().cloned().collect(),
-            });
+                .get(project)
+                .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
+            candidate.publish_import(clone_entry(entry)?)?;
         }
-        Ok(CatalogSnapshot {
-            schema_version: SNAPSHOT_SCHEMA_VERSION,
-            next_project_id: self.next_project_id,
-            projects,
+        Ok(candidate)
+    }
+
+    pub(crate) fn project_transaction_clone(
+        &self,
+        project: &crate::domain::ProjectId,
+    ) -> Result<Self, CatalogPersistenceError> {
+        let entry = self
+            .projects
+            .get(project)
+            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
+        let mut candidate = Self::new();
+        candidate.next_project_id = self.next_project_id;
+        candidate.publish_import(clone_entry(entry)?)?;
+        Ok(candidate)
+    }
+
+    pub(crate) fn publish_project_transaction(
+        &mut self,
+        project: &crate::domain::ProjectId,
+        mut candidate: Self,
+    ) -> Result<(), ProjectError> {
+        let entry = candidate
+            .projects
+            .remove(project)
+            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
+        self.publish_import(entry)?;
+        Ok(())
+    }
+
+    fn persisted_project(
+        &mut self,
+        id: &crate::domain::ProjectId,
+    ) -> Result<PersistedProject, ProjectError> {
+        let archive = self.export_archive(id)?;
+        let entry = self
+            .projects
+            .get(id)
+            .ok_or_else(|| ProjectError::NotFound(id.clone()))?;
+        Ok(PersistedProject {
+            archive,
+            graph_revision: entry.graph_revision,
+            next_entity_id: entry.repository.next_entity_id_counter(),
+            next_scenario_id: entry.next_scenario_id,
+            change_history_start: entry.change_history_start,
+            changes: entry.changes.values().cloned().collect(),
         })
     }
 
-    fn from_persisted_snapshot(snapshot: CatalogSnapshot) -> Result<Self, CatalogPersistenceError> {
-        if snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
+    fn from_legacy_snapshot(
+        snapshot: LegacyCatalogSnapshot,
+    ) -> Result<Self, CatalogPersistenceError> {
+        if snapshot.schema_version != LEGACY_SNAPSHOT_SCHEMA_VERSION {
             return Err(CatalogPersistenceError::UnsupportedSchema(
                 snapshot.schema_version,
             ));
         }
+        Self::from_persisted_projects(snapshot.next_project_id, snapshot.projects)
+    }
+
+    fn from_persisted_projects(
+        next_project_id: Option<u64>,
+        projects: Vec<PersistedProject>,
+    ) -> Result<Self, CatalogPersistenceError> {
         let mut catalog = Self::new();
-        for persisted in snapshot.projects {
+        for persisted in projects {
             let id = persisted.archive.project.id.clone();
             catalog.import_archive(&persisted.archive, false, false)?;
             let entry = catalog
@@ -210,8 +569,18 @@ impl ProjectCatalog {
                 .restore_next_entity_id_counter(persisted.next_entity_id)
                 .map_err(ProjectError::from)?;
         }
-        catalog.next_project_id = snapshot.next_project_id;
+        catalog.next_project_id =
+            next_project_id.or_else(|| catalog.next_project_id_from_projects());
         Ok(catalog)
+    }
+
+    fn next_project_id_from_projects(&self) -> Option<u64> {
+        self.projects
+            .keys()
+            .filter_map(|project| project.as_str().parse::<crate::domain::EntityId>().ok())
+            .map(crate::domain::EntityId::value)
+            .max()
+            .map_or(Some(0), |value| value.checked_add(1))
     }
 }
 
@@ -239,17 +608,39 @@ fn clone_entry(entry: &ProjectEntry) -> Result<ProjectEntry, ProjectError> {
     })
 }
 
-fn migrate(document: &mut serde_json::Value) -> Result<bool, CatalogPersistenceError> {
-    let version = document
+fn schema_version(document: &serde_json::Value) -> Result<u32, CatalogPersistenceError> {
+    document
         .get("schema_version")
         .and_then(serde_json::Value::as_u64)
         .and_then(|value| u32::try_from(value).ok())
-        .ok_or_else(|| migration_error(0, "schema_version must be a u32"))?;
+        .ok_or_else(|| migration_error(0, "schema_version must be a u32"))
+}
+
+fn read_bounded(path: &Path) -> Result<Vec<u8>, CatalogPersistenceError> {
+    read_bounded_to(path, MAX_SNAPSHOT_BYTES)
+}
+
+fn read_bounded_to(path: &Path, maximum: u64) -> Result<Vec<u8>, CatalogPersistenceError> {
+    let metadata = fs::metadata(path).map_err(|source| io_error(path.to_path_buf(), source))?;
+    if metadata.len() > maximum {
+        return Err(CatalogPersistenceError::TooLarge {
+            path: path.to_path_buf(),
+        });
+    }
+    fs::read(path).map_err(|source| io_error(path.to_path_buf(), source))
+}
+
+fn project_directory(directory: &Path, project: &crate::domain::ProjectId) -> PathBuf {
+    directory.join(project.as_str())
+}
+
+fn migrate_legacy(document: &mut serde_json::Value) -> Result<(), CatalogPersistenceError> {
+    let version = schema_version(document)?;
     match version {
-        SNAPSHOT_SCHEMA_VERSION => Ok(false),
+        LEGACY_SNAPSHOT_SCHEMA_VERSION => Ok(()),
         1 => {
             migrate_v1_to_v2(document)?;
-            Ok(true)
+            Ok(())
         }
         unsupported => Err(CatalogPersistenceError::UnsupportedSchema(unsupported)),
     }
@@ -290,7 +681,7 @@ fn migrate_v1_to_v2(document: &mut serde_json::Value) -> Result<(), CatalogPersi
             );
         }
     }
-    document["schema_version"] = serde_json::Value::from(SNAPSHOT_SCHEMA_VERSION);
+    document["schema_version"] = serde_json::Value::from(LEGACY_SNAPSHOT_SCHEMA_VERSION);
     Ok(())
 }
 
@@ -449,6 +840,30 @@ mod tests {
         }
     }
 
+    fn node_request() -> CommandRequest {
+        CommandRequest {
+            request_id: Uuid::new_v4(),
+            expected_revision: 0,
+            command: GraphCommand::CreateNode(factor("flow")),
+        }
+    }
+
+    fn write_legacy_snapshot(root: &Path, catalog: &mut ProjectCatalog) -> PathBuf {
+        let ids = catalog.projects.keys().cloned().collect::<Vec<_>>();
+        let projects = ids
+            .iter()
+            .map(|project| catalog.persisted_project(project).unwrap())
+            .collect();
+        let snapshot = LegacyCatalogSnapshot {
+            schema_version: LEGACY_SNAPSHOT_SCHEMA_VERSION,
+            next_project_id: catalog.next_project_id,
+            projects,
+        };
+        let path = root.join(LEGACY_SNAPSHOT_FILE);
+        fs::write(&path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+        path
+    }
+
     fn scenario(name: &str) -> ScenarioDraft {
         ScenarioDraft {
             name: name.to_owned(),
@@ -461,6 +876,26 @@ mod tests {
             monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
             scalar_preferences: None,
         }
+    }
+
+    async fn wait_for_persistence(app: &axum::Router, expected: &str) -> serde_json::Value {
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let response = app
+                    .clone()
+                    .oneshot(Request::get("/api/v1/health").body(Body::empty()).unwrap())
+                    .await
+                    .unwrap();
+                let body = to_bytes(response.into_body(), 4096).await.unwrap();
+                let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                if value["persistence"]["state"] == expected {
+                    return value;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("persistence reaches expected state")
     }
 
     #[test]
@@ -570,7 +1005,7 @@ mod tests {
     #[test]
     fn rejects_corrupt_and_unsupported_snapshots() {
         let fixture = Fixture::new();
-        let path = fixture.root.join(SNAPSHOT_FILE);
+        let path = fixture.root.join(LEGACY_SNAPSHOT_FILE);
         fs::write(&path, b"not json").unwrap();
         assert!(matches!(
             CatalogStore::new(fixture.root.clone()).load(),
@@ -609,8 +1044,7 @@ mod tests {
                 None,
             )
             .unwrap();
-        store.save(&mut catalog).unwrap();
-        let path = fixture.root.join(SNAPSHOT_FILE);
+        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
         let mut value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         value["projects"][0]["changes"][0]["request_id"] =
@@ -637,8 +1071,7 @@ mod tests {
             command: GraphCommand::CreateNode(factor("flow")),
         };
         let first = catalog.execute(&project.id, request.clone()).unwrap();
-        store.save(&mut catalog).unwrap();
-        let path = fixture.root.join(SNAPSHOT_FILE);
+        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
         let mut value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         value["schema_version"] = serde_json::Value::from(1);
@@ -654,17 +1087,21 @@ mod tests {
             1
         );
         assert_eq!(migrated.execute(&project.id, request).unwrap(), first);
-        let rewritten: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(rewritten["schema_version"], SNAPSHOT_SCHEMA_VERSION);
-        assert_eq!(rewritten["projects"][0]["change_history_start"], 0);
-        assert_eq!(
-            rewritten["projects"][0]["changes"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
+        assert!(!path.exists());
+        let rewritten: ProjectSnapshotDocument = serde_json::from_slice(
+            &fs::read(
+                fixture
+                    .root
+                    .join(PROJECTS_DIRECTORY)
+                    .join(project.id.as_str())
+                    .join(PROJECT_SNAPSHOT_FILE),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rewritten.schema_version, PROJECT_SNAPSHOT_SCHEMA_VERSION);
+        assert_eq!(rewritten.project.change_history_start, 0);
+        assert_eq!(rewritten.project.changes.len(), 1);
     }
 
     #[test]
@@ -679,8 +1116,7 @@ mod tests {
                 CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
             )
             .unwrap();
-        store.save(&mut catalog).unwrap();
-        let path = fixture.root.join(SNAPSHOT_FILE);
+        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
         let mut value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         value["schema_version"] = serde_json::Value::from(1);
@@ -709,16 +1145,20 @@ mod tests {
                 .snapshot
                 .is_some()
         );
-        let rewritten: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(rewritten["schema_version"], SNAPSHOT_SCHEMA_VERSION);
-        assert_eq!(rewritten["projects"][0]["change_history_start"], 1);
-        assert!(
-            rewritten["projects"][0]["changes"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
+        assert!(!path.exists());
+        let rewritten: ProjectSnapshotDocument = serde_json::from_slice(
+            &fs::read(
+                fixture
+                    .root
+                    .join(PROJECTS_DIRECTORY)
+                    .join(project.id.as_str())
+                    .join(PROJECT_SNAPSHOT_FILE),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(rewritten.project.change_history_start, 1);
+        assert!(rewritten.project.changes.is_empty());
     }
 
     #[test]
@@ -733,8 +1173,7 @@ mod tests {
                 CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
             )
             .unwrap();
-        store.save(&mut catalog).unwrap();
-        let path = fixture.root.join(SNAPSHOT_FILE);
+        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
         let mut value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         value["schema_version"] = serde_json::Value::from(1);
@@ -786,8 +1225,8 @@ mod tests {
     #[tokio::test]
     async fn failed_publication_does_not_expose_the_mutation() {
         let fixture = Fixture::new();
-        let snapshot_path = fixture.root.join(SNAPSHOT_FILE);
-        fs::create_dir(&snapshot_path).unwrap();
+        let projects_path = fixture.root.join(PROJECTS_DIRECTORY);
+        fs::write(&projects_path, b"blocked").unwrap();
         let app = router_with_persistent_catalog(
             ProjectCatalog::new(),
             CatalogStore::new(fixture.root.clone()),
@@ -873,6 +1312,7 @@ mod tests {
         let retry_body = to_bytes(retry.into_body(), 16 * 1024).await.unwrap();
         assert_eq!(first_body, retry_body);
         let replay = app
+            .clone()
             .oneshot(
                 Request::get("/api/v1/projects/A/changes?after=0")
                     .body(Body::empty())
@@ -884,7 +1324,15 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["current_revision"], 1);
         assert_eq!(value["changes"].as_array().unwrap().len(), 1);
-        assert!(!fixture.root.join("command-journal.json").exists());
+        wait_for_persistence(&app, "idle").await;
+        assert!(
+            !fixture
+                .root
+                .join(PROJECTS_DIRECTORY)
+                .join("A")
+                .join("journal.json")
+                .exists()
+        );
 
         let restarted_store = CatalogStore::new(fixture.root.clone());
         let rejected =
@@ -905,6 +1353,169 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(rejected.status(), StatusCode::CONFLICT);
-        assert!(!fixture.root.join("command-journal.json").exists());
+        assert!(
+            !fixture
+                .root
+                .join(PROJECTS_DIRECTORY)
+                .join("A")
+                .join("journal.json")
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn command_acknowledgement_precedes_snapshot_compaction() {
+        let fixture = Fixture::new();
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        let store = CatalogStore::new(fixture.root.clone());
+        store.save(&mut catalog).unwrap();
+        let project_directory = fixture.root.join(PROJECTS_DIRECTORY).join("A");
+        let snapshot_path = project_directory.join(PROJECT_SNAPSHOT_FILE);
+        let journal_path = project_directory.join("journal.json");
+        let snapshot_before = fs::read(&snapshot_path).unwrap();
+        assert!(project_directory.join(PROJECT_METADATA_FILE).exists());
+        let app = router_with_persistent_catalog(catalog, store);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&node_request()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert!(journal_path.exists());
+        assert_eq!(fs::read(&snapshot_path).unwrap(), snapshot_before);
+        let health = app
+            .clone()
+            .oneshot(Request::get("/api/v1/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = to_bytes(health.into_body(), 4096).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["persistence"]["state"], "pending");
+
+        wait_for_persistence(&app, "idle").await;
+        assert!(!journal_path.exists());
+        let restarted = CatalogStore::new(fixture.root.clone()).load().unwrap();
+        assert_eq!(restarted.get(&project.id).unwrap().revision, 1);
+    }
+
+    #[test]
+    fn metadata_listing_does_not_deserialize_project_snapshots() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        catalog.create("Delivery".to_owned()).unwrap();
+        catalog.create("Reliability".to_owned()).unwrap();
+        store.save(&mut catalog).unwrap();
+        fs::write(
+            fixture
+                .root
+                .join(PROJECTS_DIRECTORY)
+                .join("B")
+                .join(PROJECT_SNAPSHOT_FILE),
+            b"not json",
+        )
+        .unwrap();
+
+        assert_eq!(store.list_project_metadata().unwrap(), catalog.list());
+        assert!(matches!(
+            store.load(),
+            Err(CatalogPersistenceError::Json { .. })
+        ));
+    }
+
+    #[test]
+    fn startup_repairs_stale_metadata_from_the_authoritative_project_snapshot() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        store.save(&mut catalog).unwrap();
+        let metadata_path = fixture
+            .root
+            .join(PROJECTS_DIRECTORY)
+            .join(project.id.as_str())
+            .join(PROJECT_METADATA_FILE);
+        let stale = fs::read(&metadata_path).unwrap();
+        catalog.execute(&project.id, node_request()).unwrap();
+        let projects = [project.id.clone()].into_iter().collect();
+        store
+            .save_projects_unlocked(&mut catalog, &projects)
+            .unwrap();
+        fs::write(&metadata_path, stale).unwrap();
+
+        let restored = store.load().unwrap();
+        assert_eq!(restored.get(&project.id).unwrap().revision, 1);
+        let metadata: ProjectMetadataDocument =
+            serde_json::from_slice(&fs::read(metadata_path).unwrap()).unwrap();
+        assert_eq!(metadata.project.unwrap().revision, 1);
+    }
+
+    #[tokio::test]
+    async fn compaction_writes_only_the_touched_project_directory() {
+        let fixture = Fixture::new();
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        catalog.create("Delivery".to_owned()).unwrap();
+        catalog.create("Reliability".to_owned()).unwrap();
+        store.save(&mut catalog).unwrap();
+        let untouched = fixture
+            .root
+            .join(PROJECTS_DIRECTORY)
+            .join("B")
+            .join(PROJECT_SNAPSHOT_FILE);
+        let before = fs::read(&untouched).unwrap();
+        let app = router_with_persistent_catalog(catalog, store);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&node_request()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        wait_for_persistence(&app, "idle").await;
+        assert_eq!(fs::read(untouched).unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn background_snapshot_failure_is_visible_and_keeps_the_journal() {
+        let fixture = Fixture::new();
+        let mut catalog = ProjectCatalog::new();
+        catalog.create("Delivery".to_owned()).unwrap();
+        let store = CatalogStore::new(fixture.root.clone());
+        store.save(&mut catalog).unwrap();
+        let project_directory = fixture.root.join(PROJECTS_DIRECTORY).join("A");
+        let snapshot_path = project_directory.join(PROJECT_SNAPSHOT_FILE);
+        let journal_path = project_directory.join("journal.json");
+        fs::remove_file(&snapshot_path).unwrap();
+        fs::create_dir(&snapshot_path).unwrap();
+        let app = router_with_persistent_catalog(catalog, store);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/projects/A/commands")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&node_request()).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let health = wait_for_persistence(&app, "error").await;
+        assert_eq!(health["status"], "degraded");
+        assert!(health["persistence"]["error"].as_str().is_some());
+        assert!(journal_path.exists());
     }
 }

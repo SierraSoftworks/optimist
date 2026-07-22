@@ -22,6 +22,7 @@ import type {
   Scenario,
   ScenarioAnalysis,
   ScenarioDraft,
+  ServerHealth,
   SquiggleAssessmentResult,
   SquiggleEstimateDefinition,
   StructuralAnalysis,
@@ -225,6 +226,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<ServerHealth>('/api/v1/health'),
   projects: () => request<Project[]>('/api/v1/projects'),
   project: (project: string) => request<Project>(`/api/v1/projects/${project}`),
   nodes: (project: string) => request<GraphNode[]>(`/api/v1/projects/${project}/nodes`),

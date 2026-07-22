@@ -86,9 +86,9 @@ cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
 
-The server atomically writes a versioned `catalog.json` under `--data-dir` after every successful project or command mutation. Validated commands are first fsynced to a bounded `command-journal.json`; startup replays a remaining entry through the UUID-idempotent command path, publishes the recovered catalog, and then clears the journal. This completes a command interrupted either before catalog publication or before journal cleanup without duplicating graph state or `ChangeSet` history. Restarting with the same data directory restores project metadata, graph contents, estimates, Fermi sources, scenarios, formulas, dependence documents, revisions, monotonic project/entity/scenario allocators, committed `ChangeSet` events, and idempotent command results. Startup migrates known older schemas forward only after the transformed catalog passes complete archive, allocator, formula, dependence, and replay-continuity checks. The upgraded snapshot is then atomically rewritten. Malformed state and unknown future catalog or journal schemas fail startup without modifying the original file.
+The filesystem is the catalog under `--data-dir`. Every `projects/<ID>/` directory contains a bounded `meta.json` for cheap discovery, a complete versioned `project.json`, and a project-local `journal.json` only while commands await compaction. Validated commands acknowledge after the small WAL is fsynced; after a short idle period, background compaction rewrites only the touched project's snapshot and removes the covered journal prefix. `/api/v1/health` reports `pending`, `idle`, or a visible degraded persistence error. Restart replays retained requests through UUID idempotency without duplicating graph state or `ChangeSet` history. Metadata-only tombstone directories preserve monotonic project allocation after deletion. Legacy schema-v1/v2 `catalog.json` and root journals migrate into project directories only after complete integrity validation.
 
-Create and restore immutable full-catalog backups, or capture one project at an exact revision:
+Create and restore immutable filesystem-catalog backups, or capture one project at an exact revision:
 
 ```sh
 cargo run -- project backup create
@@ -100,7 +100,7 @@ cargo run -- project snapshot A list
 cargo run -- --output json project snapshot A show <REVISION>
 ```
 
-Full restores validate the selected catalog before acquiring it as live state and automatically create a safety backup of the catalog being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content.
+Full backups copy validated project directories and bounded backup metadata. Restore validates those directories before acquiring them as live state and automatically creates a safety backup of the projects being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content.
 
 Apply up to 100 typed commands atomically, or submit a reviewed compensation plan for one committed batch:
 
@@ -201,7 +201,7 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
 
 ## Current limitations
 
-- Projects, retained `ChangeSet` replay, and command idempotency results restore from one atomic canonical snapshot. Imported archives begin a new replay lineage at their archived revision; older cursors receive a canonical snapshot fallback through REST or WebSocket replay.
+- Projects, retained `ChangeSet` replay, and command idempotency results restore independently from their filesystem directories. Imported archives begin a new replay lineage at their archived revision; older cursors receive a canonical snapshot fallback through REST or WebSocket replay.
 - Structural SCC/cycle analysis is exact. Finite-horizon candidate projection is implemented under documented baseline-delta assumptions, but dependence-aware dynamics, bundles, costs, stable feedback, and Pareto optimization remain pending.
 - Complete canonical project archives can be exported/imported through CLI, HTTP, and the workbench. Import is full-snapshot restore; safe merge application remains pending.
 - Authentication remains planned. The Vue workbench is available, but several roadmap workflows remain incomplete.

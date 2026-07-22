@@ -15,6 +15,15 @@ export interface Project {
   revision: number
 }
 
+export interface ServerHealth {
+  status: 'ok' | 'degraded'
+  version: string
+  persistence: {
+    state: 'idle' | 'pending' | 'error'
+    error?: string
+  }
+}
+
 export interface Distribution {
   type: 'point' | 'normal' | 'log_normal' | 'beta' | 'scaled_beta' | 'empirical'
   value?: number

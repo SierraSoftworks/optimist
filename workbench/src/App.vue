@@ -96,6 +96,7 @@ import {
   useUpdateScenario,
   useImpedimentAnalysis,
   useSetMeasurementCalibration,
+  useServerHealth,
 } from './composables/useProjectData'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 import { simulationReadiness } from './domain/simulationReadiness'
@@ -106,6 +107,7 @@ const store = useWorkbenchStore()
 const commandShortcutHint = commandShortcutLabel()
 const { mode, search, selectedNodeId, selectedProjectId, setupOnly, visibleKinds } = storeToRefs(store)
 const projectsQuery = useProjects()
+const healthQuery = useServerHealth()
 const projectQuery = useProject(selectedProjectId)
 const graph = useGraph(selectedProjectId)
 const createProject = useCreateProject()
@@ -696,12 +698,7 @@ function editEdgeEstimate(slot: EdgeEstimateSlot) {
 async function submitEdgeEstimate(input: SetEdgeEstimateInput) {
   mutationError.value = null
   try {
-    await setEdgeEstimate.mutateAsync(input)
-    selectedEdge.value = edges.value.find((edge) =>
-      edge.source === selectedEdge.value?.source &&
-      edge.destination === selectedEdge.value?.destination &&
-      edge.payload.kind === selectedEdge.value?.payload.kind,
-    ) ?? selectedEdge.value
+    selectedEdge.value = await setEdgeEstimate.mutateAsync(input)
     edgeEstimateDialogOpen.value = false
     selectedEdgeEstimateSlot.value = null
   } catch (error) {
@@ -712,12 +709,7 @@ async function submitEdgeEstimate(input: SetEdgeEstimateInput) {
 async function submitEdgeEstimateRemove(estimate: Estimate) {
   mutationError.value = null
   try {
-    await removeEdgeEstimate.mutateAsync(estimate)
-    selectedEdge.value = edges.value.find((edge) =>
-      edge.source === selectedEdge.value?.source &&
-      edge.destination === selectedEdge.value?.destination &&
-      edge.payload.kind === selectedEdge.value?.payload.kind,
-    ) ?? selectedEdge.value
+    selectedEdge.value = await removeEdgeEstimate.mutateAsync(estimate)
     edgeEstimateDialogOpen.value = false
     selectedEdgeEstimateSlot.value = null
   } catch (error) {
@@ -777,6 +769,17 @@ function retry() {
       </nav>
 
       <div class="header-actions">
+        <span
+          v-if="healthQuery.data.value?.persistence.state !== 'idle'"
+          class="persistence-state"
+          :data-state="healthQuery.data.value?.persistence.state"
+          :title="healthQuery.data.value?.persistence.error ?? 'Compacting durable model snapshot'"
+          aria-live="polite"
+        >
+          <RefreshCw v-if="healthQuery.data.value?.persistence.state === 'pending'" class="spin" :size="13" />
+          <AlertTriangle v-else :size="13" />
+          {{ healthQuery.data.value?.persistence.state === 'pending' ? 'Saving model' : 'Persistence degraded' }}
+        </span>
         <button type="button" class="command-bar-trigger header-icon" :title="`Command bar (${commandShortcutHint})`" :aria-label="`Open command bar (${commandShortcutHint})`" :disabled="!selectedProjectId" @click="commandBarOpen = true">
           <SquareTerminal :size="16" />
           <kbd>{{ commandShortcutHint }}</kbd>
@@ -1081,6 +1084,8 @@ function retry() {
 .project-switcher select { appearance: none; width: 100%; height: 100%; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-weight: 600; }
 .project-switcher > svg { position: absolute; right: 48px; pointer-events: none; color: var(--muted); }
 .revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: 11px 'IBM Plex Mono', monospace; color: var(--muted); }
+.persistence-state { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 700; white-space: nowrap; }
+.persistence-state[data-state='error'] { color: #9a3e31; }
 .mode-tabs { display: flex; align-items: center; height: 100%; }
 .mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 11px; font-size: 12px; font-weight: 600; }
 .mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }

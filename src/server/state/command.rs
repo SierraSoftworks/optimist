@@ -3,6 +3,7 @@ use crate::{
     domain::ProjectId,
     project::{ProjectCatalog, ProjectError},
 };
+use std::sync::atomic::Ordering;
 
 use super::{AppState, CatalogMutationError};
 
@@ -23,19 +24,15 @@ impl AppState {
             return Ok((result, changes));
         };
 
-        let recovered = store.recover_pending_mutation(&mut catalog)?;
-        for (recovered_project, change) in recovered {
-            self.publish(&recovered_project, change).await;
-        }
         let before = catalog.get(project)?.revision;
-        let mut candidate = catalog.transaction_clone()?;
+        let mut candidate = catalog.project_transaction_clone(project)?;
         let result = candidate.execute(project, request.clone())?;
         let change = committed_change(&mut candidate, project, before, &result)?;
         if let Some(change) = change {
             store.write_pending_command(project, &request)?;
-            store.save(&mut candidate)?;
-            store.clear_pending_command()?;
-            *catalog = candidate;
+            catalog.publish_project_transaction(project, candidate)?;
+            self.generation.fetch_add(1, Ordering::AcqRel);
+            self.schedule_persistence();
             return Ok((result, vec![(project.clone(), change)]));
         }
         Ok((result, vec![]))
@@ -48,15 +45,8 @@ impl AppState {
         compensates: Option<uuid::Uuid>,
     ) -> Result<(CommandBatchResult, Vec<ChangeSet>), CatalogMutationError> {
         let mut catalog = self.catalog.write().await;
-        if let Some(store) = &self.store {
-            let recovered = store.recover_pending_mutation(&mut catalog)?;
-            for (recovered_project, change) in recovered {
-                self.publish(&recovered_project, change).await;
-            }
-        }
-
         let before = catalog.get(project)?.revision;
-        let mut candidate = catalog.transaction_clone()?;
+        let mut candidate = catalog.project_transaction_clone(project)?;
         let result = candidate.execute_batch(project, request.clone(), compensates)?;
         let changes = result
             .results
@@ -73,10 +63,10 @@ impl AppState {
         }
         if let Some(store) = &self.store {
             store.write_pending_batch(project, &request, compensates)?;
-            store.save(&mut candidate)?;
-            store.clear_pending_command()?;
         }
-        *catalog = candidate;
+        catalog.publish_project_transaction(project, candidate)?;
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        self.schedule_persistence();
         Ok((result, changes))
     }
 }

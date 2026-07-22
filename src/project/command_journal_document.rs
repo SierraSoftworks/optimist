@@ -9,11 +9,16 @@ use crate::{
 
 use super::CatalogPersistenceError;
 
-const JOURNAL_SCHEMA_VERSION: u32 = 2;
+const JOURNAL_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Deserialize, Serialize)]
 struct CommandJournal {
     schema_version: u32,
+    mutations: Vec<PendingMutation>,
+}
+
+#[derive(Deserialize)]
+struct LegacyCommandJournalV2 {
     mutation: PendingMutation,
 }
 
@@ -37,10 +42,10 @@ struct LegacyPendingCommand {
     request: CommandRequest,
 }
 
-pub(super) fn encode(mutation: PendingMutation) -> Vec<u8> {
+pub(super) fn encode(mutations: Vec<PendingMutation>) -> Vec<u8> {
     serde_json::to_vec(&CommandJournal {
         schema_version: JOURNAL_SCHEMA_VERSION,
-        mutation,
+        mutations,
     })
     .expect("pending commands serialize")
 }
@@ -48,7 +53,7 @@ pub(super) fn encode(mutation: PendingMutation) -> Vec<u8> {
 pub(super) fn decode(
     bytes: &[u8],
     path: &Path,
-) -> Result<PendingMutation, CatalogPersistenceError> {
+) -> Result<Vec<PendingMutation>, CatalogPersistenceError> {
     let document: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|source| CatalogPersistenceError::Json {
             path: path.to_path_buf(),
@@ -68,13 +73,19 @@ pub(super) fn decode(
                         source,
                     }
                 })?;
-            Ok(PendingMutation::Command {
+            Ok(vec![PendingMutation::Command {
                 project: legacy.project,
                 request: Box::new(legacy.request),
-            })
+            }])
         }
+        2 => serde_json::from_value::<LegacyCommandJournalV2>(document)
+            .map(|journal| vec![journal.mutation])
+            .map_err(|source| CatalogPersistenceError::Json {
+                path: path.to_path_buf(),
+                source,
+            }),
         JOURNAL_SCHEMA_VERSION => serde_json::from_value::<CommandJournal>(document)
-            .map(|journal| journal.mutation)
+            .map(|journal| journal.mutations)
             .map_err(|source| CatalogPersistenceError::Json {
                 path: path.to_path_buf(),
                 source,

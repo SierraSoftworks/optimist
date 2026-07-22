@@ -8,7 +8,7 @@ This guide builds a small delivery-reliability model using the HTTP server and C
 - A local checkout of Optimist
 - Two terminal windows
 
-The default build uses an embedded in-memory IndraDB datastore and requires no external database. The server atomically snapshots complete canonical projects, ordered committed changes, idempotent command results, and allocator state under `--data-dir` after successful mutations and restores them on restart. Known older catalog schemas migrate forward during startup only after full integrity validation; unsupported or invalid snapshots stop startup and remain untouched. `project backup create|list|restore` manages immutable full-catalog backups, while `project snapshot <PROJECT> create|list|show` captures canonical project archives at exact revisions.
+The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.json` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Known monolithic catalog schemas migrate forward during startup only after full integrity validation. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show` captures canonical project archives at exact revisions.
 
 ## Start the server
 

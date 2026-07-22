@@ -16,7 +16,7 @@ mod websocket_changes;
 
 use std::{net::SocketAddr, path::PathBuf};
 
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, extract::State, routing::get};
 use serde::Serialize;
 use tokio::net::TcpListener;
 
@@ -53,6 +53,7 @@ pub struct ServerConfig {
 struct Health {
     status: &'static str,
     version: &'static str,
+    persistence: state::PersistenceStatus,
 }
 
 /// Builds a fresh application router with an empty process-local project catalog.
@@ -135,10 +136,16 @@ pub async fn serve(config: ServerConfig) -> Result<(), ServerError> {
         .map_err(ServerError::Serve)
 }
 
-async fn health() -> Json<Health> {
+async fn health(State(state): State<AppState>) -> Json<Health> {
+    let persistence = state.persistence_status();
     Json(Health {
-        status: "ok",
+        status: if persistence.state == "error" {
+            "degraded"
+        } else {
+            "ok"
+        },
         version: env!("CARGO_PKG_VERSION"),
+        persistence,
     })
 }
 

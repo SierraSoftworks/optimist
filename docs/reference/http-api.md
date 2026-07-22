@@ -40,7 +40,7 @@ GET  /api/v1/projects/{project}/snapshots
 GET  /api/v1/projects/{project}/snapshots/{revision}
 ```
 
-Backup routes are available only on a server configured with persistent `--data-dir` storage. A full backup is an immutable copy of the validated versioned catalog plus bounded metadata. Restore first validates the selected catalog, then creates a safety backup of current state, atomically publishes the replacement, and closes existing project change streams so clients reconnect against restored revisions. Omitting `yes=true` returns `backup_restore_requires_confirmation` without changing state.
+Backup routes are available only on a server configured with persistent `--data-dir` storage. A full backup is an immutable directory copy of each validated project plus bounded metadata. Restore validates every project directory, creates a safety backup of current state, publishes the replacement, and closes existing project change streams so clients reconnect against restored revisions. Omitting `yes=true` returns `backup_restore_requires_confirmation` without changing state.
 
 Project snapshots are canonical `ProjectArchive` documents keyed by project and revision. Creating a snapshot at an already captured revision is idempotent when the content matches and never overwrites different content.
 

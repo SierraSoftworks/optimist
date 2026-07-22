@@ -1,7 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc, RwLock as StdRwLock,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
+use serde::Serialize;
 use thiserror::Error;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 use crate::{
     command::ChangeSet,
@@ -20,6 +28,18 @@ pub(super) struct AppState {
     store: Option<Arc<CatalogStore>>,
     channels: Arc<RwLock<BTreeMap<ProjectId, broadcast::Sender<ChangeSet>>>>,
     channel_capacity: usize,
+    persistence_tx: Option<mpsc::UnboundedSender<()>>,
+    persistence_status: Arc<StdRwLock<PersistenceStatus>>,
+    generation: Arc<AtomicU64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(super) struct PersistenceStatus {
+    /// Current snapshot compaction state.
+    pub(super) state: &'static str,
+    /// Most recent background compaction failure, when persistence is degraded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) error: Option<String>,
 }
 
 impl AppState {
@@ -36,11 +56,32 @@ impl AppState {
         store: Option<Arc<CatalogStore>>,
         channel_capacity: usize,
     ) -> Self {
+        let catalog = Arc::new(RwLock::new(catalog));
+        let channels = Arc::new(RwLock::new(BTreeMap::new()));
+        let persistence_status = Arc::new(StdRwLock::new(PersistenceStatus {
+            state: "idle",
+            error: None,
+        }));
+        let generation = Arc::new(AtomicU64::new(0));
+        let persistence_tx = store.as_ref().map(|store| {
+            let (tx, rx) = mpsc::unbounded_channel();
+            spawn_persistence_worker(
+                Arc::clone(&catalog),
+                Arc::clone(store),
+                Arc::clone(&persistence_status),
+                Arc::clone(&generation),
+                rx,
+            );
+            tx
+        });
         Self {
-            catalog: Arc::new(RwLock::new(catalog)),
+            catalog,
             store,
-            channels: Arc::new(RwLock::new(BTreeMap::new())),
+            channels,
             channel_capacity,
+            persistence_tx,
+            persistence_status,
+            generation,
         }
     }
 
@@ -54,9 +95,38 @@ impl AppState {
         };
         let mut candidate = catalog.transaction_clone()?;
         let result = operation(&mut candidate)?;
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        let mutation_counts = store.pending_mutation_counts()?;
         store.save(&mut candidate)?;
+        store.compact_pending_mutations(&mutation_counts)?;
         *catalog = candidate;
         Ok(result)
+    }
+
+    pub(super) fn schedule_persistence(&self) {
+        let Some(tx) = &self.persistence_tx else {
+            return;
+        };
+        self.persistence_status
+            .write()
+            .expect("persistence status lock poisoned")
+            .state = "pending";
+        if tx.send(()).is_err() {
+            *self
+                .persistence_status
+                .write()
+                .expect("persistence status lock poisoned") = PersistenceStatus {
+                state: "error",
+                error: Some("background persistence worker stopped".to_owned()),
+            };
+        }
+    }
+
+    pub(super) fn persistence_status(&self) -> PersistenceStatus {
+        self.persistence_status
+            .read()
+            .expect("persistence status lock poisoned")
+            .clone()
     }
 
     pub(super) async fn subscribe(&self, project: &ProjectId) -> broadcast::Receiver<ChangeSet> {
@@ -138,6 +208,82 @@ impl AppState {
             .ok_or(BackupError::Unavailable)?
             .get_project_snapshot(project, revision)
     }
+}
+
+fn spawn_persistence_worker(
+    catalog: Arc<RwLock<ProjectCatalog>>,
+    store: Arc<CatalogStore>,
+    status: Arc<StdRwLock<PersistenceStatus>>,
+    generation: Arc<AtomicU64>,
+    mut receiver: mpsc::UnboundedReceiver<()>,
+) {
+    tokio::spawn(async move {
+        while receiver.recv().await.is_some() {
+            loop {
+                match tokio::time::timeout(Duration::from_millis(250), receiver.recv()).await {
+                    Ok(Some(())) => continue,
+                    Ok(None) => return,
+                    Err(_) => break,
+                }
+            }
+            let snapshot = {
+                let catalog = catalog.write().await;
+                let expected_generation = generation.load(Ordering::Acquire);
+                match store.pending_mutation_counts() {
+                    Ok(mutation_counts) => {
+                        let projects = mutation_counts.keys().cloned().collect();
+                        catalog
+                            .transaction_clone_projects(&projects)
+                            .map(|candidate| {
+                                (candidate, projects, expected_generation, mutation_counts)
+                            })
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            let result = match snapshot {
+                Ok((mut candidate, projects, expected_generation, mutation_counts)) => {
+                    let store = Arc::clone(&store);
+                    let generation = Arc::clone(&generation);
+                    tokio::task::spawn_blocking(move || {
+                        if store.save_if_current(
+                            &mut candidate,
+                            &projects,
+                            &generation,
+                            expected_generation,
+                        )? {
+                            store.compact_pending_mutations(&mutation_counts)?;
+                        }
+                        Ok::<(), CatalogPersistenceError>(())
+                    })
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|result| result.map_err(|error| error.to_string()))
+                }
+                Err(error) => Err(error.to_string()),
+            };
+            *status.write().expect("persistence status lock poisoned") = match result {
+                Ok(()) => match store.pending_mutation_counts() {
+                    Ok(counts) if counts.is_empty() => PersistenceStatus {
+                        state: "idle",
+                        error: None,
+                    },
+                    Ok(_) => PersistenceStatus {
+                        state: "pending",
+                        error: None,
+                    },
+                    Err(error) => PersistenceStatus {
+                        state: "error",
+                        error: Some(error.to_string()),
+                    },
+                },
+                Err(error) => PersistenceStatus {
+                    state: "error",
+                    error: Some(error),
+                },
+            };
+        }
+    });
 }
 
 #[derive(Debug, Error)]

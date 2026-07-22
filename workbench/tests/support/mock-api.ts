@@ -16,6 +16,9 @@ export async function mockApi(page: Page, state: FixtureState) {
     const json = (value: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
 
+      if (url.pathname === '/api/v1/health') {
+        return json({ status: 'ok', version: '0.1.0', persistence: { state: 'idle' } })
+      }
     if (url.pathname === '/api/v1/projects' && request.method() === 'GET') {
       return json(state.projects ?? (state.project ? [state.project] : []))
     }

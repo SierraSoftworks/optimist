@@ -42,7 +42,7 @@ Use JSON Lines for agent ingestion:
 cargo run -- --output jsonl project changes A --after 12
 ```
 
-Committed event history and idempotent results are published atomically with the project snapshot under `--data-dir`. Before durable catalog publication, the server fsyncs the validated project ID and complete `CommandRequest` to `command-journal.json`. After a crash, startup applies that request to the restored catalog and clears the journal only after the recovered catalog is durable. If the catalog publication had already completed, UUID idempotency returns the retained result without appending another event. Restarting therefore restores ordered replay and returns the original command result for a repeated pre-restart request ID across both crash windows.
+Committed event history and idempotent results are durable under each `projects/<ID>/` directory. Before acknowledging a command, the server appends and fsyncs its complete request to that project's ordered `journal.json`. Background compaction writes the project snapshot and clears only the journal prefix it contains. After a crash, startup replays remaining requests; UUID idempotency returns already-snapshotted results without appending duplicate events. Projects compact independently, so unrelated project count does not affect save cost.
 
 Rejected commands are never journaled. Corrupt, oversized, or unknown-version journal documents stop startup and remain untouched for diagnosis rather than being skipped.
 
