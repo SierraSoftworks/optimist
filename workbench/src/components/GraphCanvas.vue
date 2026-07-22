@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Core, CytoscapeOptions, ElementDefinition } from 'cytoscape'
-import { Focus, Minus, Pencil, Plus } from '@lucide/vue'
+import { Focus, GitBranch, LayoutGrid, Minus, Pencil, Plus } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 import { simulationReadiness } from '../domain/simulationReadiness'
 import { edgeDisplayLabel } from '../domain/edgePresentation'
+import {
+  clusteredPositions,
+  defaultGraphLayout,
+  graphDetailForZoom,
+  type GraphDetail,
+  type GraphLayoutMode,
+} from '../domain/graphView'
 
 const props = defineProps<{
   nodes: GraphNode[]
@@ -20,6 +27,8 @@ const emit = defineEmits<{
   nodeContextmenu: [event: { nodeId: string; x: number; y: number }]
 }>()
 const container = ref<HTMLDivElement>()
+const detail = ref<GraphDetail>('detail')
+const layoutMode = ref<GraphLayoutMode>(defaultGraphLayout(props.nodes.length))
 let graph: Core | null = null
 let resizeObserver: ResizeObserver | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -47,6 +56,15 @@ const focusedEdges = computed(() =>
       )
     : [],
 )
+const kindClusters = computed(() => [
+  { kind: 'intervention', label: 'Actions' },
+  { kind: 'factor', label: 'Factors' },
+  { kind: 'metric', label: 'Metrics' },
+  { kind: 'outcome', label: 'Objectives' },
+].map((cluster) => ({
+  ...cluster,
+  count: props.nodes.filter((node) => node.payload.kind === cluster.kind).length,
+})).filter((cluster) => cluster.count > 0))
 
 function edgeId(edge: GraphEdge) {
   return `${edge.source}:${edge.payload.kind}:${edge.destination}`
@@ -146,6 +164,30 @@ const styles: CytoscapeStyle = [
     style: { width: 2.5, 'line-color': '#4f5b55', 'target-arrow-color': '#4f5b55' },
   },
   {
+    selector: 'node.semantic-context',
+    style: {
+      'font-size': 9,
+      'text-max-width': '82px',
+      'text-margin-y': 7,
+    },
+  },
+  {
+    selector: 'edge.semantic-context',
+    style: { opacity: 0.42, width: 1 },
+  },
+  {
+    selector: 'node.semantic-overview',
+    style: { width: 28, height: 28, label: '' },
+  },
+  {
+    selector: 'edge.semantic-overview',
+    style: {
+      opacity: 0.2,
+      width: 0.8,
+      'target-arrow-shape': 'none',
+    },
+  },
+  {
     selector: 'edge.analysis-highlight',
     style: {
       width: 5,
@@ -186,6 +228,23 @@ const styles: CytoscapeStyle = [
       'underlay-padding': 7,
     },
   },
+  {
+    selector: 'node.semantic-overview:selected, node.semantic-overview.connected-node, node.semantic-overview.analysis-highlight',
+    style: {
+      width: 46,
+      height: 46,
+      label: 'data(label)',
+      'font-size': 10,
+      'text-max-width': '100px',
+    },
+  },
+  {
+    selector: 'edge.semantic-overview.incident-edge, edge.semantic-overview.analysis-highlight',
+    style: {
+      opacity: 1,
+      'target-arrow-shape': 'triangle',
+    },
+  },
 ]
 
 function elements(): ElementDefinition[] {
@@ -215,22 +274,42 @@ function elements(): ElementDefinition[] {
 
 function layout() {
   if (!graph || graph.nodes().length === 0) return
-  const interventions = graph.nodes('[kind = "intervention"]')
-  graph.layout({
-    name: 'breadthfirst',
-    directed: true,
-    roots: interventions.length ? interventions.map((node) => node.id()) : undefined,
-    circle: false,
-    padding: 48,
-    spacingFactor: 1.5,
-    animate: false,
-  }).run()
-  enforceKindBands()
+  if (layoutMode.value === 'clusters') {
+    const positions = Object.fromEntries(clusteredPositions(props.nodes))
+    graph.layout({
+      name: 'preset',
+      positions,
+      padding: 64,
+      animate: false,
+    }).run()
+  } else {
+    const interventions = graph.nodes('[kind = "intervention"]')
+    graph.layout({
+      name: 'breadthfirst',
+      directed: true,
+      roots: interventions.length ? interventions.map((node) => node.id()) : undefined,
+      circle: false,
+      padding: 48,
+      spacingFactor: 1.5,
+      animate: false,
+    }).run()
+    enforceKindBands()
+  }
   graph.fit(undefined, 48)
   if (graph.zoom() > 1.4) {
     graph.zoom(1.4)
     graph.center()
   }
+  syncSemanticZoom()
+}
+
+function setLayoutMode(mode: GraphLayoutMode) {
+  if (layoutMode.value === mode) return
+  layoutMode.value = mode
+  layout()
+  syncSelection()
+  syncFocus()
+  syncHighlights()
 }
 
 function enforceKindBands() {
@@ -260,6 +339,7 @@ function syncElements() {
   syncSelection()
   syncFocus()
   syncHighlights()
+  syncSemanticZoom()
 }
 
 function syncSelection() {
@@ -275,6 +355,7 @@ function syncFocus() {
   const selected = graph.getElementById(props.selectedNodeId)
   selected.connectedEdges().addClass('incident-edge')
   selected.neighborhood('node').addClass('connected-node')
+  syncSemanticZoom()
 }
 
 function syncHighlights() {
@@ -286,6 +367,15 @@ function syncHighlights() {
   for (const id of props.highlightedEdgeIds ?? []) {
     graph.getElementById(id).addClass('analysis-highlight')
   }
+  syncSemanticZoom()
+}
+
+function syncSemanticZoom() {
+  if (!graph) return
+  detail.value = graphDetailForZoom(graph.zoom())
+  graph.elements().removeClass('semantic-overview semantic-context')
+  if (detail.value === 'overview') graph.elements().addClass('semantic-overview')
+  if (detail.value === 'context') graph.elements().addClass('semantic-context')
 }
 
 function zoom(factor: number) {
@@ -309,6 +399,7 @@ onMounted(async () => {
   })
   graph.on('tap', 'node', (event) => emit('select', event.target.id()))
   graph.on('tap', 'edge', (event) => emit('editEdge', event.target.id()))
+  graph.on('zoom', syncSemanticZoom)
   graph.on('cxttap', 'node', (event) => {
     const bounds = container.value?.getBoundingClientRect()
     if (!bounds) return
@@ -352,6 +443,16 @@ onBeforeUnmount(() => {
     <p v-if="highlightedNodeIds?.length || highlightedEdgeIds?.length" class="sr-only" aria-live="polite">
       Analysis highlights {{ highlightedNodeIds?.length ?? 0 }} nodes and {{ highlightedEdgeIds?.length ?? 0 }} relationships.
     </p>
+    <div class="graph-view-controls">
+      <div class="layout-switch" role="group" aria-label="Graph layout">
+        <button type="button" title="Hierarchy layout" aria-label="Hierarchy layout" :aria-pressed="layoutMode === 'hierarchy'" @click="setLayoutMode('hierarchy')"><GitBranch :size="14" /></button>
+        <button type="button" title="Cluster by kind" aria-label="Cluster by kind" :aria-pressed="layoutMode === 'clusters'" @click="setLayoutMode('clusters')"><LayoutGrid :size="14" /></button>
+      </div>
+      <span class="detail-indicator" :data-detail="detail" aria-live="polite">{{ detail }}</span>
+    </div>
+    <div v-if="layoutMode === 'clusters'" class="cluster-legend" aria-label="Node kind clusters">
+      <span v-for="cluster in kindClusters" :key="cluster.kind"><i :data-kind="cluster.kind"></i>{{ cluster.label }} <strong>{{ cluster.count }}</strong></span>
+    </div>
     <section v-if="focusedEdges.length" class="focused-relationships" aria-label="Focused relationships">
       <header><strong>Focused relationships</strong><span>{{ focusedEdges.length }}</span></header>
       <button
@@ -381,6 +482,17 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .graph-surface, .graph-canvas { position: absolute; inset: 0; }
+.graph-view-controls { position: absolute; z-index: 4; top: 12px; right: 14px; display: flex; align-items: center; gap: 6px; }
+.layout-switch { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.layout-switch button { width: 28px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.layout-switch button:hover { color: var(--ink); }
+.layout-switch button[aria-pressed='true'] { background: var(--green-soft); color: var(--green); }
+.detail-indicator { min-width: 58px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.94); color: var(--muted); font-size: 8px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.detail-indicator[data-detail='overview'] { border-color: #d4b171; color: #795710; }
+.cluster-legend { position: absolute; z-index: 3; top: 50px; right: 14px; display: grid; gap: 4px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.94); }
+.cluster-legend span { display: grid; grid-template-columns: 10px minmax(58px, 1fr) auto; gap: 5px; align-items: center; color: var(--muted); font-size: 8px; }
+.cluster-legend i { width: 8px; height: 8px; border-radius: 2px; }
+.cluster-legend strong { color: var(--ink); font: 8px 'IBM Plex Mono', monospace; }
 .focused-relationships { position: absolute; z-index: 3; left: 14px; bottom: 14px; width: min(300px, calc(100% - 86px)); max-height: 168px; overflow: auto; border: 1px solid #aeb9b1; border-radius: 6px; background: rgba(255,255,255,.96); box-shadow: 0 8px 22px rgba(30,40,34,.12); }
 .focused-relationships header { position: sticky; top: 0; display: flex; justify-content: space-between; gap: 8px; padding: 7px 9px; border-bottom: 1px solid var(--line); background: #f7f9f5; }
 .focused-relationships header strong { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
@@ -397,6 +509,8 @@ onBeforeUnmount(() => {
 .zoom-controls button:hover { background: #edf0eb; color: var(--ink); }
 
 @media (max-width: 760px) {
+  .graph-view-controls { top: 48px; }
+  .cluster-legend { top: 86px; }
   .focused-relationships { max-height: 128px; }
 }
 </style>

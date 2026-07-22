@@ -123,7 +123,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Vue 3 + TypeScript + Vite scaffold with Pinia, TanStack Query, Vitest, and Playwright.
 - [ ] Generated API client and project selector.
 - [x] Cytoscape renderer adapter for the four core node kinds and structural edges.
-- [ ] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
+- [x] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
 - [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
   - [x] Fermi equation elicitation with quick order-of-magnitude variables, detailed PERT ranges, human unit algebra, Monte Carlo diagnostics, and explicit primitive recommendations.
   - [x] Persist and review exclusive Fermi estimate sources with server-assessed effective distributions and diagnostics.
