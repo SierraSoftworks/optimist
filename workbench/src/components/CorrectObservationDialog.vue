@@ -52,3 +52,8 @@ function submit() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.correction-note { margin: 0 0 16px; }
+.correction-context { margin-top: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: #f7f9f5; }
+</style>

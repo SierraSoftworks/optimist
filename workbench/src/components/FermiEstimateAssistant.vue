@@ -232,3 +232,38 @@ function format(value: number | null | undefined) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.fermi-assistant { overflow: hidden; border: 1px solid #aeb9b1; border-radius: 6px; background: #f7f9f5; }
+.fermi-toggle { width: 100%; min-height: 48px; display: grid; grid-template-columns: 20px minmax(0, 1fr) 16px; gap: 8px; align-items: center; padding: 8px 10px; border: 0; background: transparent; color: var(--green); text-align: left; }
+.fermi-toggle:hover, .fermi-toggle[aria-expanded='true'] { background: var(--green-soft); }
+.fermi-toggle > span { min-width: 0; display: grid; gap: 2px; }
+.fermi-toggle strong { color: var(--ink); font-size: 10px; }
+.fermi-toggle small { color: var(--muted); font-size: 9px; }
+.fermi-toggle > svg:last-child { transition: transform .16s ease; }
+.fermi-toggle > svg.rotated { transform: rotate(180deg); }
+.fermi-workspace { display: grid; gap: 12px; padding: 12px; border-top: 1px solid var(--line); background: white; }
+.fermi-equation-fields { display: grid; grid-template-columns: minmax(120px, .4fr) minmax(220px, 1fr); gap: 8px; }
+.fermi-equation-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid #a8bfb2; border-radius: 5px; background: #a8bfb2; }
+.fermi-equation-status > div { min-width: 0; display: grid; gap: 2px; padding: 8px; background: #f3f8f4; }
+.fermi-equation-status span { color: var(--muted); font-size: 8px; }
+.fermi-equation-status strong { overflow: hidden; color: var(--green); font: 10px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.fermi-equation-status > p { grid-column: 1 / -1; margin: 0; padding: 8px; background: #f3f8f4; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.fermi-equation-status.invalid { border-color: #d8a098; background: #d8a098; }
+.fermi-equation-status.invalid > div, .fermi-equation-status.invalid > p { background: #fff8f6; }
+.fermi-equation-status.invalid strong, .fermi-equation-status.invalid > p { color: #8c3429; }
+.fermi-components { display: grid; gap: 8px; }
+.fermi-actions { display: flex; justify-content: space-between; gap: 8px; }
+.fermi-result { display: grid; gap: 10px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 5px; background: #f3f8f4; }
+.fermi-result dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; }
+.fermi-result dl div { display: grid; gap: 2px; }
+.fermi-result p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.fermi-result .primary-button { justify-self: end; }
+
+@media (max-width: 760px) {
+  .fermi-equation-fields { grid-template-columns: 1fr; }
+  .fermi-equation-status { grid-template-columns: 1fr; }
+  .fermi-equation-status > p { grid-column: 1; }
+  .fermi-actions { flex-wrap: wrap; }
+}
+</style>

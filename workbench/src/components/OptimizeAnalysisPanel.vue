@@ -111,3 +111,29 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
     </template>
   </aside>
 </template>
+
+<style scoped>
+.scenario-selector-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px; margin-top: 15px; }
+.scenario-edit-button { width: 32px; height: 32px; margin-bottom: 5px; border: 1px solid var(--line); background: white; }
+.candidate-list { display: grid; gap: 9px; margin-top: 12px; }
+.candidate-list article { overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.candidate-list article.selected { border-color: #285c91; box-shadow: 0 0 0 1px #285c91; }
+.candidate-header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px; border: 0; background: transparent; text-align: left; }
+.candidate-header:hover, .candidate-header[aria-pressed='true'] { background: #edf3f9; }
+.candidate-header > span:first-child { display: grid; gap: 2px; }
+.candidate-header strong { font-size: 11px; }
+.candidate-header small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.diagnostic-status { padding: 3px 5px; border-radius: 4px; background: #edf0eb; color: var(--muted); font-size: 7px; font-weight: 700; text-transform: uppercase; }
+.diagnostic-status[data-status='converged'] { background: var(--green-soft); color: var(--green); }
+.diagnostic-status[data-status='maximum_samples_reached'], .diagnostic-status[data-status='insufficient_valid_samples'] { background: #fff2df; color: #8a5b00; }
+.candidate-diagnostics { grid-template-columns: 1fr; gap: 0; padding: 0 9px 8px; }
+.candidate-diagnostics div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
+.projection-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--line); font-size: 8px; }
+.projection-table th, .projection-table td { padding: 6px 8px; text-align: right; }
+.projection-table thead th { color: var(--muted); text-transform: uppercase; }
+.projection-table th:first-child { text-align: left; }
+.projection-table tbody th { display: grid; gap: 1px; }
+.projection-table tbody th span { font-size: 9px; }
+.projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
+.projection-table tr.unreachable { opacity: .55; }
+</style>

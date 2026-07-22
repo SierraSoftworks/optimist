@@ -124,3 +124,19 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.calibrated-evidence { display: grid; gap: 8px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 6px; background: #f3f8f4; }
+.calibrated-evidence > div { display: flex; justify-content: space-between; gap: 8px; }
+.calibrated-evidence > div strong { font-size: 10px; }
+.calibrated-evidence > div span { color: var(--muted); font-size: 8px; }
+.calibrated-evidence article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding-top: 8px; border-top: 1px solid #cbd9d0; }
+.calibrated-evidence article > div { min-width: 0; display: grid; gap: 2px; }
+.calibrated-evidence article strong { font-size: 10px; }
+.calibrated-evidence article span, .calibrated-evidence article small { color: var(--muted); font-size: 8px; line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .calibrated-evidence article { grid-template-columns: 1fr; }
+  .calibrated-evidence article .secondary-button { justify-self: start; }
+}
+</style>

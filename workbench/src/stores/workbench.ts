@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { GraphNode, NodeKind } from '../api/types'
+import { simulationReadiness } from '../domain/simulationReadiness'
 
 export type WorkbenchMode = 'explore' | 'impediments' | 'feedback' | 'optimize'
 
@@ -9,6 +10,7 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const selectedNodeId = ref<string | null>(null)
   const search = ref('')
   const mode = ref<WorkbenchMode>('explore')
+  const setupOnly = ref(false)
   const visibleKinds = ref<Set<NodeKind>>(
     new Set(['outcome', 'metric', 'factor', 'intervention']),
   )
@@ -31,8 +33,13 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     visibleKinds.value = next
   }
 
+  function toggleSetupOnly() {
+    setupOnly.value = !setupOnly.value
+  }
+
   function matches(node: GraphNode) {
     if (!visibleKinds.value.has(node.payload.kind)) return false
+    if (setupOnly.value && simulationReadiness(node).level === 'ready') return false
     if (!normalizedSearch.value) return true
     const query = normalizedSearch.value
     return [node.id, node.name, node.title, ...node.aliases].some((value) =>
@@ -45,10 +52,12 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     selectedNodeId,
     search,
     mode,
+    setupOnly,
     visibleKinds,
     selectProject,
     selectNode,
     toggleKind,
+    toggleSetupOnly,
     matches,
   }
 })

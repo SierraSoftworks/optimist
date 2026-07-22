@@ -252,3 +252,32 @@ async function next() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.node-dialog { width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.kind-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.kind-options label { position: relative; }
+.kind-options input { position: absolute; opacity: 0; }
+.kind-options span { display: grid; place-items: center; min-height: 36px; border: 2px solid transparent; border-radius: 5px; color: #29312d; font-size: 10px; text-transform: capitalize; }
+.kind-options input:checked + span { border-color: #26352e; }
+.wizard-progress { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: -4px 0 18px; }
+.wizard-progress > span { min-height: 30px; display: flex; align-items: center; gap: 5px; padding: 0 9px; border-bottom: 2px solid var(--line); color: var(--muted); font: 10px 'IBM Plex Mono', monospace; }
+.wizard-progress > span.active { border-bottom-color: var(--green); color: var(--green); }
+.wizard-progress > span.complete { color: var(--green); }
+.wizard-progress small { font: 9px 'Manrope', sans-serif; font-weight: 700; }
+.wizard-setup { display: grid; gap: 14px; }
+.wizard-setup :deep(.distribution-editor) { margin-top: -5px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.wizard-setup :deep(.distribution-editor:last-of-type) { padding-bottom: 0; border-bottom: 0; }
+.node-dialog > footer { position: sticky; z-index: 2; bottom: -20px; margin: 18px -20px -20px; padding: 12px 20px 20px; border-top: 1px solid var(--line); background: var(--surface-strong); }
+.readiness-callout { display: grid; grid-template-columns: minmax(0, .42fr) minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-left: 3px solid #a8bfb2; background: #f3f8f4; }
+.readiness-callout strong { font-size: 10px; }
+.readiness-callout span { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.readiness-callout.required { border-left-color: #a83f31; background: #fff8f6; }
+.readiness-callout.recommended { border-left-color: #9a6a12; background: #fff8e9; }
+
+@media (max-width: 760px) {
+  .node-dialog { max-height: calc(100svh - 24px); }
+  .kind-options { grid-template-columns: 1fr 1fr; }
+  .readiness-callout { grid-template-columns: 1fr; gap: 3px; }
+}
+</style>

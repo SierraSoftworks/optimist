@@ -74,3 +74,24 @@ function updateLikely(source: string) {
     </div>
   </fieldset>
 </template>
+
+<style scoped>
+.fermi-variable { min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 5px; }
+.fermi-variable.invalid { border-color: #c76e61; background: #fff8f6; }
+.fermi-variable legend { padding: 0 4px; color: var(--muted); font: 8px 'IBM Plex Mono', monospace; text-transform: uppercase; }
+.fermi-variable-quick { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(90px, .45fr) minmax(130px, .7fr) 28px 28px; gap: 7px; align-items: end; }
+.fermi-variable-quick .icon-button { margin-bottom: 1px; }
+.fermi-detail-toggle svg { transition: transform .16s ease; }
+.fermi-detail-toggle svg.rotated { transform: rotate(180deg); }
+.fermi-variable-range, .fermi-variable-issue { margin: 6px 0 0; font-size: 8px; line-height: 1.4; }
+.fermi-variable-range { color: var(--muted); }
+.fermi-variable-issue { color: #9a3e31; }
+.fermi-variable-detail { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.fermi-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+
+@media (max-width: 760px) {
+  .fermi-variable-quick { grid-template-columns: minmax(0, 1fr) minmax(90px, .55fr) 28px 28px; }
+  .fermi-variable-quick > label:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .fermi-variable-quick .icon-button { grid-row: 1; }
+}
+</style>

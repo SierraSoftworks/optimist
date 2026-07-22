@@ -120,3 +120,16 @@ function invalidateDefinition() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.estimate-source-editor { display: grid; gap: 12px; }
+.source-mode { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 3px; border: 1px solid var(--line); border-radius: 6px; background: #edf0eb; }
+.source-mode button { min-height: 30px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 700; }
+.source-mode button[aria-pressed='true'] { background: white; color: var(--ink); box-shadow: 0 1px 4px rgba(30, 40, 34, .12); }
+.fermi-source { display: grid; gap: 10px; }
+.stored-fermi-result { padding: 10px; border: 1px solid #a8bfb2; border-radius: 6px; background: #f3f8f4; }
+.stored-fermi-result > div { display: flex; justify-content: space-between; gap: 8px; }
+.stored-fermi-result strong { font-size: 10px; }
+.stored-fermi-result span { color: var(--muted); font-size: 8px; }
+.stored-fermi-result :deep(.distribution-preview) { margin-top: 8px; }
+</style>

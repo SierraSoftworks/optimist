@@ -43,6 +43,12 @@ test('orders causal hierarchy and exposes focused relationship metadata', async 
   await page.getByRole('button', { name: /Review flow/ }).click()
 
   await expect(page.getByText('1 need setup')).toBeVisible()
+  await page.getByRole('button', { name: 'Needs setup 1' }).click()
+  await expect(page.getByText('1 nodes')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Reliable delivery/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Pair review/ })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Needs setup 1' }).click()
+  await page.getByRole('button', { name: /Review flow/ }).click()
   const focused = page.getByRole('region', { name: 'Focused relationships' })
   await expect(focused.getByText('changes · mean effect +0.35')).toBeVisible()
   await expect(focused.getByText('contributes · mean effect +0.60')).toBeVisible()

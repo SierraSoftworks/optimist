@@ -75,3 +75,19 @@ onBeforeUnmount(unlisten)
     </Teleport>
   </span>
 </template>
+
+<style scoped>
+.parameter-help { position: relative; display: inline-flex; font-weight: 400; }
+.parameter-help-trigger { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.parameter-help-trigger:hover, .parameter-help-trigger[aria-expanded='true'] { background: var(--green-soft); color: var(--green); }
+.parameter-help-trigger:focus-visible { outline: 2px solid #2a7059; outline-offset: 1px; }
+.parameter-popover { position: fixed; z-index: 80; width: 280px; display: grid; gap: 5px; padding: 10px 34px 10px 11px; border: 1px solid #aeb9b1; border-radius: 6px; background: white; color: var(--ink); box-shadow: 0 10px 28px rgba(30, 40, 34, .16); font-size: 10px; font-weight: 400; line-height: 1.5; }
+.parameter-popover strong { font-size: 10px; }
+.parameter-popover > span { color: #55605a; }
+.parameter-popover > button { position: absolute; top: 5px; right: 5px; width: 23px; height: 23px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.parameter-popover > button:hover { background: #edf0eb; }
+
+@media (max-width: 760px) {
+  .parameter-popover { width: min(280px, calc(100vw - 24px)); }
+}
+</style>

@@ -98,7 +98,7 @@ import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 import { simulationReadiness } from './domain/simulationReadiness'
 
 const store = useWorkbenchStore()
-const { mode, search, selectedNodeId, selectedProjectId, visibleKinds } = storeToRefs(store)
+const { mode, search, selectedNodeId, selectedProjectId, setupOnly, visibleKinds } = storeToRefs(store)
 const projectsQuery = useProjects()
 const projectQuery = useProject(selectedProjectId)
 const graph = useGraph(selectedProjectId)
@@ -721,6 +721,16 @@ function retry() {
         <div class="filter-section">
           <span class="section-label">Show</span>
           <button
+            type="button"
+            class="setup-filter"
+            :aria-pressed="setupOnly"
+            @click="store.toggleSetupOnly"
+          >
+            <AlertTriangle :size="14" />
+            Needs setup
+            <span>{{ nodes.filter((node) => simulationReadiness(node).level !== 'ready').length }}</span>
+          </button>
+          <button
             v-for="item in kindOptions"
             :key="item.kind"
             type="button"
@@ -955,3 +965,73 @@ function retry() {
     />
   </main>
 </template>
+
+<style scoped>
+.workbench-shell { min-height: 100vh; display: grid; grid-template-rows: 58px 1fr; background: #eef0eb; }
+.app-header { display: grid; grid-template-columns: 220px minmax(210px, 1fr) auto auto; align-items: center; gap: 18px; padding: 0 14px; background: #fbfcf9; border-bottom: 1px solid var(--line); min-width: 0; }
+.brand-block { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; color: white; background: var(--green); border-radius: 6px; }
+.brand-block div { display: grid; line-height: 1.05; }
+.brand-block strong { font-size: 15px; }
+.brand-block span:last-child { color: var(--muted); font-size: 11px; margin-top: 3px; text-transform: uppercase; }
+.project-switcher { position: relative; display: flex; align-items: center; justify-self: start; min-width: 220px; max-width: 420px; height: 36px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.project-switcher select { appearance: none; width: 100%; height: 100%; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-weight: 600; }
+.project-switcher > svg { position: absolute; right: 48px; pointer-events: none; color: var(--muted); }
+.revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: 11px 'IBM Plex Mono', monospace; color: var(--muted); }
+.mode-tabs { display: flex; align-items: center; height: 100%; }
+.mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 11px; font-size: 12px; font-weight: 600; }
+.mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
+.mode-tabs button:disabled { opacity: .4; cursor: not-allowed; }
+.add-node-button { justify-self: end; }
+.header-actions { display: flex; align-items: center; gap: 7px; justify-self: end; }
+.header-actions button:disabled { opacity: .42; cursor: not-allowed; }
+.header-icon { border: 1px solid var(--line); background: white; }
+.workbench-body { min-height: 0; display: grid; grid-template-columns: 226px minmax(360px, 1fr) 286px; }
+.navigator { min-height: 0; padding: 14px 12px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
+.canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
+.search-field { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: white; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
+.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: 12px; }
+.filter-section { margin-top: 20px; }
+.kind-filter, .setup-filter { width: 100%; height: 34px; margin-top: 4px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; text-align: left; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 12px; }
+.kind-filter:hover, .kind-filter.muted:hover, .setup-filter:hover { background: #ecefe9; }
+.kind-filter > span:last-child, .setup-filter > span:last-child { color: var(--muted); font: 11px 'IBM Plex Mono', monospace; }
+.kind-filter.muted { opacity: .42; }
+.setup-filter { margin-bottom: 8px; border: 1px solid transparent; color: #795710; }
+.setup-filter[aria-pressed='true'] { border-color: #d4b171; background: #fff8e9; }
+.canvas-status { position: absolute; top: 12px; left: 14px; z-index: 2; display: flex; gap: 6px; }
+.canvas-status span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.9); color: var(--muted); font-size: 10px; }
+.canvas-status strong { color: var(--ink); }
+.canvas-status .mode-note { color: var(--green); font-weight: 700; text-transform: capitalize; }
+.canvas-status .readiness-status { display: inline-flex; align-items: center; gap: 4px; border-color: #d4b171; background: #fff8e9; color: #795710; }
+.canvas-status .readiness-status strong { color: #795710; }
+.state-panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--muted); }
+.state-panel h2 { margin: 12px 0 5px; color: var(--ink); font-size: 18px; }
+.state-panel p { margin: 0 0 16px; max-width: 380px; font-size: 12px; line-height: 1.55; }
+.error-state svg { color: #a83f31; }
+.toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 10px; align-items: start; width: min(390px, calc(100vw - 32px)); padding: 12px; border: 1px solid #d8a098; border-radius: 7px; background: #fff8f6; color: #8c3429; box-shadow: 0 14px 38px rgba(41, 29, 26, .18); }
+.toast div { display: grid; gap: 3px; }
+.toast strong { font-size: 11px; }
+.toast span { color: #654b46; font-size: 10px; line-height: 1.45; }
+
+@media (max-width: 1000px) {
+  .app-header { grid-template-columns: 190px 1fr auto; }
+  .mode-tabs { display: none; }
+  .workbench-body { grid-template-columns: 200px minmax(320px, 1fr) 250px; }
+}
+
+@media (max-width: 760px) {
+  .workbench-shell { min-height: 100svh; grid-template-rows: auto 1fr; }
+  .app-header { grid-template-columns: 1fr auto; gap: 9px; min-height: 112px; padding: 10px; }
+  .project-switcher { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
+  .header-actions { grid-column: 2; grid-row: 1; }
+  .header-actions .secondary-button { display: none; }
+  .workbench-body { min-height: calc(100svh - 112px); grid-template-columns: 1fr; grid-template-rows: auto minmax(330px, 48svh) auto; }
+  .navigator { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; overflow: visible; }
+  .filter-section { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .filter-section > .section-label { display: none; }
+  .kind-filter { margin: 0; grid-template-columns: 22px 1fr; padding: 0 5px; }
+  .kind-filter > span:last-child { display: none; }
+  .setup-filter { grid-column: 1 / -1; margin: 0 0 4px; }
+  .canvas-panel { min-height: 330px; }
+}
+</style>

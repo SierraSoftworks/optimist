@@ -175,3 +175,8 @@ function emitDistribution() {
     <DistributionPreview :distribution="modelValue" :domain="previewDomain" />
   </div>
 </template>
+
+<style scoped>
+.distribution-editor { display: grid; gap: 14px; margin-top: 14px; }
+.distribution-fields { margin: 0; }
+</style>

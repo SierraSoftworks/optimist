@@ -42,4 +42,20 @@ describe('workbench state', () => {
     expect(store.selectedProjectId).toBe('B')
     expect(store.selectedNodeId).toBeNull()
   })
+
+  it('filters to nodes which still need simulation setup', () => {
+    const store = useWorkbenchStore()
+    store.toggleSetupOnly()
+    expect(store.matches(node)).toBe(true)
+
+    const ready = structuredClone(node)
+    if (ready.payload.kind !== 'factor') throw new Error('expected factor fixture')
+    ready.payload.properties.current = {
+      id: 'A',
+      revision: 0,
+      distribution: { type: 'point', value: 0.5 },
+      source: { type: 'distribution' },
+    }
+    expect(store.matches(ready)).toBe(false)
+  })
 })

@@ -113,3 +113,13 @@ onBeforeUnmount(unlisten)
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.node-relationship-menu { position: fixed; z-index: 80; min-width: 190px; overflow: hidden; border: 1px solid #aeb9b1; border-radius: 6px; background: white; box-shadow: 0 12px 32px rgba(30, 40, 34, .18); }
+.node-relationship-menu-heading { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; align-items: center; padding: 9px; border-bottom: 1px solid var(--line); color: var(--green); }
+.node-relationship-menu-heading > span { min-width: 0; display: grid; gap: 1px; }
+.node-relationship-menu-heading small { color: var(--muted); font-size: 8px; }
+.node-relationship-menu-heading strong { max-width: 220px; overflow: hidden; color: var(--ink); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.node-relationship-menu > button { width: 100%; padding: 7px 10px 7px 34px; border: 0; background: transparent; color: var(--ink); font-size: 10px; text-align: left; }
+.node-relationship-menu > button:hover, .node-relationship-menu > button:focus-visible { background: var(--green-soft); }
+</style>

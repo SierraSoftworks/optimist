@@ -58,3 +58,19 @@ function format(value: number) {
     <p>{{ model.summary }}</p>
   </section>
 </template>
+
+<style scoped>
+.distribution-preview { padding: 11px 12px 10px; border: 1px solid var(--line); border-radius: 6px; background: #f7f9f5; }
+.distribution-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.distribution-preview-header > div { display: grid; gap: 2px; }
+.distribution-preview-header strong { color: var(--ink); font-size: 11px; }
+.distribution-preview-header span { color: var(--muted); font-size: 9px; }
+.distribution-preview svg { display: block; width: 100%; height: 112px; margin-top: 4px; overflow: visible; }
+.distribution-preview svg text { fill: var(--muted); font: 9px 'IBM Plex Mono', monospace; }
+.preview-axis { stroke: #aeb6b0; stroke-width: 1; }
+.preview-area { fill: #9bc5b2; fill-opacity: .42; }
+.preview-line { fill: none; stroke: var(--green); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.preview-marker { stroke: var(--green); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.preview-marker-dot { fill: var(--green); }
+.distribution-preview > p { margin: 2px 0 0; color: #4f5954; font-size: 10px; line-height: 1.5; }
+</style>

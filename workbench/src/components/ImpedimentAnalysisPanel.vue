@@ -88,3 +88,21 @@ function select(candidate: ImpedimentCandidate) {
     </template>
   </aside>
 </template>
+
+<style scoped>
+.analysis-order-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 12px; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.analysis-order-tabs button { min-height: 28px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; }
+.analysis-order-tabs button[aria-pressed='true'] { background: var(--green-soft); color: var(--green); }
+.impediment-list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.impediment-list > li { overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.impediment-list > li > button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; padding: 8px; border: 0; background: transparent; text-align: left; }
+.impediment-list > li > button:hover, .impediment-list > li > button[aria-pressed='true'] { background: #edf3f9; }
+.impediment-list > li > button[aria-pressed='true'] { box-shadow: inset 3px 0 #285c91; }
+.impediment-title { min-width: 0; display: grid; gap: 2px; }
+.impediment-title strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
+.impediment-title small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.impediment-facts { grid-template-columns: 1fr; gap: 0; padding: 0 9px 7px; }
+.impediment-facts div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
+.unsupported-path { display: grid; grid-template-columns: auto 1fr; gap: 6px; margin: 0 8px 7px; padding: 6px; border-radius: 4px; background: #fff2df; color: #765b27; font-size: 8px; line-height: 1.4; }
+.reachable-outcomes { margin: 0; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.4; }
+</style>

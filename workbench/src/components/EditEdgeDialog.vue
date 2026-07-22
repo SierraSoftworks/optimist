@@ -202,3 +202,25 @@ function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.dialog-section { margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
+.relationship-context { margin-top: 10px; }
+.calibration-editor { display: grid; gap: 10px; }
+.calibration-editor .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.calibration-editor .section-header > div { display: grid; gap: 2px; }
+.calibration-editor .section-header strong { font-size: 11px; }
+.calibration-editor .section-header span { color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.calibration-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.calibration-summary { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.calibration-preview { display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 5px; }
+.calibration-preview div { display: grid; gap: 2px; padding: 7px; border-right: 1px solid var(--line); text-align: center; }
+.calibration-preview div:last-child { border-right: 0; }
+.calibration-preview span { color: var(--muted); font-size: 8px; }
+.calibration-preview strong { color: var(--green); font: 10px 'IBM Plex Mono', monospace; }
+.calibration-editor > .secondary-button { justify-self: end; }
+
+@media (max-width: 760px) {
+  .calibration-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
