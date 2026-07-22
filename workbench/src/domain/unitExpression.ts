@@ -23,6 +23,19 @@ export function formatUnitExpression(unit: Unit) {
   return denominator.length ? `${top}/${denominator.join('*')}` : top
 }
 
+export function formatSquiggleUnitAnnotation(unit: Unit) {
+  const compatible: Unit = {}
+  for (const [name, exponent] of Object.entries(unit)) {
+    compatible[squiggleUnitName(name)] = exponent
+  }
+  return formatUnitExpression(compatible)
+}
+
+function squiggleUnitName(name: string) {
+  if (/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) return name
+  return `optimist_unit_${Array.from(name, (character) => character.codePointAt(0)!.toString(16)).join('_')}`
+}
+
 export function multiplyUnits(left: Unit, right: Unit) {
   return combineUnits(left, right, 1)
 }

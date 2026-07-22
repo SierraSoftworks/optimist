@@ -32,6 +32,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 - [ ] Define a versioned Squiggle-compatible source contract while retaining Optimist's unit-checked `Formula` AST as the persisted execution authority.
   - [x] Persist `optimist_squiggle_v1` with each Fermi definition and default legacy definitions to that contract during deserialization.
+  - [x] Persist canonical quantity dimensions and generate Squiggle `::` unit annotations for every preview variable and result while retaining Rust unit validation as authority.
   - [ ] Parse the supported expression subset into the canonical AST and report source-located syntax, reference, support, and unit diagnostics.
   - [ ] Preserve authored source, language version, compiled form, dependencies, and deterministic sampling controls for replay and migration.
 - [ ] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
@@ -40,6 +41,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [ ] Show native-unit quantiles, tail mass, invalid draws, support violations, and representative simulated outcomes before an estimate can be adopted.
 - [ ] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
   - [x] Introduce validated native quantity definitions and state-bearing metric estimates while preserving legacy metric JSON as real-valued quantities.
+  - [x] Assess real, non-negative, and arbitrary bounded metric Fermi sources against owner-derived native units and support.
   - [ ] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
   - [ ] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.

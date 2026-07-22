@@ -30,7 +30,9 @@ const squiggle = reactive<{
   result: SquigglePreview | null
   error: string | null
 }>({ status: 'idle', result: null, error: null })
-const equation = ref(props.modelValue?.equation ?? (props.support === 'non_negative' ? 'x + y' : 'x * y'))
+const equation = ref(props.modelValue?.equation ?? (
+  props.support === 'probability' || props.support === 'signed' ? 'x * y' : 'x + y'
+))
 const goalUnit = ref(formatUnitExpression(props.expectedUnit))
 const components = reactive<Array<FermiComponentDraft & { id: number }>>([
   ...(props.modelValue?.variables.map((variable, index) => ({
@@ -116,7 +118,12 @@ function scheduleSquigglePreview() {
   squiggle.status = 'pending'
   squiggleTimer = setTimeout(async () => {
     try {
-      const result = await evaluateSquigglePreview(equation.value, components, props.support)
+      const result = await evaluateSquigglePreview(
+        equation.value,
+        components,
+        props.support,
+        props.expectedUnit,
+      )
       if (revision !== squiggleRevision) return
       squiggle.result = result
       squiggle.status = 'ready'
@@ -144,7 +151,13 @@ function supportWarning(result: SquigglePreview) {
 }
 
 function initialVariable(id: number, name: string) {
-  const likely = props.support === 'probability' ? (id === 0 ? 0.7 : 0.85) : props.support === 'signed' ? (id === 0 ? 0.4 : 0.8) : 1
+  const likely = props.support === 'probability'
+    ? (id === 0 ? 0.7 : 0.85)
+    : props.support === 'signed'
+      ? (id === 0 ? 0.4 : 0.8)
+      : typeof props.support === 'object'
+        ? (props.support.bounded.lower + props.support.bounded.upper) / 4
+        : 1
   const formatted = formatUnitExpression(props.expectedUnit)
   return { id, name, likely, low: likely / 10, high: likely * 10, unit: formatted === '1' ? '' : formatted, mode: 'order_of_magnitude' as const }
 }

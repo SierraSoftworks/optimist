@@ -35,7 +35,7 @@ pub(super) fn set_fermi(
         .slot
         .validated()
         .map_err(EstimateCommandError::from)?;
-    reject_native_quantity_fermi(entry, &command.address, &slot)?;
+    let (support, expected_unit) = fermi_target(entry, &command.address, &slot)?;
     let definition = command
         .definition
         .validated()
@@ -43,8 +43,8 @@ pub(super) fn set_fermi(
     let assessment = assess_fermi(
         &entry.project.id,
         definition.formula.clone(),
-        slot.fermi_support(),
-        slot.unit().map_err(EstimateCommandError::from)?,
+        support,
+        expected_unit,
         definition.monte_carlo,
     )
     .map_err(EstimateCommandError::from)?;
@@ -67,24 +67,39 @@ pub(super) fn set_fermi(
     .map(CommandOutcome::FermiEstimateSet)
 }
 
-fn reject_native_quantity_fermi(
+fn fermi_target(
     entry: &mut ProjectEntry,
     address: &EstimateAddress,
     slot: &crate::domain::EstimateSlot,
-) -> Result<(), ProjectError> {
+) -> Result<(crate::domain::FermiEstimateSupport, crate::domain::Unit), ProjectError> {
     let EstimateOwner::Node(id) = &address.owner else {
-        return Ok(());
+        return Ok((
+            slot.fermi_support(),
+            slot.unit().map_err(EstimateCommandError::from)?,
+        ));
     };
     let node = entry
         .repository
         .get_node(*id)?
         .ok_or(RepositoryError::MissingEntity(*id))?;
-    if matches!(node.payload, crate::domain::NodePayload::Metric(_))
-        && matches!(slot, crate::domain::EstimateSlot::Current)
-    {
-        return Err(EstimateCommandError::NativeQuantityFermiUnsupported.into());
+    if let crate::domain::NodePayload::Metric(metric) = node.payload {
+        if !matches!(slot, crate::domain::EstimateSlot::Current) {
+            return Err(EstimateCommandError::InvalidSlot {
+                address: address.clone(),
+                slot: slot.clone(),
+            }
+            .into());
+        }
+        return metric
+            .quantity
+            .fermi_target()
+            .map_err(EstimateCommandError::from)
+            .map_err(ProjectError::from);
     }
-    Ok(())
+    Ok((
+        slot.fermi_support(),
+        slot.unit().map_err(EstimateCommandError::from)?,
+    ))
 }
 
 fn set_value(
@@ -256,15 +271,11 @@ mod tests {
         (catalog, project.id)
     }
 
-    fn metric_catalog() -> (ProjectCatalog, ProjectId) {
+    fn metric_catalog(support: QuantitySupport) -> (ProjectCatalog, ProjectId) {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Delivery".to_owned()).unwrap();
-        let quantity = QuantityDefinition::new(
-            "days",
-            Some("p95 weekly".to_owned()),
-            QuantitySupport::NonNegative,
-        )
-        .unwrap();
+        let quantity =
+            QuantityDefinition::new("days", Some("p95 weekly".to_owned()), support).unwrap();
         catalog
             .execute(
                 &project.id,
@@ -355,7 +366,7 @@ mod tests {
 
     #[test]
     fn authors_native_metric_estimates_without_normalizing_their_values() {
-        let (mut catalog, project) = metric_catalog();
+        let (mut catalog, project) = metric_catalog(QuantitySupport::NonNegative);
         let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         let created = catalog
             .execute(
@@ -396,8 +407,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_metric_distributions_outside_support_and_native_fermi_sources() {
-        let (mut catalog, project) = metric_catalog();
+    fn rejects_metric_distributions_outside_support_and_persists_native_fermi_sources() {
+        let (mut catalog, project) = metric_catalog(QuantitySupport::Bounded {
+            lower: 0.0,
+            upper: 30.0,
+        });
         let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         assert!(matches!(
             catalog.execute(
@@ -426,29 +440,39 @@ mod tests {
                 unit: "days".to_owned(),
                 uncertainty: FermiVariableUncertainty::OrderOfMagnitude,
             }],
-            formula: Formula::Literal {
-                distribution: Distribution::log_normal(5.0_f64.ln(), 0.3).unwrap(),
-                unit: Unit::base("days").unwrap(),
+            formula: Formula::Bounded {
+                input: Box::new(Formula::Literal {
+                    distribution: Distribution::log_normal(5.0_f64.ln(), 0.3).unwrap(),
+                    unit: Unit::base("days").unwrap(),
+                }),
+                lower: 0.0,
+                upper: 30.0,
             },
             monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
         };
-        assert!(matches!(
-            catalog.execute(
+        let result = catalog
+            .execute(
                 &project,
                 CommandRequest::new(
                     1,
                     GraphCommand::SetFermiEstimate(SetFermiEstimate {
-                        address,
+                        address: address.clone(),
                         slot: EstimateSlot::Current,
                         definition,
                         provenance: vec![],
                     }),
                 ),
-            ),
-            Err(ProjectError::EstimateCommand(
-                EstimateCommandError::NativeQuantityFermiUnsupported
-            ))
+            )
+            .unwrap();
+        let CommandOutcome::FermiEstimateSet(created) = result.outcome else {
+            panic!("expected native Fermi estimate")
+        };
+        assert!(matches!(created.source, EstimateSource::Fermi { .. }));
+        assert!(matches!(
+            serde_json::to_value(&created.distribution).unwrap()["type"].as_str(),
+            Some("scaled_beta")
         ));
+        assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
     }
 
     #[test]

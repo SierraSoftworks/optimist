@@ -52,5 +52,14 @@ describe('command bar grammar', () => {
   it('reports incomplete quoted values and metric units', () => {
     expect(parseCommand('add factor "Fast', nodes, []).diagnostic.message).toContain('Close')
     expect(parseCommand('add metric "Cycle time"', nodes, []).diagnostic.message).toContain('unit')
+    expect(parseCommand('add metric "Cycle time" days', nodes, []).command).toMatchObject({
+      type: 'create_node',
+      input: {
+        payload: {
+          kind: 'metric',
+          properties: { unit: 'days', dimension: { day: 1 } },
+        },
+      },
+    })
   })
 })

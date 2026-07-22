@@ -1,5 +1,6 @@
 import type { Env, SqError, SqValue } from '@quri/squiggle-lang'
-import type { FermiComponentDraft, FermiSupport } from './fermiBuilder'
+import { fermiSupportBounds, type FermiComponentDraft, type FermiSupport } from './fermiBuilder'
+import { formatSquiggleUnitAnnotation, parseUnitExpression } from './unitExpression'
 
 const previewSamples = 4_000
 let runtime: Promise<typeof import('@quri/squiggle-lang')> | null = null
@@ -33,6 +34,7 @@ export async function evaluateSquigglePreview(
   equation: string,
   components: FermiComponentDraft[],
   support: FermiSupport,
+  expectedUnit: Record<string, number>,
 ): Promise<SquigglePreview> {
   const { defaultEnvironment, run } = await (runtime ??= import('@quri/squiggle-lang'))
   const environment: Env = {
@@ -43,8 +45,14 @@ export async function evaluateSquigglePreview(
   }
   const prelude = components.map(variableSource)
   const expression = boundedExpression(equation, support)
+  const resultUnit = formatSquiggleUnitAnnotation(expectedUnit)
   const output = await run(
-    [...prelude, `{ unbounded: (${equation}), bounded: ${expression} }`].join('\n'),
+    [
+      ...prelude,
+      `optimist_unbounded :: ${resultUnit} = (${equation})`,
+      `optimist_bounded :: ${resultUnit} = ${expression}`,
+      '{ unbounded: optimist_unbounded, bounded: optimist_bounded }',
+    ].join('\n'),
     { environment },
   )
   if (!output.result.ok) throw previewError(output.result.value.errors[0]!, prelude.length)
@@ -107,18 +115,23 @@ function summarize(result: SqValue, environment: Env) {
 function supportViolation(result: SqValue, environment: Env, support: FermiSupport) {
   if (support === 'real') return 0
   if (result.tag === 'Number') {
+    const bounds = fermiSupportBounds(support)
     const valid = support === 'non_negative'
       ? result.value >= 0
-      : support === 'probability'
-        ? result.value >= 0 && result.value <= 1
-        : result.value >= -1 && result.value <= 1
+      : bounds
+        ? result.value >= bounds[0] && result.value <= bounds[1]
+        : true
     return valid ? 0 : 1
   }
   if (result.tag !== 'Dist') {
     throw new SquigglePreviewError('The Squiggle expression must produce a number or distribution.')
   }
-  const lower = result.value.cdf(environment, support === 'signed' ? -1 : 0)
-  const upper = support === 'non_negative' ? null : result.value.cdf(environment, 1)
+  const bounds = fermiSupportBounds(support)
+  const lowerBound = support === 'non_negative' ? 0 : bounds?.[0]
+  const upperBound = bounds?.[1]
+  if (lowerBound === undefined) return 0
+  const lower = result.value.cdf(environment, lowerBound)
+  const upper = upperBound === undefined ? null : result.value.cdf(environment, upperBound)
   if (!lower.ok || (upper && !upper.ok)) {
     throw new SquigglePreviewError('Squiggle could not check the result against its required support.')
   }
@@ -130,25 +143,26 @@ function variableSource(component: FermiComponentDraft) {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
     throw new SquigglePreviewError(`Variable ${JSON.stringify(name)} must use letters, digits, and underscores.`)
   }
+  const annotation = formatSquiggleUnitAnnotation(parseUnitExpression(component.unit))
   if ((component.mode ?? 'order_of_magnitude') === 'order_of_magnitude') {
     if (!Number.isFinite(component.likely) || component.likely <= 0) {
       throw new SquigglePreviewError(`Variable ${name} requires a positive finite estimate.`)
     }
-    return `${name} = lognormal(${Math.log(component.likely)}, ${Math.log(10) / 1.6448536269514722})`
+    return `${name} :: ${annotation} = lognormal(${Math.log(component.likely)}, ${Math.log(10) / 1.6448536269514722})`
   }
   if (![component.low, component.likely, component.high].every(Number.isFinite) || component.low > component.likely || component.likely > component.high) {
     throw new SquigglePreviewError(`Variable ${name} must satisfy low <= likely <= high.`)
   }
-  if (component.low === component.high) return `${name} = ${component.low}`
+  if (component.low === component.high) return `${name} :: ${annotation} = ${component.low}`
   const width = component.high - component.low
   const alpha = 1 + 4 * (component.likely - component.low) / width
   const beta = 1 + 4 * (component.high - component.likely) / width
-  return `${name} = beta(${alpha}, ${beta}) * ${width} + ${component.low}`
+  return `${name} :: ${annotation} = beta(${alpha}, ${beta}) * ${width} + ${component.low}`
 }
 
 function boundedExpression(equation: string, support: FermiSupport) {
-  if (support === 'probability') return `min(max((${equation}), 0), 1)`
-  if (support === 'signed') return `min(max((${equation}), -1), 1)`
+  const bounds = fermiSupportBounds(support)
+  if (bounds) return `min(max((${equation}), ${bounds[0]}), ${bounds[1]})`
   return `(${equation})`
 }
 

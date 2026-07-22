@@ -50,6 +50,7 @@ const definition = ref<FermiEstimateDefinition | null>(
 const existingAssessment = computed(() =>
   props.existing?.source?.type === 'fermi' ? props.existing.source.assessment : null,
 )
+const distributionSupport = computed(() => typeof props.support === 'object' ? 'real' : props.support)
 
 watch(() => props.modelValue, (source) => {
   mode.value = source.type
@@ -100,7 +101,7 @@ function invalidateDefinition() {
       v-if="mode === 'distribution'"
       :model-value="distribution"
       :families="families"
-      :support="support"
+      :support="distributionSupport"
       :point-label="pointLabel"
       :minimum="minimum"
       :maximum="maximum"

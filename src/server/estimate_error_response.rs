@@ -61,7 +61,6 @@ pub(super) fn classify(
         ),
         EstimateCommandError::Fermi(_)
         | EstimateCommandError::FermiAssessment(_)
-        | EstimateCommandError::NativeQuantityFermiUnsupported
         | EstimateCommandError::UnavailableFermiRecommendation => (
             StatusCode::BAD_REQUEST,
             "invalid_fermi_estimate",

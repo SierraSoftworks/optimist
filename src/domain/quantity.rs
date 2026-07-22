@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::Distribution;
+use super::{Distribution, FermiEstimateSupport, Unit};
 
 const MAX_UNIT_BYTES: usize = 256;
 const MAX_CONTEXT_BYTES: usize = 4_096;
@@ -51,6 +51,15 @@ impl QuantitySupport {
             value => Ok(value),
         }
     }
+
+    /// Returns the primitive family support used when assessing a Fermi source.
+    pub fn fermi_support(self) -> FermiEstimateSupport {
+        match self {
+            Self::Real => FermiEstimateSupport::Real,
+            Self::NonNegative => FermiEstimateSupport::NonNegative,
+            Self::Bounded { lower, upper } => FermiEstimateSupport::Bounded { lower, upper },
+        }
+    }
 }
 
 /// Operational definition of a quantity expressed in its native unit.
@@ -74,6 +83,9 @@ impl QuantitySupport {
 pub struct QuantityDefinition {
     /// Human-authored unit used by observations, estimates, and explanations.
     pub unit: String,
+    /// Canonical unit terms used by typed formulas and Squiggle annotations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dimension: Option<Unit>,
     /// Optional aggregation and sampling window such as `p95 weekly`.
     pub aggregation: Option<String>,
     /// Complete legal support in the quantity's native unit.
@@ -93,6 +105,8 @@ pub struct QuantityDefinition {
 #[derive(Deserialize)]
 struct QuantityDefinitionWire {
     unit: String,
+    #[serde(default)]
+    dimension: Option<Unit>,
     aggregation: Option<String>,
     #[serde(default)]
     support: QuantitySupport,
@@ -112,6 +126,7 @@ impl<'de> Deserialize<'de> for QuantityDefinition {
         let value = QuantityDefinitionWire::deserialize(deserializer)?;
         Self {
             unit: value.unit,
+            dimension: value.dimension,
             aggregation: value.aggregation,
             support: value.support,
             operational_definition: value.operational_definition,
@@ -130,8 +145,21 @@ impl QuantityDefinition {
         aggregation: Option<String>,
         support: QuantitySupport,
     ) -> Result<Self, QuantityError> {
+        let unit = unit.into();
+        let dimension = Unit::base(unit.trim()).ok();
+        Self::with_dimension(unit, dimension, aggregation, support)
+    }
+
+    /// Creates a quantity with an explicit canonical unit expression.
+    pub fn with_dimension(
+        unit: impl Into<String>,
+        dimension: Option<Unit>,
+        aggregation: Option<String>,
+        support: QuantitySupport,
+    ) -> Result<Self, QuantityError> {
         Self {
             unit: unit.into(),
+            dimension,
             aggregation,
             support,
             operational_definition: String::new(),
@@ -171,6 +199,15 @@ impl QuantityDefinition {
     pub fn accepts(&self, distribution: &Distribution) -> bool {
         self.support.accepts(distribution)
     }
+
+    /// Returns the unit and support required to persist a Fermi estimate.
+    pub fn fermi_target(&self) -> Result<(FermiEstimateSupport, Unit), QuantityError> {
+        let dimension = self
+            .dimension
+            .clone()
+            .ok_or(QuantityError::MissingDimension)?;
+        Ok((self.support.fermi_support(), dimension))
+    }
 }
 
 /// Invalid native quantity definitions or estimates.
@@ -188,6 +225,9 @@ pub enum QuantityError {
     /// The current estimate assigns probability outside the quantity's legal support.
     #[error("quantity estimate support is incompatible with its definition")]
     EstimateOutsideSupport,
+    /// Legacy or externally authored quantity text has no canonical unit terms.
+    #[error("quantity requires a canonical dimension before it can use typed formulas")]
+    MissingDimension,
 }
 
 #[cfg(test)]
@@ -214,6 +254,33 @@ mod tests {
         let quantity = serde_json::from_str::<QuantityDefinition>(json).unwrap();
 
         assert_eq!(quantity.support, QuantitySupport::Real);
+        assert_eq!(quantity.dimension, None);
         assert_eq!(serde_json::to_string(&quantity).unwrap(), json);
+    }
+
+    #[test]
+    fn explicit_dimensions_define_native_fermi_targets() {
+        let dimension = Unit::from_exponents([("item", 1), ("day", -1)]).unwrap();
+        let quantity = QuantityDefinition::with_dimension(
+            "items/day",
+            Some(dimension.clone()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 30.0,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            quantity.fermi_target(),
+            Ok((
+                FermiEstimateSupport::Bounded {
+                    lower: 0.0,
+                    upper: 30.0,
+                },
+                dimension,
+            ))
+        );
     }
 }

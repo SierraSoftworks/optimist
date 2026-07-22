@@ -1,8 +1,15 @@
-import type { Formula, Unit } from '../api/types'
+import type { FermiSupport, Formula, Unit } from '../api/types'
 import { parseUnitExpression } from './unitExpression'
 
 export type FermiOperation = 'sum' | 'product' | 'ratio'
-export type FermiSupport = 'real' | 'non_negative' | 'probability' | 'signed'
+export type { FermiSupport }
+
+export function fermiSupportBounds(support: FermiSupport): [number, number] | null {
+  if (support === 'probability') return [0, 1]
+  if (support === 'signed') return [-1, 1]
+  if (typeof support === 'object') return [support.bounded.lower, support.bounded.upper]
+  return null
+}
 
 export interface FermiComponentDraft {
   name: string
@@ -28,13 +35,10 @@ export function buildFermiFormula(
     : operation === 'product'
       ? { type: 'product', factors: terms }
       : { type: 'ratio', numerator: terms[0]!, denominator: terms[1]! }
-  if (support === 'probability') {
-    return { type: 'bounded', input: composed, lower: 0, upper: 1 }
-  }
-  if (support === 'signed') {
-    return { type: 'bounded', input: composed, lower: -1, upper: 1 }
-  }
-  return composed
+  const bounds = fermiSupportBounds(support)
+  return bounds
+    ? { type: 'bounded', input: composed, lower: bounds[0], upper: bounds[1] }
+    : composed
 }
 
 export function fermiProvenance(

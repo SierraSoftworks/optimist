@@ -68,4 +68,24 @@ describe('EditStateEstimateDialog', () => {
       source: { type: 'distribution', distribution: { type: 'point', value: 15 } },
     })
   })
+
+  it('offers bounded Fermi authoring when a metric has canonical unit terms', async () => {
+    const metric = {
+      id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'metric',
+        properties: {
+          unit: 'days', dimension: { day: 1 }, aggregation: null,
+          support: { type: 'bounded', lower: 0, upper: 30 }, current: null,
+        },
+      },
+    } as GraphNode
+    const wrapper = mount(EditStateEstimateDialog, {
+      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [] },
+      global: { stubs: { Teleport: true } },
+    })
+
+    expect(wrapper.get('[aria-label="Estimate source"]').text()).toContain('Fermi equation')
+  })
 })

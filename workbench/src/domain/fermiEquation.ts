@@ -1,5 +1,5 @@
 import type { Formula, Unit } from '../api/types'
-import { componentFormula, type FermiComponentDraft, type FermiSupport } from './fermiBuilder'
+import { componentFormula, fermiSupportBounds, type FermiComponentDraft, type FermiSupport } from './fermiBuilder'
 import { formatHumanNumber } from './humanNumber'
 import { divideUnits, multiplyUnits, powerUnit, unitsEqual } from './unitExpression'
 
@@ -49,11 +49,10 @@ export function compileFermiEquation(
   }
   const parser = new EquationParser(tokenize(source), variables)
   const value = parser.parse()
-  const formula = support === 'probability'
-    ? { type: 'bounded' as const, input: value.formula, lower: 0, upper: 1 }
-    : support === 'signed'
-      ? { type: 'bounded' as const, input: value.formula, lower: -1, upper: 1 }
-      : value.formula
+  const bounds = fermiSupportBounds(support)
+  const formula = bounds
+    ? { type: 'bounded' as const, input: value.formula, lower: bounds[0], upper: bounds[1] }
+    : value.formula
   return { formula, unit: value.unit, central: value.central, referencedVariables: parser.referencedVariables }
 }
 

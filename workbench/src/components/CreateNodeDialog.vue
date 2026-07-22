@@ -10,6 +10,7 @@ import type {
   QuantitySupport,
 } from '../api/types'
 import DistributionEditor from './DistributionEditor.vue'
+import { parseUnitExpression } from '../domain/unitExpression'
 
 const props = defineProps<{ open: boolean; pending: boolean }>()
 const emit = defineEmits<{ close: []; submit: [input: CreateNodeInput] }>()
@@ -82,9 +83,17 @@ const identityValid = computed(() =>
   Boolean(
     form.title.trim() &&
     (form.name.trim() || generatedName.value) &&
-    (form.kind !== 'metric' || form.unit.trim()),
+    (form.kind !== 'metric' || metricDimension.value),
   ),
 )
+const metricDimension = computed(() => {
+  if (form.kind !== 'metric') return null
+  try {
+    return parseUnitExpression(form.unit)
+  } catch {
+    return null
+  }
+})
 
 const setupTitle = computed(() => {
   if (form.kind === 'metric') return 'Measurement setup'
@@ -152,6 +161,7 @@ function payload(): NodePayload {
         kind: 'metric',
         properties: {
           unit: form.unit.trim(),
+          dimension: metricDimension.value ?? undefined,
           aggregation: form.aggregation.trim() || null,
           support: quantitySupport(),
           operational_definition: form.operationalDefinition.trim(),
@@ -189,7 +199,7 @@ function payload(): NodePayload {
 function submit() {
   const title = form.title.trim()
   const name = form.name.trim() || generatedName.value
-  if (!title || !name || (form.kind === 'metric' && !form.unit.trim())) return
+  if (!title || !name || (form.kind === 'metric' && !metricDimension.value)) return
   emit('submit', { name, title, payload: payload() })
 }
 

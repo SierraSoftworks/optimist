@@ -7,7 +7,7 @@ use super::{
 };
 
 /// Support required by the primitive estimate receiving a Fermi recommendation.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FermiEstimateSupport {
     /// Any finite real value, approximated by a Normal distribution.
@@ -18,6 +18,13 @@ pub enum FermiEstimateSupport {
     Probability,
     /// Relationship influence on `[-1, 1]`, approximated by Scaled Beta.
     Signed,
+    /// Native quantity constrained to an arbitrary inclusive interval.
+    Bounded {
+        /// Smallest legal value in the target quantity's native unit.
+        lower: f64,
+        /// Largest legal value in the target quantity's native unit.
+        upper: f64,
+    },
 }
 
 /// Primitive recommendation derived from a sampled Fermi decomposition.
@@ -94,6 +101,9 @@ pub enum FermiAssessmentError {
         /// Unit derived from the proposed decomposition.
         actual: Unit,
     },
+    /// Arbitrary bounded support must define a finite nonempty interval.
+    #[error("bounded Fermi support requires finite lower < upper")]
+    InvalidSupportBounds,
 }
 
 /// Samples one unit-checked Fermi expression and recommends a primitive approximation.
@@ -143,6 +153,13 @@ pub fn assess_fermi(
     expected_unit: Unit,
     config: MonteCarloConfig,
 ) -> Result<FermiAssessment, FermiAssessmentError> {
+    if matches!(
+        support,
+        FermiEstimateSupport::Bounded { lower, upper }
+            if !lower.is_finite() || !upper.is_finite() || lower >= upper
+    ) {
+        return Err(FermiAssessmentError::InvalidSupportBounds);
+    }
     let formulas = FormulaSet::default();
     let compiled = formulas
         .validate(project, &formula)
@@ -193,6 +210,7 @@ fn recommend(support: FermiEstimateSupport, mean: f64, variance: f64) -> FermiRe
         }
         FermiEstimateSupport::Probability => fit_beta(mean, variance, 0.0, 1.0),
         FermiEstimateSupport::Signed => fit_beta(mean, variance, -1.0, 1.0),
+        FermiEstimateSupport::Bounded { lower, upper } => fit_beta(mean, variance, lower, upper),
         FermiEstimateSupport::NonNegative => return unavailable(support, mean, variance),
     };
     match distribution {
@@ -236,6 +254,7 @@ fn contains(support: FermiEstimateSupport, value: f64) -> bool {
         FermiEstimateSupport::NonNegative => value >= 0.0,
         FermiEstimateSupport::Probability => (0.0..=1.0).contains(&value),
         FermiEstimateSupport::Signed => (-1.0..=1.0).contains(&value),
+        FermiEstimateSupport::Bounded { lower, upper } => (lower..=upper).contains(&value),
     }
 }
 
@@ -272,6 +291,19 @@ mod tests {
         };
         assert!((distribution.mean() + 0.25).abs() < 1e-12);
         assert!((distribution.variance() - 0.1).abs() < 1e-12);
+
+        let FermiRecommendation::MomentMatched { distribution, .. } = recommend(
+            FermiEstimateSupport::Bounded {
+                lower: 10.0,
+                upper: 30.0,
+            },
+            18.0,
+            9.0,
+        ) else {
+            panic!("expected native Scaled Beta recommendation")
+        };
+        assert!((distribution.mean() - 18.0).abs() < 1e-12);
+        assert!((distribution.variance() - 9.0).abs() < 1e-12);
     }
 
     #[test]
@@ -284,5 +316,23 @@ mod tests {
             recommend(FermiEstimateSupport::NonNegative, -1.0, 0.2),
             FermiRecommendation::Unavailable { .. }
         ));
+    }
+
+    #[test]
+    fn rejects_invalid_arbitrary_support_before_sampling() {
+        let result = assess_fermi(
+            &ProjectId::new("delivery").unwrap(),
+            Formula::Literal {
+                distribution: Distribution::point(1.0).unwrap(),
+                unit: Unit::base("day").unwrap(),
+            },
+            FermiEstimateSupport::Bounded {
+                lower: 10.0,
+                upper: 5.0,
+            },
+            Unit::base("day").unwrap(),
+            MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
+        );
+        assert_eq!(result, Err(FermiAssessmentError::InvalidSupportBounds));
     }
 }

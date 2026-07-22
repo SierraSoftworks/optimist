@@ -70,9 +70,6 @@ pub enum EstimateCommandError {
     /// A native quantity definition rejects the proposed estimate distribution.
     #[error(transparent)]
     Quantity(#[from] QuantityError),
-    /// Native metric Fermi adoption awaits owner-specific support and unit assessment.
-    #[error("native metric estimates do not yet support persisted Fermi sources")]
-    NativeQuantityFermiUnsupported,
     /// Assessment completed without a usable primitive recommendation.
     #[error("the Fermi equation did not produce a persistable distribution recommendation")]
     UnavailableFermiRecommendation,

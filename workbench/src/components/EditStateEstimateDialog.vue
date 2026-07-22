@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { Distribution, EstimateSourceInput, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot } from '../api/types'
+import type { Distribution, EstimateSourceInput, FermiSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
@@ -35,12 +35,18 @@ const families = computed<Distribution['type'][]>(() => {
   if (metricSupport.value.type === 'non_negative') return ['point', 'log_normal', 'beta', 'scaled_beta']
   return ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
 })
-const editorSupport = computed(() =>
-  props.node?.payload.kind === 'metric' && metricSupport.value.type !== 'non_negative'
-    ? 'real' as const
-    : props.node?.payload.kind === 'metric'
-      ? 'non_negative' as const
-      : 'probability' as const,
+const fermiSupport = computed<FermiSupport>(() => {
+  if (props.node?.payload.kind !== 'metric') return 'probability'
+  if (metricSupport.value.type === 'bounded') {
+    return { bounded: { lower: metricSupport.value.lower, upper: metricSupport.value.upper } }
+  }
+  return metricSupport.value.type
+})
+const expectedUnit = computed<Unit>(() =>
+  props.node?.payload.kind === 'metric' ? props.node.payload.properties.dimension ?? {} : {},
+)
+const allowFermi = computed(() =>
+  props.node?.payload.kind !== 'metric' || props.node.payload.properties.dimension !== undefined,
 )
 const minimum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.lower : undefined)
 const maximum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.upper : undefined)
@@ -121,13 +127,13 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
           v-model="source"
           :existing="existing"
           :families="families"
-          :support="editorSupport"
+          :support="fermiSupport"
           :point-label="node.payload.kind === 'metric' ? `Value in ${node.payload.properties.unit}` : 'Value on [0, 1]'"
-          :allow-fermi="node.payload.kind !== 'metric'"
+          :allow-fermi="allowFermi"
           :minimum="minimum"
           :maximum="maximum"
           :project-id="projectId"
-          :expected-unit="{}"
+          :expected-unit="expectedUnit"
           @validity="sourceValid = $event"
         />
         <section v-if="calibratedReadings.length" class="calibrated-evidence">

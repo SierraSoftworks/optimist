@@ -10,6 +10,7 @@ import type {
 import type { WorkbenchMode } from '../stores/workbench'
 import { edgePayload, endpointsAreValid } from './edgeAuthoring'
 import { normalizedEdgeKind, resolveCommandNode, tokenizeCommand } from './commandBarSyntax'
+import { parseUnitExpression } from './unitExpression'
 export { commandSuggestions, type CommandSuggestion } from './commandBarSuggestions'
 
 export type WorkbenchCommand =
@@ -50,7 +51,26 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
   if (!name) return null
   if (kind === 'metric') {
     if (!option) return null
-    return { name, title, payload: { kind, properties: { unit: option, aggregation: null } } }
+    let dimension
+    try {
+      dimension = parseUnitExpression(option)
+    } catch {
+      return null
+    }
+    return {
+      name,
+      title,
+      payload: {
+        kind,
+        properties: {
+          unit: option,
+          dimension,
+          aggregation: null,
+          support: { type: 'real' },
+          current: null,
+        },
+      },
+    }
   }
   if (kind === 'intervention') {
     return {

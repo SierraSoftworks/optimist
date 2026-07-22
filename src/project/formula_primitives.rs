@@ -57,7 +57,7 @@ pub(crate) fn from_node(
             project,
             &owner,
             &value.current,
-            Unit::base(&value.quantity.unit).map_err(|_| {
+            value.quantity.dimension.clone().ok_or_else(|| {
                 FormulaCommandError::InvalidPrimitiveUnit(value.quantity.unit.clone())
             })?,
             &mut formulas,

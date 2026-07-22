@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { createProject } from '../support/workbench'
 
-test('defines and edits a metric estimate in native units', async ({ page }) => {
+test('defines and derives a metric estimate in native units', async ({ page }) => {
   await createProject(page, 'Native metric quantity')
   await page.getByRole('button', { name: 'Add node' }).last().click()
   const dialog = page.locator('.node-dialog')
@@ -30,9 +30,18 @@ test('defines and edits a metric estimate in native units', async ({ page }) => 
 
   await inspector.getByRole('button', { name: 'Estimate' }).click()
   await expect(page.getByRole('heading', { name: 'Set quantity estimate' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Fermi equation' })).toHaveCount(0)
-  await page.getByLabel('Value in days').fill('10')
+  await page.getByRole('button', { name: 'Fermi equation' }).click()
+  await page.getByRole('button', { name: /Fermi decomposition/ }).click()
+  await expect(page.getByLabel('Fermi goal unit')).toHaveValue('day')
+  await expect(page.getByLabel('Fermi equation')).toHaveValue('x + y')
+  await expect(page.getByText(/4,000 deterministic samples/)).toBeVisible()
+  await page.getByRole('button', { name: 'Assess equation' }).click()
+  await expect(page.getByText(/samples · converged/)).toBeVisible()
+  await page.getByRole('button', { name: 'Use Fermi equation' }).click()
   await page.getByRole('button', { name: 'Replace estimate' }).click()
 
-  await expect(inspector.getByText('Point · 10')).toBeVisible()
+  await expect(inspector.getByText(/Scaled Beta · \[0, 30\]/)).toBeVisible()
+  await inspector.getByRole('button', { name: 'Estimate' }).click()
+  await expect(page.getByText('Stored effective result')).toBeVisible()
+  await expect(page.getByLabel('Fermi equation')).toHaveValue('x + y')
 })

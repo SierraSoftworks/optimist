@@ -23,9 +23,9 @@ Metric support is one of:
 - zero or greater,
 - an inclusive finite interval.
 
-The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a LogNormal estimate in days rather than first translating it into an unexplained normalized score. Optimist rejects distributions whose complete support exceeds the metric definition. Legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
+The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a LogNormal estimate in days rather than first translating it into an unexplained normalized score. Optimist rejects distributions whose complete support exceeds the metric definition. New metrics retain canonical unit terms alongside the display unit; legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
 
-Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existing revisioned estimate lifecycle. Persisted Fermi sources are temporarily unavailable for metric estimates because Fermi assessment still derives support and units from a slot-global contract; enabling it requires the planned owner-specific native-unit assessment rather than pretending metrics are dimensionless probabilities.
+Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existing revisioned estimate lifecycle. Fermi estimates derive their target from the owning metric: real support recommends Normal, non-negative support recommends LogNormal, and bounded support recommends Scaled Beta on the metric's declared interval. The workbench emits Squiggle `::` annotations from the same canonical unit terms used by Rust formula validation. A legacy metric without canonical terms must be upgraded before using a typed Fermi source.
 
 ## Edge kinds
 

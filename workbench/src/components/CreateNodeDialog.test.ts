@@ -101,6 +101,7 @@ describe('CreateNodeDialog', () => {
         kind: 'metric',
         properties: {
           unit: 'days',
+          dimension: { day: 1 },
           support: { type: 'bounded', lower: 0, upper: 30 },
           current: { id: 'A', distribution: { type: 'point', value: 15 } },
         },

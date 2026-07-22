@@ -109,6 +109,7 @@ export type NodePayload =
       kind: 'metric'
       properties: {
         unit: string
+        dimension?: Unit
         aggregation: string | null
         support?: QuantitySupport
         operational_definition?: string
@@ -286,10 +287,17 @@ export type Formula =
 
 export interface FermiAssessmentInput {
   formula: Formula
-  support: 'real' | 'non_negative' | 'probability' | 'signed'
+  support: FermiSupport
   expected_unit: Unit
   monte_carlo: MonteCarloConfig
 }
+
+export type FermiSupport =
+  | 'real'
+  | 'non_negative'
+  | 'probability'
+  | 'signed'
+  | { bounded: { lower: number; upper: number } }
 
 export interface FermiEstimateDefinition {
   language: 'optimist_squiggle_v1'

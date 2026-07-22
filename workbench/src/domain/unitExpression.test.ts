@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   divideUnits,
   formatUnitExpression,
+  formatSquiggleUnitAnnotation,
   multiplyUnits,
   parseUnitExpression,
   unitsEqual,
@@ -13,6 +14,8 @@ describe('human unit expressions', () => {
     expect(parseUnitExpression('households/piano')).toEqual({ household: 1, piano: -1 })
     expect(parseUnitExpression('(pianos / day)^2')).toEqual({ piano: 2, day: -2 })
     expect(formatUnitExpression({ piano: 1, day: -1 })).toBe('piano/day')
+    expect(formatSquiggleUnitAnnotation({ item: 1, day: -1 })).toBe('item/day')
+    expect(formatSquiggleUnitAnnotation({ 'person-day': 1 })).toMatch(/^optimist_unit_/)
   })
 
   it('composes the entered piano variables and exposes the dimensional mismatch', () => {
