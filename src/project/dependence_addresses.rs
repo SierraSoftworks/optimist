@@ -50,7 +50,7 @@ fn node_contains(payload: &NodePayload, id: EstimateId) -> bool {
                 || matches_estimate(&value.duration, id)
                 || matches_estimate(&value.probability_of_success, id)
         }
-        NodePayload::Metric(_) => false,
+        NodePayload::Metric(value) => matches_estimate(&value.current, id),
     }
 }
 

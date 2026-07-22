@@ -53,7 +53,15 @@ pub(crate) fn from_node(
                 &mut formulas,
             );
         }
-        NodePayload::Metric(_) => {}
+        NodePayload::Metric(value) => optional(
+            project,
+            &owner,
+            &value.current,
+            Unit::base(&value.quantity.unit).map_err(|_| {
+                FormulaCommandError::InvalidPrimitiveUnit(value.quantity.unit.clone())
+            })?,
+            &mut formulas,
+        ),
     }
     Ok(formulas)
 }

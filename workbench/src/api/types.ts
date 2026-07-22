@@ -77,6 +77,11 @@ export type MeasurementCalibration =
       outer_upper: number
     }
 
+export type QuantitySupport =
+  | { type: 'real' }
+  | { type: 'non_negative' }
+  | { type: 'bounded'; lower: number; upper: number }
+
 export interface AppendObservationInput {
   value: number
   unit: string
@@ -102,7 +107,15 @@ export type NodePayload =
     }
   | {
       kind: 'metric'
-      properties: { unit: string; aggregation: string | null }
+      properties: {
+        unit: string
+        aggregation: string | null
+        support?: QuantitySupport
+        operational_definition?: string
+        reference_time?: string | null
+        resolution_source?: string | null
+        current?: Estimate | null
+      }
     }
   | {
       kind: 'factor'

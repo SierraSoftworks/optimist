@@ -12,6 +12,7 @@ pub(super) fn remove(
         (NodePayload::Outcome(value), EstimateSlot::Desired) => value.desired = None,
         (NodePayload::Factor(value), EstimateSlot::Current) => value.current = None,
         (NodePayload::Factor(value), EstimateSlot::Desired) => value.desired = None,
+        (NodePayload::Metric(value), EstimateSlot::Current) => value.current = None,
         (NodePayload::Intervention(value), EstimateSlot::Cost(_)) => {
             value.costs.retain(|cost| cost.value.id != address.estimate);
         }

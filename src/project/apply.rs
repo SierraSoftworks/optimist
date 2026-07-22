@@ -134,9 +134,9 @@ fn validate_metric_unit(
     let NodePayload::Metric(metric) = source.payload else {
         return Err(ProjectError::NotMeasurementEdge(edge.id()));
     };
-    if metric.unit != actual {
+    if metric.quantity.unit != actual {
         return Err(ProjectError::ObservationUnitMismatch {
-            expected: metric.unit,
+            expected: metric.quantity.unit,
             actual: actual.to_owned(),
         });
     }

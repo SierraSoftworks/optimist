@@ -22,7 +22,9 @@ pub(super) fn build(
         }
         NodeType::Metric if direction.is_none() && !controllable => {
             let unit = unit.ok_or_else(|| invalid("Metric nodes require `--unit`."))?;
-            Ok(NodePayload::Metric(Metric { unit, aggregation }))
+            Metric::new(unit, aggregation)
+                .map(NodePayload::Metric)
+                .map_err(|_| invalid("Metric nodes require a nonempty valid `--unit`."))
         }
         NodeType::Factor if direction.is_none() && unit.is_none() && aggregation.is_none() => {
             Ok(NodePayload::Factor(Factor {

@@ -35,6 +35,7 @@ pub(super) fn set_fermi(
         .slot
         .validated()
         .map_err(EstimateCommandError::from)?;
+    reject_native_quantity_fermi(entry, &command.address, &slot)?;
     let definition = command
         .definition
         .validated()
@@ -64,6 +65,26 @@ pub(super) fn set_fermi(
         command.provenance,
     )
     .map(CommandOutcome::FermiEstimateSet)
+}
+
+fn reject_native_quantity_fermi(
+    entry: &mut ProjectEntry,
+    address: &EstimateAddress,
+    slot: &crate::domain::EstimateSlot,
+) -> Result<(), ProjectError> {
+    let EstimateOwner::Node(id) = &address.owner else {
+        return Ok(());
+    };
+    let node = entry
+        .repository
+        .get_node(*id)?
+        .ok_or(RepositoryError::MissingEntity(*id))?;
+    if matches!(node.payload, crate::domain::NodePayload::Metric(_))
+        && matches!(slot, crate::domain::EstimateSlot::Current)
+    {
+        return Err(EstimateCommandError::NativeQuantityFermiUnsupported.into());
+    }
+    Ok(())
 }
 
 fn set_value(
@@ -198,8 +219,9 @@ mod tests {
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
             EstimateOwner, EstimateSlot, EstimateSource, Factor, FermiEstimateDefinition,
-            FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula,
-            MonteCarloConfig, ProjectId, SignedInfluence, Unit,
+            FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula, Metric,
+            MonteCarloConfig, NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
+            SignedInfluence, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -231,6 +253,33 @@ mod tests {
                 )
                 .unwrap();
         }
+        (catalog, project.id)
+    }
+
+    fn metric_catalog() -> (ProjectCatalog, ProjectId) {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        let quantity = QuantityDefinition::new(
+            "days",
+            Some("p95 weekly".to_owned()),
+            QuantitySupport::NonNegative,
+        )
+        .unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    0,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "lead_time".to_owned(),
+                        title: "Lead time".to_owned(),
+                        payload: NodePayload::Metric(
+                            Metric::with_quantity(quantity, None).unwrap(),
+                        ),
+                    }),
+                ),
+            )
+            .unwrap();
         (catalog, project.id)
     }
 
@@ -302,6 +351,104 @@ mod tests {
                 EstimateCommandError::NotFound(address)
             ))
         );
+    }
+
+    #[test]
+    fn authors_native_metric_estimates_without_normalizing_their_values() {
+        let (mut catalog, project) = metric_catalog();
+        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
+        let created = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::SetEstimate(SetEstimate {
+                        address: address.clone(),
+                        slot: EstimateSlot::Current,
+                        distribution: Distribution::log_normal(2.0, 0.3).unwrap(),
+                        provenance: vec!["weekly telemetry".to_owned()],
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::EstimateSet(created) = created.outcome else {
+            panic!("expected metric estimate")
+        };
+        assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
+
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::RemoveEstimate(RemoveEstimate {
+                        address: address.clone(),
+                    }),
+                ),
+            )
+            .unwrap();
+        assert!(matches!(
+            catalog.get_estimate(&project, &address),
+            Err(ProjectError::EstimateCommand(
+                EstimateCommandError::NotFound(_)
+            ))
+        ));
+    }
+
+    #[test]
+    fn rejects_metric_distributions_outside_support_and_native_fermi_sources() {
+        let (mut catalog, project) = metric_catalog();
+        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
+        assert!(matches!(
+            catalog.execute(
+                &project,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::SetEstimate(SetEstimate {
+                        address: address.clone(),
+                        slot: EstimateSlot::Current,
+                        distribution: Distribution::normal(5.0, 1.0).unwrap(),
+                        provenance: vec![],
+                    }),
+                ),
+            ),
+            Err(ProjectError::EstimateCommand(
+                EstimateCommandError::Quantity(_)
+            ))
+        ));
+
+        let definition = FermiEstimateDefinition {
+            language: FermiExpressionLanguage::OptimistSquiggleV1,
+            equation: "lead_time".to_owned(),
+            variables: vec![FermiVariable {
+                name: "lead_time".to_owned(),
+                estimate: 5.0,
+                unit: "days".to_owned(),
+                uncertainty: FermiVariableUncertainty::OrderOfMagnitude,
+            }],
+            formula: Formula::Literal {
+                distribution: Distribution::log_normal(5.0_f64.ln(), 0.3).unwrap(),
+                unit: Unit::base("days").unwrap(),
+            },
+            monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
+        };
+        assert!(matches!(
+            catalog.execute(
+                &project,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::SetFermiEstimate(SetFermiEstimate {
+                        address,
+                        slot: EstimateSlot::Current,
+                        definition,
+                        provenance: vec![],
+                    }),
+                ),
+            ),
+            Err(ProjectError::EstimateCommand(
+                EstimateCommandError::NativeQuantityFermiUnsupported
+            ))
+        ));
     }
 
     #[test]

@@ -170,10 +170,7 @@ mod tests {
             EntityId::new(id),
             name,
             name,
-            NodePayload::Metric(Metric {
-                unit: "ratio".to_owned(),
-                aggregation: None,
-            }),
+            NodePayload::Metric(Metric::new("ratio", None).unwrap()),
         )
         .expect("valid metric")
     }

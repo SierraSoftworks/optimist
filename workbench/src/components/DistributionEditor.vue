@@ -12,6 +12,8 @@ const props = withDefaults(defineProps<{
   families: Family[]
   support: Support
   pointLabel?: string
+  minimum?: number
+  maximum?: number
 }>(), { pointLabel: 'Value' })
 const emit = defineEmits<{ 'update:modelValue': [distribution: Distribution] }>()
 const form = reactive({
@@ -27,11 +29,12 @@ const form = reactive({
   upper: 1,
 })
 
-const pointMinimum = computed(() => props.support === 'signed' ? -1 : props.support === 'real' ? undefined : 0)
-const pointMaximum = computed(() => props.support === 'signed' || props.support === 'probability' ? 1 : undefined)
-const boundMinimum = computed(() => props.support === 'signed' ? -1 : props.support === 'real' ? undefined : 0)
-const boundMaximum = computed(() => props.support === 'signed' || props.support === 'probability' ? 1 : undefined)
+const pointMinimum = computed(() => props.minimum ?? (props.support === 'signed' ? -1 : props.support === 'real' ? undefined : 0))
+const pointMaximum = computed(() => props.maximum ?? (props.support === 'signed' || props.support === 'probability' ? 1 : undefined))
+const boundMinimum = computed(() => props.minimum ?? (props.support === 'signed' ? -1 : props.support === 'real' ? undefined : 0))
+const boundMaximum = computed(() => props.maximum ?? (props.support === 'signed' || props.support === 'probability' ? 1 : undefined))
 const previewDomain = computed<[number, number] | undefined>(() => {
+  if (props.minimum !== undefined && props.maximum !== undefined) return [props.minimum, props.maximum]
   if (props.support === 'probability') return [0, 1]
   if (props.support === 'signed') return [-1, 1]
   if (props.support === 'non_negative' && form.family === 'point') {
@@ -99,8 +102,8 @@ function selectedDistribution(): Distribution {
 
 function changeFamily() {
   if (form.family === 'scaled_beta') {
-    form.lower = props.support === 'signed' ? -1 : 0
-    form.upper = 1
+    form.lower = pointMinimum.value ?? 0
+    form.upper = pointMaximum.value ?? 1
   }
   emitDistribution()
 }

@@ -14,7 +14,7 @@ use super::{
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum EstimateSlot {
-    /// Current normalized state of an outcome or factor.
+    /// Current normalized state of an outcome/factor or native value of a metric.
     Current,
     /// Desired normalized state of an outcome or factor.
     Desired,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { EstimateSourceInput, GraphEdge, GraphNode, SetStateEstimateInput, StateEstimateSlot } from '../api/types'
+import type { Distribution, EstimateSourceInput, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot } from '../api/types'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
@@ -20,9 +20,30 @@ const form = reactive({
 const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0.5 } })
 const sourceValid = ref(true)
 const existing = computed(() => {
+  if (props.node?.payload.kind === 'metric') return props.node.payload.properties.current ?? null
   if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return null
   return props.node.payload.properties[form.slot]
 })
+const metricSupport = computed<QuantitySupport>(() =>
+  props.node?.payload.kind === 'metric'
+    ? props.node.payload.properties.support ?? { type: 'real' }
+    : { type: 'bounded', lower: 0, upper: 1 },
+)
+const families = computed<Distribution['type'][]>(() => {
+  if (props.node?.payload.kind !== 'metric') return ['point', 'beta']
+  if (metricSupport.value.type === 'bounded') return ['point', 'scaled_beta']
+  if (metricSupport.value.type === 'non_negative') return ['point', 'log_normal', 'beta', 'scaled_beta']
+  return ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
+})
+const editorSupport = computed(() =>
+  props.node?.payload.kind === 'metric' && metricSupport.value.type !== 'non_negative'
+    ? 'real' as const
+    : props.node?.payload.kind === 'metric'
+      ? 'non_negative' as const
+      : 'probability' as const,
+)
+const minimum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.lower : undefined)
+const maximum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.upper : undefined)
 const calibratedReadings = computed(() => {
   if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return []
   return props.edges.flatMap((edge) => {
@@ -39,15 +60,22 @@ watch(
   () => [props.open, props.node, form.slot] as const,
   ([open]) => {
     if (!open) return
+    if (props.node?.payload.kind === 'metric') form.slot = 'current'
     const currentDistribution = existing.value?.distribution
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
-    if (currentDistribution?.type === 'beta' || currentDistribution?.type === 'point') {
+    if (currentDistribution) {
       source.value = existing.value?.source?.type === 'fermi'
         ? { type: 'fermi', definition: existing.value.source.definition }
         : { type: 'distribution', distribution: currentDistribution }
-    } else source.value = { type: 'distribution', distribution: { type: 'point', value: 0.5 } }
+    } else {
+      const value = minimum.value !== undefined && maximum.value !== undefined
+        ? (minimum.value + maximum.value) / 2
+        : 0
+      source.value = { type: 'distribution', distribution: { type: 'point', value } }
+    }
     sourceValid.value = true
   },
+  { immediate: true },
 )
 
 function submit() {
@@ -78,11 +106,11 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
         <header>
           <div>
             <span class="eyebrow">{{ node.title }}</span>
-            <h2 id="edit-estimate-title">Set state estimate</h2>
+            <h2 id="edit-estimate-title">{{ node.payload.kind === 'metric' ? 'Set quantity estimate' : 'Set state estimate' }}</h2>
           </div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
-        <label>
+        <label v-if="node.payload.kind !== 'metric'">
           State
           <select v-model="form.slot">
             <option value="current">Current</option>
@@ -92,9 +120,12 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
         <EstimateSourceEditor
           v-model="source"
           :existing="existing"
-          :families="['point', 'beta']"
-          support="probability"
-          point-label="Value on [0, 1]"
+          :families="families"
+          :support="editorSupport"
+          :point-label="node.payload.kind === 'metric' ? `Value in ${node.payload.properties.unit}` : 'Value on [0, 1]'"
+          :allow-fermi="node.payload.kind !== 'metric'"
+          :minimum="minimum"
+          :maximum="maximum"
           :project-id="projectId"
           :expected-unit="{}"
           @validity="sourceValid = $event"

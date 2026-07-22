@@ -18,7 +18,9 @@ pub(super) fn count(payload: &NodePayload, id: EstimateId) -> usize {
                         .is_some_and(|item| item.id == id),
                 )
         }
-        NodePayload::Metric(_) => 0,
+        NodePayload::Metric(value) => {
+            usize::from(value.current.as_ref().is_some_and(|item| item.id == id))
+        }
     }
 }
 

@@ -56,10 +56,9 @@ pub(crate) fn node() -> impl Strategy<Value = Node> {
                     desired: None,
                     evidence: Vec::new(),
                 }),
-                1 => NodePayload::Metric(Metric {
-                    unit: "ratio".to_owned(),
-                    aggregation: flag.then(|| "weekly".to_owned()),
-                }),
+                1 => NodePayload::Metric(
+                    Metric::new("ratio", flag.then(|| "weekly".to_owned())).unwrap(),
+                ),
                 2 => NodePayload::Factor(Factor {
                     current: Some(normalized_estimate(state)),
                     desired: None,

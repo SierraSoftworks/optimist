@@ -15,7 +15,13 @@ pub(super) fn find(
         NodePayload::Outcome(value) => state(address, &value.current, &value.desired),
         NodePayload::Factor(value) => state(address, &value.current, &value.desired),
         NodePayload::Intervention(value) => intervention(address, value),
-        NodePayload::Metric(_) => None,
+        NodePayload::Metric(value) => value
+            .current
+            .as_ref()
+            .filter(|item| item.id == address.estimate)
+            .map(|item| {
+                PrimitiveEstimate::from_typed(address.clone(), EstimateSlot::Current, item)
+            }),
     }
     .ok_or_else(|| EstimateCommandError::NotFound(address.clone()).into())
 }

@@ -1,0 +1,219 @@
+use serde::{Deserialize, Deserializer, Serialize, de};
+use thiserror::Error;
+
+use super::Distribution;
+
+const MAX_UNIT_BYTES: usize = 256;
+const MAX_CONTEXT_BYTES: usize = 4_096;
+
+/// Complete support expected for a native-unit quantity.
+///
+/// Support describes which values are physically or semantically possible; it does
+/// not describe whether larger or smaller values are desirable. Scenario objectives
+/// own that separate preference decision.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum QuantitySupport {
+    /// Any finite real-valued observation is meaningful.
+    #[default]
+    Real,
+    /// Values below zero are impossible for this quantity.
+    NonNegative,
+    /// Values must remain inside the inclusive native-unit interval.
+    Bounded {
+        /// Smallest possible value in the quantity's native unit.
+        lower: f64,
+        /// Largest possible value in the quantity's native unit.
+        upper: f64,
+    },
+}
+
+impl QuantitySupport {
+    pub(super) fn is_real(&self) -> bool {
+        matches!(self, Self::Real)
+    }
+
+    pub(super) fn accepts(&self, distribution: &Distribution) -> bool {
+        match self {
+            Self::Real => true,
+            Self::NonNegative => distribution.is_non_negative(),
+            Self::Bounded { lower, upper } => distribution.is_within(*lower, *upper),
+        }
+    }
+
+    fn validated(self) -> Result<Self, QuantityError> {
+        match self {
+            Self::Bounded { lower, upper }
+                if !lower.is_finite() || !upper.is_finite() || lower >= upper =>
+            {
+                Err(QuantityError::InvalidBounds)
+            }
+            value => Ok(value),
+        }
+    }
+}
+
+/// Operational definition of a quantity expressed in its native unit.
+///
+/// This definition is descriptive rather than preferential. For example, deployment
+/// frequency can remain measured in `deployments/week` while different scenarios
+/// independently decide whether larger values are useful.
+///
+/// ```
+/// use optimist::domain::{QuantityDefinition, QuantitySupport};
+///
+/// let quantity = QuantityDefinition::new(
+///     "days",
+///     Some("p95 over a calendar week".to_owned()),
+///     QuantitySupport::NonNegative,
+/// )?;
+/// assert_eq!(quantity.unit, "days");
+/// # Ok::<(), optimist::domain::QuantityError>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct QuantityDefinition {
+    /// Human-authored unit used by observations, estimates, and explanations.
+    pub unit: String,
+    /// Optional aggregation and sampling window such as `p95 weekly`.
+    pub aggregation: Option<String>,
+    /// Complete legal support in the quantity's native unit.
+    #[serde(default, skip_serializing_if = "QuantitySupport::is_real")]
+    pub support: QuantitySupport,
+    /// Resolvable description of exactly what is counted or measured.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub operational_definition: String,
+    /// Optional timestamp, horizon, or period to which a forecast applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_time: Option<String>,
+    /// Optional system, publication, query, or authority used to resolve the value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution_source: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct QuantityDefinitionWire {
+    unit: String,
+    aggregation: Option<String>,
+    #[serde(default)]
+    support: QuantitySupport,
+    #[serde(default)]
+    operational_definition: String,
+    #[serde(default)]
+    reference_time: Option<String>,
+    #[serde(default)]
+    resolution_source: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for QuantityDefinition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = QuantityDefinitionWire::deserialize(deserializer)?;
+        Self {
+            unit: value.unit,
+            aggregation: value.aggregation,
+            support: value.support,
+            operational_definition: value.operational_definition,
+            reference_time: value.reference_time,
+            resolution_source: value.resolution_source,
+        }
+        .validated()
+        .map_err(de::Error::custom)
+    }
+}
+
+impl QuantityDefinition {
+    /// Creates a minimal validated quantity definition.
+    pub fn new(
+        unit: impl Into<String>,
+        aggregation: Option<String>,
+        support: QuantitySupport,
+    ) -> Result<Self, QuantityError> {
+        Self {
+            unit: unit.into(),
+            aggregation,
+            support,
+            operational_definition: String::new(),
+            reference_time: None,
+            resolution_source: None,
+        }
+        .validated()
+    }
+
+    /// Validates unit, support, and bounded human-authored context fields.
+    pub fn validated(mut self) -> Result<Self, QuantityError> {
+        self.unit = self.unit.trim().to_owned();
+        if self.unit.is_empty() {
+            return Err(QuantityError::EmptyUnit);
+        }
+        if self.unit.len() > MAX_UNIT_BYTES {
+            return Err(QuantityError::ContextTooLarge("unit"));
+        }
+        self.support = self.support.validated()?;
+        for (name, value) in [
+            ("aggregation", self.aggregation.as_deref()),
+            (
+                "operational definition",
+                Some(self.operational_definition.as_str()),
+            ),
+            ("reference time", self.reference_time.as_deref()),
+            ("resolution source", self.resolution_source.as_deref()),
+        ] {
+            if value.is_some_and(|value| value.len() > MAX_CONTEXT_BYTES) {
+                return Err(QuantityError::ContextTooLarge(name));
+            }
+        }
+        Ok(self)
+    }
+
+    /// Reports whether a distribution's complete support fits this quantity.
+    pub fn accepts(&self, distribution: &Distribution) -> bool {
+        self.support.accepts(distribution)
+    }
+}
+
+/// Invalid native quantity definitions or estimates.
+#[derive(Clone, Debug, Error, PartialEq)]
+pub enum QuantityError {
+    /// Every quantity requires a visible native unit.
+    #[error("a quantity unit cannot be empty")]
+    EmptyUnit,
+    /// A human-authored definition field exceeded its transport bound.
+    #[error("quantity {0} exceeds its maximum length")]
+    ContextTooLarge(&'static str),
+    /// Bounded support requires two ordered finite anchors.
+    #[error("bounded quantity support requires finite lower < upper")]
+    InvalidBounds,
+    /// The current estimate assigns probability outside the quantity's legal support.
+    #[error("quantity estimate support is incompatible with its definition")]
+    EstimateOutsideSupport,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_invalid_definitions_during_construction_and_deserialization() {
+        assert_eq!(
+            QuantityDefinition::new(" ", None, QuantitySupport::Real),
+            Err(QuantityError::EmptyUnit)
+        );
+        let json = r#"{
+            "unit":"days",
+            "aggregation":null,
+            "support":{"type":"bounded","lower":10,"upper":5}
+        }"#;
+        assert!(serde_json::from_str::<QuantityDefinition>(json).is_err());
+    }
+
+    #[test]
+    fn legacy_fields_default_to_real_support_without_serialization_churn() {
+        let json = r#"{"unit":"days","aggregation":"p95 weekly"}"#;
+        let quantity = serde_json::from_str::<QuantityDefinition>(json).unwrap();
+
+        assert_eq!(quantity.support, QuantitySupport::Real);
+        assert_eq!(serde_json::to_string(&quantity).unwrap(), json);
+    }
+}

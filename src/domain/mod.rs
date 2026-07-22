@@ -36,6 +36,7 @@ mod project_dependence;
 mod project_dependence_matrix;
 mod propagation;
 mod quantile_fit;
+mod quantity;
 pub use analysis::{
     AnalysisError, AnalysisLimits, AnalysisRevisionKey, ElementaryCycle,
     StronglyConnectedComponent, StructuralAnalysis,
@@ -65,7 +66,8 @@ pub use edge_payload::{
 };
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
-    EstimateId, EstimateSource, Money, NormalizedState, Probability, SignedInfluence,
+    EstimateId, EstimateSource, Money, NormalizedState, Probability, QuantityValue,
+    SignedInfluence,
 };
 pub use estimate_address::{
     EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
@@ -101,6 +103,7 @@ pub use project_dependence::{
 };
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
+pub use quantity::{QuantityDefinition, QuantityError, QuantitySupport};
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };

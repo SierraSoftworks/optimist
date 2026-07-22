@@ -3,7 +3,7 @@ use crate::domain::{
     NodePayload, PrimitiveEstimate,
 };
 
-use super::{ProjectError, estimate_node_ids, estimate_support};
+use super::{EstimateCommandError, ProjectError, estimate_node_ids, estimate_support};
 
 pub(super) fn set(
     node: &mut Node,
@@ -66,6 +66,25 @@ pub(super) fn set(
         .map(|(estimate, result)| {
             value.desired = Some(estimate);
             result
+        }),
+        (NodePayload::Metric(value), EstimateSlot::Current) => estimate_support::replacement(
+            value.current.as_ref(),
+            address,
+            slot,
+            count,
+            distribution,
+            source,
+            provenance,
+        )
+        .and_then(|(estimate, result)| {
+            if !value.quantity.accepts(&estimate.distribution) {
+                return Err(EstimateCommandError::Quantity(
+                    crate::domain::QuantityError::EstimateOutsideSupport,
+                )
+                .into());
+            }
+            value.current = Some(estimate);
+            Ok(result)
         }),
         (NodePayload::Intervention(value), EstimateSlot::Cost(dimension)) => set_cost(
             value,

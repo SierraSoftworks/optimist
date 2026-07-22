@@ -116,10 +116,7 @@ mod tests {
                     GraphCommand::CreateNode(CreateNode {
                         name: "lead_time".to_owned(),
                         title: "Lead time".to_owned(),
-                        payload: NodePayload::Metric(Metric {
-                            unit: "days".to_owned(),
-                            aggregation: None,
-                        }),
+                        payload: NodePayload::Metric(Metric::new("days", None).unwrap()),
                     }),
                 ),
             )
@@ -432,10 +429,7 @@ mod tests {
             GraphCommand::CreateNode(CreateNode {
                 name: "availability".to_owned(),
                 title: "Availability".to_owned(),
-                payload: NodePayload::Metric(Metric {
-                    unit: "ratio".to_owned(),
-                    aggregation: None,
-                }),
+                payload: NodePayload::Metric(Metric::new("ratio", None).unwrap()),
             }),
         );
         catalog.execute(&project.id, metric).unwrap();

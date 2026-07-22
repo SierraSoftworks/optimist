@@ -112,7 +112,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <div class="inspector-actions">
         <button type="button" class="secondary-button" @click="emit('edit')"><Pencil :size="14" /> Details</button>
         <button
-          v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'"
+          v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor' || node.payload.kind === 'metric'"
           type="button"
           class="secondary-button"
           @click="emit('estimate')"
@@ -189,10 +189,16 @@ function replacement(edge: GraphEdge, observation: Observation) {
       </section>
 
       <section v-if="node.payload.kind === 'metric'" class="inspector-section">
-        <h3>Measurement</h3>
+        <h3>Native quantity</h3>
         <dl>
           <div><dt>Unit</dt><dd>{{ node.payload.properties.unit }}</dd></div>
           <div><dt>Aggregation</dt><dd>{{ node.payload.properties.aggregation ?? 'Not set' }}</dd></div>
+          <div><dt>Support</dt><dd>{{ node.payload.properties.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
+          <div v-if="node.payload.properties.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.support.lower }}–{{ node.payload.properties.support.upper }}</dd></div>
+          <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
+          <div v-if="node.payload.properties.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.operational_definition }}</dd></div>
+          <div v-if="node.payload.properties.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.reference_time }}</dd></div>
+          <div v-if="node.payload.properties.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.resolution_source }}</dd></div>
         </dl>
       </section>
 

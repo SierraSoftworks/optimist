@@ -22,7 +22,10 @@ const props = withDefaults(defineProps<{
   support: FermiSupport
   expectedUnit: Unit
   pointLabel?: string
-}>(), { pointLabel: 'Value' })
+  allowFermi?: boolean
+  minimum?: number
+  maximum?: number
+}>(), { pointLabel: 'Value', allowFermi: true })
 const emit = defineEmits<{
   'update:modelValue': [source: EstimateSourceInput]
   validity: [valid: boolean]
@@ -89,7 +92,7 @@ function invalidateDefinition() {
 
 <template>
   <div class="estimate-source-editor">
-    <div class="source-mode" role="group" aria-label="Estimate source">
+    <div v-if="allowFermi" class="source-mode" role="group" aria-label="Estimate source">
       <button type="button" :aria-pressed="mode === 'distribution'" @click="selectMode('distribution')">Distribution</button>
       <button type="button" :aria-pressed="mode === 'fermi'" @click="selectMode('fermi')">Fermi equation</button>
     </div>
@@ -99,6 +102,8 @@ function invalidateDefinition() {
       :families="families"
       :support="support"
       :point-label="pointLabel"
+      :minimum="minimum"
+      :maximum="maximum"
       @update:model-value="updateDistribution"
     />
     <div v-else class="fermi-source">

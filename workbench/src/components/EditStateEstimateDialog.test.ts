@@ -36,4 +36,36 @@ describe('EditStateEstimateDialog', () => {
     expect((wrapper.get('[aria-label="Value on [0, 1]"]').element as HTMLInputElement).value).toBe('0.5')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toContain('Calibrated observation #1')
   })
+
+  it('edits a bounded metric directly in its native unit without offering Fermi', async () => {
+    const metric = {
+      id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'metric',
+        properties: {
+          unit: 'days', aggregation: 'p95 weekly',
+          support: { type: 'bounded', lower: 0, upper: 30 }, current: null,
+        },
+      },
+    } as GraphNode
+    const wrapper = mount(EditStateEstimateDialog, {
+      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [] },
+      global: { stubs: { Teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Set quantity estimate')
+    expect(wrapper.find('[aria-label="Estimate source"]').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="Distribution"]').text()).toContain('Scaled Beta')
+    expect(wrapper.get('[aria-label="Distribution"]').text()).not.toContain('Normal')
+    const point = wrapper.get('[aria-label="Value in days"]')
+    expect(point.attributes('min')).toBe('0')
+    expect(point.attributes('max')).toBe('30')
+    expect((point.element as HTMLInputElement).value).toBe('15')
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      slot: 'current',
+      source: { type: 'distribution', distribution: { type: 'point', value: 15 } },
+    })
+  })
 })

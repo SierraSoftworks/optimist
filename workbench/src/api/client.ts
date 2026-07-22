@@ -369,19 +369,26 @@ export const api = {
     node: GraphNode,
     input: SetStateEstimateInput,
   ): Promise<PrimitiveEstimate> {
-    const properties =
-      node.payload.kind === 'factor' || node.payload.kind === 'outcome'
-        ? node.payload.properties
-        : null
-    if (!properties) {
+    if (node.payload.kind === 'metric' && input.slot !== 'current') {
       throw new OptimistApiError(
         'invalid_estimate_slot',
-        'Only factors and outcomes have normalized state estimates.',
-        ['Select a factor or outcome and retry.'],
+        'Metrics only have a current native quantity estimate.',
+        ['Choose the current slot and retry.'],
       )
     }
-    const current = properties[input.slot]
-    const other = properties[input.slot === 'current' ? 'desired' : 'current']
+    if (node.payload.kind !== 'factor' && node.payload.kind !== 'outcome' && node.payload.kind !== 'metric') {
+      throw new OptimistApiError(
+        'invalid_estimate_slot',
+        'This node does not have a current quantity estimate.',
+        ['Select a factor, outcome, or metric and retry.'],
+      )
+    }
+    const current = node.payload.kind === 'metric'
+      ? node.payload.properties.current
+      : node.payload.properties[input.slot]
+    const other = node.payload.kind === 'metric'
+      ? null
+      : node.payload.properties[input.slot === 'current' ? 'desired' : 'current']
     const estimate = current?.id ?? (other?.id === 'A' ? 'B' : 'A')
     const result = await request<CommandResult<PrimitiveEstimate>>(
       `/api/v1/projects/${project.id}/commands`,

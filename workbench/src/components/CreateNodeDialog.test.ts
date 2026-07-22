@@ -69,4 +69,43 @@ describe('CreateNodeDialog', () => {
     expect(input.payload.properties.probability_of_success.id).toBe('B')
     wrapper.unmount()
   })
+
+  it('creates a bounded metric with an optional native estimate', async () => {
+    const wrapper = mount(CreateNodeDialog, {
+      props: { open: true, pending: false },
+      attachTo: document.body,
+    })
+    const metric = document.body.querySelector<HTMLInputElement>('input[value="metric"]')!
+    metric.checked = true
+    metric.dispatchEvent(new Event('change', { bubbles: true }))
+    await setInput('input[placeholder="Fast feedback"]', 'Lead time')
+    await setInput('input[placeholder="minutes"]', 'days')
+    await continueWizard()
+    const support = document.body.querySelector<HTMLSelectElement>('.wizard-setup select')!
+    support.value = 'bounded'
+    support.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    const bounds = document.body.querySelectorAll<HTMLInputElement>('.wizard-setup input[type="number"]')
+    bounds[0]!.value = '0'
+    bounds[0]!.dispatchEvent(new Event('input', { bubbles: true }))
+    bounds[1]!.value = '30'
+    bounds[1]!.dispatchEvent(new Event('input', { bubbles: true }))
+    const estimate = document.body.querySelector<HTMLInputElement>('.wizard-setup input[type="checkbox"]')!
+    estimate.checked = true
+    estimate.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+    await submitWizard()
+
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      payload: {
+        kind: 'metric',
+        properties: {
+          unit: 'days',
+          support: { type: 'bounded', lower: 0, upper: 30 },
+          current: { id: 'A', distribution: { type: 'point', value: 15 } },
+        },
+      },
+    })
+    wrapper.unmount()
+  })
 })

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::domain::{
     EstimateAddress, EstimateError, EstimateSlot, EstimateSlotError, FermiAssessmentError,
-    FermiEstimateError,
+    FermiEstimateError, QuantityError,
 };
 
 /// Failures returned by primitive estimate authoring and lookup operations.
@@ -67,6 +67,12 @@ pub enum EstimateCommandError {
     /// The canonical formula could not be validated or sampled for this slot.
     #[error(transparent)]
     FermiAssessment(#[from] FermiAssessmentError),
+    /// A native quantity definition rejects the proposed estimate distribution.
+    #[error(transparent)]
+    Quantity(#[from] QuantityError),
+    /// Native metric Fermi adoption awaits owner-specific support and unit assessment.
+    #[error("native metric estimates do not yet support persisted Fermi sources")]
+    NativeQuantityFermiUnsupported,
     /// Assessment completed without a usable primitive recommendation.
     #[error("the Fermi equation did not produce a persistable distribution recommendation")]
     UnavailableFermiRecommendation,

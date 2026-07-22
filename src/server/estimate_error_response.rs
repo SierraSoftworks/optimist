@@ -54,13 +54,14 @@ pub(super) fn classify(
             "estimate_in_use",
             &["Remove formulas rooted under or referencing this estimate before removing it."],
         ),
-        EstimateCommandError::Estimate(_) => (
+        EstimateCommandError::Estimate(_) | EstimateCommandError::Quantity(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_estimate_distribution",
             &["Use a distribution whose complete support fits the selected slot's dimension."],
         ),
         EstimateCommandError::Fermi(_)
         | EstimateCommandError::FermiAssessment(_)
+        | EstimateCommandError::NativeQuantityFermiUnsupported
         | EstimateCommandError::UnavailableFermiRecommendation => (
             StatusCode::BAD_REQUEST,
             "invalid_fermi_estimate",

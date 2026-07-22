@@ -190,13 +190,30 @@ impl Distribution {
         }
     }
 
-    fn is_non_negative(&self) -> bool {
+    pub(super) fn is_non_negative(&self) -> bool {
         match self.0 {
             DistributionKind::Point { value } => value >= 0.0,
             DistributionKind::LogNormal { .. } | DistributionKind::Beta { .. } => true,
             DistributionKind::ScaledBeta { lower, .. } => lower >= 0.0,
             DistributionKind::Normal { .. } => false,
         }
+    }
+
+    pub(super) fn is_within(&self, lower: f64, upper: f64) -> bool {
+        match self.0 {
+            DistributionKind::Point { value } => (lower..=upper).contains(&value),
+            DistributionKind::Beta { .. } => lower <= 0.0 && upper >= 1.0,
+            DistributionKind::ScaledBeta {
+                lower: actual_lower,
+                upper: actual_upper,
+                ..
+            } => actual_lower >= lower && actual_upper <= upper,
+            DistributionKind::Normal { .. } | DistributionKind::LogNormal { .. } => false,
+        }
+    }
+
+    fn is_quantity_value(&self) -> bool {
+        true
     }
 
     fn is_probability(&self) -> bool {
@@ -292,6 +309,12 @@ dimension!(
     "signed_influence",
     is_signed_influence,
     "A bounded causal effect on `[-1, 1]`, where sign gives direction and magnitude gives local strength."
+);
+dimension!(
+    QuantityValue,
+    "quantity_value",
+    is_quantity_value,
+    "A scalar value whose legal support and native unit are supplied by its owning quantity definition."
 );
 
 /// Errors returned when a primitive distribution cannot form a typed estimate.

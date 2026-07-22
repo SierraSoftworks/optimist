@@ -509,6 +509,49 @@ describe('Optimist API client', () => {
     expect(body.command.payload).not.toHaveProperty('distribution')
   })
 
+  it('sets a metric estimate in native units through the current slot', async () => {
+    const node = {
+      id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'metric' as const,
+        properties: {
+          unit: 'days', aggregation: null,
+          support: { type: 'non_negative' as const }, current: null,
+        },
+      },
+    }
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      request_id: 'request', project_revision: 2,
+      outcome: {
+        type: 'estimate_set',
+        value: {
+          address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
+          slot: { kind: 'current' }, revision: 0,
+          distribution: { type: 'log_normal', location: 2, scale: 0.3 }, provenance: [],
+        },
+      },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => 'request' })
+
+    await api.setStateEstimate(project, node, {
+      slot: 'current',
+      source: { type: 'distribution', distribution: { type: 'log_normal', location: 2, scale: 0.3 } },
+      provenance: [],
+    })
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      command: {
+        type: 'set_estimate',
+        payload: {
+          address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
+          slot: { kind: 'current' },
+          distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+        },
+      },
+    })
+  })
+
   it('sends revision-checked relationship edit and delete commands', async () => {
     const edge = {
       source: 'A',

@@ -267,10 +267,8 @@ mod tests {
 
     #[test]
     fn rejects_non_evidence_owners_and_empty_summaries() {
-        let (mut catalog, project) = catalog(NodePayload::Metric(Metric {
-            unit: "days".to_owned(),
-            aggregation: None,
-        }));
+        let (mut catalog, project) =
+            catalog(NodePayload::Metric(Metric::new("days", None).unwrap()));
         let invalid_owner = catalog.execute(
             &project,
             CommandRequest::new(

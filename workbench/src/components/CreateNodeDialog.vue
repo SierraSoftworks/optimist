@@ -7,6 +7,7 @@ import type {
   Estimate,
   NodeKind,
   NodePayload,
+  QuantitySupport,
 } from '../api/types'
 import DistributionEditor from './DistributionEditor.vue'
 
@@ -17,6 +18,7 @@ const step = ref<1 | 2>(1)
 const currentState = ref<Distribution>({ type: 'beta', alpha: 2, beta: 2 })
 const successProbability = ref<Distribution>({ type: 'beta', alpha: 4, beta: 2 })
 const duration = ref<Distribution>({ type: 'log_normal', location: Math.log(4), scale: 0.35 })
+const metricCurrent = ref<Distribution>({ type: 'point', value: 0 })
 const form = reactive({
   kind: 'factor' as NodeKind,
   title: '',
@@ -24,6 +26,13 @@ const form = reactive({
   direction: 'maximize' as 'maximize' | 'minimize' | 'target_range',
   unit: '',
   aggregation: '',
+  metricSupport: 'real' as 'real' | 'non_negative' | 'bounded',
+  metricLower: 0,
+  metricUpper: 1,
+  operationalDefinition: '',
+  referenceTime: '',
+  resolutionSource: '',
+  metricHasEstimate: false,
   controllable: false,
   provenance: '',
   acceptanceCriteria: '',
@@ -48,6 +57,13 @@ watch(
       direction: 'maximize',
       unit: '',
       aggregation: '',
+      metricSupport: 'real',
+      metricLower: 0,
+      metricUpper: 1,
+      operationalDefinition: '',
+      referenceTime: '',
+      resolutionSource: '',
+      metricHasEstimate: false,
       controllable: false,
       provenance: '',
       acceptanceCriteria: '',
@@ -55,6 +71,7 @@ watch(
     currentState.value = { type: 'beta', alpha: 2, beta: 2 }
     successProbability.value = { type: 'beta', alpha: 4, beta: 2 }
     duration.value = { type: 'log_normal', location: Math.log(4), scale: 0.35 }
+    metricCurrent.value = { type: 'point', value: 0 }
     step.value = 1
     await nextTick()
     titleInput.value?.focus()
@@ -74,6 +91,36 @@ const setupTitle = computed(() => {
   if (form.kind === 'intervention') return 'Planning estimates'
   return 'Simulation baseline'
 })
+const metricBoundsValid = computed(() =>
+  form.metricSupport !== 'bounded' || (
+    Number.isFinite(form.metricLower) &&
+    Number.isFinite(form.metricUpper) &&
+    form.metricLower < form.metricUpper
+  ),
+)
+const metricFamilies = computed<Distribution['type'][]>(() => {
+  if (form.metricSupport === 'bounded') return ['point', 'scaled_beta']
+  if (form.metricSupport === 'non_negative') return ['point', 'log_normal', 'beta', 'scaled_beta']
+  return ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
+})
+const metricEditorSupport = computed(() => form.metricSupport === 'non_negative' ? 'non_negative' as const : 'real' as const)
+const metricMinimum = computed(() => form.metricSupport === 'bounded' ? form.metricLower : undefined)
+const metricMaximum = computed(() => form.metricSupport === 'bounded' ? form.metricUpper : undefined)
+
+watch(() => [form.metricSupport, form.metricLower, form.metricUpper] as const, ([support, lower, upper]) => {
+  if (support === 'bounded' && lower < upper) {
+    metricCurrent.value = { type: 'point', value: (lower + upper) / 2 }
+  } else if (support === 'non_negative') {
+    metricCurrent.value = { type: 'point', value: 0 }
+  }
+})
+
+function quantitySupport(): QuantitySupport {
+  if (form.metricSupport === 'bounded') {
+    return { type: 'bounded', lower: form.metricLower, upper: form.metricUpper }
+  }
+  return { type: form.metricSupport }
+}
 
 function estimate(id: string, distribution: Distribution): Estimate {
   return {
@@ -106,6 +153,11 @@ function payload(): NodePayload {
         properties: {
           unit: form.unit.trim(),
           aggregation: form.aggregation.trim() || null,
+          support: quantitySupport(),
+          operational_definition: form.operationalDefinition.trim(),
+          reference_time: form.referenceTime.trim() || null,
+          resolution_source: form.resolutionSource.trim() || null,
+          current: form.metricHasEstimate ? estimate('A', metricCurrent.value) : null,
         },
       }
     case 'intervention':
@@ -237,6 +289,28 @@ async function next() {
           <section v-else class="wizard-setup">
             <div class="readiness-callout ready"><strong>{{ form.unit }}</strong><span>Measurement unit</span></div>
             <label>Aggregation<input v-model="form.aggregation" placeholder="Weekly median, rolling average, latest reading" /></label>
+            <label>Support<select v-model="form.metricSupport"><option value="real">Any real value</option><option value="non_negative">Zero or greater</option><option value="bounded">Bounded interval</option></select></label>
+            <div v-if="form.metricSupport === 'bounded'" class="field-grid">
+              <label>Minimum<input v-model.number="form.metricLower" type="number" step="any" required /></label>
+              <label>Maximum<input v-model.number="form.metricUpper" type="number" step="any" required /></label>
+            </div>
+            <p v-if="!metricBoundsValid" class="form-error">The maximum must be greater than the minimum.</p>
+            <label>Operational definition<textarea v-model="form.operationalDefinition" rows="3" placeholder="Exactly what is measured, over which population, and how it is calculated"></textarea></label>
+            <div class="field-grid">
+              <label>Reference time<input v-model="form.referenceTime" placeholder="2026 Q4, next 30 days, current" /></label>
+              <label>Resolution source<input v-model="form.resolutionSource" placeholder="Dashboard, report, query, or authority" /></label>
+            </div>
+            <label class="checkbox-label"><input v-model="form.metricHasEstimate" type="checkbox" /> Add a current estimate</label>
+            <DistributionEditor
+              v-if="form.metricHasEstimate"
+              v-model="metricCurrent"
+              :families="metricFamilies"
+              :support="metricEditorSupport"
+              :minimum="metricMinimum"
+              :maximum="metricMaximum"
+              :point-label="`Value in ${form.unit}`"
+            />
+            <label v-if="form.metricHasEstimate">Provenance<textarea v-model="form.provenance" rows="3" placeholder="One assumption or source per line"></textarea></label>
           </section>
         </template>
 
@@ -244,7 +318,7 @@ async function next() {
           <button v-if="step === 1" type="button" class="secondary-button" @click="emit('close')">Cancel</button>
           <button v-else type="button" class="secondary-button" @click="step = 1"><ArrowLeft :size="15" /> Back</button>
           <button v-if="step === 1" type="button" class="primary-button" :disabled="!identityValid" @click="next">Continue <ArrowRight :size="15" /></button>
-          <button v-else type="submit" class="primary-button" :disabled="pending">
+          <button v-else type="submit" class="primary-button" :disabled="pending || !metricBoundsValid">
             {{ pending ? 'Adding…' : 'Add ready node' }}
           </button>
         </footer>

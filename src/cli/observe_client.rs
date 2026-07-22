@@ -128,10 +128,7 @@ mod tests {
                 &project.id,
                 "availability".to_owned(),
                 "Availability".to_owned(),
-                NodePayload::Metric(Metric {
-                    unit: "ratio".to_owned(),
-                    aggregation: None,
-                }),
+                NodePayload::Metric(Metric::new("ratio", None).unwrap()),
             )
             .await
             .unwrap();

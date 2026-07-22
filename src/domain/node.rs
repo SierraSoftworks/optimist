@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 use unicode_normalization::UnicodeNormalization;
 
-use super::{Duration, EntityId, Estimate, Money, NormalizedState, Probability};
+use super::{
+    Duration, EntityId, Estimate, Money, NormalizedState, Probability, QuantityDefinition,
+    QuantityError, QuantitySupport, QuantityValue,
+};
 
 /// The four structural concepts rendered as vertices in an Optimist graph.
 ///
@@ -73,12 +76,64 @@ pub struct Outcome {
 ///
 /// Actual readings belong to the metric's `measures` edge for a specific subject,
 /// because one metric may measure several factors or outcomes independently.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Metric {
-    /// Unit expected for readings, validated against the project's unit registry.
-    pub unit: String,
-    /// Optional aggregation/window description such as `p95 weekly` or `sum daily`.
-    pub aggregation: Option<String>,
+    /// Native-unit operational definition shared by estimates and observations.
+    #[serde(flatten)]
+    pub quantity: QuantityDefinition,
+    /// Optional uncertain current or forecast value in [`QuantityDefinition::unit`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<Estimate<QuantityValue>>,
+}
+
+impl Metric {
+    /// Creates a metric compatible with the legacy unit and aggregation fields.
+    pub fn new(
+        unit: impl Into<String>,
+        aggregation: Option<String>,
+    ) -> Result<Self, QuantityError> {
+        Self::with_quantity(
+            QuantityDefinition::new(unit, aggregation, QuantitySupport::Real)?,
+            None,
+        )
+    }
+
+    /// Creates a measured quantity after checking its current estimate's support.
+    pub fn with_quantity(
+        quantity: QuantityDefinition,
+        current: Option<Estimate<QuantityValue>>,
+    ) -> Result<Self, QuantityError> {
+        let quantity = quantity.validated()?;
+        if current
+            .as_ref()
+            .is_some_and(|value| !quantity.accepts(&value.distribution))
+        {
+            return Err(QuantityError::EstimateOutsideSupport);
+        }
+        Ok(Self { quantity, current })
+    }
+
+    fn validated(self) -> Result<Self, QuantityError> {
+        Self::with_quantity(self.quantity, self.current)
+    }
+}
+
+#[derive(Deserialize)]
+struct MetricWire {
+    #[serde(flatten)]
+    quantity: QuantityDefinition,
+    #[serde(default)]
+    current: Option<Estimate<QuantityValue>>,
+}
+
+impl<'de> Deserialize<'de> for Metric {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = MetricWire::deserialize(deserializer)?;
+        Self::with_quantity(value.quantity, value.current).map_err(de::Error::custom)
+    }
 }
 
 /// Factor-specific state embedded in a causal graph vertex.
@@ -163,6 +218,13 @@ impl NodePayload {
             Self::Intervention(_) => NodeKind::Intervention,
         }
     }
+
+    fn validated(self) -> Result<Self, QuantityError> {
+        match self {
+            Self::Metric(value) => value.validated().map(Self::Metric),
+            value => Ok(value),
+        }
+    }
 }
 
 /// Validation failures returned while constructing a graph node.
@@ -174,6 +236,9 @@ pub enum NodeError {
     /// The human-facing title contains no visible text.
     #[error("a node title cannot be empty")]
     EmptyTitle,
+    /// A state-bearing metric has an invalid quantity definition or estimate.
+    #[error(transparent)]
+    Quantity(#[from] QuantityError),
 }
 
 /// A structural causal graph vertex and its embedded aggregate data.
@@ -253,7 +318,7 @@ impl Node {
             description: String::new(),
             aliases: Vec::new(),
             metadata: BTreeMap::new(),
-            payload,
+            payload: payload.validated()?,
         })
     }
 
@@ -284,8 +349,11 @@ pub fn normalize_name(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Factor, Node, NodeKind, NodePayload, normalize_name};
-    use crate::domain::{Distribution, EntityId, EstimateId};
+    use super::{Factor, Metric, Node, NodeKind, NodePayload, normalize_name};
+    use crate::domain::{
+        Distribution, EntityId, Estimate, EstimateId, QuantityDefinition, QuantityError,
+        QuantitySupport, QuantityValue,
+    };
 
     #[test]
     fn normalizes_case_whitespace_and_unicode_composition() {
@@ -318,5 +386,37 @@ mod tests {
             Distribution::beta(2.0, 3.0).expect("valid beta"),
         );
         assert!(estimate.is_ok());
+    }
+
+    #[test]
+    fn legacy_metrics_round_trip_without_new_default_fields() {
+        let json = r#"{"unit":"days","aggregation":"p95 weekly"}"#;
+        let metric = serde_json::from_str::<Metric>(json).unwrap();
+
+        assert_eq!(metric.quantity.support, QuantitySupport::Real);
+        assert_eq!(serde_json::to_string(&metric).unwrap(), json);
+    }
+
+    #[test]
+    fn metric_estimates_must_fit_native_quantity_support() {
+        let quantity = QuantityDefinition::new(
+            "days",
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 10.0,
+            },
+        )
+        .unwrap();
+        let estimate = Estimate::<QuantityValue>::new(
+            EstimateId::new(0),
+            Distribution::normal(5.0, 2.0).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            Metric::with_quantity(quantity, Some(estimate)),
+            Err(QuantityError::EstimateOutsideSupport)
+        );
     }
 }

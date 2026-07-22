@@ -7,11 +7,25 @@ Optimist separates structural graph concepts from values which have one natural 
 | Kind | Meaning | Typical owned data |
 | --- | --- | --- |
 | Outcome | A result whose direction guides prioritisation. | Current/desired normalized state, evidence. |
-| Metric | A reusable measurement definition. | Unit and aggregation/window. |
+| Metric | A directly measurable native-unit quantity. | Operational definition, support, current estimate, observations. |
 | Factor | A condition influencing another part of the system. | Current/desired state, controllability, evidence. |
 | Intervention | An investable action. | Costs, duration, probability of success, acceptance criteria. |
 
 Names and aliases are unique within a project after Unicode normalisation, lowercasing, and whitespace collapse. IDs are compact counters (`A`, `B`, ..., `BA`) scoped to their project.
+
+## Native quantities
+
+A metric defines a quantity independently of whether its movement is desirable. Its unit, aggregation window, legal support, operational definition, reference time, and resolution source answer what value is being estimated and how it could eventually be checked. Maximize, minimize, and target-range preferences belong to scenarios rather than the metric.
+
+Metric support is one of:
+
+- any finite real value,
+- zero or greater,
+- an inclusive finite interval.
+
+The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a LogNormal estimate in days rather than first translating it into an unexplained normalized score. Optimist rejects distributions whose complete support exceeds the metric definition. Legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
+
+Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existing revisioned estimate lifecycle. Persisted Fermi sources are temporarily unavailable for metric estimates because Fermi assessment still derives support and units from a slot-global contract; enabling it requires the planned owner-specific native-unit assessment rather than pretending metrics are dimensionless probabilities.
 
 ## Edge kinds
 
