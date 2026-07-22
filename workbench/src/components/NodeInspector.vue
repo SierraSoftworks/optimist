@@ -12,6 +12,7 @@ import type {
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
 import { edgeMetadataLabel } from '../domain/edgePresentation'
+import SquiggleChartIsland from './SquiggleChartIsland.vue'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -26,6 +27,25 @@ const emit = defineEmits<{
 }>()
 const confirmDelete = ref(false)
 const readiness = computed(() => props.node ? simulationReadiness(props.node) : null)
+const distributionCharts = computed(() => {
+  const node = props.node
+  if (!node) return []
+  const estimates: Array<[string, import('../api/types').Estimate | null | undefined]> = []
+  if (node.payload.kind === 'factor' || node.payload.kind === 'outcome') {
+    estimates.push(['Current state', node.payload.properties.current], ['Desired state', node.payload.properties.desired])
+  } else if (node.payload.kind === 'metric') {
+    estimates.push(['Current quantity', node.payload.properties.current])
+  } else {
+    estimates.push(
+      ['Duration', node.payload.properties.duration],
+      ['Success probability', node.payload.properties.probability_of_success],
+      ...node.payload.properties.costs.map((cost): [string, import('../api/types').Estimate] => [`${cost.dimension} cost`, cost.value]),
+    )
+  }
+  return estimates.flatMap(([label, estimate]) => estimate?.source?.type === 'squiggle'
+    ? [{ label, source: estimate.source.definition.source }]
+    : [])
+})
 
 const incidentEdges = computed(() =>
   props.node
@@ -262,6 +282,16 @@ function replacement(edge: GraphEdge, observation: Observation) {
         </div>
       </section>
 
+      <section v-if="distributionCharts.length" class="inspector-section">
+        <h3>Distribution models <span>{{ distributionCharts.length }}</span></h3>
+        <div class="distribution-charts">
+          <div v-for="chart in distributionCharts" :key="chart.label">
+            <strong>{{ chart.label }}</strong>
+            <SquiggleChartIsland :code="chart.source" :label="`${chart.label} distribution`" :height="150" />
+          </div>
+        </div>
+      </section>
+
       <section class="inspector-section">
         <h3>Relationships <span>{{ incidentEdges.length }}</span></h3>
         <ul v-if="incidentEdges.length" class="relationship-list">
@@ -328,6 +358,9 @@ function replacement(edge: GraphEdge, observation: Observation) {
 .section-action { width: 24px; height: 24px; margin: -6px 0; }
 .acceptance-criteria { margin-top: 12px; color: var(--muted); font-size: 9px; }
 .acceptance-criteria ul { margin: 5px 0 0; padding-left: 17px; color: var(--ink); line-height: 1.55; }
+.distribution-charts { display: grid; gap: 10px; }
+.distribution-charts > div { display: grid; gap: 5px; }
+.distribution-charts > div > strong { font-size: 9px; }
 .evidence-row { margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .evidence-row button { width: 100%; display: grid; gap: 3px; padding: 8px; border: 0; background: transparent; text-align: left; }
 .evidence-row button:hover { background: var(--green-soft); }

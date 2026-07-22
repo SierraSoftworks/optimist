@@ -109,7 +109,8 @@ pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };
 pub use scenario_analysis_model::{
-    InterventionProjection, ObjectiveProjection, ScenarioAnalysis, ScenarioAnalysisError,
+    InterventionProjection, ObjectiveProjection, ObjectiveTrajectoryPoint, ScenarioAnalysis,
+    ScenarioAnalysisError,
 };
 pub use scenario_id::ScenarioId;
 pub use scenario_validation::ScenarioError;

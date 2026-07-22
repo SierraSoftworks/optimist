@@ -50,4 +50,24 @@ describe('edgePresentation', () => {
     } as unknown as GraphEdge
     expect(edgeMetadataLabel(edge)).toBe('mean response -2.00')
   })
+
+  it('summarizes empirical Squiggle responses from retained draws', () => {
+    const edge = {
+      payload: {
+        kind: 'changes',
+        properties: {
+          response: {
+            source_change: 1,
+            source_unit: {},
+            destination_change: { distribution: { type: 'empirical', samples: [-3, -2, -1] } },
+            destination_unit: { day: 1 },
+          },
+          lag: null,
+          mechanism: '',
+          evidence: [],
+        },
+      },
+    } as unknown as GraphEdge
+    expect(edgeMetadataLabel(edge)).toBe('mean response -2.00')
+  })
 })

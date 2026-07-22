@@ -9,6 +9,7 @@ import type {
   Unit,
 } from '../api/types'
 import { formatUnitExpression } from '../domain/unitExpression'
+import SquiggleEditorIsland from './SquiggleEditorIsland.vue'
 
 const props = defineProps<{
   projectId: string | null
@@ -19,6 +20,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:modelValue': [definition: SquiggleEstimateDefinition]
   validity: [valid: boolean]
+  assessment: [result: SquiggleAssessmentResult | null]
 }>()
 
 const source = ref(props.modelValue.source)
@@ -54,6 +56,7 @@ function schedule() {
   const current = ++revision
   clearTimeout(timer)
   preview.result = null
+  emit('assessment', null)
   preview.error = null
   if (!props.projectId || !source.value.trim()) {
     preview.status = 'idle'
@@ -70,6 +73,7 @@ function schedule() {
         throw new Error('The evaluated result has samples outside this estimate slot support.')
       }
       preview.result = result
+      emit('assessment', result)
       preview.status = 'ready'
       emit('update:modelValue', definition.value)
       emit('validity', true)
@@ -109,10 +113,8 @@ function format(value: number | null | undefined) {
       <div><Braces :size="17" /><span><strong>Squiggle estimate</strong><small>Evaluated by Optimist's Rust runtime</small></span></div>
       <code>{{ formatUnitExpression(expectedUnit) }}</code>
     </header>
-    <label>
-      <span>Calculation</span>
-      <textarea v-model="source" class="code-input squiggle-source" aria-label="Squiggle source" rows="9" spellcheck="false" placeholder="normal({p5: 4, p95: 10})"></textarea>
-    </label>
+    <label><span>Calculation</span></label>
+    <SquiggleEditorIsland v-model="source" label="Squiggle source" :sample-count="definition.sample_count" :seed="definition.seed" />
     <div class="evaluation-state" :data-status="preview.status" aria-live="polite">
       <template v-if="preview.status === 'pending'"><LoaderCircle class="spin" :size="15" /><span>Evaluating on the backend…</span></template>
       <template v-else-if="preview.status === 'error'"><span>{{ preview.error }}</span></template>
@@ -139,7 +141,6 @@ function format(value: number | null | undefined) {
 .squiggle-estimate-editor > header strong { font-size: 11px; }
 .squiggle-estimate-editor > header small { color: var(--muted); font-size: 8px; }
 .squiggle-estimate-editor > header code { color: var(--green); font-size: 9px; }
-.squiggle-source { min-height: 150px; resize: vertical; font: 11px/1.55 'IBM Plex Mono', monospace; }
 .evaluation-state { min-height: 34px; display: flex; align-items: center; gap: 7px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 9px; }
 .evaluation-state[data-status='ready'] { border-color: #a8bfb2; background: #f3f8f4; color: var(--green); }
 .evaluation-state[data-status='error'] { border-color: #d8a098; background: #fff8f6; color: #8c3429; }

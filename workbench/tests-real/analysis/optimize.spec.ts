@@ -25,6 +25,7 @@ test('creates, selects, edits, and analyzes a scenario', async ({ page }) => {
   await expect(panel.getByText('Pair review', { exact: true })).toBeVisible()
   await expect(panel.getByText(/^\d+ \/ \d+$/)).toBeVisible()
   await expect(panel.getByText('converged', { exact: true })).toBeVisible()
+  await expect(panel.getByRole('figure', { name: 'Delivery reliability improvement over time' })).toBeVisible()
   await panel.getByRole('button', { name: /Pair review impact A · r0 · 12 periods/ }).click()
   const menu = page.getByRole('listbox', { name: 'Scenarios' })
   await expect(menu.getByRole('option', { name: /Pair review impact A · r0/ })).toHaveAttribute('aria-selected', 'true')

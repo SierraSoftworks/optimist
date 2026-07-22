@@ -11,7 +11,7 @@ const nodes = [
 describe('CreateEdgeDialog', () => {
   it('prefills a relationship kind and source when opened from a node action', async () => {
     const wrapper = mount(CreateEdgeDialog, {
-      props: { open: false, pending: false, nodes },
+      props: { open: false, pending: false, projectId: 'A', nodes },
       attachTo: document.body,
     })
 

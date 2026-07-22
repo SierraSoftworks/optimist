@@ -26,6 +26,10 @@ const scenario: Scenario = {
   planning_horizon: 12, budgets: [], candidate_interventions: ['B'], monte_carlo: config,
 }
 const estimate = { mean: 0.12, variance: 0.02, mean_standard_error: 0.004, variance_standard_error: 0.003 }
+const trajectory = [
+  { period: 0, state: { ...estimate, mean: 0.5 }, improvement: { ...estimate, mean: 0 } },
+  { period: 12, state: { ...estimate, mean: 0.62 }, improvement: estimate },
+]
 const analysis: ScenarioAnalysis = {
   revision: { project: 'A', graph_revision: 5, scenario: ['A', 0], dependence_revision: null, formula_revision: 0 },
   planning_horizon: 12,
@@ -33,7 +37,7 @@ const analysis: ScenarioAnalysis = {
     intervention: 'B',
     objectives: [{
       outcome: 'A', direction: 'maximize', importance: 1, reachable: true,
-      baseline: estimate, final_state: estimate, improvement: estimate,
+      baseline: estimate, final_state: estimate, improvement: estimate, trajectory,
     }],
     improvement_covariance: [[0.02]],
     clamped_state_updates: 3,
@@ -69,6 +73,7 @@ describe('OptimizeAnalysisPanel', () => {
     expect(wrapper.text()).toContain('0.004')
     expect(wrapper.text()).toContain('118 / 120')
     expect(wrapper.text()).toContain('No budget, bundle, conflict, synergy, or scalar ranking')
+    expect(wrapper.get('figure[aria-label="Reliability improvement over time"]').text()).toContain('12 periods')
     await wrapper.get('.candidate-header').trigger('click')
     expect(wrapper.emitted('selectCandidate')![0]).toEqual(['B', ['B', 'A']])
   })

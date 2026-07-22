@@ -80,7 +80,7 @@ mod tests {
         },
         domain::{
             CausalEffect, Distribution, EdgeId, EdgeKind, EdgePayload, EntityId, Estimate,
-            EstimateId, Factor, LinearResponse, Measurement, MeasurementCalibration,
+            EstimateId, Factor, Intervention, LinearResponse, Measurement, MeasurementCalibration,
             MeasurementCalibrationError, MeasurementPolarity, Metric, NewObservation, NodePayload,
             QuantityValue, Requirement, SignedInfluence, Unit,
         },
@@ -408,6 +408,63 @@ mod tests {
                         source: EntityId::new(0),
                         destination: EntityId::new(1),
                         payload: EdgePayload::Contributes(response(Unit::base("day").unwrap())),
+                    }),
+                ),
+            )
+            .unwrap();
+        assert!(matches!(created.outcome, CommandOutcome::EdgeCreated(_)));
+
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    3,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "automation".to_owned(),
+                        title: "Automation".to_owned(),
+                        payload: NodePayload::Intervention(Intervention {
+                            costs: vec![],
+                            duration: None,
+                            probability_of_success: None,
+                            acceptance_criteria: vec![],
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        let normalized = CausalEffect::normalized(
+            Estimate::<SignedInfluence>::new(
+                EstimateId::new(0),
+                Distribution::point(-0.5).unwrap(),
+            )
+            .unwrap(),
+            None,
+            String::new(),
+            vec![],
+        );
+        assert!(matches!(
+            catalog.execute(
+                &project.id,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(2),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Changes(normalized),
+                    }),
+                ),
+            ),
+            Err(ProjectError::NativeCausalResponseRequired(_))
+        ));
+        let created = catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(2),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Changes(response(Unit::base("day").unwrap())),
                     }),
                 ),
             )

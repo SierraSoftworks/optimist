@@ -431,6 +431,7 @@ mod tests {
                     baseline: estimate.clone(),
                     final_state: estimate.clone(),
                     improvement: estimate,
+                    trajectory: vec![],
                 }],
                 improvement_covariance: vec![vec![Some(0.0)]],
                 clamped_state_updates: 3,

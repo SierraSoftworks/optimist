@@ -13,6 +13,7 @@ pub(super) struct PropagationEdge {
 pub(super) struct InterventionEdge {
     pub(super) destination: usize,
     pub(super) effect: Distribution,
+    pub(super) source_change: f64,
     pub(super) lag: Option<Distribution>,
 }
 
@@ -68,11 +69,23 @@ pub(super) fn intervention(
             EdgePayload::Changes(effect)
                 if edge.source == candidate && indices.contains_key(&edge.destination) =>
             {
-                effect.normalized_effect().map(|value| InterventionEdge {
-                    destination: indices[&edge.destination],
-                    effect: value.distribution.clone(),
-                    lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
-                })
+                effect
+                    .normalized_effect()
+                    .map(|value| (&value.distribution, 1.0))
+                    .or_else(|| {
+                        effect.linear_response().map(|response| {
+                            (
+                                &response.destination_change.distribution,
+                                response.source_change,
+                            )
+                        })
+                    })
+                    .map(|(distribution, source_change)| InterventionEdge {
+                        destination: indices[&edge.destination],
+                        effect: distribution.clone(),
+                        source_change,
+                        lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
+                    })
             }
             _ => None,
         })

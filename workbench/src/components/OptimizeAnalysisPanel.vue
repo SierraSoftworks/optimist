@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { AlertTriangle, BarChart3, Pencil, Plus, RefreshCw } from '@lucide/vue'
 import type { GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
 import ScenarioPicker from './ScenarioPicker.vue'
+import OptimizationTrajectory from './OptimizationTrajectory.vue'
 
 const props = defineProps<{
   scenarios: Scenario[]
@@ -101,6 +102,14 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
               </tr>
             </tbody>
           </table>
+          <div class="trajectory-list">
+            <OptimizationTrajectory
+              v-for="objective in candidate.objectives.filter((objective) => objective.reachable)"
+              :key="objective.outcome"
+              :points="objective.trajectory"
+              :label="title(objective.outcome)"
+            />
+          </div>
         </article>
       </div>
       <div v-else class="analysis-empty">
@@ -136,4 +145,5 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
 .projection-table tbody th span { font-size: 9px; }
 .projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
 .projection-table tr.unreachable { opacity: .55; }
+.trajectory-list { display: grid; }
 </style>

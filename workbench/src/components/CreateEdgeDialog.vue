@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { CreateEdgeInput, EdgeKind, GraphNode } from '../api/types'
+import type { CreateEdgeInput, EdgeKind, Estimate, GraphNode, SquiggleAssessmentResult } from '../api/types'
 import { destinationsFor, edgeKinds, edgePayload, nodeUnit, sourcesFor } from '../domain/edgeAuthoring'
+import { squiggleDefinition } from '../domain/squiggleEstimate'
 import { formatUnitExpression } from '../domain/unitExpression'
+import SquiggleEstimateEditor from './SquiggleEstimateEditor.vue'
 
 const props = defineProps<{
   open: boolean
   pending: boolean
+  projectId: string | null
   nodes: GraphNode[]
   initialSourceId?: string | null
   initialKind?: EdgeKind | null
 }>()
 const emit = defineEmits<{ close: []; submit: [input: CreateEdgeInput] }>()
+const responseDefinition = ref(squiggleDefinition('pointMass(1)', {}))
+const responseAssessment = ref<SquiggleAssessmentResult | null>(null)
+const responseValid = ref(false)
 const form = reactive({
   source: '', destination: '', kind: 'contributes' as EdgeKind, effect: 0.5,
   lagEnabled: false, lag: 0, mechanism: '', evidence: '',
@@ -32,8 +38,10 @@ const validKinds = computed(() => {
 const causal = computed(() => form.kind === 'contributes' || form.kind === 'changes')
 const destination = computed(() => props.nodes.find((node) => node.id === form.destination))
 const nativeCausal = computed(() =>
-  form.kind === 'contributes' &&
-  (source.value?.payload.kind === 'metric' || destination.value?.payload.kind === 'metric'),
+  causal.value && (
+    destination.value?.payload.kind === 'metric' ||
+    (form.kind === 'contributes' && source.value?.payload.kind === 'metric')
+  ),
 )
 const sourceUnit = computed(() => source.value ? nodeUnit(source.value) : null)
 const destinationUnit = computed(() => destination.value ? nodeUnit(destination.value) : null)
@@ -47,6 +55,7 @@ watch(() => props.open, (open) => {
     polarity: 'higher_is_better', hard: true, thresholdEnabled: false, threshold: 0.5,
     sourceChange: 1, destinationChange: 1,
   })
+  resetResponse()
 })
 
 watch([() => form.source, () => form.kind], () => {
@@ -54,8 +63,12 @@ watch([() => form.source, () => form.kind], () => {
   if (!validDestinations.value.some((node) => node.id === form.destination)) form.destination = ''
 })
 
+watch([() => form.destination, nativeCausal], resetResponse)
+
 function submit() {
   if (!form.source || !form.destination) return
+  const destinationEstimate = nativeCausal.value ? assessedResponse() : undefined
+  if (nativeCausal.value && !destinationEstimate) return
   emit('submit', {
     source: form.source,
     destination: form.destination,
@@ -72,8 +85,30 @@ function submit() {
       destination: destination.value,
       sourceChange: form.sourceChange,
       destinationChange: form.destinationChange,
+      destinationEstimate,
     }),
   })
+}
+
+function resetResponse() {
+  responseAssessment.value = null
+  responseValid.value = false
+  responseDefinition.value = squiggleDefinition('pointMass(1)', destinationUnit.value ?? {})
+}
+
+function assessedResponse(): Estimate | undefined {
+  if (!responseAssessment.value) return undefined
+  return {
+    id: 'A',
+    revision: 0,
+    distribution: responseAssessment.value.effective_distribution,
+    source: {
+      type: 'squiggle',
+      definition: responseDefinition.value,
+      assessment: responseAssessment.value.assessment,
+    },
+    provenance: [],
+  }
 }
 </script>
 
@@ -92,11 +127,16 @@ function submit() {
         </div>
         <label v-if="(causal && !nativeCausal) || form.kind === 'blocks'">{{ form.kind === 'blocks' ? 'Blocking degree' : 'Signed effect' }} on [-1, 1]<input v-model.number="form.effect" type="number" min="-1" max="1" step="0.05" required /></label>
         <section v-if="nativeCausal" class="native-response">
-          <div class="readiness-callout required"><strong>Counterfactual response</strong><span>Describe destination movement for one source movement. This defines a local linear slope, not causation from correlation.</span></div>
-          <div class="field-grid">
-            <label>Source change ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>
-            <label>Destination change ({{ destinationUnit ? formatUnitExpression(destinationUnit) : 'unit unavailable' }})<input v-model.number="form.destinationChange" type="number" step="any" required /></label>
-          </div>
+          <header><strong>Counterfactual response</strong><span>Model destination movement for one source movement. This is a local response assumption, not causation inferred from correlation.</span></header>
+          <label>{{ form.kind === 'changes' ? 'Intervention activation' : 'Source change' }} ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>
+          <SquiggleEstimateEditor
+            v-model="responseDefinition"
+            :project-id="projectId"
+            support="real"
+            :expected-unit="destinationUnit ?? {}"
+            @validity="responseValid = $event"
+            @assessment="responseAssessment = $event"
+          />
           <p v-if="!nativeUnitsReady" class="form-error">Both endpoints need canonical unit terms before this relationship can be created.</p>
         </section>
         <template v-if="causal">
@@ -112,7 +152,7 @@ function submit() {
           <label v-if="form.thresholdEnabled">Satisfaction threshold on [0, 1]<input v-model.number="form.threshold" type="number" min="0" max="1" step="0.05" required /></label>
         </template>
         <p v-if="validSources.length === 0" class="form-note">Add compatible endpoint node kinds for this relationship first.</p>
-        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !form.destination || !nativeUnitsReady || (nativeCausal && form.sourceChange === 0)">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
+        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !form.destination || !nativeUnitsReady || (nativeCausal && (!responseValid || form.sourceChange === 0))">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
       </form>
     </div>
   </Teleport>
@@ -120,5 +160,10 @@ function submit() {
 
 <style scoped>
 .relationship-fields { margin-top: 14px; }
+.relationship-dialog { width: min(600px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
 .native-response { display: grid; gap: 10px; }
+.native-response :deep(.squiggle-react-host) { height: clamp(280px, 42vh, 360px); }
+.native-response > header { display: grid; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.native-response > header strong { font-size: 10px; }
+.native-response > header span { color: var(--muted); font-size: 9px; line-height: 1.45; }
 </style>

@@ -20,6 +20,7 @@ struct SampledInterventionEdge {
 
 pub(super) struct ScenarioDraw {
     pub(super) values: Vec<f64>,
+    pub(super) trajectories: Vec<Vec<[f64; 2]>>,
     pub(super) clamped_state_updates: u64,
 }
 
@@ -54,7 +55,7 @@ pub(super) fn draw(
         .map(|edge| {
             Ok(SampledInterventionEdge {
                 destination: edge.destination,
-                effect: edge.effect.sample(rng),
+                effect: edge.effect.sample(rng) / edge.source_change,
                 arrival: completion
                     .saturating_add(
                         edge.lag
@@ -130,8 +131,29 @@ pub(super) fn draw(
             [baseline, final_value, improvement]
         })
         .collect();
+    let trajectories = scenario
+        .draft
+        .objectives
+        .iter()
+        .map(|objective| {
+            let index = graph.state_indices[&objective.outcome_id];
+            let baseline = baselines[index];
+            history
+                .iter()
+                .map(|states| {
+                    let state = states[index];
+                    let improvement = match objective.direction {
+                        UtilityDirection::Maximize => state - baseline,
+                        UtilityDirection::Minimize => baseline - state,
+                    };
+                    [state, improvement]
+                })
+                .collect()
+        })
+        .collect();
     Ok(ScenarioDraw {
         values,
+        trajectories,
         clamped_state_updates,
     })
 }

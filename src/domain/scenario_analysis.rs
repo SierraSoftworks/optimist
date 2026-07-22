@@ -375,6 +375,92 @@ mod tests {
         assert_eq!(result.candidates[0].clamped_state_updates, 0);
     }
 
+    #[test]
+    fn propagates_unit_aware_intervention_shifts_into_metrics() {
+        let (mut scenario, mut nodes, _, revision) = point_fixture(2);
+        let outcome = nodes.pop().unwrap();
+        let metric = Node::new(
+            EntityId::new(3),
+            "lead_time",
+            "Lead time",
+            NodePayload::Metric(
+                Metric::with_quantity(
+                    QuantityDefinition::with_dimension(
+                        "days",
+                        Some(Unit::base("day").unwrap()),
+                        None,
+                        QuantitySupport::Bounded {
+                            lower: 0.0,
+                            upper: 30.0,
+                        },
+                    )
+                    .unwrap(),
+                    Some(estimate::<QuantityValue>(0, 10.0)),
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let intervention_to_metric = Edge::new(
+            nodes[0].id,
+            NodeKind::Intervention,
+            metric.id,
+            NodeKind::Metric,
+            EdgePayload::Changes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 2.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, -2.0),
+                        destination_unit: Unit::base("day").unwrap(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let metric_to_outcome = Edge::new(
+            metric.id,
+            NodeKind::Metric,
+            outcome.id,
+            NodeKind::Outcome,
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: -2.0,
+                        source_unit: Unit::base("day").unwrap(),
+                        destination_change: estimate::<QuantityValue>(0, 0.1),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        scenario.draft.planning_horizon = 2;
+        nodes.push(metric);
+        nodes.push(outcome);
+        let edges = vec![intervention_to_metric, metric_to_outcome];
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let objective = &result.candidates[0].objectives[0];
+        assert!(objective.reachable);
+        assert!((objective.final_state.mean.unwrap() - 0.55).abs() < 1e-12);
+        assert!((objective.improvement.mean.unwrap() - 0.05).abs() < 1e-12);
+        let expected = [(0, 0.5, 0.0), (1, 0.5, 0.0), (2, 0.55, 0.05)];
+        for (point, (period, state, improvement)) in objective.trajectory.iter().zip(expected) {
+            assert_eq!(point.period, period);
+            assert!((point.state.mean.unwrap() - state).abs() < 1e-12);
+            assert!((point.improvement.mean.unwrap() - improvement).abs() < 1e-12);
+        }
+    }
+
     fn point_fixture(
         planning_horizon: u64,
     ) -> (Scenario, Vec<Node>, Vec<Edge>, AnalysisRevisionKey) {

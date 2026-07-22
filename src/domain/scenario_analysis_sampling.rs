@@ -3,8 +3,8 @@ use rand_chacha::ChaCha20Rng;
 
 use super::{
     ConvergenceStatus, EntityId, InterventionProjection, InvalidSampleCounts,
-    MonteCarloDiagnostics, MonteCarloEstimate, ObjectiveProjection, Scenario,
-    ScenarioAnalysisError, online_moments::OnlineJointMoments, scenario_analysis_draw,
+    MonteCarloDiagnostics, MonteCarloEstimate, ObjectiveProjection, ObjectiveTrajectoryPoint,
+    Scenario, ScenarioAnalysisError, online_moments::OnlineJointMoments, scenario_analysis_draw,
     scenario_analysis_graph::AnalysisGraph,
 };
 
@@ -17,6 +17,16 @@ pub(super) fn project_candidate(
     let config = scenario.draft.monte_carlo;
     let dimensions = scenario.draft.objectives.len() * 3;
     let mut moments = OnlineJointMoments::new(dimensions);
+    let mut trajectory_moments = scenario
+        .draft
+        .objectives
+        .iter()
+        .map(|_| {
+            (0..=scenario.draft.planning_horizon)
+                .map(|_| OnlineJointMoments::new(2))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed());
     let mut attempted = 0;
     let mut invalid = InvalidSampleCounts::default();
@@ -26,6 +36,12 @@ pub(super) fn project_candidate(
         match scenario_analysis_draw::draw(graph, scenario, intervention, &edges, &mut rng) {
             Ok(draw) => {
                 moments.push(&draw.values);
+                for (objective, trajectory) in trajectory_moments.iter_mut().zip(draw.trajectories)
+                {
+                    for (period, values) in objective.iter_mut().zip(trajectory) {
+                        period.push(&values);
+                    }
+                }
                 clamped_state_updates =
                     clamped_state_updates.saturating_add(draw.clamped_state_updates);
             }
@@ -50,6 +66,15 @@ pub(super) fn project_candidate(
             baseline: estimate(&moments, index * 3),
             final_state: estimate(&moments, index * 3 + 1),
             improvement: estimate(&moments, index * 3 + 2),
+            trajectory: trajectory_moments[index]
+                .iter()
+                .enumerate()
+                .map(|(period, moments)| ObjectiveTrajectoryPoint {
+                    period: period as u64,
+                    state: estimate(moments, 0),
+                    improvement: estimate(moments, 1),
+                })
+                .collect(),
         })
         .collect();
     let improvement_covariance = (0..scenario.draft.objectives.len())

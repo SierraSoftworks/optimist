@@ -61,6 +61,11 @@ export async function mockApi(page: Page, state: FixtureState) {
             baseline: estimate,
             final_state: estimate,
             improvement: estimate,
+            trajectory: Array.from({ length: scenario.planning_horizon + 1 }, (_, period) => ({
+              period,
+              state: { ...estimate, mean: 0.5 + 0.12 * period / scenario.planning_horizon },
+              improvement: { ...estimate, mean: 0.12 * period / scenario.planning_horizon },
+            })),
           })),
           improvement_covariance: [[0.02]],
           clamped_state_updates: 0,
@@ -154,6 +159,29 @@ export async function mockApi(page: Page, state: FixtureState) {
         evidence_priority: evidencePriority,
       })
     }
+      if (url.pathname === '/api/v1/projects/A/analysis/squiggle-assessment' && request.method() === 'POST') {
+        const { definition } = JSON.parse(request.postData()!)
+        const point = definition.source.match(/pointMass\((-?[\d.]+)\)/)?.[1]
+        const family = point ? 'PointMass' : definition.source.includes('beta(') ? 'Beta' : definition.source.includes('lognormal(') ? 'Lognormal' : 'SampleSet'
+        const samples = point
+          ? [Number(point), Number(point), Number(point)]
+          : family === 'Beta'
+            ? [0.2, 0.5, 0.8]
+            : family === 'Lognormal'
+              ? [0.5, 1, 2]
+              : [-1, 0, 1]
+        const sorted = [...samples].sort((left, right) => left - right)
+        const mean = samples.reduce((total, value) => total + value, 0) / samples.length
+        const variance = samples.reduce((total, value) => total + (value - mean) ** 2, 0) / samples.length
+        return json({
+          assessment: {
+            family, mean, variance,
+            p05: sorted[0], p50: sorted[Math.floor(sorted.length / 2)], p95: sorted.at(-1),
+            seed: definition.seed, sample_count: definition.sample_count,
+          },
+          effective_distribution: { type: 'empirical', samples },
+        })
+      }
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {
       const command = JSON.parse(request.postData()!)
       const input = command.command.payload
@@ -186,6 +214,22 @@ export async function mockApi(page: Page, state: FixtureState) {
         state.edges.push(edge)
         state.revision += 1
         return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'edge_created', value: edge } }, 201)
+      }
+      if (command.command.type === 'delete_edge') {
+        const index = state.edges.findIndex((edge) =>
+          edge.source === input.id.source &&
+          edge.destination === input.id.destination &&
+          (edge.payload as { kind: string }).kind === input.id.kind,
+        )
+        const [edge] = state.edges.splice(index, 1)
+        state.revision += 1
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'edge_deleted', value: edge } }, 201)
+      }
+      if (command.command.type === 'delete_node') {
+        const index = state.nodes.findIndex((node) => node.id === input.id)
+        const [node] = state.nodes.splice(index, 1)
+        state.revision += 1
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'node_deleted', value: node } }, 201)
       }
       const node = {
         id: String.fromCharCode(65 + state.nodes.length),

@@ -156,6 +156,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Cytoscape renderer adapter for the four core node kinds and structural edges.
 - [x] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
 - [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
+  - [x] Official Squiggle editor/chart islands for estimate authoring and persisted distribution review.
   - [x] Direct Squiggle authoring with backend diagnostics, typed units, support-aware starter calculations, and deterministic prior-predictive summaries.
   - [x] Persist and reopen Squiggle source with server-assessed empirical effective distributions for every estimate slot.
   - [x] Translate legacy direct-distribution and Fermi estimates into Squiggle when they are next edited.
@@ -168,6 +169,9 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Optimize mode with scenario creation and independent finite-horizon candidate projections.
   - [ ] Optimize mode with budget-aware candidate bundles and Pareto impact/cost frontiers.
 - [x] Keyboard navigation and synchronized table/outline accessibility view.
+- [x] Delete-key confirmation for graph-selected nodes and relationships, with editable-control and connected-edge guards.
+- [x] Per-period optimization trajectories with backend Monte Carlo means and uncertainty bands.
+- [x] Unit-aware intervention-to-metric `changes` relationships authored as Squiggle destination responses.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
 - [x] Serve production assets from Axum with SPA fallback and immutable caching.
 

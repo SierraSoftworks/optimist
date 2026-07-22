@@ -33,14 +33,14 @@ All new workbench estimates retain direct Squiggle source. The owner determines 
 | --- | --- | --- |
 | `contributes` | Directed | A normalized signed effect or unit-aware counterfactual response. |
 | `measures` | Directed | A metric measuring a factor or outcome. |
-| `changes` | Directed | An intervention changing a factor. |
+| `changes` | Directed | An intervention changing a factor or native metric. |
 | `requires` | Directed | A hard or soft prerequisite. |
 | `part-of` | Directed | Non-causal factor decomposition. |
 | `blocks` | Directed | A factor inhibiting a factor or intervention. |
 | `conflicts-with` | Symmetric | Incompatible interventions. |
 | `synergizes-with` | Symmetric | Mutually beneficial interventions. |
 
-Endpoint combinations are validated. `contributes` may connect any factor, metric, or outcome to another such state variable. Every `contributes` edge touching a metric must define a unit-aware counterfactual response whose source and destination units exactly match the endpoint quantity definitions. `changes` remains an intervention-to-factor normalized shift, while `measures` remains a metric-to-factor/outcome observation model.
+Endpoint combinations are validated. `contributes` may connect any factor, metric, or outcome to another such state variable. Every `contributes` edge touching a metric must define a unit-aware counterfactual response whose source and destination units exactly match the endpoint quantity definitions. `changes` uses a normalized signed shift for factors and a unit-aware counterfactual response for metrics. In the native case, the source anchor is a dimensionless intervention activation and the destination change is a Squiggle estimate in the metric's declared unit. `measures` remains a metric-to-factor/outcome observation model.
 
 Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
 

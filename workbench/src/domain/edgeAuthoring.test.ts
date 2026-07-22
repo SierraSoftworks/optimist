@@ -9,6 +9,7 @@ const valid: Array<[EdgeKind, NodeKind, NodeKind]> = [
   ['contributes', 'metric', 'outcome'],
   ['measures', 'metric', 'factor'],
   ['changes', 'intervention', 'factor'],
+  ['changes', 'intervention', 'metric'],
   ['requires', 'factor', 'intervention'],
   ['part_of', 'factor', 'factor'],
   ['blocks', 'factor', 'intervention'],
@@ -83,6 +84,37 @@ describe('edge authoring', () => {
           source_change: 0.1,
           source_unit: {},
           destination_change: { distribution: { type: 'point', value: -2 } },
+          destination_unit: { day: 1 },
+        },
+      },
+    })
+  })
+
+  it('constructs a unit-aware intervention shift for a metric', () => {
+    const source = {
+      id: 'A', revision: 0, name: 'automation', normalized_name: 'automation', title: 'Automation',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'intervention', properties: { costs: [], duration: null, probability_of_success: null, acceptance_criteria: [] } },
+    } as GraphNode
+    const destination = {
+      id: 'B', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+    } as GraphNode
+    const destinationEstimate = {
+      id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 }, provenance: [],
+    }
+    expect(edgePayload({
+      kind: 'changes', effect: 0, lag: null, mechanism: 'Automation reduces delay', evidence: '',
+      polarity: 'higher_is_better', hard: true, threshold: null,
+      source, destination, sourceChange: 1, destinationEstimate,
+    })).toMatchObject({
+      kind: 'changes',
+      properties: {
+        response: {
+          source_change: 1,
+          source_unit: {},
+          destination_change: destinationEstimate,
           destination_unit: { day: 1 },
         },
       },

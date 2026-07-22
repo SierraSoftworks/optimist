@@ -6,6 +6,17 @@ use super::{
     UtilityDirection,
 };
 
+/// Statistical state and improvement summary at one planning period.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ObjectiveTrajectoryPoint {
+    /// Zero-based period, where zero is the sampled baseline before intervention arrival.
+    pub period: u64,
+    /// Objective state at this period.
+    pub state: MonteCarloEstimate,
+    /// Direction-oriented movement from the sampled baseline at this period.
+    pub improvement: MonteCarloEstimate,
+}
+
 /// Statistical summary of one scenario objective under one intervention.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ObjectiveProjection {
@@ -26,6 +37,8 @@ pub struct ObjectiveProjection {
     pub final_state: MonteCarloEstimate,
     /// Direction-oriented improvement, positive when the outcome improves.
     pub improvement: MonteCarloEstimate,
+    /// Per-period state and improvement from baseline through the planning horizon.
+    pub trajectory: Vec<ObjectiveTrajectoryPoint>,
 }
 
 /// Finite-horizon posterior projection for one candidate intervention.

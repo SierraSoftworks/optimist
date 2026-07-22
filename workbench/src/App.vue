@@ -23,6 +23,7 @@ import NodeInspector from './components/NodeInspector.vue'
 import CreateProjectDialog from './components/CreateProjectDialog.vue'
 import CreateNodeDialog from './components/CreateNodeDialog.vue'
 import CreateEdgeDialog from './components/CreateEdgeDialog.vue'
+import DeleteSelectionDialog from './components/DeleteSelectionDialog.vue'
 import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
@@ -128,6 +129,7 @@ const evidenceDialogOpen = ref(false)
 const edgeEstimateDialogOpen = ref(false)
 const scenarioDialogOpen = ref(false)
 const commandBarOpen = ref(false)
+const keyboardDeleteTarget = ref<'node' | 'edge' | null>(null)
 const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
@@ -169,6 +171,18 @@ const canCreateRelationship = computed(
 )
 const selectedNode = computed<GraphNode | null>(
   () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
+)
+const selectedNodeEdges = computed(() => selectedNode.value
+  ? edges.value.filter((edge) => edge.source === selectedNode.value?.id || edge.destination === selectedNode.value?.id)
+  : [],
+)
+const keyboardDeleteTitle = computed(() => keyboardDeleteTarget.value === 'edge' && selectedEdge.value
+  ? `${selectedEdge.value.source} ${selectedEdge.value.payload.kind.replaceAll('_', ' ')} ${selectedEdge.value.destination}`
+  : selectedNode.value?.title ?? '',
+)
+const keyboardDeleteBlocked = computed(() => keyboardDeleteTarget.value === 'node' && selectedNodeEdges.value.length
+  ? `Delete ${selectedNodeEdges.value.length} connected relationship${selectedNodeEdges.value.length === 1 ? '' : 's'} first.`
+  : null,
 )
 const relationshipMenuSource = computed<GraphNode | null>(() =>
   nodes.value.find((node) => node.id === relationshipMenu.value?.sourceId) ?? null,
@@ -286,8 +300,29 @@ function commandShortcut(event: KeyboardEvent) {
   if (selectedProjectId.value) commandBarOpen.value = true
 }
 
-onMounted(() => document.addEventListener('keydown', commandShortcut))
-onBeforeUnmount(() => document.removeEventListener('keydown', commandShortcut))
+function selectionDeleteShortcut(event: KeyboardEvent) {
+  if (event.key !== 'Delete' || event.metaKey || event.ctrlKey || event.altKey) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+  if (edgeEditDialogOpen.value && selectedEdge.value) {
+    event.preventDefault()
+    edgeEditDialogOpen.value = false
+    keyboardDeleteTarget.value = 'edge'
+    return
+  }
+  if (document.querySelector('.dialog-backdrop') || !selectedNode.value) return
+  event.preventDefault()
+  keyboardDeleteTarget.value = 'node'
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', commandShortcut)
+  document.addEventListener('keydown', selectionDeleteShortcut)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', commandShortcut)
+  document.removeEventListener('keydown', selectionDeleteShortcut)
+})
 
 function selectProject(event: Event) {
   const select = event.target as HTMLSelectElement
@@ -556,6 +591,12 @@ async function submitNodeDelete() {
   } catch (error) {
     mutationError.value = error as Error
   }
+}
+
+async function confirmKeyboardDelete() {
+  if (keyboardDeleteTarget.value === 'edge') await submitEdgeDelete()
+  if (keyboardDeleteTarget.value === 'node') await submitNodeDelete()
+  if (!mutationError.value) keyboardDeleteTarget.value = null
 }
 
 function observe(edge: GraphEdge) {
@@ -905,6 +946,15 @@ function retry() {
       @close="commandBarOpen = false"
       @apply="applyWorkbenchCommand"
     />
+    <DeleteSelectionDialog
+      :open="keyboardDeleteTarget !== null"
+      :pending="deleteEdge.isPending.value || deleteNode.isPending.value"
+      :kind="keyboardDeleteTarget === 'edge' ? 'relationship' : 'node'"
+      :title="keyboardDeleteTitle"
+      :blocked-reason="keyboardDeleteBlocked"
+      @close="keyboardDeleteTarget = null"
+      @confirm="confirmKeyboardDelete"
+    />
     <CreateNodeDialog
       :open="nodeDialogOpen"
       :pending="createNode.isPending.value"
@@ -914,6 +964,7 @@ function retry() {
     <CreateEdgeDialog
       :open="edgeDialogOpen"
       :pending="createEdge.isPending.value"
+      :project-id="selectedProjectId"
       :nodes="nodes"
       :initial-source-id="edgeDialogSourceId"
       :initial-kind="edgeDialogKind"

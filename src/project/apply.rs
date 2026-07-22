@@ -115,8 +115,9 @@ fn validate_causal_units(
     destination: &Node,
     edge: &Edge,
 ) -> Result<(), ProjectError> {
-    let EdgePayload::Contributes(effect) = &edge.payload else {
-        return Ok(());
+    let effect = match &edge.payload {
+        EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
+        _ => return Ok(()),
     };
     let touches_metric = matches!(source.payload, NodePayload::Metric(_))
         || matches!(destination.payload, NodePayload::Metric(_));
@@ -127,7 +128,11 @@ fn validate_causal_units(
     let Some(response) = response else {
         return Ok(());
     };
-    let source_unit = state_unit(source)?;
+    let source_unit = if matches!(edge.payload, EdgePayload::Changes(_)) {
+        crate::domain::Unit::dimensionless()
+    } else {
+        state_unit(source)?
+    };
     let destination_unit = state_unit(destination)?;
     if response.source_unit != source_unit || response.destination_unit != destination_unit {
         return Err(ProjectError::CausalResponseUnitMismatch {

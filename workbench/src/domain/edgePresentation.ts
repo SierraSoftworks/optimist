@@ -8,6 +8,12 @@ export function distributionMean(distribution: Distribution) {
     const scale = distribution.scale ?? 0
     return Math.exp(location + scale * scale / 2)
   }
+  if (distribution.type === 'empirical') {
+    const samples = distribution.samples ?? []
+    return samples.length
+      ? samples.reduce((total, sample) => total + sample, 0) / samples.length
+      : 0
+  }
   const alpha = distribution.alpha ?? 1
   const beta = distribution.beta ?? 1
   const proportion = alpha / (alpha + beta)

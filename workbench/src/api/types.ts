@@ -381,6 +381,13 @@ export interface ObjectiveProjection {
   baseline: MonteCarloEstimate
   final_state: MonteCarloEstimate
   improvement: MonteCarloEstimate
+  trajectory: ObjectiveTrajectoryPoint[]
+}
+
+export interface ObjectiveTrajectoryPoint {
+  period: number
+  state: MonteCarloEstimate
+  improvement: MonteCarloEstimate
 }
 
 export interface InterventionProjection {

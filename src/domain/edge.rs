@@ -141,7 +141,8 @@ const fn endpoints_are_valid(kind: EdgeKind, source: NodeKind, destination: Node
                 && matches!(destination, NodeKind::Factor | NodeKind::Outcome)
         }
         EdgeKind::Changes => {
-            matches!(source, NodeKind::Intervention) && matches!(destination, NodeKind::Factor)
+            matches!(source, NodeKind::Intervention)
+                && matches!(destination, NodeKind::Factor | NodeKind::Metric)
         }
         EdgeKind::Requires => {
             matches!(source, NodeKind::Factor | NodeKind::Intervention)
