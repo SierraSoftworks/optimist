@@ -30,7 +30,7 @@ test('models piano tunings with compact variables, equations, and unit verificat
   await assistant.getByRole('button', { name: 'Assess equation' }).click()
 
   await expect(assistant.getByText(/20,000 samples · maximum samples reached/)).toBeVisible()
-  await expect(assistant.getByText('90% interval', { exact: true })).toBeVisible()
+  await expect(assistant.locator('.fermi-result').getByText('90% interval', { exact: true })).toBeVisible()
   await expect(assistant.getByText(/standalone assessment only.*expects duration/i)).toBeVisible()
   await expect(assistant.getByRole('button', { name: 'Use suggested distribution' })).toHaveCount(0)
 })

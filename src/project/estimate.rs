@@ -198,8 +198,8 @@ mod tests {
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
             EstimateOwner, EstimateSlot, EstimateSource, Factor, FermiEstimateDefinition,
-            FermiVariable, FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId,
-            SignedInfluence, Unit,
+            FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula,
+            MonteCarloConfig, ProjectId, SignedInfluence, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -321,6 +321,7 @@ mod tests {
             ],
         };
         let definition = FermiEstimateDefinition {
+            language: FermiExpressionLanguage::OptimistSquiggleV1,
             equation: "adoption * completion".to_owned(),
             variables: vec![
                 FermiVariable {

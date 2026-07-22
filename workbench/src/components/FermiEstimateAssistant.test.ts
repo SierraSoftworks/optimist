@@ -1,11 +1,36 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api/client'
+import * as squigglePreview from '../domain/squigglePreview'
 import FermiEstimateAssistant from './FermiEstimateAssistant.vue'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('FermiEstimateAssistant', () => {
+  it('shows a live Squiggle interval as the equation changes', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(squigglePreview, 'evaluateSquigglePreview').mockResolvedValue({
+      mean: 8, standardDeviation: 2, p05: 4, p25: 6, p50: 8, p75: 9, p95: 12,
+      supportViolationProbability: 0.12, samples: 4_000, executionMilliseconds: 12,
+    })
+    const wrapper = mount(FermiEstimateAssistant, {
+      props: { projectId: 'A', support: 'non_negative', expectedUnit: {}, modelValue: null },
+    })
+
+    await wrapper.get('.fermi-toggle').trigger('click')
+    expect(wrapper.text()).toContain('Evaluating the current uncertainty model')
+    await vi.advanceTimersByTimeAsync(180)
+    await flushPromises()
+
+    expect(wrapper.get('.squiggle-preview').text()).toContain('90% interval')
+    expect(wrapper.get('.squiggle-preview').text()).toContain('4,000 deterministic samples')
+    expect(wrapper.get('.squiggle-warning').text()).toContain('12% of predicted values are negative')
+    expect(wrapper.get('.squiggle-track').attributes('aria-label')).toContain('median')
+  })
+
   it('assesses PERT components and explicitly applies the recommendation', async () => {
     const assess = vi.spyOn(api, 'assessFermi').mockResolvedValue({
       compiled: { unit: {}, dependencies: [] },

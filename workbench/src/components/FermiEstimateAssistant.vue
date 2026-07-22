@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Calculator, ChevronDown, Plus } from '@lucide/vue'
 import { api } from '../api/client'
 import type { FermiAssessment, FermiEstimateDefinition, Unit } from '../api/types'
 import type { FermiComponentDraft, FermiSupport } from '../domain/fermiBuilder'
 import { compileFermiEquation, FermiEquationError } from '../domain/fermiEquation'
+import { evaluateSquigglePreview, SquigglePreviewError, type SquigglePreview } from '../domain/squigglePreview'
 import { divideUnits, formatUnitExpression, parseUnitExpression, unitsEqual } from '../domain/unitExpression'
 import FermiVariableEditor from './FermiVariableEditor.vue'
 
@@ -24,6 +25,11 @@ const open = ref(Boolean(props.modelValue))
 const pending = ref(false)
 const error = ref<string | null>(null)
 const assessment = ref<FermiAssessment | null>(props.initialAssessment ?? null)
+const squiggle = reactive<{
+  status: 'idle' | 'pending' | 'ready' | 'error'
+  result: SquigglePreview | null
+  error: string | null
+}>({ status: 'idle', result: null, error: null })
 const equation = ref(props.modelValue?.equation ?? (props.support === 'non_negative' ? 'x + y' : 'x * y'))
 const goalUnit = ref(formatUnitExpression(props.expectedUnit))
 const components = reactive<Array<FermiComponentDraft & { id: number }>>([
@@ -88,6 +94,54 @@ const goalMatchesSlot = computed(() => {
   }
 })
 const hasVariableIssues = computed(() => variableIssues.value.some(Boolean))
+let squiggleRevision = 0
+let squiggleTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(
+  [open, equation, () => components.map((component) => ({ ...component }))],
+  scheduleSquigglePreview,
+  { deep: true, immediate: true },
+)
+onBeforeUnmount(() => clearTimeout(squiggleTimer))
+
+function scheduleSquigglePreview() {
+  const revision = ++squiggleRevision
+  clearTimeout(squiggleTimer)
+  squiggle.result = null
+  squiggle.error = null
+  if (!open.value || !preview.value.compiled) {
+    squiggle.status = 'idle'
+    return
+  }
+  squiggle.status = 'pending'
+  squiggleTimer = setTimeout(async () => {
+    try {
+      const result = await evaluateSquigglePreview(equation.value, components, props.support)
+      if (revision !== squiggleRevision) return
+      squiggle.result = result
+      squiggle.status = 'ready'
+    } catch (reason) {
+      if (revision !== squiggleRevision) return
+      const location = reason instanceof SquigglePreviewError && reason.line !== null
+        ? `Line ${reason.line}${reason.column === null ? '' : `, column ${reason.column}`}: `
+        : ''
+      squiggle.error = `${location}${reason instanceof Error ? reason.message : 'Squiggle could not evaluate this equation.'}`
+      squiggle.status = 'error'
+    }
+  }, 180)
+}
+
+function intervalPosition(value: number) {
+  const result = squiggle.result
+  if (!result || result.p95 <= result.p05) return 50
+  return Math.max(0, Math.min(100, 100 * (value - result.p05) / (result.p95 - result.p05)))
+}
+
+function supportWarning(result: SquigglePreview) {
+  const probability = result.supportViolationProbability.toLocaleString(undefined, { style: 'percent', maximumFractionDigits: 1 })
+  if (props.support === 'non_negative') return `${probability} of predicted values are negative. This model cannot be adopted for a non-negative quantity.`
+  return `${probability} of predicted values fall outside the required support and are clamped in the preview.`
+}
 
 function initialVariable(id: number, name: string) {
   const likely = props.support === 'probability' ? (id === 0 ? 0.7 : 0.85) : props.support === 'signed' ? (id === 0 ? 0.4 : 0.8) : 1
@@ -152,6 +206,7 @@ async function assess() {
 function useDefinition() {
   if (!recommendation.value || !assessment.value || !goalMatchesSlot.value || !preview.value.compiled) return
   emit('update:modelValue', {
+    language: 'optimist_squiggle_v1',
     equation: equation.value.trim(),
     variables: components.map((component) => ({
       name: component.name.trim(),
@@ -193,6 +248,29 @@ function format(value: number | null | undefined) {
         </template>
         <p v-else>{{ preview.error }}</p>
       </div>
+
+      <section v-if="squiggle.status !== 'idle'" class="squiggle-preview" aria-live="polite">
+        <header><strong>Live predictive check</strong><span>Squiggle</span></header>
+        <p v-if="squiggle.status === 'pending'" class="squiggle-state">Evaluating the current uncertainty model…</p>
+        <p v-else-if="squiggle.status === 'error'" class="squiggle-state invalid">{{ squiggle.error }}</p>
+        <template v-else-if="squiggle.result">
+          <div class="squiggle-interval">
+            <div><span>90% interval</span><strong>{{ format(squiggle.result.p05) }}–{{ format(squiggle.result.p95) }}</strong></div>
+            <div class="squiggle-track" role="img" :aria-label="`90 percent of simulated values fall between ${format(squiggle.result.p05)} and ${format(squiggle.result.p95)}, with median ${format(squiggle.result.p50)}`">
+              <span class="squiggle-middle" :style="{ left: `${intervalPosition(squiggle.result.p25)}%`, width: `${intervalPosition(squiggle.result.p75) - intervalPosition(squiggle.result.p25)}%` }" />
+              <span class="squiggle-median" :style="{ left: `${intervalPosition(squiggle.result.p50)}%` }" />
+            </div>
+            <div class="squiggle-bounds"><span>{{ format(squiggle.result.p05) }}</span><span>{{ format(squiggle.result.p50) }}</span><span>{{ format(squiggle.result.p95) }}</span></div>
+          </div>
+          <dl>
+            <div><dt>Median</dt><dd>{{ format(squiggle.result.p50) }}</dd></div>
+            <div><dt>Expected value</dt><dd>{{ format(squiggle.result.mean) }}</dd></div>
+            <div><dt>Standard deviation</dt><dd>{{ format(squiggle.result.standardDeviation) }}</dd></div>
+          </dl>
+          <p v-if="squiggle.result.supportViolationProbability > 0.001" class="squiggle-warning">{{ supportWarning(squiggle.result) }}</p>
+          <small>{{ squiggle.result.samples.toLocaleString() }} deterministic samples · {{ squiggle.result.executionMilliseconds.toLocaleString() }} ms</small>
+        </template>
+      </section>
 
       <div class="fermi-components">
         <FermiVariableEditor
@@ -252,6 +330,25 @@ function format(value: number | null | undefined) {
 .fermi-equation-status.invalid { border-color: #d8a098; background: #d8a098; }
 .fermi-equation-status.invalid > div, .fermi-equation-status.invalid > p { background: #fff8f6; }
 .fermi-equation-status.invalid strong, .fermi-equation-status.invalid > p { color: #8c3429; }
+.squiggle-preview { display: grid; gap: 10px; padding: 10px; border: 1px solid #a9b8c4; border-radius: 5px; background: #f5f8fa; }
+.squiggle-preview header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.squiggle-preview header strong { color: var(--ink); font-size: 10px; }
+.squiggle-preview header span { padding: 2px 5px; border: 1px solid #91a5b4; border-radius: 3px; color: #36566c; font: 8px 'IBM Plex Mono', monospace; }
+.squiggle-state { min-height: 28px; display: grid; align-items: center; margin: 0; color: var(--muted); font-size: 9px; }
+.squiggle-state.invalid { color: #8c3429; }
+.squiggle-interval { display: grid; gap: 5px; }
+.squiggle-interval > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.squiggle-interval span { color: var(--muted); font-size: 8px; }
+.squiggle-interval strong { color: #24485f; font: 10px 'IBM Plex Mono', monospace; }
+.squiggle-track { position: relative; height: 8px; border-radius: 2px; background: #dbe4e9; }
+.squiggle-middle { position: absolute; top: 0; bottom: 0; background: #6e9bb7; }
+.squiggle-median { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #183d54; transform: translateX(-1px); }
+.squiggle-bounds { display: flex; justify-content: space-between; gap: 8px; }
+.squiggle-preview dl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.squiggle-preview dl div { display: grid; gap: 2px; }
+.squiggle-preview dd { overflow: hidden; color: #24485f; font: 9px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.squiggle-warning { margin: 0; padding: 7px 8px; border-left: 3px solid #bb7a2f; background: #fff8eb; color: #704516; font-size: 9px; line-height: 1.45; }
+.squiggle-preview > small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
 .fermi-components { display: grid; gap: 8px; }
 .fermi-actions { display: flex; justify-content: space-between; gap: 8px; }
 .fermi-result { display: grid; gap: 10px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 5px; background: #f3f8f4; }
@@ -264,6 +361,7 @@ function format(value: number | null | undefined) {
   .fermi-equation-fields { grid-template-columns: 1fr; }
   .fermi-equation-status { grid-template-columns: 1fr; }
   .fermi-equation-status > p { grid-column: 1; }
+  .squiggle-preview dl { grid-template-columns: 1fr; }
   .fermi-actions { flex-wrap: wrap; }
 }
 </style>

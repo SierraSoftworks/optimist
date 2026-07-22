@@ -476,6 +476,7 @@ describe('Optimist API client', () => {
       payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
     }
     const definition = {
+      language: 'optimist_squiggle_v1' as const,
       equation: 'confidence',
       variables: [{ name: 'confidence', estimate: 0.5, unit: '', uncertainty: { type: 'three_point' as const, low: 0.4, high: 0.6 } }],
       formula: { type: 'literal' as const, distribution: { type: 'point' as const, value: 0.5 }, unit: {} },

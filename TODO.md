@@ -28,6 +28,31 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Project dependence model for shared variables and residual correlations.
 - [x] Typed scenario/project documents outside the causal graph.
 
+### Quantity-First Modelling And Elicitation
+
+- [ ] Define a versioned Squiggle-compatible source contract while retaining Optimist's unit-checked `Formula` AST as the persisted execution authority.
+  - [x] Persist `optimist_squiggle_v1` with each Fermi definition and default legacy definitions to that contract during deserialization.
+  - [ ] Parse the supported expression subset into the canonical AST and report source-located syntax, reference, support, and unit diagnostics.
+  - [ ] Preserve authored source, language version, compiled form, dependencies, and deterministic sampling controls for replay and migration.
+- [ ] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
+  - [x] Embed lazy deterministic Squiggle evaluation in the Fermi assistant with a live mean, spread, quantile bands, and pre-clamp support-violation probability.
+  - [ ] Evaluate in a bounded worker so malformed or expensive expressions cannot block the workbench.
+  - [ ] Show native-unit quantiles, tail mass, invalid draws, support violations, and representative simulated outcomes before an estimate can be adopted.
+- [ ] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
+  - [ ] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
+  - [ ] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
+- [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
+  - [ ] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
+  - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.
+  - [ ] Treat observational co-movement as evidence rather than causal identification unless the relationship records an experiment or explicit identification assumptions.
+- [ ] Make metrics measured causal variables: state-bearing, eligible for factor/metric/outcome relationships in both directions, and directly observable in native units.
+  - [ ] Distinguish direct observations from proxy observation models for latent factors.
+  - [ ] Infer or update uncertain relationships from paired measurements only through an explicit statistical model with diagnostics and retained source data.
+- [ ] Move maximize/minimize/target-range semantics entirely into scenario objectives and evaluate transparent native-unit utility or goal-attainment functions after causal propagation.
+  - [ ] Preserve Pareto comparisons in native units by default; require explicit utility curves and conversion preferences before scalar aggregation.
+- [ ] Guide subjective elicitation with resolvable quantity definitions, native-unit median/quantile prompts, decomposition, assumption review, and independent estimates before pooling.
+- [ ] Add forecast-resolution history, proper scores, interval coverage, bias/overconfidence feedback, stale-estimate reminders, and expert aggregation with individual provenance retained.
+
 ## 2. Storage And Project Isolation
 
 - [x] Backend-independent graph repository contract.

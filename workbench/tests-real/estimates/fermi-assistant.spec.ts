@@ -11,6 +11,9 @@ test('derives a normalized state estimate from a Fermi decomposition', async ({ 
   await page.getByLabel('Variable 1 name').fill('adoption')
   await page.getByLabel('Variable 2 name').fill('completion')
   await page.getByLabel('Fermi equation').fill('adoption * completion')
+  await expect(page.getByText('Live predictive check')).toBeVisible()
+  await expect(page.getByText(/4,000 deterministic samples/)).toBeVisible()
+  await expect(page.getByText(/fall outside the required support/)).toBeVisible()
   await page.getByRole('button', { name: 'Assess equation' }).click()
 
   await expect(page.getByText(/samples · converged/)).toBeVisible()

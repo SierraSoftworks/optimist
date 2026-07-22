@@ -445,8 +445,8 @@ mod tests {
         Money, Probability, SignedInfluence,
     };
     use crate::domain::{
-        FermiEstimateDefinition, FermiEstimateSupport, FermiVariable, FermiVariableUncertainty,
-        Formula, MonteCarloConfig, ProjectId, Unit, assess_fermi,
+        FermiEstimateDefinition, FermiEstimateSupport, FermiExpressionLanguage, FermiVariable,
+        FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId, Unit, assess_fermi,
     };
 
     #[test]
@@ -520,6 +520,7 @@ mod tests {
         )
         .unwrap();
         let definition = FermiEstimateDefinition {
+            language: FermiExpressionLanguage::OptimistSquiggleV1,
             equation: "confidence".to_owned(),
             variables: vec![FermiVariable {
                 name: "confidence".to_owned(),

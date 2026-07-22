@@ -76,7 +76,8 @@ pub use fermi_assessment::{
     FermiRecommendation, assess_fermi,
 };
 pub use fermi_estimate::{
-    FermiEstimateDefinition, FermiEstimateError, FermiVariable, FermiVariableUncertainty,
+    FermiEstimateDefinition, FermiEstimateError, FermiExpressionLanguage, FermiVariable,
+    FermiVariableUncertainty,
 };
 pub use formula::{CompiledFormula, Formula, FormulaError, FormulaSet};
 pub use formula_document::{FormulaCatalog, FormulaDefinition, FormulaDocument};

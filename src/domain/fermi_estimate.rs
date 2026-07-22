@@ -9,6 +9,20 @@ const MAX_EQUATION_BYTES: usize = 4_096;
 const MAX_VARIABLES: usize = 128;
 const MAX_TEXT_BYTES: usize = 256;
 
+/// Versioned expression language retained with a Fermi estimate source.
+///
+/// Optimist currently accepts a constrained Squiggle-compatible expression surface:
+/// named variables, finite numeric literals, arithmetic, parentheses, and integer
+/// powers. The persisted typed [`Formula`] remains the execution authority, while
+/// this marker lets future migrations distinguish source-language semantics.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FermiExpressionLanguage {
+    /// Optimist's first Squiggle-compatible expression subset.
+    #[default]
+    OptimistSquiggleV1,
+}
+
 /// One named uncertain variable retained with a user-authored Fermi equation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FermiVariable {
@@ -40,6 +54,9 @@ pub enum FermiVariableUncertainty {
 /// Complete reviewable source used to derive one effective estimate distribution.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct FermiEstimateDefinition {
+    /// Source-language contract used to interpret [`Self::equation`].
+    #[serde(default)]
+    pub language: FermiExpressionLanguage,
     /// Human-authored infix equation.
     pub equation: String,
     /// Named elicited variables referenced by the equation.
@@ -148,6 +165,7 @@ mod tests {
 
     fn definition() -> FermiEstimateDefinition {
         FermiEstimateDefinition {
+            language: FermiExpressionLanguage::OptimistSquiggleV1,
             equation: "people / households".to_owned(),
             variables: vec![FermiVariable {
                 name: "people".to_owned(),
@@ -172,5 +190,17 @@ mod tests {
             duplicate.validated(),
             Err(FermiEstimateError::DuplicateVariable(_))
         ));
+    }
+
+    #[test]
+    fn defaults_legacy_definitions_to_the_first_source_contract() {
+        let mut value = serde_json::to_value(definition()).unwrap();
+        value.as_object_mut().unwrap().remove("language");
+
+        let restored = serde_json::from_value::<FermiEstimateDefinition>(value).unwrap();
+        assert_eq!(
+            restored.language,
+            FermiExpressionLanguage::OptimistSquiggleV1
+        );
     }
 }

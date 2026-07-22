@@ -279,6 +279,7 @@ export interface FermiAssessmentInput {
 }
 
 export interface FermiEstimateDefinition {
+  language: 'optimist_squiggle_v1'
   equation: string
   variables: FermiVariable[]
   formula: Formula

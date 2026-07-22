@@ -13,6 +13,7 @@ describe('EstimateSourceEditor', () => {
       source: {
         type: 'fermi',
         definition: {
+          language: 'optimist_squiggle_v1',
           equation: 'confidence',
           variables: [{ name: 'confidence', estimate: 0.5, unit: '', uncertainty: { type: 'three_point', low: 0.4, high: 0.6 } }],
           formula: { type: 'literal', distribution: { type: 'point', value: 0.5 }, unit: {} },
