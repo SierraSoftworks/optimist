@@ -27,7 +27,7 @@ export function commandSuggestions(input: string, nodes: GraphNode[]): CommandSu
     return nodeKinds.map((kind) => ({
       value: `add ${kind} `,
       label: kind,
-      detail: kind === 'metric' ? 'Title and unit required' : 'Creates with default planning estimates',
+      detail: kind === 'metric' ? 'Title and unit required' : 'Probabilistic fields start unset',
     })).filter((item) => !tokens[1] || item.label.startsWith(tokens[1]))
   }
   if (tokens[0] === 'mode') {

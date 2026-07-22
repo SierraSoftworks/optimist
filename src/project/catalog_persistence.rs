@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::command::{ChangeSet, CommandResult};
+use crate::store::{GraphRepository, IndraDbRepository};
+use indradb::MemoryDatastore;
 
-use super::{ProjectArchive, ProjectCatalog, ProjectError};
+use super::{ProjectArchive, ProjectCatalog, ProjectError, catalog::ProjectEntry};
 
 const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 const SNAPSHOT_FILE: &str = "catalog.json";
@@ -148,14 +150,10 @@ struct PersistedProject {
 
 impl ProjectCatalog {
     pub(crate) fn transaction_clone(&mut self) -> Result<Self, CatalogPersistenceError> {
-        let snapshot = self.persisted_snapshot()?;
-        let mut candidate = Self::from_persisted_snapshot(snapshot)?;
-        for (id, entry) in &self.projects {
-            let cloned = candidate
-                .projects
-                .get_mut(id)
-                .expect("snapshot clone retains every project");
-            cloned.results = entry.results.clone();
+        let mut candidate = Self::new();
+        candidate.next_project_id = self.next_project_id;
+        for entry in self.projects.values() {
+            candidate.publish_import(clone_entry(entry)?)?;
         }
         Ok(candidate)
     }
@@ -215,6 +213,30 @@ impl ProjectCatalog {
         catalog.next_project_id = snapshot.next_project_id;
         Ok(catalog)
     }
+}
+
+fn clone_entry(entry: &ProjectEntry) -> Result<ProjectEntry, ProjectError> {
+    let mut repository = IndraDbRepository::<MemoryDatastore>::memory(entry.project.id.clone())?;
+    for node in entry.repository.list_nodes()? {
+        repository.create_node(node)?;
+    }
+    for edge in entry.repository.list_edges()? {
+        repository.create_edge(edge)?;
+    }
+    repository.restore_next_entity_id_counter(entry.repository.next_entity_id_counter())?;
+    Ok(ProjectEntry {
+        project: entry.project.clone(),
+        description: entry.description.clone(),
+        graph_revision: entry.graph_revision,
+        repository,
+        results: entry.results.clone(),
+        changes: entry.changes.clone(),
+        change_history_start: entry.change_history_start,
+        next_scenario_id: entry.next_scenario_id,
+        scenarios: entry.scenarios.clone(),
+        dependence: entry.dependence.clone(),
+        formulas: entry.formulas.clone(),
+    })
 }
 
 fn migrate(document: &mut serde_json::Value) -> Result<bool, CatalogPersistenceError> {

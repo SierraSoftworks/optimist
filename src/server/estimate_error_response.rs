@@ -68,6 +68,13 @@ pub(super) fn classify(
                 "Check the equation variables, canonical formula, target unit, sampling controls, and recommendation diagnostics.",
             ],
         ),
+        EstimateCommandError::Squiggle(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_squiggle_estimate",
+            &[
+                "Check Squiggle syntax, result type, unit annotations, support, and deterministic evaluation controls.",
+            ],
+        ),
         EstimateCommandError::RevisionSpaceExhausted(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "project_store_failure",

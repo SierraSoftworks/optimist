@@ -8,7 +8,9 @@ export async function createProject(page: Page, name: string) {
     await page.getByLabel('Project', { exact: true }).selectOption({ label: 'New project...' })
   }
   await page.getByLabel('Project name').fill(name)
-  await page.getByRole('form', { name: 'Create project' }).getByRole('button', { name: 'Create project' }).click()
+  const form = page.getByRole('form', { name: 'Create project' })
+  await form.getByRole('button', { name: 'Create project' }).click()
+  await expect(form).toBeHidden()
   await expect(page.getByRole('heading', { name: 'Start with a system element' })).toBeVisible()
 }
 
@@ -23,8 +25,26 @@ export async function addNode(
   await page.getByLabel('Title').fill(title)
   if (kind === 'metric') await page.getByLabel('Unit').fill(unit ?? 'count')
   await page.getByRole('form', { name: 'Add node' }).getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Add ready node' }).click()
+  await page.getByRole('button', { name: 'Add node' }).last().click()
+  await expect(page.getByRole('form', { name: /setup$/i })).toBeHidden()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
+  if (kind === 'factor' || kind === 'outcome') {
+    await page.getByRole('button', { name: 'Estimate', exact: true }).click()
+    await saveSquiggleEstimate(page, 'beta(2, 2)', 'Set estimate')
+  }
+  if (kind === 'intervention') {
+    await page.getByRole('button', { name: 'Duration estimate', exact: true }).click()
+    await saveSquiggleEstimate(page, 'lognormal(1.38629436112, 0.35)', 'Set estimate')
+    await page.getByRole('button', { name: 'Success probability', exact: true }).click()
+    await saveSquiggleEstimate(page, 'beta(4, 2)', 'Set estimate')
+  }
+}
+
+export async function saveSquiggleEstimate(page: Page, source: string, command: 'Set estimate' | 'Replace estimate') {
+  await page.getByLabel('Squiggle source').fill(source)
+  await expect(page.getByText(/effective samples/)).toBeVisible()
+  await page.getByRole('button', { name: command }).click()
+  await expect(page.getByLabel('Squiggle source')).toBeHidden()
 }
 
 export async function addRelationship(
@@ -45,11 +65,10 @@ export async function addRelationship(
   if (options.mechanism !== undefined) await page.getByLabel('Mechanism').fill(options.mechanism)
   if (options.evidence !== undefined) await page.getByLabel('Evidence references').fill(options.evidence)
   await form.getByRole('button', { name: 'Add relationship' }).click()
+  await expect(form).toBeHidden()
 }
 
 export async function setPointEstimate(page: Page, value: number) {
   await page.getByRole('button', { name: 'Estimate', exact: true }).click()
-  await page.getByLabel('Distribution', { exact: true }).selectOption('point')
-  await page.getByLabel('Value on [0, 1]').fill(String(value))
-  await page.getByRole('button', { name: 'Replace estimate' }).click()
+  await saveSquiggleEstimate(page, `pointMass(${value})`, 'Replace estimate')
 }

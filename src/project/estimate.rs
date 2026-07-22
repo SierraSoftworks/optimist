@@ -1,7 +1,8 @@
 use crate::{
-    command::{CommandOutcome, RemoveEstimate, SetEstimate, SetFermiEstimate},
+    command::{CommandOutcome, RemoveEstimate, SetEstimate, SetFermiEstimate, SetSquiggleEstimate},
     domain::{
         EstimateAddress, EstimateOwner, EstimateSource, PrimitiveEstimate, ProjectId, assess_fermi,
+        assess_squiggle_estimate,
     },
     store::{GraphRepository, RepositoryError},
 };
@@ -65,6 +66,34 @@ pub(super) fn set_fermi(
         command.provenance,
     )
     .map(CommandOutcome::FermiEstimateSet)
+}
+
+pub(super) fn set_squiggle(
+    entry: &mut ProjectEntry,
+    command: SetSquiggleEstimate,
+) -> Result<CommandOutcome, ProjectError> {
+    validate_address(&entry.project.id, &command.address)?;
+    let slot = command
+        .slot
+        .validated()
+        .map_err(EstimateCommandError::from)?;
+    let (_, expected_unit) = fermi_target(entry, &command.address, &slot)?;
+    let (definition, assessment, distribution) =
+        assess_squiggle_estimate(command.definition, &expected_unit)
+            .map_err(EstimateCommandError::from)?;
+    let source = EstimateSource::Squiggle {
+        definition: Box::new(definition),
+        assessment: Box::new(assessment),
+    };
+    set_value(
+        entry,
+        command.address,
+        slot,
+        distribution,
+        source,
+        command.provenance,
+    )
+    .map(CommandOutcome::SquiggleEstimateSet)
 }
 
 fn fermi_target(
@@ -257,14 +286,14 @@ mod tests {
     use crate::{
         command::{
             CommandOutcome, CommandRequest, CreateEdge, CreateNode, GraphCommand, RemoveEstimate,
-            SetEstimate, SetFermiEstimate,
+            SetEstimate, SetFermiEstimate, SetSquiggleEstimate,
         },
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
             EstimateOwner, EstimateSlot, EstimateSource, Factor, FermiEstimateDefinition,
             FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula, Metric,
             MonteCarloConfig, NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
-            SignedInfluence, Unit,
+            SignedInfluence, SquiggleEstimateDefinition, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -390,6 +419,61 @@ mod tests {
                 EstimateCommandError::NotFound(address)
             ))
         );
+    }
+
+    #[test]
+    fn persists_backend_evaluated_squiggle_sources_and_effective_samples() {
+        let (mut catalog, project) = catalog();
+        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
+        let request = CommandRequest::new(
+            2,
+            GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
+                address: address.clone(),
+                slot: EstimateSlot::Current,
+                definition: SquiggleEstimateDefinition {
+                    source: "beta(8, 2)".to_owned(),
+                    seed: 42,
+                    sample_count: 512,
+                    target_unit: Unit::dimensionless(),
+                },
+                provenance: vec!["direct Squiggle model".to_owned()],
+            }),
+        );
+        let first = catalog.execute(&project, request.clone()).unwrap();
+        assert_eq!(first, catalog.execute(&project, request).unwrap());
+        let CommandOutcome::SquiggleEstimateSet(created) = first.outcome else {
+            panic!("expected Squiggle estimate")
+        };
+        assert!(matches!(created.source, EstimateSource::Squiggle { .. }));
+        assert_eq!(
+            serde_json::to_value(&created.distribution).unwrap()["type"],
+            "empirical"
+        );
+        assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
+
+        let invalid = catalog.execute(
+            &project,
+            CommandRequest::new(
+                3,
+                GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
+                    address,
+                    slot: EstimateSlot::Current,
+                    definition: SquiggleEstimateDefinition {
+                        source: "normal(0.5, 10)".to_owned(),
+                        seed: 42,
+                        sample_count: 512,
+                        target_unit: Unit::dimensionless(),
+                    },
+                    provenance: vec![],
+                }),
+            ),
+        );
+        assert!(matches!(
+            invalid,
+            Err(ProjectError::EstimateCommand(
+                EstimateCommandError::Estimate(_)
+            ))
+        ));
     }
 
     #[test]

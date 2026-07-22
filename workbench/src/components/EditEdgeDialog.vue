@@ -102,13 +102,14 @@ function distributionLabel(value: Distribution) {
   if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
   if (value.type === 'scaled_beta') return `Scaled Beta · [${value.lower}, ${value.upper}]`
   if (value.type === 'normal') return `Normal · μ ${value.mean}, σ ${value.standard_deviation}`
+  if (value.type === 'empirical') return `Empirical · ${(value.samples ?? []).length.toLocaleString()} samples`
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
 function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
-  return estimate?.source?.type === 'fermi'
-    ? `Fermi · ${estimate.source.definition.equation}`
-    : null
+  if (estimate?.source?.type === 'squiggle') return `Squiggle · ${estimate.source.definition.source}`
+  if (estimate?.source?.type === 'fermi') return `Legacy Fermi · ${estimate.source.definition.equation}`
+  return null
 }
 </script>
 

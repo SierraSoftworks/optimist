@@ -13,11 +13,11 @@ test('creates nodes and a relationship, then filters and inspects the model', as
   await page.getByLabel('Title').fill('Fast feedback')
   await page.getByLabel('Directly controllable').check()
   await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Add ready node' }).click()
+  await page.getByRole('button', { name: 'Add node' }).last().click()
   await page.getByRole('button', { name: 'Add node' }).first().click()
   await page.getByLabel('Title').fill('Learning rate')
   await page.getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Add ready node' }).click()
+  await page.getByRole('button', { name: 'Add node' }).last().click()
 
   await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')

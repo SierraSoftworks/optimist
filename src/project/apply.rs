@@ -98,6 +98,7 @@ pub(super) fn command(
         }
         GraphCommand::SetEstimate(command) => estimate::set(entry, command),
         GraphCommand::SetFermiEstimate(command) => estimate::set_fermi(entry, command),
+        GraphCommand::SetSquiggleEstimate(command) => estimate::set_squiggle(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::SetFormula(command) => formulas::set(entry, command),
         GraphCommand::RemoveFormula(command) => formulas::remove(entry, command),

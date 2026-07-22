@@ -55,6 +55,7 @@ mod scenario_analysis_sampling;
 mod scenario_analysis_state;
 mod scenario_id;
 mod scenario_validation;
+mod squiggle_estimate;
 mod unit;
 mod unit_ops;
 
@@ -112,4 +113,8 @@ pub use scenario_analysis_model::{
 };
 pub use scenario_id::ScenarioId;
 pub use scenario_validation::ScenarioError;
+pub use squiggle_estimate::{
+    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError,
+    assess_squiggle_estimate,
+};
 pub use unit::{Dimension, Unit, UnitError};

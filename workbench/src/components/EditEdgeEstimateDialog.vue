@@ -2,7 +2,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Trash2, X } from '@lucide/vue'
 import type {
-  Distribution,
   EdgeEstimateSlot,
   Estimate,
   EstimateSourceInput,
@@ -10,6 +9,7 @@ import type {
   SetEdgeEstimateInput,
   Unit,
 } from '../api/types'
+import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 
 const props = defineProps<{
@@ -27,17 +27,10 @@ const emit = defineEmits<{
 const form = reactive({
   provenance: '',
 })
-const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0 } })
+const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('signed', {}))
 const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const signed = computed(() => props.slot?.kind === 'effect' || props.slot?.kind === 'degree')
-const families = computed<Array<Distribution['type']>>(() =>
-  signed.value
-    ? ['point', 'beta', 'scaled_beta']
-    : props.slot?.kind === 'response'
-      ? ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
-      : ['point', 'log_normal', 'beta', 'scaled_beta'],
-)
 const existing = computed(() => {
   if (!props.edge || !props.slot) return null
   if (props.edge.payload.kind === 'contributes' || props.edge.payload.kind === 'changes') {
@@ -74,7 +67,14 @@ watch(
     if (!open || !props.slot) return
     source.value = existing.value?.source?.type === 'fermi'
       ? { type: 'fermi', definition: existing.value.source.definition }
-      : { type: 'distribution', distribution: existing.value?.distribution ?? { type: 'point', value: 0 } }
+      : existing.value?.source?.type === 'squiggle'
+        ? { type: 'squiggle', definition: existing.value.source.definition }
+        : existing.value
+          ? { type: 'distribution', distribution: existing.value.distribution }
+          : defaultSquiggleSourceInput(
+              signed.value ? 'signed' : props.slot.kind === 'response' ? 'real' : 'non_negative',
+              expectedUnit.value,
+            )
     sourceValid.value = true
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     confirmRemove.value = false
@@ -109,7 +109,6 @@ function submit() {
         <EstimateSourceEditor
           v-model="source"
           :existing="existing"
-          :families="families"
           :support="signed ? 'signed' : slot.kind === 'response' ? 'real' : 'non_negative'"
           :project-id="projectId"
           :expected-unit="expectedUnit"

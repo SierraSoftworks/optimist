@@ -6,10 +6,10 @@ use axum::{
 
 use crate::domain::{
     AnalysisLimits, FermiAssessment, FermiEstimateSupport, Formula, ImpedimentAnalysis,
-    MonteCarloConfig, ProjectId, ScenarioAnalysis, ScenarioId, StructuralAnalysis, Unit,
-    assess_fermi,
+    MonteCarloConfig, ProjectId, ScenarioAnalysis, ScenarioId, SquiggleEstimateAssessment,
+    SquiggleEstimateDefinition, StructuralAnalysis, Unit, assess_fermi, assess_squiggle_estimate,
 };
-use crate::project::ProjectError;
+use crate::project::{EstimateCommandError, ProjectError};
 
 use super::{AppState, api_error::ApiError};
 
@@ -31,6 +31,38 @@ pub(super) fn router() -> Router<AppState> {
             "/api/v1/projects/{project}/analysis/fermi-assessment",
             post(fermi_assessment),
         )
+        .route(
+            "/api/v1/projects/{project}/analysis/squiggle-assessment",
+            post(squiggle_assessment),
+        )
+}
+
+#[derive(serde::Deserialize)]
+struct SquiggleAssessmentRequest {
+    definition: SquiggleEstimateDefinition,
+}
+
+#[derive(serde::Serialize)]
+struct SquiggleAssessmentResponse {
+    assessment: SquiggleEstimateAssessment,
+    effective_distribution: crate::domain::Distribution,
+}
+
+async fn squiggle_assessment(
+    State(state): State<AppState>,
+    Path(project): Path<ProjectId>,
+    Json(request): Json<SquiggleAssessmentRequest>,
+) -> Result<Json<SquiggleAssessmentResponse>, ApiError> {
+    state.catalog.read().await.get(&project)?;
+    let target_unit = request.definition.target_unit.clone();
+    let (_, assessment, effective_distribution) =
+        assess_squiggle_estimate(request.definition, &target_unit)
+            .map_err(EstimateCommandError::from)
+            .map_err(ProjectError::from)?;
+    Ok(Json(SquiggleAssessmentResponse {
+        assessment,
+        effective_distribution,
+    }))
 }
 
 #[derive(serde::Deserialize)]
@@ -188,5 +220,67 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "invalid_fermi_assessment");
         assert!(!value["error"]["advice"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn evaluates_rich_squiggle_distributions_and_reports_diagnostics() {
+        let response = app()
+            .oneshot(
+                Request::post("/api/v1/projects/A/analysis/squiggle-assessment")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "definition": {
+                                "source": "gamma(4, 3) + triangular(0, 2, 5)",
+                                "seed": 42,
+                                "sample_count": 512,
+                                "target_unit": {"day": 1}
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 128 * 1024).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["effective_distribution"]["type"], "empirical");
+        assert_eq!(
+            value["effective_distribution"]["samples"]
+                .as_array()
+                .unwrap()
+                .len(),
+            512
+        );
+        assert!(
+            value["assessment"]["p05"].as_f64().unwrap()
+                < value["assessment"]["p95"].as_f64().unwrap()
+        );
+
+        let invalid = app()
+            .oneshot(
+                Request::post("/api/v1/projects/A/analysis/squiggle-assessment")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "definition": {
+                                "source": "missing + 1",
+                                "seed": 42,
+                                "sample_count": 512,
+                                "target_unit": {}
+                            }
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(invalid.into_body(), 16 * 1024).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["error"]["code"], "invalid_squiggle_estimate");
     }
 }

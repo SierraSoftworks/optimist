@@ -2,13 +2,13 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { Trash2, X } from '@lucide/vue'
 import type {
-  Distribution,
   Estimate,
   EstimateSourceInput,
   GraphNode,
   InterventionEstimateSlot,
   SetInterventionEstimateInput,
 } from '../api/types'
+import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 
 const props = defineProps<{
@@ -27,15 +27,10 @@ const form = reactive({
   dimension: '',
   provenance: '',
 })
-const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0 } })
+const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('non_negative', {}))
 const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const probability = computed(() => props.slot?.kind === 'probability_of_success')
-const families = computed<Array<Distribution['type']>>(() =>
-  probability.value
-    ? ['point', 'beta', 'scaled_beta']
-    : ['point', 'log_normal', 'beta', 'scaled_beta'],
-)
 const duplicateCost = computed(() =>
   props.node?.payload.kind === 'intervention' &&
   props.slot?.kind === 'cost' &&
@@ -74,7 +69,11 @@ watch(
     form.dimension = props.slot.kind === 'cost' ? props.slot.value : ''
     source.value = existing.value?.source?.type === 'fermi'
       ? { type: 'fermi', definition: existing.value.source.definition }
-      : { type: 'distribution', distribution: currentDistribution ?? { type: 'point', value: probability.value ? 0.5 : 0 } }
+      : existing.value?.source?.type === 'squiggle'
+        ? { type: 'squiggle', definition: existing.value.source.definition }
+        : currentDistribution
+          ? { type: 'distribution', distribution: currentDistribution }
+          : defaultSquiggleSourceInput(probability.value ? 'probability' : 'non_negative', expectedUnit.value)
     sourceValid.value = true
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
     confirmRemove.value = false
@@ -115,7 +114,6 @@ function submit() {
         <EstimateSourceEditor
           v-model="source"
           :existing="existing"
-          :families="families"
           :support="probability ? 'probability' : 'non_negative'"
           :project-id="projectId"
           :expected-unit="expectedUnit"

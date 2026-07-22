@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::domain::{
     EstimateAddress, EstimateError, EstimateSlot, EstimateSlotError, FermiAssessmentError,
-    FermiEstimateError, QuantityError,
+    FermiEstimateError, QuantityError, SquiggleEstimateError,
 };
 
 /// Failures returned by primitive estimate authoring and lookup operations.
@@ -67,6 +67,9 @@ pub enum EstimateCommandError {
     /// The canonical formula could not be validated or sampled for this slot.
     #[error(transparent)]
     FermiAssessment(#[from] FermiAssessmentError),
+    /// Authored Squiggle source could not be validated or evaluated.
+    #[error(transparent)]
+    Squiggle(#[from] SquiggleEstimateError),
     /// A native quantity definition rejects the proposed estimate distribution.
     #[error(transparent)]
     Quantity(#[from] QuantityError),

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{
     Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot,
     FermiEstimateDefinition, Formula, MeasurementCalibration, NewObservation, NodePayload,
-    ProjectDependenceModel, ScenarioDraft, ScenarioId,
+    ProjectDependenceModel, ScenarioDraft, ScenarioId, SquiggleEstimateDefinition,
 };
 
 /// Data required to construct a new structural node.
@@ -133,6 +133,20 @@ pub struct SetFermiEstimate {
     pub slot: EstimateSlot,
     /// Reviewable equation, variables, canonical formula, and sampling controls.
     pub definition: FermiEstimateDefinition,
+    /// Evidence or elicitation records supporting this estimate revision.
+    #[serde(default)]
+    pub provenance: Vec<String>,
+}
+
+/// Data required to create or replace an estimate from backend-evaluated Squiggle source.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetSquiggleEstimate {
+    /// Stable project/owner/estimate identity; nested components are unsupported.
+    pub address: EstimateAddress,
+    /// Semantic owner field whose support and unit are enforced server-side.
+    pub slot: EstimateSlot,
+    /// Reviewable source, target unit, and deterministic evaluation controls.
+    pub definition: SquiggleEstimateDefinition,
     /// Evidence or elicitation records supporting this estimate revision.
     #[serde(default)]
     pub provenance: Vec<String>,

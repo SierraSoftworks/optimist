@@ -3,23 +3,16 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Check, X } from '@lucide/vue'
 import type {
   CreateNodeInput,
-  Distribution,
-  Estimate,
   NodeKind,
   NodePayload,
   QuantitySupport,
 } from '../api/types'
-import DistributionEditor from './DistributionEditor.vue'
 import { parseUnitExpression } from '../domain/unitExpression'
 
 const props = defineProps<{ open: boolean; pending: boolean }>()
 const emit = defineEmits<{ close: []; submit: [input: CreateNodeInput] }>()
 const titleInput = ref<HTMLInputElement>()
 const step = ref<1 | 2>(1)
-const currentState = ref<Distribution>({ type: 'beta', alpha: 2, beta: 2 })
-const successProbability = ref<Distribution>({ type: 'beta', alpha: 4, beta: 2 })
-const duration = ref<Distribution>({ type: 'log_normal', location: Math.log(4), scale: 0.35 })
-const metricCurrent = ref<Distribution>({ type: 'point', value: 0 })
 const form = reactive({
   kind: 'factor' as NodeKind,
   title: '',
@@ -33,9 +26,7 @@ const form = reactive({
   operationalDefinition: '',
   referenceTime: '',
   resolutionSource: '',
-  metricHasEstimate: false,
   controllable: false,
-  provenance: '',
   acceptanceCriteria: '',
 })
 
@@ -64,15 +55,9 @@ watch(
       operationalDefinition: '',
       referenceTime: '',
       resolutionSource: '',
-      metricHasEstimate: false,
       controllable: false,
-      provenance: '',
       acceptanceCriteria: '',
     })
-    currentState.value = { type: 'beta', alpha: 2, beta: 2 }
-    successProbability.value = { type: 'beta', alpha: 4, beta: 2 }
-    duration.value = { type: 'log_normal', location: Math.log(4), scale: 0.35 }
-    metricCurrent.value = { type: 'point', value: 0 }
     step.value = 1
     await nextTick()
     titleInput.value?.focus()
@@ -97,8 +82,8 @@ const metricDimension = computed(() => {
 
 const setupTitle = computed(() => {
   if (form.kind === 'metric') return 'Measurement setup'
-  if (form.kind === 'intervention') return 'Planning estimates'
-  return 'Simulation baseline'
+  if (form.kind === 'intervention') return 'Action setup'
+  return 'Model setup'
 })
 const metricBoundsValid = computed(() =>
   form.metricSupport !== 'bounded' || (
@@ -107,41 +92,12 @@ const metricBoundsValid = computed(() =>
     form.metricLower < form.metricUpper
   ),
 )
-const metricFamilies = computed<Distribution['type'][]>(() => {
-  if (form.metricSupport === 'bounded') return ['point', 'scaled_beta']
-  if (form.metricSupport === 'non_negative') return ['point', 'log_normal', 'beta', 'scaled_beta']
-  return ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
-})
-const metricEditorSupport = computed(() => form.metricSupport === 'non_negative' ? 'non_negative' as const : 'real' as const)
-const metricMinimum = computed(() => form.metricSupport === 'bounded' ? form.metricLower : undefined)
-const metricMaximum = computed(() => form.metricSupport === 'bounded' ? form.metricUpper : undefined)
-
-watch(() => [form.metricSupport, form.metricLower, form.metricUpper] as const, ([support, lower, upper]) => {
-  if (support === 'bounded' && lower < upper) {
-    metricCurrent.value = { type: 'point', value: (lower + upper) / 2 }
-  } else if (support === 'non_negative') {
-    metricCurrent.value = { type: 'point', value: 0 }
-  }
-})
 
 function quantitySupport(): QuantitySupport {
   if (form.metricSupport === 'bounded') {
     return { type: 'bounded', lower: form.metricLower, upper: form.metricUpper }
   }
   return { type: form.metricSupport }
-}
-
-function estimate(id: string, distribution: Distribution): Estimate {
-  return {
-    id,
-    revision: 0,
-    distribution,
-    source: { type: 'distribution' },
-    provenance: form.provenance
-      .split('\n')
-      .map((value) => value.trim())
-      .filter(Boolean),
-  }
 }
 
 function payload(): NodePayload {
@@ -151,7 +107,7 @@ function payload(): NodePayload {
         kind: 'outcome',
         properties: {
           direction: form.direction,
-          current: estimate('A', currentState.value),
+          current: null,
           desired: null,
           evidence: [],
         },
@@ -167,7 +123,7 @@ function payload(): NodePayload {
           operational_definition: form.operationalDefinition.trim(),
           reference_time: form.referenceTime.trim() || null,
           resolution_source: form.resolutionSource.trim() || null,
-          current: form.metricHasEstimate ? estimate('A', metricCurrent.value) : null,
+          current: null,
         },
       }
     case 'intervention':
@@ -175,8 +131,8 @@ function payload(): NodePayload {
         kind: 'intervention',
         properties: {
           costs: [],
-          duration: estimate('A', duration.value),
-          probability_of_success: estimate('B', successProbability.value),
+          duration: null,
+          probability_of_success: null,
           acceptance_criteria: form.acceptanceCriteria
             .split('\n')
             .map((value) => value.trim())
@@ -187,7 +143,7 @@ function payload(): NodePayload {
       return {
         kind: 'factor',
         properties: {
-          current: estimate('A', currentState.value),
+          current: null,
           desired: null,
           controllable: form.controllable,
           evidence: [],
@@ -269,32 +225,11 @@ async function next() {
 
         <template v-else>
           <section v-if="form.kind === 'outcome' || form.kind === 'factor'" class="wizard-setup">
-            <div class="readiness-callout required"><strong>Current state</strong><span>Required for scenario propagation on a normalized 0–1 scale.</span></div>
-            <DistributionEditor
-              v-model="currentState"
-              :families="['point', 'beta']"
-              support="probability"
-              point-label="Current state on [0, 1]"
-            />
-            <label>Provenance<textarea v-model="form.provenance" rows="3" placeholder="One assumption or source per line"></textarea></label>
+            <div class="readiness-callout required"><strong>Current estimate required</strong><span>After creation, use Estimate to write a Squiggle calculation for the normalized current state.</span></div>
           </section>
           <section v-else-if="form.kind === 'intervention'" class="wizard-setup">
-            <div class="readiness-callout recommended"><strong>Success probability</strong><span>Used to sample whether modeled changes occur.</span></div>
-            <DistributionEditor
-              v-model="successProbability"
-              :families="['point', 'beta', 'scaled_beta']"
-              support="probability"
-              point-label="Success probability"
-            />
-            <div class="readiness-callout recommended"><strong>Duration</strong><span>Planning periods before modeled changes begin.</span></div>
-            <DistributionEditor
-              v-model="duration"
-              :families="['point', 'log_normal', 'beta', 'scaled_beta']"
-              support="non_negative"
-              point-label="Planning periods"
-            />
+            <div class="readiness-callout recommended"><strong>Planning estimates</strong><span>After creation, add duration and success probability as Squiggle calculations from the inspector.</span></div>
             <label>Acceptance criteria<textarea v-model="form.acceptanceCriteria" rows="3" placeholder="One verifiable condition per line"></textarea></label>
-            <label>Provenance<textarea v-model="form.provenance" rows="3" placeholder="One assumption or source per line"></textarea></label>
           </section>
           <section v-else class="wizard-setup">
             <div class="readiness-callout ready"><strong>{{ form.unit }}</strong><span>Measurement unit</span></div>
@@ -310,17 +245,7 @@ async function next() {
               <label>Reference time<input v-model="form.referenceTime" placeholder="2026 Q4, next 30 days, current" /></label>
               <label>Resolution source<input v-model="form.resolutionSource" placeholder="Dashboard, report, query, or authority" /></label>
             </div>
-            <label class="checkbox-label"><input v-model="form.metricHasEstimate" type="checkbox" /> Add a current estimate</label>
-            <DistributionEditor
-              v-if="form.metricHasEstimate"
-              v-model="metricCurrent"
-              :families="metricFamilies"
-              :support="metricEditorSupport"
-              :minimum="metricMinimum"
-              :maximum="metricMaximum"
-              :point-label="`Value in ${form.unit}`"
-            />
-            <label v-if="form.metricHasEstimate">Provenance<textarea v-model="form.provenance" rows="3" placeholder="One assumption or source per line"></textarea></label>
+            <div class="readiness-callout recommended"><strong>Current estimate optional</strong><span>After creation, use Estimate to write a Squiggle calculation in {{ form.unit }}.</span></div>
           </section>
         </template>
 
@@ -329,7 +254,7 @@ async function next() {
           <button v-else type="button" class="secondary-button" @click="step = 1"><ArrowLeft :size="15" /> Back</button>
           <button v-if="step === 1" type="button" class="primary-button" :disabled="!identityValid" @click="next">Continue <ArrowRight :size="15" /></button>
           <button v-else type="submit" class="primary-button" :disabled="pending || !metricBoundsValid">
-            {{ pending ? 'Adding…' : 'Add ready node' }}
+            {{ pending ? 'Adding…' : 'Add node' }}
           </button>
         </footer>
       </form>

@@ -22,6 +22,8 @@ import type {
   Scenario,
   ScenarioAnalysis,
   ScenarioDraft,
+  SquiggleAssessmentResult,
+  SquiggleEstimateDefinition,
   StructuralAnalysis,
   SetInterventionEstimateInput,
   InterventionEstimateSlot,
@@ -62,19 +64,28 @@ function estimateCommand(
   source: EstimateSourceInput,
   provenance: string[],
 ) {
-  return source.type === 'distribution'
-    ? {
+  if (source.type === 'distribution') {
+    return {
         type: 'set_estimate',
         payload: { address, slot, distribution: source.distribution, provenance },
       }
-    : {
+  }
+  if (source.type === 'fermi') {
+    return {
         type: 'set_fermi_estimate',
         payload: { address, slot, definition: source.definition, provenance },
       }
+  }
+  return {
+    type: 'set_squiggle_estimate',
+    payload: { address, slot, definition: source.definition, provenance },
+  }
 }
 
 function expectedEstimateOutcome(source: EstimateSourceInput) {
-  return source.type === 'distribution' ? 'estimate_set' : 'fermi_estimate_set'
+  if (source.type === 'distribution') return 'estimate_set'
+  if (source.type === 'fermi') return 'fermi_estimate_set'
+  return 'squiggle_estimate_set'
 }
 
 const estimateIdAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.'
@@ -224,6 +235,11 @@ export const api = {
     request<FermiAssessment>(`/api/v1/projects/${project}/analysis/fermi-assessment`, {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+  assessSquiggle: (project: string, definition: SquiggleEstimateDefinition) =>
+    request<SquiggleAssessmentResult>(`/api/v1/projects/${project}/analysis/squiggle-assessment`, {
+      method: 'POST',
+      body: JSON.stringify({ definition }),
     }),
   scenarios: (project: string) =>
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),

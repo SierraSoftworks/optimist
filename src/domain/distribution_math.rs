@@ -1,3 +1,4 @@
+use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rand_distr::{Beta, Distribution as _, LogNormal, Normal};
@@ -57,6 +58,7 @@ impl Distribution {
                 lower,
                 upper,
             } => beta_moments(alpha, beta, lower, upper),
+            DistributionKind::Empirical { ref samples } => empirical_moments(samples),
         }
     }
 
@@ -103,7 +105,20 @@ impl Distribution {
                 lower
                     + (upper - lower) * Beta::new(alpha, beta).expect("validated beta").sample(rng)
             }
+            DistributionKind::Empirical { ref samples } => samples[rng.gen_range(0..samples.len())],
         }
+    }
+}
+
+fn empirical_moments(samples: &[f64]) -> DistributionMoments {
+    let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+    DistributionMoments {
+        mean,
+        variance: samples
+            .iter()
+            .map(|sample| (sample - mean).powi(2))
+            .sum::<f64>()
+            / samples.len() as f64,
     }
 }
 
@@ -135,6 +150,10 @@ mod tests {
                 Distribution::scaled_beta(2.0, 3.0, -1.0, 4.0).unwrap(),
                 (1.0, 1.0),
             ),
+            (
+                Distribution::empirical(vec![1.0, 2.0, 3.0]).unwrap(),
+                (2.0, 2.0 / 3.0),
+            ),
         ];
         for (distribution, (mean, variance)) in cases {
             assert!((distribution.mean() - mean).abs() < 1e-12);
@@ -150,6 +169,7 @@ mod tests {
             Distribution::log_normal(0.0, 0.5).unwrap(),
             Distribution::beta(0.5, 3.0).unwrap(),
             Distribution::scaled_beta(2.0, 5.0, -4.0, -1.0).unwrap(),
+            Distribution::empirical(vec![-3.0, 0.0, 4.0]).unwrap(),
         ];
         for distribution in distributions {
             assert_eq!(

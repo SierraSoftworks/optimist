@@ -3,7 +3,14 @@ use std::{fmt, marker::PhantomData};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::{EntityId, FermiAssessment, FermiEstimateDefinition, FermiEstimateError};
+use super::{
+    EntityId, FermiAssessment, FermiEstimateDefinition, FermiEstimateError,
+    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError, Unit,
+    assess_squiggle_estimate,
+};
+
+const MAX_EMPIRICAL_SAMPLES: usize = 4_096;
+const SQUIGGLE_INTEGRITY_ULPS: f64 = 16.0;
 
 /// Identifies an estimate within its owning node or edge aggregate.
 ///
@@ -55,6 +62,9 @@ pub(super) enum DistributionKind {
         lower: f64,
         upper: f64,
     },
+    Empirical {
+        samples: Vec<f64>,
+    },
 }
 
 /// Validation failures for primitive probability distributions.
@@ -75,6 +85,9 @@ pub enum DistributionError {
     /// A scaled Beta's lower bound is not strictly below its upper bound.
     #[error("a scaled beta distribution requires lower < upper")]
     InvalidBounds,
+    /// An empirical approximation must contain a bounded nonempty set of finite draws.
+    #[error("an empirical distribution requires 1 to 4,096 finite samples")]
+    InvalidSamples,
 }
 
 /// A validated primitive probability distribution used by an [`Estimate`].
@@ -148,6 +161,15 @@ impl Distribution {
         })
     }
 
+    /// Creates an empirical distribution from a bounded set of retained draws.
+    ///
+    /// Empirical distributions preserve arbitrary Squiggle derivations for later
+    /// scenario sampling. Samples retain their generated order for deterministic
+    /// replay; statistics and quantiles sort temporary copies when necessary.
+    pub fn empirical(samples: Vec<f64>) -> Result<Self, DistributionError> {
+        Self::validated(DistributionKind::Empirical { samples })
+    }
+
     fn validated(kind: DistributionKind) -> Result<Self, DistributionError> {
         let parameters_are_finite = match kind {
             DistributionKind::Point { value } => value.is_finite(),
@@ -165,6 +187,11 @@ impl Distribution {
                 lower,
                 upper,
             } => alpha.is_finite() && beta.is_finite() && lower.is_finite() && upper.is_finite(),
+            DistributionKind::Empirical { ref samples } => {
+                !samples.is_empty()
+                    && samples.len() <= MAX_EMPIRICAL_SAMPLES
+                    && samples.iter().all(|sample| sample.is_finite())
+            }
         };
         if !parameters_are_finite {
             return Err(DistributionError::NonFinite);
@@ -186,6 +213,13 @@ impl Distribution {
             DistributionKind::ScaledBeta { lower, upper, .. } if lower >= upper => {
                 Err(DistributionError::InvalidBounds)
             }
+            DistributionKind::Empirical { ref samples }
+                if samples.is_empty()
+                    || samples.len() > MAX_EMPIRICAL_SAMPLES
+                    || samples.iter().any(|sample| !sample.is_finite()) =>
+            {
+                Err(DistributionError::InvalidSamples)
+            }
             _ => Ok(Self(kind)),
         }
     }
@@ -196,6 +230,9 @@ impl Distribution {
             DistributionKind::LogNormal { .. } | DistributionKind::Beta { .. } => true,
             DistributionKind::ScaledBeta { lower, .. } => lower >= 0.0,
             DistributionKind::Normal { .. } => false,
+            DistributionKind::Empirical { ref samples } => {
+                samples.iter().all(|sample| *sample >= 0.0)
+            }
         }
     }
 
@@ -209,6 +246,9 @@ impl Distribution {
                 ..
             } => actual_lower >= lower && actual_upper <= upper,
             DistributionKind::Normal { .. } | DistributionKind::LogNormal { .. } => false,
+            DistributionKind::Empirical { ref samples } => samples
+                .iter()
+                .all(|sample| (lower..=upper).contains(sample)),
         }
     }
 
@@ -221,6 +261,9 @@ impl Distribution {
             DistributionKind::Point { value } => (0.0..=1.0).contains(&value),
             DistributionKind::Beta { .. } => true,
             DistributionKind::ScaledBeta { lower, upper, .. } => lower >= 0.0 && upper <= 1.0,
+            DistributionKind::Empirical { ref samples } => {
+                samples.iter().all(|sample| (0.0..=1.0).contains(sample))
+            }
             _ => false,
         }
     }
@@ -230,6 +273,9 @@ impl Distribution {
             DistributionKind::Point { value } => (-1.0..=1.0).contains(&value),
             DistributionKind::Beta { .. } => true,
             DistributionKind::ScaledBeta { lower, upper, .. } => lower >= -1.0 && upper <= 1.0,
+            DistributionKind::Empirical { ref samples } => {
+                samples.iter().all(|sample| (-1.0..=1.0).contains(sample))
+            }
             _ => false,
         }
     }
@@ -329,6 +375,9 @@ pub enum EstimateError {
     /// Persisted Fermi source metadata or assessment is inconsistent.
     #[error(transparent)]
     Fermi(#[from] FermiEstimateError),
+    /// Persisted Squiggle source or assessment is invalid.
+    #[error(transparent)]
+    Squiggle(#[from] SquiggleEstimateError),
 }
 
 /// Exclusive source used to produce an estimate's effective distribution.
@@ -344,6 +393,13 @@ pub enum EstimateSource {
         definition: Box<FermiEstimateDefinition>,
         /// Server-generated result and diagnostics retained with the estimate revision.
         assessment: Box<FermiAssessment>,
+    },
+    /// A retained Squiggle calculation evaluated by the Rust backend.
+    Squiggle {
+        /// Reviewable authored source and deterministic evaluation controls.
+        definition: Box<SquiggleEstimateDefinition>,
+        /// Server-generated family, moments, quantiles, and sampling metadata.
+        assessment: Box<SquiggleEstimateAssessment>,
     },
 }
 
@@ -420,6 +476,22 @@ impl<T: EstimateDimension> Estimate<T> {
         };
         Ok(estimate)
     }
+
+    /// Constructs a Squiggle-sourced estimate from deterministic backend evaluation.
+    pub fn from_squiggle(
+        id: EstimateId,
+        definition: SquiggleEstimateDefinition,
+        expected_unit: &Unit,
+    ) -> Result<Self, EstimateError> {
+        let (definition, assessment, distribution) =
+            assess_squiggle_estimate(definition, expected_unit)?;
+        let mut estimate = Self::new(id, distribution)?;
+        estimate.source = EstimateSource::Squiggle {
+            definition: Box::new(definition),
+            assessment: Box::new(assessment),
+        };
+        Ok(estimate)
+    }
 }
 
 #[derive(Deserialize)]
@@ -454,6 +526,30 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
                 }
                 estimate
             }
+            EstimateSource::Squiggle {
+                definition,
+                assessment,
+            } => {
+                let expected_unit = definition.target_unit.clone();
+                let estimate = Self::from_squiggle(raw.id, *definition, &expected_unit)
+                    .map_err(de::Error::custom)?;
+                let EstimateSource::Squiggle {
+                    assessment: evaluated,
+                    ..
+                } = &estimate.source
+                else {
+                    unreachable!()
+                };
+                if !squiggle_result_matches(
+                    &estimate.distribution,
+                    &raw.distribution,
+                    evaluated,
+                    &assessment,
+                ) {
+                    return Err(de::Error::custom(SquiggleEstimateError::ResultMismatch));
+                }
+                estimate
+            }
         };
         estimate.revision = raw.revision;
         estimate.provenance = raw.provenance;
@@ -461,15 +557,68 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
     }
 }
 
+fn squiggle_result_matches(
+    evaluated_distribution: &Distribution,
+    persisted_distribution: &Distribution,
+    evaluated_assessment: &SquiggleEstimateAssessment,
+    persisted_assessment: &SquiggleEstimateAssessment,
+) -> bool {
+    evaluated_assessment.family == persisted_assessment.family
+        && evaluated_assessment.seed == persisted_assessment.seed
+        && evaluated_assessment.sample_count == persisted_assessment.sample_count
+        && optional_float_matches(evaluated_assessment.mean, persisted_assessment.mean)
+        && optional_float_matches(evaluated_assessment.variance, persisted_assessment.variance)
+        && float_matches(evaluated_assessment.p05, persisted_assessment.p05)
+        && float_matches(evaluated_assessment.p50, persisted_assessment.p50)
+        && float_matches(evaluated_assessment.p95, persisted_assessment.p95)
+        && distribution_result_matches(evaluated_distribution, persisted_distribution)
+}
+
+fn distribution_result_matches(evaluated: &Distribution, persisted: &Distribution) -> bool {
+    match (&evaluated.0, &persisted.0) {
+        (
+            DistributionKind::Point { value: evaluated },
+            DistributionKind::Point { value: persisted },
+        ) => float_matches(*evaluated, *persisted),
+        (
+            DistributionKind::Empirical { samples: evaluated },
+            DistributionKind::Empirical { samples: persisted },
+        ) => {
+            evaluated.len() == persisted.len()
+                && evaluated
+                    .iter()
+                    .zip(persisted)
+                    .all(|(evaluated, persisted)| float_matches(*evaluated, *persisted))
+        }
+        _ => false,
+    }
+}
+
+fn optional_float_matches(evaluated: Option<f64>, persisted: Option<f64>) -> bool {
+    match (evaluated, persisted) {
+        (Some(evaluated), Some(persisted)) => float_matches(evaluated, persisted),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn float_matches(evaluated: f64, persisted: f64) -> bool {
+    // JSON and graph-store round trips may move a finite result by a few ULPs.
+    // The relative bound is τ = 16 ε max(1, |x|, |y|); larger drift is corruption.
+    let scale = evaluated.abs().max(persisted.abs()).max(1.0);
+    (evaluated - persisted).abs() <= SQUIGGLE_INTEGRITY_ULPS * f64::EPSILON * scale
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         Distribution, DistributionError, Estimate, EstimateError, EstimateId, EstimateSource,
-        Money, Probability, SignedInfluence,
+        Money, NormalizedState, Probability, SignedInfluence,
     };
     use crate::domain::{
         FermiEstimateDefinition, FermiEstimateSupport, FermiExpressionLanguage, FermiVariable,
-        FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId, Unit, assess_fermi,
+        FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId, SquiggleEstimateDefinition,
+        Unit, assess_fermi,
     };
 
     #[test]
@@ -572,5 +721,33 @@ mod tests {
             "value": 0.75
         });
         assert!(serde_json::from_value::<Estimate<Probability>>(tampered).is_err());
+    }
+
+    #[test]
+    fn squiggle_sources_round_trip_and_reject_tampered_effective_samples() {
+        let estimate = Estimate::<NormalizedState>::from_squiggle(
+            EstimateId::new(0),
+            SquiggleEstimateDefinition {
+                source: "beta(2, 2)".to_owned(),
+                seed: 42,
+                sample_count: 2_048,
+                target_unit: Unit::dimensionless(),
+            },
+            &Unit::dimensionless(),
+        )
+        .unwrap();
+        let value = serde_json::to_value(&estimate).unwrap();
+        assert_eq!(
+            serde_json::from_value::<Estimate<NormalizedState>>(value.clone()).unwrap(),
+            estimate
+        );
+        let mut rounded = value.clone();
+        let sample = rounded["distribution"]["samples"][3].as_f64().unwrap();
+        rounded["distribution"]["samples"][3] =
+            serde_json::json!(f64::from_bits(sample.to_bits() + 1));
+        assert!(serde_json::from_value::<Estimate<NormalizedState>>(rounded).is_ok());
+        let mut tampered = value;
+        tampered["distribution"]["samples"][0] = serde_json::json!(2.0);
+        assert!(serde_json::from_value::<Estimate<NormalizedState>>(tampered).is_err());
     }
 }

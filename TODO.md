@@ -30,18 +30,18 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 ### Quantity-First Modelling And Elicitation
 
-- [ ] Define a versioned Squiggle-compatible source contract while retaining Optimist's unit-checked `Formula` AST as the persisted execution authority.
-  - [x] Persist `optimist_squiggle_v1` with each Fermi definition and default legacy definitions to that contract during deserialization.
-  - [x] Persist canonical quantity dimensions and generate Squiggle `::` unit annotations for every preview variable and result while retaining Rust unit validation as authority.
-  - [ ] Parse the supported expression subset into the canonical AST and report source-located syntax, reference, support, and unit diagnostics.
-  - [ ] Preserve authored source, language version, compiled form, dependencies, and deterministic sampling controls for replay and migration.
+- [x] Define a persisted Squiggle estimate contract evaluated by Optimist's Rust runtime.
+  - [x] Retain authored source, canonical target units, seeds, bounded sample counts, backend assessments, and deterministic effective draws.
+  - [x] Report source-located syntax, reference, runtime, and unit diagnostics from one backend evaluator used by preview and save.
+  - [x] Reevaluate persisted source during deserialization and reject assessment or effective-distribution integrity mismatches.
+  - [x] Keep legacy direct-distribution and Fermi sources readable while all new workbench saves use Squiggle.
 - [ ] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
-  - [x] Embed lazy deterministic Squiggle evaluation in the Fermi assistant with a live mean, spread, quantile bands, and pre-clamp support-violation probability.
+  - [x] Provide one direct Squiggle editor with debounced Rust evaluation, family, mean, spread, median, central 90% interval, and empirical support validation.
   - [ ] Evaluate in a bounded worker so malformed or expensive expressions cannot block the workbench.
-  - [ ] Show native-unit quantiles, tail mass, invalid draws, support violations, and representative simulated outcomes before an estimate can be adopted.
+  - [ ] Show tail mass, invalid draws, and representative simulated outcomes before an estimate can be adopted.
 - [ ] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
   - [x] Introduce validated native quantity definitions and state-bearing metric estimates while preserving legacy metric JSON as real-valued quantities.
-  - [x] Assess real, non-negative, and arbitrary bounded metric Fermi sources against owner-derived native units and support.
+  - [x] Assess real, non-negative, and arbitrary bounded metric Squiggle sources against owner-derived native units and support.
   - [ ] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
   - [ ] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
@@ -86,6 +86,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Typed node/edge metadata and Markdown description updates.
 - [x] Primitive estimate set/show/remove commands and CLI.
 - [x] Fermi component and formula authoring commands.
+- [x] Squiggle estimate preview and durable set commands for every state, intervention, and edge estimate slot.
 - [x] Scenario create/list/show/update/delete commands.
   - [x] Scenario analysis command and result transport.
 - [x] Atomic command batches and compensating undo.
@@ -155,8 +156,9 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Cytoscape renderer adapter for the four core node kinds and structural edges.
 - [x] Full-viewport graph workbench with search, filters, semantic zoom, and clustering.
 - [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
-  - [x] Fermi equation elicitation with quick order-of-magnitude variables, detailed PERT ranges, human unit algebra, Monte Carlo diagnostics, and explicit primitive recommendations.
-  - [x] Persist and review exclusive Fermi estimate sources with server-assessed effective distributions and diagnostics.
+  - [x] Direct Squiggle authoring with backend diagnostics, typed units, support-aware starter calculations, and deterministic prior-predictive summaries.
+  - [x] Persist and reopen Squiggle source with server-assessed empirical effective distributions for every estimate slot.
+  - [x] Translate legacy direct-distribution and Fermi estimates into Squiggle when they are next edited.
   - [x] Metric-to-state calibration with visible observation translation and explicit estimate adoption.
 - [x] Direct graph/property editing through typed commands.
 - [x] Deterministic command bar with autocomplete, diagnostics, preview, and apply.

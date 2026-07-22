@@ -23,9 +23,9 @@ Metric support is one of:
 - zero or greater,
 - an inclusive finite interval.
 
-The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a LogNormal estimate in days rather than first translating it into an unexplained normalized score. Optimist rejects distributions whose complete support exceeds the metric definition. New metrics retain canonical unit terms alongside the display unit; legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
+The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a Squiggle LogNormal calculation in days rather than first translating it into an unexplained normalized score. New metrics retain canonical unit terms alongside the display unit; legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
 
-Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existing revisioned estimate lifecycle. Fermi estimates derive their target from the owning metric: real support recommends Normal, non-negative support recommends LogNormal, and bounded support recommends Scaled Beta on the metric's declared interval. The workbench emits Squiggle `::` annotations from the same canonical unit terms used by Rust formula validation. A legacy metric without canonical terms must be upgraded before using a typed Fermi source.
+All new workbench estimates retain direct Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, retains deterministic empirical draws for distribution-valued results, and rejects effective draws outside the quantity support. A legacy metric without canonical unit terms must be upgraded before persisting a typed Squiggle source.
 
 ## Edge kinds
 
@@ -70,7 +70,7 @@ $$
 \beta_{xy}=\frac{\Delta y}{\Delta x},
 $$
 
-with dimension $\mathrm{unit}(y)/\mathrm{unit}(x)$. During propagation it applies $\beta_{xy}(x_t-x_0)$ to destination baseline. The destination change is a revisioned estimate and may use a direct distribution or a unit-checked Fermi source. A zero or non-finite source anchor is invalid.
+with dimension $\mathrm{unit}(y)/\mathrm{unit}(x)$. During propagation it applies $\beta_{xy}(x_t-x_0)$ to destination baseline. The destination change is a revisioned Squiggle estimate evaluated against the destination unit. A zero or non-finite source anchor is invalid.
 
 This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
 

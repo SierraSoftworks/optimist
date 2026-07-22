@@ -16,7 +16,7 @@ export interface Project {
 }
 
 export interface Distribution {
-  type: 'point' | 'normal' | 'log_normal' | 'beta' | 'scaled_beta'
+  type: 'point' | 'normal' | 'log_normal' | 'beta' | 'scaled_beta' | 'empirical'
   value?: number
   mean?: number
   standard_deviation?: number
@@ -26,6 +26,7 @@ export interface Distribution {
   beta?: number
   lower?: number
   upper?: number
+  samples?: number[]
 }
 
 export interface Estimate {
@@ -39,10 +40,12 @@ export interface Estimate {
 export type EstimateSource =
   | { type: 'distribution' }
   | { type: 'fermi'; definition: FermiEstimateDefinition; assessment: FermiAssessment }
+  | { type: 'squiggle'; definition: SquiggleEstimateDefinition; assessment: SquiggleEstimateAssessment }
 
 export type EstimateSourceInput =
   | { type: 'distribution'; distribution: Distribution }
   | { type: 'fermi'; definition: FermiEstimateDefinition }
+  | { type: 'squiggle'; definition: SquiggleEstimateDefinition }
 
 export interface Evidence {
   id: number
@@ -299,12 +302,12 @@ export type Formula =
 
 export interface FermiAssessmentInput {
   formula: Formula
-  support: FermiSupport
+  support: EstimateSupport
   expected_unit: Unit
   monte_carlo: MonteCarloConfig
 }
 
-export type FermiSupport =
+export type EstimateSupport =
   | 'real'
   | 'non_negative'
   | 'probability'
@@ -345,6 +348,29 @@ export interface FermiInterval {
   probability: number
   lower: number
   upper: number
+}
+
+export interface SquiggleEstimateDefinition {
+  source: string
+  seed: number
+  sample_count: number
+  target_unit: Unit
+}
+
+export interface SquiggleEstimateAssessment {
+  family: string
+  mean: number | null
+  variance: number | null
+  p05: number
+  p50: number
+  p95: number
+  seed: number
+  sample_count: number
+}
+
+export interface SquiggleAssessmentResult {
+  assessment: SquiggleEstimateAssessment
+  effective_distribution: Distribution
 }
 
 export interface ObjectiveProjection {

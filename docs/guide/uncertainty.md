@@ -11,63 +11,56 @@ Optimist treats uncertainty as a modelled quantity, not a generic confidence per
 | LogNormal | $(0,\infty)$ | Positive multiplicative quantities such as time or cost. |
 | Beta | $[0,1]$ | Probabilities and normalized states. |
 | Scaled Beta | $[l,u]$ | Bounded quantities such as signed influence. |
+| Empirical | Retained finite draws | Arbitrary Squiggle results used by downstream simulation. |
 
-Typed estimate dimensions reject incompatible support. A probability cannot use a Normal distribution because its complete support extends outside $[0,1]$. Money and duration reject distributions which permit negative values.
+Typed estimate dimensions reject incompatible support. Primitive distributions can be checked from their complete analytical support. Empirical distributions are checked from their retained draws, which is a finite prior-predictive check rather than proof that every possible tail value is valid.
 
-## Fermi decomposition
+## Squiggle estimates
 
-Use a Fermi formula when a difficult estimate can be decomposed into quantities which are easier to elicit.
+An estimate may retain direct [Squiggle](https://www.squiggle-language.com/) source whose final expression is a finite number or sampleable distribution. The same source form covers primitive families, transformed distributions, mixtures, decomposition, and simulation-based constructions:
 
-For monthly delivery effort:
+```squiggle
+base = lognormal({p5: 4, p95: 10})
+interruptions = mixture([pointMass(0), gamma(3, 1)], [0.7, 0.3])
+base + interruptions
+```
+
+The workbench sends source to Optimist after a short debounce. Rust is the only evaluator: it applies source and step bounds, lints the program, checks the result unit, evaluates with a fixed seed, and returns the family, mean, variance, median, and central 90% interval. The browser neither loads a second runtime nor submits a result distribution.
+
+Each definition retains:
+
+- the authored source,
+- the deterministic seed,
+- 256 to 4,096 effective draws, with 2,048 as the workbench default,
+- the canonical target unit derived from the owning estimate slot.
+
+Optimist wraps the calculation in a Squiggle unit annotation. A duration result is evaluated as if it were assigned to `optimist_result :: duration`; a native metric uses its canonical unit terms. Source annotations can make intermediate assumptions reviewable too:
+
+```squiggle
+deployments :: item/month = poisson(20)
+effort :: hour/item = lognormal({p5: 0.5, p95: 3})
+deployments * effort
+```
+
+For a numeric result, Optimist persists a point distribution. For a distribution result, it persists deterministic empirical draws so downstream causal and scenario analysis can sample rich, multimodal, truncated, or transformed results without forcing them into a Normal, LogNormal, or Beta approximation. The backend also persists its assessment. On load, deterministic reevaluation must reproduce both assessment and effective distribution; disagreement is an integrity error.
+
+Probability, signed, non-negative, and bounded slots validate the effective draws before persistence. This catches violations represented in the retained sample, but cannot prove that an unbounded symbolic tail has zero mass outside the target support. Authors should use bounded families or explicit truncation when support is part of the quantity definition, and review tail behavior rather than treating one finite sample as a theorem.
+
+One estimate has one active authoring source. New workbench saves use Squiggle. Legacy direct-distribution and Fermi sources remain deserializable for replay and archives; opening them translates their effective distribution into editable Squiggle, and the next save replaces the legacy source. Existing public Fermi and primitive commands remain compatibility APIs rather than parallel workbench editors.
+
+### Decomposition
+
+When a difficult estimate can be decomposed into easier quantities, write those assumptions directly in Squiggle. For monthly delivery effort:
 
 $$
 T_{month} = N_{deployments} \times T_{per\ deployment}
 $$
 
-The [Fermi example](../examples/#fermi-delivery-time-estimate) models deployment count with a Scaled Beta and time per deployment with a LogNormal distribution. Runtime unit algebra proves the result is measured in minutes.
+The legacy [Fermi example](../examples/#fermi-delivery-time-estimate) demonstrates the same statistical idea using the typed Rust `Formula` API. Formula references are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
 
 ```sh
 cargo run --example fermi_delivery_time
 ```
-
-Formula operations include sums, products, ratios, integer powers, bounded transforms, and references. References are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
-
-### Workbench elicitation
-
-The workbench accepts compact central estimates such as `1.5M`. By default, each positive variable uses a LogNormal whose median is the entered estimate and whose central 90% interval spans one order of magnitude in either direction. If $m$ is the estimate, then:
-
-$$
-\mu=\ln m, \qquad \sigma=\frac{\ln 10}{\Phi^{-1}(0.95)}.
-$$
-
-This is deliberately broad. Expanding a variable enables a custom three-point Beta-PERT component. For low $a$, most-likely $m$, and high $b$, it uses a Scaled Beta on $[a,b]$ with:
-
-$$
-\alpha = 1 + 4\frac{m-a}{b-a}, \qquad
-\beta = 1 + 4\frac{b-m}{b-a}.
-$$
-
-Variables accept human unit expressions such as `people/household`, `piano*days/tuning`, and `(pianos/day)^2`. Optimist singularizes simple English plurals, composes exponents through the equation, and compares the result with the goal unit. Equations support `+`, `-`, `*`, `/`, integer powers, numeric constants, and parentheses. Addition and subtraction require equal units.
-
-The live program also uses Squiggle's unit type annotations. Optimist converts each parsed canonical unit to declarations such as `rate :: item/day = ...` and annotates both the unbounded equation result and its support-bounded preview. Squiggle therefore reports dimensional conflicts while the equation is edited. The canonical Rust `Formula` remains authoritative for persistence because Squiggle currently treats exponentiation and most built-in functions as accepting or returning any unit type, whereas Optimist validates every formula operation and target unit.
-
-That expression surface is versioned as `optimist_squiggle_v1` and is intentionally compatible with the corresponding arithmetic subset of [Squiggle](https://www.squiggle-language.com/). The workbench translates variable distributions into Squiggle, evaluates the expression after a short debounce with a fixed seed, and immediately shows its expected value, standard deviation, median, inner 50% band, and central 90% interval. It also evaluates the unbounded expression before applying probability or signed-state clamps and reports how much mass violates the estimate slot's support. Non-negative slots are not silently clamped: negative mass remains visible and prevents eventual server adoption. This is a prior-predictive review aid: it helps expose surprising implications while inputs are being edited, but it is not the persisted result or final validation.
-
-For example, the central piano-tuning arithmetic is:
-
-$$
-1{,}500{,}000 / 3 / 20 / 180 \times 1 = 138.889.
-$$
-
-With units exactly `people`, `people/household`, `households/piano`, `days/tuning`, and `pianos/tuning`, dimensional analysis produces `piano^2/day`, not `piano/day`. The assistant reports the unresolved `piano` dimension. One coherent correction is to describe the tuning interval as `piano*days/tuning`: each tuning event is required per piano per 180 days. The same equation then resolves to `piano/day`.
-
-Optimist samples the resolved equation and recommends an effective primitive family compatible with the requested support by matching sampled mean and variance. A stored estimate has exactly one active source: a directly authored distribution or a persisted Fermi equation. Fermi estimates retain their source-language version, equation, variables, canonical formula, sampling controls, assessment diagnostics, interval, and effective distribution; existing analyses consume that effective distribution. The Rust API reassesses the canonical unit-checked formula and remains authoritative rather than trusting the browser's Squiggle preview. Saving a direct distribution later replaces the Fermi source rather than layering two competing priors. Canonical project archives retain the complete embedded source; definitions written before the language marker was introduced migrate to `optimist_squiggle_v1` during deserialization.
-
-Native quantities derive their target unit and support from the owning metric. Real quantities moment-match to Normal, non-negative quantities to LogNormal, and arbitrary bounded intervals to Scaled Beta on the declared native bounds. Legacy metrics without canonical unit terms remain usable for observations and direct estimates but cannot persist a typed Fermi source until their quantity definition is upgraded.
-
-Native causal responses apply the same source contract to the uncertain destination-change estimate. The target unit comes from the destination endpoint, while the source anchor carries the source endpoint unit. Squiggle annotations provide immediate feedback and Rust validates both formula output and endpoint dimensions before persistence.
-
-The hand-calculated `138.889` is the equation evaluated at entered central values; it is not generally equal to the Monte Carlo expectation of broad products and ratios. Five independent order-of-magnitude priors create a very wide distribution and may hit the sample limit. Refine variables with evidence rather than interpreting that broad default as calibrated confidence. The reported 90% interval belongs to the moment-matched recommendation and does not preserve multimodality or exact tail shape.
 
 ## Metric calibration
 

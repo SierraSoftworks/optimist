@@ -509,6 +509,48 @@ describe('Optimist API client', () => {
     expect(body.command.payload).not.toHaveProperty('distribution')
   })
 
+  it('previews and persists Squiggle state sources through backend evaluation', async () => {
+    const node = {
+      id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
+    }
+    const definition = {
+      source: 'beta(8, 2)', seed: 42, sample_count: 512, target_unit: {},
+    }
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        assessment: { family: 'Beta', mean: 0.8, variance: 0.01, p05: 0.5, p50: 0.8, p95: 0.98, seed: 42, sample_count: 512 },
+        effective_distribution: { type: 'empirical', samples: [0.5, 0.8, 0.98] },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        request_id: 'request', project_revision: 8,
+        outcome: {
+          type: 'squiggle_estimate_set',
+          value: {
+            address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
+            slot: { kind: 'current' }, revision: 0,
+            distribution: { type: 'empirical', samples: [0.5, 0.8, 0.98] },
+            source: { type: 'squiggle', definition, assessment: {} }, provenance: [],
+          },
+        },
+      }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => 'request' })
+
+    await api.assessSquiggle('A', definition)
+    await api.setStateEstimate(project, node, {
+      slot: 'current', source: { type: 'squiggle', definition }, provenance: [],
+    })
+    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/squiggle-assessment')
+    const body = JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)
+    expect(body.command).toMatchObject({
+      type: 'set_squiggle_estimate',
+      payload: { slot: { kind: 'current' }, definition },
+    })
+    expect(body.command.payload).not.toHaveProperty('distribution')
+  })
+
   it('sets a metric estimate in native units through the current slot', async () => {
     const node = {
       id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',

@@ -22,14 +22,14 @@ async function submitWizard() {
 }
 
 describe('CreateNodeDialog', () => {
-  it('creates factors with an embedded current-state estimate', async () => {
+  it('creates factors ready for later Squiggle estimate authoring', async () => {
     const wrapper = mount(CreateNodeDialog, {
       props: { open: true, pending: false },
       attachTo: document.body,
     })
     await setInput('input[placeholder="Fast feedback"]', 'Fast feedback')
     await continueWizard()
-    expect(document.body.textContent).toContain('Simulation baseline')
+    expect(document.body.textContent).toContain('Current estimate required')
     await submitWizard()
 
     const input = wrapper.emitted('submit')?.[0]?.[0]
@@ -38,19 +38,14 @@ describe('CreateNodeDialog', () => {
       payload: {
         kind: 'factor',
         properties: {
-          current: {
-            id: 'A',
-            revision: 0,
-            distribution: { type: 'beta', alpha: 2, beta: 2 },
-            source: { type: 'distribution' },
-          },
+          current: null,
         },
       },
     })
     wrapper.unmount()
   })
 
-  it('creates interventions with planning estimates', async () => {
+  it('creates interventions with unset Squiggle-authored planning estimates', async () => {
     const wrapper = mount(CreateNodeDialog, {
       props: { open: true, pending: false },
       attachTo: document.body,
@@ -60,17 +55,17 @@ describe('CreateNodeDialog', () => {
     intervention.dispatchEvent(new Event('change', { bubbles: true }))
     await setInput('input[placeholder="Fast feedback"]', 'Improve pipeline')
     await continueWizard()
-    expect(document.body.textContent).toContain('Planning estimates')
+    expect(document.body.textContent).toContain('Action setup')
     await submitWizard()
 
     const input = wrapper.emitted('submit')?.[0]?.[0] as any
     expect(input.payload.kind).toBe('intervention')
-    expect(input.payload.properties.duration.id).toBe('A')
-    expect(input.payload.properties.probability_of_success.id).toBe('B')
+    expect(input.payload.properties.duration).toBeNull()
+    expect(input.payload.properties.probability_of_success).toBeNull()
     wrapper.unmount()
   })
 
-  it('creates a bounded metric with an optional native estimate', async () => {
+  it('creates a bounded metric for later native Squiggle estimation', async () => {
     const wrapper = mount(CreateNodeDialog, {
       props: { open: true, pending: false },
       attachTo: document.body,
@@ -90,10 +85,6 @@ describe('CreateNodeDialog', () => {
     bounds[0]!.dispatchEvent(new Event('input', { bubbles: true }))
     bounds[1]!.value = '30'
     bounds[1]!.dispatchEvent(new Event('input', { bubbles: true }))
-    const estimate = document.body.querySelector<HTMLInputElement>('.wizard-setup input[type="checkbox"]')!
-    estimate.checked = true
-    estimate.dispatchEvent(new Event('change', { bubbles: true }))
-    await nextTick()
     await submitWizard()
 
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
@@ -103,7 +94,7 @@ describe('CreateNodeDialog', () => {
           unit: 'days',
           dimension: { day: 1 },
           support: { type: 'bounded', lower: 0, upper: 30 },
-          current: { id: 'A', distribution: { type: 'point', value: 15 } },
+          current: null,
         },
       },
     })

@@ -1,12 +1,20 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import type { Estimate } from '../api/types'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 
-vi.mock('../api/client', () => ({ api: { assessFermi: vi.fn() } }))
+vi.mock('../api/client', () => ({
+  api: {
+    assessSquiggle: vi.fn().mockResolvedValue({
+      assessment: { family: 'PointMass', mean: 0.5, variance: 0, p05: 0.5, p50: 0.5, p95: 0.5, seed: 42, sample_count: 1 },
+      effective_distribution: { type: 'point', value: 0.5 },
+    }),
+  },
+}))
 
 describe('EstimateSourceEditor', () => {
-  it('reviews a stored Fermi source and can replace it with a direct distribution', async () => {
+  it('translates a stored Fermi result into backend-assessed Squiggle source', async () => {
+    vi.useFakeTimers()
     const estimate = {
       id: 'A', revision: 2,
       distribution: { type: 'point', value: 0.5 },
@@ -42,11 +50,16 @@ describe('EstimateSourceEditor', () => {
         projectId: 'A', families: ['point', 'beta'], support: 'probability', expectedUnit: {},
       },
     })
-    expect((wrapper.get('[aria-label="Fermi equation"]').element as HTMLInputElement).value).toBe('confidence')
-    expect((wrapper.get('[aria-label="Variable 1 name"]').element as HTMLInputElement).value).toBe('confidence')
-    expect(wrapper.text()).toContain('Stored effective result')
-    await wrapper.get('[aria-label="Estimate source"] button:first-child').trigger('click')
-    expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toMatchObject({ type: 'distribution' })
+    expect((wrapper.get('[aria-label="Squiggle source"]').element as HTMLTextAreaElement).value).toBe('pointMass(0.5)')
+    expect(wrapper.text()).toContain('legacy fermi estimate')
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+    expect(wrapper.text()).toContain('PointMass')
+    expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toMatchObject({
+      type: 'squiggle',
+      definition: { source: 'pointMass(0.5)', target_unit: {} },
+    })
+    vi.useRealTimers()
   })
 })
 

@@ -105,6 +105,9 @@ pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_err
         crate::domain::EstimateSource::Fermi { definition, .. } => {
             format!("fermi:{}", definition.equation.replace(['\t', '\n'], " "))
         }
+        crate::domain::EstimateSource::Squiggle { definition, .. } => {
+            format!("squiggle:{}", definition.source.replace(['\t', '\n'], " "))
+        }
     };
     Ok(format!(
         "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\n{}\t{:?}\t{}\t{}\t{}\t{}",

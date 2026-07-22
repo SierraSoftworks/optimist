@@ -8,16 +8,16 @@ const nodes = [
 ] as GraphNode[]
 
 describe('command bar grammar', () => {
-  it('creates ready typed nodes from quoted titles', () => {
+  it('creates typed nodes with probabilistic fields awaiting Squiggle setup', () => {
     const result = parseCommand('add factor "Fast feedback" controllable', nodes, [])
     expect(result.command).toMatchObject({
       type: 'create_node',
       input: {
         name: 'fast_feedback',
-        payload: { kind: 'factor', properties: { controllable: true } },
+        payload: { kind: 'factor', properties: { controllable: true, current: null } },
       },
     })
-    expect(commandPreview(result.command!)).toContainEqual(['Setup', 'Current Beta(2, 2)'])
+    expect(commandPreview(result.command!)).toContainEqual(['Setup', 'Current state needs a Squiggle estimate'])
   })
 
   it('validates relationship endpoints, values, and duplicates', () => {

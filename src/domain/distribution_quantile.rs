@@ -31,6 +31,16 @@ impl Distribution {
                             .expect("validated beta")
                             .inverse_cdf(probability)
             }
+            DistributionKind::Empirical { ref samples } => empirical_quantile(samples, probability),
         }
     }
+}
+
+fn empirical_quantile(samples: &[f64], probability: f64) -> f64 {
+    let mut sorted = samples.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let position = probability * (sorted.len() - 1) as f64;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    sorted[lower] + (sorted[upper] - sorted[lower]) * position.fract()
 }

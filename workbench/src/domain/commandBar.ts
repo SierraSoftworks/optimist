@@ -1,10 +1,8 @@
 import type {
   CreateEdgeInput,
   CreateNodeInput,
-  Distribution,
   GraphEdge,
   GraphNode,
-  Estimate,
   NodeKind,
 } from '../api/types'
 import type { WorkbenchMode } from '../stores/workbench'
@@ -31,16 +29,6 @@ export interface CommandResult {
 
 const modes: WorkbenchMode[] = ['explore', 'impediments', 'feedback', 'optimize']
 const nodeKinds: NodeKind[] = ['factor', 'outcome', 'metric', 'intervention']
-
-function estimate(id: string, distribution: Distribution): Estimate {
-  return {
-    id,
-    revision: 0,
-    distribution,
-    source: { type: 'distribution' as const },
-    provenance: ['Command bar default; review before decision use.'],
-  }
-}
 
 function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeInput | null {
   const name = title
@@ -80,14 +68,13 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
         kind,
         properties: {
           costs: [],
-          duration: estimate('A', { type: 'log_normal', location: Math.log(4), scale: 0.35 }),
-          probability_of_success: estimate('B', { type: 'beta', alpha: 4, beta: 2 }),
+          duration: null,
+          probability_of_success: null,
           acceptance_criteria: [],
         },
       },
     }
   }
-  const current = estimate('A', { type: 'beta', alpha: 2, beta: 2 })
   if (kind === 'outcome') {
     const direction = ['maximize', 'minimize', 'target_range'].includes(option ?? '')
       ? option as 'maximize' | 'minimize' | 'target_range'
@@ -95,7 +82,7 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
     return {
       name,
       title,
-      payload: { kind, properties: { direction, current, desired: null, evidence: [] } },
+      payload: { kind, properties: { direction, current: null, desired: null, evidence: [] } },
     }
   }
   return {
@@ -104,7 +91,7 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
     payload: {
       kind,
       properties: {
-        current,
+        current: null,
         desired: null,
         controllable: option === 'controllable',
         evidence: [],
@@ -194,8 +181,8 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
     const setup = payload.kind === 'metric'
       ? `Unit ${payload.properties.unit}`
       : payload.kind === 'intervention'
-        ? 'Duration + success defaults'
-        : 'Current Beta(2, 2)'
+        ? 'Duration + success need Squiggle estimates'
+        : 'Current state needs a Squiggle estimate'
     return [['Action', 'Create node'], ['Kind', payload.kind], ['Title', command.input.title], ['Setup', setup]]
   }
   if (command.type === 'create_edge') {

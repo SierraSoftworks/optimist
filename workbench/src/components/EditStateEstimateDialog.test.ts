@@ -1,5 +1,6 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { api } from '../api/client'
 import type { GraphEdge, GraphNode } from '../api/types'
 import EditStateEstimateDialog from './EditStateEstimateDialog.vue'
 
@@ -25,6 +26,18 @@ const edge = {
 } as GraphEdge
 
 describe('EditStateEstimateDialog', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.spyOn(api, 'assessSquiggle').mockResolvedValue({
+      assessment: { family: 'PointMass', mean: 0.5, variance: 0, p05: 0.5, p50: 0.5, p95: 0.5, seed: 42, sample_count: 1 },
+      effective_distribution: { type: 'point', value: 0.5 },
+    })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
   it('offers the corrected calibrated reading and records adoption provenance', async () => {
     const wrapper = mount(EditStateEstimateDialog, {
       props: { open: true, pending: false, node, projectId: 'A', edges: [edge] },
@@ -33,8 +46,8 @@ describe('EditStateEstimateDialog', () => {
     expect(wrapper.text()).toContain('12.5 days → 0.500')
     expect(wrapper.text()).not.toContain('16 days →')
     await wrapper.get('.calibrated-evidence .secondary-button').trigger('click')
-    expect((wrapper.get('[aria-label="Value on [0, 1]"]').element as HTMLInputElement).value).toBe('0.5')
-    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toContain('Calibrated observation #1')
+    expect((wrapper.get('[aria-label="Squiggle source"]').element as HTMLTextAreaElement).value).toBe('pointMass(0.5)')
+    expect((wrapper.get('textarea[placeholder="One source or elicitation note per line"]').element as HTMLTextAreaElement).value).toContain('Calibrated observation #1')
   })
 
   it('edits a bounded metric directly in its native unit without offering Fermi', async () => {
@@ -44,7 +57,7 @@ describe('EditStateEstimateDialog', () => {
       payload: {
         kind: 'metric',
         properties: {
-          unit: 'days', aggregation: 'p95 weekly',
+          unit: 'days', dimension: { day: 1 }, aggregation: 'p95 weekly',
           support: { type: 'bounded', lower: 0, upper: 30 }, current: null,
         },
       },
@@ -56,20 +69,18 @@ describe('EditStateEstimateDialog', () => {
 
     expect(wrapper.text()).toContain('Set quantity estimate')
     expect(wrapper.find('[aria-label="Estimate source"]').exists()).toBe(false)
-    expect(wrapper.get('[aria-label="Distribution"]').text()).toContain('Scaled Beta')
-    expect(wrapper.get('[aria-label="Distribution"]').text()).not.toContain('Normal')
-    const point = wrapper.get('[aria-label="Value in days"]')
-    expect(point.attributes('min')).toBe('0')
-    expect(point.attributes('max')).toBe('30')
-    expect((point.element as HTMLInputElement).value).toBe('15')
+    const source = wrapper.get('[aria-label="Squiggle source"]')
+    expect((source.element as HTMLTextAreaElement).value).toBe('beta(2, 2) * 30 + 0')
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
     await wrapper.get('form').trigger('submit')
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
       slot: 'current',
-      source: { type: 'distribution', distribution: { type: 'point', value: 15 } },
+      source: { type: 'squiggle', definition: { source: 'beta(2, 2) * 30 + 0' } },
     })
   })
 
-  it('offers bounded Fermi authoring when a metric has canonical unit terms', async () => {
+  it('shows the canonical target unit while authoring a bounded metric', async () => {
     const metric = {
       id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
       description: '', aliases: [], metadata: {},
@@ -86,6 +97,7 @@ describe('EditStateEstimateDialog', () => {
       global: { stubs: { Teleport: true } },
     })
 
-    expect(wrapper.get('[aria-label="Estimate source"]').text()).toContain('Fermi equation')
+    expect(wrapper.find('[aria-label="Squiggle source"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('day')
   })
 })

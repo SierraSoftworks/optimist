@@ -10,7 +10,7 @@ test('keeps command preview and apply controls usable on mobile', async ({ page 
 
   const bar = page.getByRole('dialog', { name: 'Command bar' })
   await bar.getByRole('textbox', { name: 'Command', exact: true }).fill('add outcome "Customer trust" minimize')
-  await expect(bar.getByText('Current Beta(2, 2)')).toBeVisible()
+  await expect(bar.getByText('Current state needs a Squiggle estimate')).toBeVisible()
   const box = await bar.boundingBox()
   expect(box).not.toBeNull()
   expect(box!.x).toBeGreaterThanOrEqual(0)

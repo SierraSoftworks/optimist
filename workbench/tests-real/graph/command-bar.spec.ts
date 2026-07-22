@@ -18,5 +18,6 @@ test('applies typed graph commands through the real API', async ({ page }) => {
   await expect(page.getByText('2 nodes')).toBeVisible()
   await expect(page.getByText('1 relationships')).toBeVisible()
   await expect(page.getByText('changes · mean effect +0.40')).toBeVisible()
-  await expect(page.getByText('Simulation ready')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Needs setup 2' })).toBeVisible()
+  await expect(page.getByText(/Setup recommended: Success probability, Duration estimate/)).toBeVisible()
 })

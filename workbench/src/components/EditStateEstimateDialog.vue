@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { Distribution, EstimateSourceInput, FermiSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import type { EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import { defaultSquiggleSourceInput, squiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
@@ -17,7 +18,7 @@ const form = reactive({
   slot: 'current' as StateEstimateSlot,
   provenance: '',
 })
-const source = ref<EstimateSourceInput>({ type: 'distribution', distribution: { type: 'point', value: 0.5 } })
+const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('probability', {}))
 const sourceValid = ref(true)
 const existing = computed(() => {
   if (props.node?.payload.kind === 'metric') return props.node.payload.properties.current ?? null
@@ -29,13 +30,7 @@ const metricSupport = computed<QuantitySupport>(() =>
     ? props.node.payload.properties.support ?? { type: 'real' }
     : { type: 'bounded', lower: 0, upper: 1 },
 )
-const families = computed<Distribution['type'][]>(() => {
-  if (props.node?.payload.kind !== 'metric') return ['point', 'beta']
-  if (metricSupport.value.type === 'bounded') return ['point', 'scaled_beta']
-  if (metricSupport.value.type === 'non_negative') return ['point', 'log_normal', 'beta', 'scaled_beta']
-  return ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
-})
-const fermiSupport = computed<FermiSupport>(() => {
+const estimateSupport = computed<EstimateSupport>(() => {
   if (props.node?.payload.kind !== 'metric') return 'probability'
   if (metricSupport.value.type === 'bounded') {
     return { bounded: { lower: metricSupport.value.lower, upper: metricSupport.value.upper } }
@@ -45,11 +40,9 @@ const fermiSupport = computed<FermiSupport>(() => {
 const expectedUnit = computed<Unit>(() =>
   props.node?.payload.kind === 'metric' ? props.node.payload.properties.dimension ?? {} : {},
 )
-const allowFermi = computed(() =>
+const canAuthor = computed(() =>
   props.node?.payload.kind !== 'metric' || props.node.payload.properties.dimension !== undefined,
 )
-const minimum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.lower : undefined)
-const maximum = computed(() => metricSupport.value.type === 'bounded' ? metricSupport.value.upper : undefined)
 const calibratedReadings = computed(() => {
   if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return []
   return props.edges.flatMap((edge) => {
@@ -72,12 +65,11 @@ watch(
     if (currentDistribution) {
       source.value = existing.value?.source?.type === 'fermi'
         ? { type: 'fermi', definition: existing.value.source.definition }
-        : { type: 'distribution', distribution: currentDistribution }
+        : existing.value?.source?.type === 'squiggle'
+          ? { type: 'squiggle', definition: existing.value.source.definition }
+          : { type: 'distribution', distribution: currentDistribution }
     } else {
-      const value = minimum.value !== undefined && maximum.value !== undefined
-        ? (minimum.value + maximum.value) / 2
-        : 0
-      source.value = { type: 'distribution', distribution: { type: 'point', value } }
+      source.value = defaultSquiggleSourceInput(estimateSupport.value, expectedUnit.value)
     }
     sourceValid.value = true
   },
@@ -96,7 +88,7 @@ function submit() {
 }
 
 function useReading(reading: typeof calibratedReadings.value[number]) {
-  source.value = { type: 'distribution', distribution: { type: 'point', value: reading.state } }
+  source.value = squiggleSourceInput(`pointMass(${reading.state})`, expectedUnit.value)
   sourceValid.value = true
   form.provenance = [
     form.provenance.trim(),
@@ -124,18 +116,15 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
           </select>
         </label>
         <EstimateSourceEditor
+          v-if="canAuthor"
           v-model="source"
           :existing="existing"
-          :families="families"
-          :support="fermiSupport"
-          :point-label="node.payload.kind === 'metric' ? `Value in ${node.payload.properties.unit}` : 'Value on [0, 1]'"
-          :allow-fermi="allowFermi"
-          :minimum="minimum"
-          :maximum="maximum"
+          :support="estimateSupport"
           :project-id="projectId"
           :expected-unit="expectedUnit"
           @validity="sourceValid = $event"
         />
+        <p v-else class="form-error">Add canonical unit terms to this legacy metric before authoring a Squiggle estimate.</p>
         <section v-if="calibratedReadings.length" class="calibrated-evidence">
           <div><strong>Metric evidence</strong><span>Latest unsuperseded readings</span></div>
           <article v-for="reading in calibratedReadings" :key="`${reading.edge.source}-${reading.observation.id}`">
@@ -153,7 +142,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
         </label>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending || !sourceValid">
+          <button type="submit" class="primary-button" :disabled="pending || !sourceValid || !canAuthor">
             {{ pending ? 'Saving…' : existing ? 'Replace estimate' : 'Set estimate' }}
           </button>
         </footer>

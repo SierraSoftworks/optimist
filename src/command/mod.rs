@@ -102,6 +102,8 @@ pub enum GraphCommand {
     SetEstimate(SetEstimate),
     /// Creates or replaces one estimate from a persisted, server-assessed Fermi equation.
     SetFermiEstimate(SetFermiEstimate),
+    /// Creates or replaces one estimate from backend-evaluated Squiggle source.
+    SetSquiggleEstimate(SetSquiggleEstimate),
     /// Removes one optional or named-cost estimate from its owner.
     RemoveEstimate(RemoveEstimate),
     /// Creates or replaces one nested Fermi component formula.
@@ -188,6 +190,8 @@ pub enum CommandOutcome {
     EstimateSet(PrimitiveEstimate),
     /// Formula-derived estimate created or revisioned by [`GraphCommand::SetFermiEstimate`].
     FermiEstimateSet(PrimitiveEstimate),
+    /// Squiggle-authored estimate created or revisioned by [`GraphCommand::SetSquiggleEstimate`].
+    SquiggleEstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].
     EstimateRemoved(PrimitiveEstimate),
     /// Fermi component created or replaced by [`GraphCommand::SetFormula`].
