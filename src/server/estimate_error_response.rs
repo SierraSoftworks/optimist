@@ -41,7 +41,7 @@ pub(super) fn classify(
             StatusCode::CONFLICT,
             "required_estimate",
             &[
-                "Required causal effect and blocking degree estimates may be replaced but not removed.",
+                "Required causal effect, destination response, and blocking degree estimates may be replaced but not removed.",
             ],
         ),
         EstimateCommandError::ReferencedByDependence(_) => (

@@ -95,6 +95,27 @@ pub(super) fn classify(
             "observation_unit_mismatch",
             &["Use the unit defined by the measurement edge's source metric."],
         ),
+        ProjectError::NativeCausalResponseRequired(_) => (
+            StatusCode::BAD_REQUEST,
+            "native_causal_response_required",
+            &[
+                "Define a counterfactual source change and uncertain destination change for every contributes edge touching a metric.",
+            ],
+        ),
+        ProjectError::CausalResponseUnitMismatch { .. } => (
+            StatusCode::BAD_REQUEST,
+            "causal_response_unit_mismatch",
+            &[
+                "Use source and destination units matching the canonical quantity dimensions on both endpoint nodes.",
+            ],
+        ),
+        ProjectError::MissingQuantityDimension(_) => (
+            StatusCode::BAD_REQUEST,
+            "missing_quantity_dimension",
+            &[
+                "Upgrade the metric with canonical unit terms before using it in a causal relationship.",
+            ],
+        ),
         ProjectError::Observation(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_observation",

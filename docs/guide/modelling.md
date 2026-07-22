@@ -31,7 +31,7 @@ Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existin
 
 | Kind | Direction | Purpose |
 | --- | --- | --- |
-| `contributes` | Directed | A signed uncertain causal effect. |
+| `contributes` | Directed | A normalized signed effect or unit-aware counterfactual response. |
 | `measures` | Directed | A metric measuring a factor or outcome. |
 | `changes` | Directed | An intervention changing a factor. |
 | `requires` | Directed | A hard or soft prerequisite. |
@@ -40,7 +40,7 @@ Direct Point, Normal, LogNormal, Beta, and Scaled Beta estimates use the existin
 | `conflicts-with` | Symmetric | Incompatible interventions. |
 | `synergizes-with` | Symmetric | Mutually beneficial interventions. |
 
-Endpoint combinations are validated. For example, `changes` must connect an intervention to a factor, while `measures` must connect a metric to a factor or outcome.
+Endpoint combinations are validated. `contributes` may connect any factor, metric, or outcome to another such state variable. Every `contributes` edge touching a metric must define a unit-aware counterfactual response whose source and destination units exactly match the endpoint quantity definitions. `changes` remains an intervention-to-factor normalized shift, while `measures` remains a metric-to-factor/outcome observation model.
 
 Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
 
@@ -57,6 +57,22 @@ Optimist deliberately does not create graph vertices for:
 An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal effect belongs to one causal edge.
 
 This design avoids graph noise and makes deletion/reference checks explicit.
+
+## Causal responses
+
+Normalized factor/outcome relationships retain their existing signed local effect on `[-1, 1]`. Native relationships instead answer a concrete counterfactual:
+
+> If the source changes by $\Delta x$ in its declared unit, what uncertain change $\Delta y$ should we expect in the destination after the stated lag?
+
+Optimist derives the local coefficient
+
+$$
+\beta_{xy}=\frac{\Delta y}{\Delta x},
+$$
+
+with dimension $\mathrm{unit}(y)/\mathrm{unit}(x)$. During propagation it applies $\beta_{xy}(x_t-x_0)$ to destination baseline. The destination change is a revisioned estimate and may use a direct distribution or a unit-checked Fermi source. A zero or non-finite source anchor is invalid.
+
+This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
 
 ## Descriptions and metadata
 

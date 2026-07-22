@@ -846,4 +846,51 @@ describe('Optimist API client', () => {
       } },
     })
   })
+
+  it('replaces a native destination response estimate', async () => {
+    const destinationChange = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 } }
+    const edge = {
+      source: 'A', source_kind: 'factor' as const, destination: 'B', destination_kind: 'metric' as const,
+      revision: 0, description: '', metadata: {},
+      payload: {
+        kind: 'contributes' as const,
+        properties: {
+          response: {
+            source_change: 0.1, source_unit: {}, destination_change: destinationChange,
+            destination_unit: { day: 1 },
+          },
+          lag: null, mechanism: '', evidence: [],
+        },
+      },
+    }
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      request_id: 'request', project_revision: 8,
+      outcome: {
+        type: 'estimate_set',
+        value: {
+          address: { project: 'A', owner: { kind: 'edge', id: { source: 'A', kind: 'contributes', destination: 'B' } }, estimate: 'A' },
+          slot: { kind: 'response' }, revision: 1,
+          distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 }, provenance: [],
+        },
+      },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => 'request' })
+
+    await api.setEdgeEstimate(project, edge, {
+      slot: { kind: 'response' },
+      source: { type: 'distribution', distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 } },
+      provenance: [],
+    })
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      command: {
+        type: 'set_estimate',
+        payload: {
+          address: { estimate: 'A' },
+          slot: { kind: 'response' },
+          distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 },
+        },
+      },
+    })
+  })
 })

@@ -88,6 +88,26 @@ pub enum ProjectError {
         /// Unit supplied with the new observation.
         actual: String,
     },
+    /// A causal edge touching a native metric omitted its unit-aware response model.
+    #[error("edge {0} requires a unit-aware linear response")]
+    NativeCausalResponseRequired(EdgeId),
+    /// A native causal response does not use the units declared by its endpoints.
+    #[error("edge {edge} response units do not match its endpoints")]
+    CausalResponseUnitMismatch {
+        /// Canonical edge whose response is inconsistent.
+        edge: EdgeId,
+        /// Unit declared by the source node.
+        expected_source: crate::domain::Unit,
+        /// Source unit declared by the response.
+        actual_source: crate::domain::Unit,
+        /// Unit declared by the destination node.
+        expected_destination: crate::domain::Unit,
+        /// Destination unit declared by the response.
+        actual_destination: crate::domain::Unit,
+    },
+    /// A metric needs canonical unit terms before it can participate causally.
+    #[error("node {0} requires a canonical quantity dimension for causal modelling")]
+    MissingQuantityDimension(EntityId),
     /// The edge aggregate cannot represent another revision.
     #[error("edge {0} has exhausted its revision space")]
     EdgeRevisionSpaceExhausted(EdgeId),

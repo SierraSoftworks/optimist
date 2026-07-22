@@ -124,6 +124,7 @@ function nextInterventionEstimateId(node: GraphNode) {
 function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
     if (slot.kind === 'effect') return edge.payload.properties.effect
+    if (slot.kind === 'response') return edge.payload.properties.response?.destination_change ?? null
     if (slot.kind === 'lag') return edge.payload.properties.lag
   }
   if (edge.payload.kind === 'blocks' && slot.kind === 'degree') {
@@ -135,7 +136,10 @@ function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
 function nextEdgeEstimateId(edge: GraphEdge) {
   const used = new Set<string>()
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    used.add(edge.payload.properties.effect.id)
+    if (edge.payload.properties.effect) used.add(edge.payload.properties.effect.id)
+    if (edge.payload.properties.response) {
+      used.add(edge.payload.properties.response.destination_change.id)
+    }
     if (edge.payload.properties.lag) used.add(edge.payload.properties.lag.id)
   } else if (edge.payload.kind === 'blocks') {
     used.add(edge.payload.properties.degree.id)

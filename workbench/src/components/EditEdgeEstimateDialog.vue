@@ -34,12 +34,15 @@ const signed = computed(() => props.slot?.kind === 'effect' || props.slot?.kind 
 const families = computed<Array<Distribution['type']>>(() =>
   signed.value
     ? ['point', 'beta', 'scaled_beta']
-    : ['point', 'log_normal', 'beta', 'scaled_beta'],
+    : props.slot?.kind === 'response'
+      ? ['point', 'normal', 'log_normal', 'beta', 'scaled_beta']
+      : ['point', 'log_normal', 'beta', 'scaled_beta'],
 )
 const existing = computed(() => {
   if (!props.edge || !props.slot) return null
   if (props.edge.payload.kind === 'contributes' || props.edge.payload.kind === 'changes') {
-    if (props.slot.kind === 'effect') return props.edge.payload.properties.effect
+    if (props.slot.kind === 'effect') return props.edge.payload.properties.effect ?? null
+    if (props.slot.kind === 'response') return props.edge.payload.properties.response?.destination_change ?? null
     if (props.slot.kind === 'lag') return props.edge.payload.properties.lag
   }
   if (props.edge.payload.kind === 'blocks' && props.slot.kind === 'degree') {
@@ -49,11 +52,19 @@ const existing = computed(() => {
 })
 const title = computed(() => {
   if (props.slot?.kind === 'effect') return 'Causal effect'
+  if (props.slot?.kind === 'response') return 'Destination response'
   if (props.slot?.kind === 'degree') return 'Blocking degree'
   return 'Causal lag'
 })
 const expectedUnit = computed<Unit>(() => {
   if (props.slot?.kind === 'lag') return { duration: 1 }
+  if (
+    props.slot?.kind === 'response' &&
+    props.edge?.payload.kind === 'contributes' &&
+    props.edge.payload.properties.response
+  ) {
+    return props.edge.payload.properties.response.destination_unit
+  }
   return {} as Unit
 })
 
@@ -99,7 +110,7 @@ function submit() {
           v-model="source"
           :existing="existing"
           :families="families"
-          :support="signed ? 'signed' : 'non_negative'"
+          :support="signed ? 'signed' : slot.kind === 'response' ? 'real' : 'non_negative'"
           :project-id="projectId"
           :expected-unit="expectedUnit"
           @validity="sourceValid = $event"

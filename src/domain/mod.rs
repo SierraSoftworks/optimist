@@ -61,8 +61,8 @@ mod unit_ops;
 pub use edge::{Edge, EdgeError};
 pub use edge_id::{EdgeId, EdgeIdError, EdgeKind};
 pub use edge_payload::{
-    BlockingEffect, CausalEffect, EdgePayload, Measurement, MeasurementPolarity, Observation,
-    Requirement,
+    BlockingEffect, CausalEffect, CausalModel, CausalResponseError, EdgePayload, LinearResponse,
+    Measurement, MeasurementPolarity, Observation, Requirement,
 };
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,

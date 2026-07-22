@@ -79,9 +79,10 @@ mod tests {
             CreateNode, DeleteEdge, DeleteNode, GraphCommand, SetMeasurementCalibration,
         },
         domain::{
-            EdgeId, EdgeKind, EdgePayload, EntityId, Factor, Measurement, MeasurementCalibration,
+            CausalEffect, Distribution, EdgeId, EdgeKind, EdgePayload, EntityId, Estimate,
+            EstimateId, Factor, LinearResponse, Measurement, MeasurementCalibration,
             MeasurementCalibrationError, MeasurementPolarity, Metric, NewObservation, NodePayload,
-            Requirement,
+            QuantityValue, Requirement, SignedInfluence, Unit,
         },
     };
 
@@ -324,6 +325,94 @@ mod tests {
         assert_eq!(first, catalog.execute(&project.id, request).unwrap());
         assert!(matches!(first.outcome, CommandOutcome::EdgeCreated(_)));
         assert_eq!(catalog.list_edges(&project.id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn requires_matching_linear_responses_for_metric_causal_edges() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        catalog.execute(&project.id, create_node(0)).unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "lead_time".to_owned(),
+                        title: "Lead time".to_owned(),
+                        payload: NodePayload::Metric(Metric::new("day", None).unwrap()),
+                    }),
+                ),
+            )
+            .unwrap();
+        let normalized = CausalEffect::normalized(
+            Estimate::<SignedInfluence>::new(EstimateId::new(0), Distribution::point(0.5).unwrap())
+                .unwrap(),
+            None,
+            String::new(),
+            vec![],
+        );
+        assert!(matches!(
+            catalog.execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(0),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Contributes(normalized),
+                    }),
+                ),
+            ),
+            Err(ProjectError::NativeCausalResponseRequired(_))
+        ));
+
+        let response = |destination_unit| {
+            CausalEffect::linear(
+                LinearResponse {
+                    source_change: 0.1,
+                    source_unit: Unit::dimensionless(),
+                    destination_change: Estimate::<QuantityValue>::new(
+                        EstimateId::new(0),
+                        Distribution::point(-2.0).unwrap(),
+                    )
+                    .unwrap(),
+                    destination_unit,
+                },
+                None,
+                String::new(),
+                vec![],
+            )
+            .unwrap()
+        };
+        assert!(matches!(
+            catalog.execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(0),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Contributes(response(Unit::base("hour").unwrap())),
+                    }),
+                ),
+            ),
+            Err(ProjectError::CausalResponseUnitMismatch { .. })
+        ));
+        let created = catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(0),
+                        destination: EntityId::new(1),
+                        payload: EdgePayload::Contributes(response(Unit::base("day").unwrap())),
+                    }),
+                ),
+            )
+            .unwrap();
+        assert!(matches!(created.outcome, CommandOutcome::EdgeCreated(_)));
     }
 
     #[test]

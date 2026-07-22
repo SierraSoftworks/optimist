@@ -128,11 +128,13 @@ impl Edge {
 const fn endpoints_are_valid(kind: EdgeKind, source: NodeKind, destination: NodeKind) -> bool {
     match kind {
         EdgeKind::Contributes => {
-            matches!(source, NodeKind::Factor | NodeKind::Outcome)
-                && matches!(
-                    destination,
-                    NodeKind::Factor | NodeKind::Metric | NodeKind::Outcome
-                )
+            matches!(
+                source,
+                NodeKind::Factor | NodeKind::Metric | NodeKind::Outcome
+            ) && matches!(
+                destination,
+                NodeKind::Factor | NodeKind::Metric | NodeKind::Outcome
+            )
         }
         EdgeKind::Measures => {
             matches!(source, NodeKind::Metric)
@@ -163,8 +165,9 @@ const fn endpoints_are_valid(kind: EdgeKind, source: NodeKind, destination: Node
 mod tests {
     use super::{Edge, EdgeError};
     use crate::domain::{
-        EdgePayload, EntityId, Measurement, MeasurementCalibration, MeasurementCalibrationError,
-        MeasurementPolarity, NodeKind,
+        CausalEffect, EdgePayload, EntityId, Estimate, EstimateId, LinearResponse, Measurement,
+        MeasurementCalibration, MeasurementCalibrationError, MeasurementPolarity, NodeKind,
+        QuantityValue, Unit,
     };
 
     #[test]
@@ -239,5 +242,29 @@ mod tests {
 
         assert_eq!(edge.source, EntityId::new(3));
         assert_eq!(edge.destination, EntityId::new(10));
+    }
+
+    #[test]
+    fn metrics_can_use_unit_aware_contributes_edges() {
+        let response = LinearResponse {
+            source_change: 1.0,
+            source_unit: Unit::base("day").unwrap(),
+            destination_change: Estimate::<QuantityValue>::new(
+                EstimateId::new(0),
+                crate::domain::Distribution::point(-2.0).unwrap(),
+            )
+            .unwrap(),
+            destination_unit: Unit::base("incident").unwrap(),
+        };
+        let edge = Edge::new(
+            EntityId::new(0),
+            NodeKind::Metric,
+            EntityId::new(1),
+            NodeKind::Metric,
+            EdgePayload::Contributes(
+                CausalEffect::linear(response, None, String::new(), vec![]).unwrap(),
+            ),
+        );
+        assert!(edge.is_ok());
     }
 }

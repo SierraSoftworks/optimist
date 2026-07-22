@@ -45,6 +45,7 @@ pub(super) fn command(
                 command.payload,
             )
             .map_err(RepositoryError::from)?;
+            validate_causal_units(&source, &destination, &edge)?;
             entry.repository.create_edge(edge.clone())?;
             Ok(CommandOutcome::EdgeCreated(edge))
         }
@@ -105,6 +106,51 @@ pub(super) fn command(
         GraphCommand::DeleteScenario(command) => scenarios::delete(entry, command),
         GraphCommand::SetProjectDependence(command) => dependence::set(entry, command),
         GraphCommand::RemoveProjectDependence(command) => dependence::remove(entry, command),
+    }
+}
+
+fn validate_causal_units(
+    source: &Node,
+    destination: &Node,
+    edge: &Edge,
+) -> Result<(), ProjectError> {
+    let EdgePayload::Contributes(effect) = &edge.payload else {
+        return Ok(());
+    };
+    let touches_metric = matches!(source.payload, NodePayload::Metric(_))
+        || matches!(destination.payload, NodePayload::Metric(_));
+    let response = effect.linear_response();
+    if touches_metric && response.is_none() {
+        return Err(ProjectError::NativeCausalResponseRequired(edge.id()));
+    }
+    let Some(response) = response else {
+        return Ok(());
+    };
+    let source_unit = state_unit(source)?;
+    let destination_unit = state_unit(destination)?;
+    if response.source_unit != source_unit || response.destination_unit != destination_unit {
+        return Err(ProjectError::CausalResponseUnitMismatch {
+            edge: edge.id(),
+            expected_source: source_unit,
+            actual_source: response.source_unit.clone(),
+            expected_destination: destination_unit,
+            actual_destination: response.destination_unit.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn state_unit(node: &Node) -> Result<crate::domain::Unit, ProjectError> {
+    match &node.payload {
+        NodePayload::Metric(metric) => metric
+            .quantity
+            .dimension
+            .clone()
+            .ok_or(ProjectError::MissingQuantityDimension(node.id)),
+        NodePayload::Factor(_) | NodePayload::Outcome(_) => {
+            Ok(crate::domain::Unit::dimensionless())
+        }
+        NodePayload::Intervention(_) => Err(ProjectError::MissingQuantityDimension(node.id)),
     }
 }
 

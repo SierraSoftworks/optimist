@@ -32,6 +32,34 @@ describe('command bar grammar', () => {
     expect(parseCommand('connect A changes B', nodes, [{ source: 'A', destination: 'B', payload: { kind: 'changes' } } as GraphEdge]).diagnostic.message).toContain('already exists')
   })
 
+  it('requires counterfactual changes for metric causal relationships', () => {
+    const metric = {
+      id: 'C', revision: 0, name: 'cycle_time', normalized_name: 'cycle_time', title: 'Cycle time',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+    } as GraphNode
+    const graph = [...nodes, metric]
+    expect(parseCommand('connect B contributes C', graph, []).diagnostic.message).toContain('source change')
+    const result = parseCommand('connect B contributes C 0.1 -2', graph, [])
+    expect(result.command).toMatchObject({
+      type: 'create_edge',
+      input: {
+        payload: {
+          kind: 'contributes',
+          properties: {
+            response: {
+              source_change: 0.1,
+              source_unit: {},
+              destination_change: { distribution: { value: -2 } },
+              destination_unit: { day: 1 },
+            },
+          },
+        },
+      },
+    })
+    expect(commandPreview(result.command!)).toContainEqual(['Destination change', '-2'])
+  })
+
   it('provides context-aware suggestions and previews', () => {
     expect(commandSuggestions('add f', nodes)[0]?.label).toBe('factor')
     expect(commandSuggestions('select ', nodes)).toHaveLength(2)

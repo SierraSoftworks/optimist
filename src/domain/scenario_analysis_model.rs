@@ -42,9 +42,9 @@ pub struct InterventionProjection {
     /// dependence induced by shared sampled graph paths without collapsing distinct
     /// objectives into scalar utility.
     pub improvement_covariance: Vec<Vec<Option<f64>>>,
-    /// Number of state-period updates clamped to the normalized-state boundary.
+    /// Number of state-period updates clamped to their declared support boundary.
     ///
-    /// Clamping keeps the recurrence on $\[0,1\]$ but can hide saturation or
+    /// Clamping keeps each recurrence inside its state support but can hide saturation or
     /// unstable feedback. A nonzero count is therefore retained as a model
     /// diagnostic rather than treated as an invalid Monte Carlo draw. The count is
     /// accumulated across every valid draw, planning period, and relevant state.
@@ -76,6 +76,9 @@ pub enum ScenarioAnalysisError {
     /// A causal factor participating in propagation has no normalized baseline.
     #[error("causal factor {0} has no current normalized-state estimate")]
     MissingFactorBaseline(EntityId),
+    /// A causal metric participating in propagation has no native-unit baseline.
+    #[error("causal metric {0} has no current native-unit estimate")]
+    MissingMetricBaseline(EntityId),
     /// A scenario reference is absent or has the wrong node kind.
     #[error("scenario reference {0} is absent or has the wrong node kind")]
     InvalidReference(EntityId),

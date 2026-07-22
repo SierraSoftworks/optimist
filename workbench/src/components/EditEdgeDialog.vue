@@ -10,6 +10,7 @@ import type {
   UpdateEdgeInput,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
+import { formatUnitExpression } from '../domain/unitExpression'
 
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
 const emit = defineEmits<{
@@ -123,9 +124,13 @@ function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
-          <div class="estimate-row">
+          <div v-if="edge.payload.properties.effect" class="estimate-row">
             <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.effect)">{{ estimateSourceLabel(edge.payload.properties.effect) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit relationship effect estimate" @click="emit('estimate', { kind: 'effect' })"><Pencil :size="13" /></button>
+          </div>
+          <div v-if="edge.payload.properties.response" class="estimate-row">
+            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.response.destination_change)">{{ estimateSourceLabel(edge.payload.properties.response.destination_change) }}</small></div>
+            <button type="button" class="icon-button" aria-label="Edit destination response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
             <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.lag)">{{ estimateSourceLabel(edge.payload.properties.lag) }}</small></div>

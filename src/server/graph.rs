@@ -392,16 +392,18 @@ mod tests {
                             GraphCommand::CreateEdge(CreateEdge {
                                 source: EntityId::new(0),
                                 destination: EntityId::new(1),
-                                payload: EdgePayload::Contributes(crate::domain::CausalEffect {
-                                    effect: crate::domain::Estimate::new(
-                                        crate::domain::EstimateId::new(0),
-                                        crate::domain::Distribution::point(0.5).unwrap(),
-                                    )
-                                    .unwrap(),
-                                    lag: None,
-                                    mechanism: String::new(),
-                                    evidence: vec!["ADR-1".to_owned()],
-                                }),
+                                payload: EdgePayload::Contributes(
+                                    crate::domain::CausalEffect::normalized(
+                                        crate::domain::Estimate::new(
+                                            crate::domain::EstimateId::new(0),
+                                            crate::domain::Distribution::point(0.5).unwrap(),
+                                        )
+                                        .unwrap(),
+                                        None,
+                                        String::new(),
+                                        vec!["ADR-1".to_owned()],
+                                    ),
+                                ),
                             }),
                         ))
                         .unwrap(),

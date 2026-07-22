@@ -160,8 +160,13 @@ export interface GraphEdge {
   payload:
     | {
         kind: 'contributes' | 'changes'
-        properties: {
+        properties: ({
           effect: Estimate
+          response?: never
+        } | {
+          effect?: never
+          response: LinearResponse
+        }) & {
           lag: Estimate | null
           mechanism: string
           evidence: string[]
@@ -183,6 +188,13 @@ export interface GraphEdge {
         kind: Exclude<EdgeKind, 'contributes' | 'changes' | 'blocks' | 'measures'>
         properties?: Record<string, unknown>
       }
+}
+
+export interface LinearResponse {
+  source_change: number
+  source_unit: Unit
+  destination_change: Estimate
+  destination_unit: Unit
 }
 
 export interface EdgeIdentity {
@@ -412,7 +424,7 @@ export interface SetInterventionEstimateInput {
   provenance: string[]
 }
 
-export type EdgeEstimateSlot = { kind: 'effect' | 'lag' | 'degree' }
+export type EdgeEstimateSlot = { kind: 'effect' | 'response' | 'lag' | 'degree' }
 
 export interface SetEdgeEstimateInput {
   slot: EdgeEstimateSlot
@@ -432,8 +444,13 @@ export interface SetMeasurementCalibrationInput {
 export type EditableEdgePayload =
   | {
       kind: 'contributes' | 'changes'
-      properties: {
+      properties: ({
         effect: Estimate
+        response?: never
+      } | {
+        effect?: never
+        response: LinearResponse
+      }) & {
         lag: Estimate | null
         mechanism: string
         evidence: string[]

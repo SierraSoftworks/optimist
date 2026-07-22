@@ -74,7 +74,7 @@ pub(super) fn draw(
             Ok(SampledPropagationEdge {
                 source: edge.source,
                 destination: edge.destination,
-                effect: edge.effect.sample(rng),
+                effect: edge.effect.sample(rng) / edge.source_change,
                 delay: edge
                     .lag
                     .as_ref()
@@ -105,8 +105,8 @@ pub(super) fn draw(
         if current.iter().any(|value| !value.is_finite()) {
             return Err(ScenarioAnalysisError::NonFiniteResult);
         }
-        for value in &mut current {
-            let clamped = value.clamp(0.0, 1.0);
+        for (value, state) in current.iter_mut().zip(&graph.states) {
+            let clamped = state.bounds.clamp(*value);
             if clamped != *value {
                 clamped_state_updates = clamped_state_updates.saturating_add(1);
             }

@@ -6,15 +6,18 @@ use super::{
 impl ScenarioAnalysis {
     /// Propagates every candidate intervention over a finite synchronous horizon.
     ///
-    /// For normalized state $i$, sampled baseline $b_i$, persistent intervention
-    /// shift $u_i(t)$, signed local effect $e_{ji}\in[-1,1]$, and integer delay
-    /// $d_{ji}\geq1$, each period applies
-    /// $x_i(t)=\operatorname{clamp}(b_i+u_i(t)+\sum_j
-    /// e_{ji}(x_j(t-d_{ji})-b_j),0,1)$. The one-period minimum delay makes updates
+    /// For state $i$, sampled baseline $b_i$, persistent intervention shift $u_i(t)$,
+    /// local response $\beta_{ji}$, and integer delay $d_{ji}\geq1$, each period applies
+    /// $x_i(t)=\operatorname{clamp}_i(b_i+u_i(t)+\sum_j
+    /// \beta_{ji}(x_j(t-d_{ji})-b_j))$. Legacy normalized effects use
+    /// $\beta=e\in[-1,1]$; native counterfactual responses sample
+    /// $\beta=\Delta y/\Delta x$ with destination-unit/source-unit dimension.
+    /// $\operatorname{clamp}_i$ uses `[0,1]` for normalized states, the declared
+    /// support for metrics, and no bounds for real metrics. The one-period minimum
+    /// delay makes updates
     /// synchronous: a zero-lag edge consumes its source at $t-1$, while explicit
     /// duration and lag samples are interpreted as planning periods, rounded up,
-    /// and added to that one-period transport delay. Every state remains on
-    /// $\[0,1\]$.
+    /// and added to that one-period transport delay.
     ///
     /// Each candidate is evaluated independently. One pinned ChaCha20 stream samples
     /// every primitive once per joint draw, currently under explicit independence.
@@ -62,8 +65,9 @@ mod tests {
     use super::*;
     use crate::domain::{
         CausalEffect, Distribution, EdgePayload, EntityId, Estimate, EstimateId, Factor,
-        Intervention, MonteCarloConfig, NodeKind, NodePayload, NormalizedState, Outcome,
-        OutcomeDirection, ProjectId, ScenarioDraft, ScenarioId, ScenarioObjective, SignedInfluence,
+        Intervention, LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload,
+        NormalizedState, Outcome, OutcomeDirection, ProjectId, QuantityDefinition, QuantitySupport,
+        QuantityValue, ScenarioDraft, ScenarioId, ScenarioObjective, SignedInfluence, Unit,
         UtilityDirection,
     };
 
@@ -114,12 +118,12 @@ mod tests {
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(CausalEffect {
-                effect: estimate::<SignedInfluence>(0, 0.3),
-                lag: None,
-                mechanism: String::new(),
-                evidence: vec![],
-            }),
+            EdgePayload::Changes(CausalEffect::normalized(
+                estimate::<SignedInfluence>(0, 0.3),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let contributes = Edge::new(
@@ -127,12 +131,12 @@ mod tests {
             NodeKind::Factor,
             outcome.id,
             NodeKind::Outcome,
-            EdgePayload::Contributes(CausalEffect {
-                effect: estimate::<SignedInfluence>(0, 0.2),
-                lag: None,
-                mechanism: String::new(),
-                evidence: vec![],
-            }),
+            EdgePayload::Contributes(CausalEffect::normalized(
+                estimate::<SignedInfluence>(0, 0.2),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let scenario = Scenario::new(
@@ -268,7 +272,7 @@ mod tests {
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        effect.effect = Estimate::new(
+        *effect.normalized_effect_mut().unwrap() = Estimate::new(
             EstimateId::new(0),
             Distribution::scaled_beta(2.0, 2.0, -1.0, 1.0).unwrap(),
         )
@@ -283,10 +287,92 @@ mod tests {
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        effect.effect = estimate(0, 1.0);
+        *effect.normalized_effect_mut().unwrap() = estimate(0, 1.0);
         let saturated =
             ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges).unwrap();
         assert!(saturated.candidates[0].clamped_state_updates > 0);
+    }
+
+    #[test]
+    fn propagates_native_metric_responses_between_normalized_states() {
+        let (scenario, mut nodes, mut edges, revision) = point_fixture(3);
+        let outcome = nodes.pop().unwrap();
+        let metric = Node::new(
+            EntityId::new(3),
+            "lead_time",
+            "Lead time",
+            NodePayload::Metric(
+                Metric::with_quantity(
+                    QuantityDefinition::with_dimension(
+                        "days",
+                        Some(Unit::base("day").unwrap()),
+                        None,
+                        QuantitySupport::Bounded {
+                            lower: 0.0,
+                            upper: 30.0,
+                        },
+                    )
+                    .unwrap(),
+                    Some(estimate::<QuantityValue>(0, 10.0)),
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let factor_to_metric = Edge::new(
+            EntityId::new(1),
+            NodeKind::Factor,
+            metric.id,
+            NodeKind::Metric,
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 0.1,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, -2.0),
+                        destination_unit: Unit::base("day").unwrap(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let metric_to_outcome = Edge::new(
+            metric.id,
+            NodeKind::Metric,
+            outcome.id,
+            NodeKind::Outcome,
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: -2.0,
+                        source_unit: Unit::base("day").unwrap(),
+                        destination_change: estimate::<QuantityValue>(0, 0.1),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        nodes.push(metric);
+        nodes.push(outcome);
+        edges.pop();
+        edges.extend([factor_to_metric, metric_to_outcome]);
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let objective = &result.candidates[0].objectives[0];
+        assert!(objective.reachable);
+        assert_eq!(objective.baseline.mean, Some(0.5));
+        assert!((objective.final_state.mean.unwrap() - 0.8).abs() < 1e-12);
+        assert!((objective.improvement.mean.unwrap() - 0.3).abs() < 1e-12);
+        assert_eq!(result.candidates[0].clamped_state_updates, 0);
     }
 
     fn point_fixture(
@@ -333,12 +419,12 @@ mod tests {
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(CausalEffect {
-                effect: estimate::<SignedInfluence>(0, 0.3),
-                lag: None,
-                mechanism: String::new(),
-                evidence: vec![],
-            }),
+            EdgePayload::Changes(CausalEffect::normalized(
+                estimate::<SignedInfluence>(0, 0.3),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let contributes = contributes(factor.id, outcome.id, 0.2);
@@ -382,12 +468,12 @@ mod tests {
             NodeKind::Factor,
             destination,
             NodeKind::Outcome,
-            EdgePayload::Contributes(CausalEffect {
-                effect: estimate::<SignedInfluence>(0, effect),
-                lag: None,
-                mechanism: String::new(),
-                evidence: vec![],
-            }),
+            EdgePayload::Contributes(CausalEffect::normalized(
+                estimate::<SignedInfluence>(0, effect),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap()
     }

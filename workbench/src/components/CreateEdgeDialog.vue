@@ -2,7 +2,8 @@
 import { computed, reactive, watch } from 'vue'
 import { X } from '@lucide/vue'
 import type { CreateEdgeInput, EdgeKind, GraphNode } from '../api/types'
-import { destinationsFor, edgeKinds, edgePayload, sourcesFor } from '../domain/edgeAuthoring'
+import { destinationsFor, edgeKinds, edgePayload, nodeUnit, sourcesFor } from '../domain/edgeAuthoring'
+import { formatUnitExpression } from '../domain/unitExpression'
 
 const props = defineProps<{
   open: boolean
@@ -17,6 +18,7 @@ const form = reactive({
   lagEnabled: false, lag: 0, mechanism: '', evidence: '',
   polarity: 'higher_is_better' as 'higher_is_better' | 'lower_is_better' | 'target_range',
   hard: true, thresholdEnabled: false, threshold: 0.5,
+  sourceChange: 1, destinationChange: 1,
 })
 
 const validSources = computed(() => sourcesFor(form.kind, props.nodes))
@@ -28,6 +30,14 @@ const validKinds = computed(() => {
   return edgeKinds.filter(({ kind }) => destinationsFor(kind, initialSource, props.nodes).length > 0)
 })
 const causal = computed(() => form.kind === 'contributes' || form.kind === 'changes')
+const destination = computed(() => props.nodes.find((node) => node.id === form.destination))
+const nativeCausal = computed(() =>
+  form.kind === 'contributes' &&
+  (source.value?.payload.kind === 'metric' || destination.value?.payload.kind === 'metric'),
+)
+const sourceUnit = computed(() => source.value ? nodeUnit(source.value) : null)
+const destinationUnit = computed(() => destination.value ? nodeUnit(destination.value) : null)
+const nativeUnitsReady = computed(() => !nativeCausal.value || (sourceUnit.value !== null && destinationUnit.value !== null))
 
 watch(() => props.open, (open) => {
   if (!open) return
@@ -35,6 +45,7 @@ watch(() => props.open, (open) => {
     source: props.initialSourceId ?? '', destination: '', kind: props.initialKind ?? 'contributes', effect: 0.5,
     lagEnabled: false, lag: 0, mechanism: '', evidence: '',
     polarity: 'higher_is_better', hard: true, thresholdEnabled: false, threshold: 0.5,
+    sourceChange: 1, destinationChange: 1,
   })
 })
 
@@ -57,6 +68,10 @@ function submit() {
       polarity: form.polarity,
       hard: form.hard,
       threshold: form.thresholdEnabled ? form.threshold : null,
+      source: source.value,
+      destination: destination.value,
+      sourceChange: form.sourceChange,
+      destinationChange: form.destinationChange,
     }),
   })
 }
@@ -75,7 +90,15 @@ function submit() {
           <label>Source<select v-model="form.source" required :disabled="Boolean(initialSourceId)"><option value="" disabled>Select node</option><option v-for="node in validSources" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
           <label>Destination<select v-model="form.destination" required><option value="" disabled>Select node</option><option v-for="node in validDestinations" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
         </div>
-        <label v-if="causal || form.kind === 'blocks'">{{ form.kind === 'blocks' ? 'Blocking degree' : 'Signed effect' }} on [-1, 1]<input v-model.number="form.effect" type="number" min="-1" max="1" step="0.05" required /></label>
+        <label v-if="(causal && !nativeCausal) || form.kind === 'blocks'">{{ form.kind === 'blocks' ? 'Blocking degree' : 'Signed effect' }} on [-1, 1]<input v-model.number="form.effect" type="number" min="-1" max="1" step="0.05" required /></label>
+        <section v-if="nativeCausal" class="native-response">
+          <div class="readiness-callout required"><strong>Counterfactual response</strong><span>Describe destination movement for one source movement. This defines a local linear slope, not causation from correlation.</span></div>
+          <div class="field-grid">
+            <label>Source change ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>
+            <label>Destination change ({{ destinationUnit ? formatUnitExpression(destinationUnit) : 'unit unavailable' }})<input v-model.number="form.destinationChange" type="number" step="any" required /></label>
+          </div>
+          <p v-if="!nativeUnitsReady" class="form-error">Both endpoints need canonical unit terms before this relationship can be created.</p>
+        </section>
         <template v-if="causal">
           <label class="checkbox-label"><input v-model="form.lagEnabled" type="checkbox" /> Include lag</label>
           <label v-if="form.lagEnabled">Lag in planning periods<input v-model.number="form.lag" type="number" min="0" step="0.1" required /></label>
@@ -89,7 +112,7 @@ function submit() {
           <label v-if="form.thresholdEnabled">Satisfaction threshold on [0, 1]<input v-model.number="form.threshold" type="number" min="0" max="1" step="0.05" required /></label>
         </template>
         <p v-if="validSources.length === 0" class="form-note">Add compatible endpoint node kinds for this relationship first.</p>
-        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !form.destination">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
+        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !form.destination || !nativeUnitsReady || (nativeCausal && form.sourceChange === 0)">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
       </form>
     </div>
   </Teleport>
@@ -97,4 +120,5 @@ function submit() {
 
 <style scoped>
 .relationship-fields { margin-top: 14px; }
+.native-response { display: grid; gap: 10px; }
 </style>

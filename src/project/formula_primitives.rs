@@ -71,13 +71,24 @@ pub(crate) fn from_edge(project: &ProjectId, edge: &Edge) -> Vec<(EstimateAddres
     let mut formulas = Vec::new();
     match &edge.payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            push(
-                project,
-                &owner,
-                &value.effect,
-                Unit::dimensionless(),
-                &mut formulas,
-            );
+            if let Some(effect) = value.normalized_effect() {
+                push(
+                    project,
+                    &owner,
+                    effect,
+                    Unit::dimensionless(),
+                    &mut formulas,
+                );
+            }
+            if let Some(response) = value.linear_response() {
+                push(
+                    project,
+                    &owner,
+                    &response.destination_change,
+                    response.destination_unit.clone(),
+                    &mut formulas,
+                );
+            }
             optional(
                 project,
                 &owner,

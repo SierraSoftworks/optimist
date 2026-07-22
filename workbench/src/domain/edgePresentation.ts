@@ -20,8 +20,11 @@ export function distributionMean(distribution: Distribution) {
 
 export function edgeMetadataLabel(edge: GraphEdge) {
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    const mean = distributionMean(edge.payload.properties.effect.distribution)
-    return `mean effect ${mean >= 0 ? '+' : ''}${mean.toFixed(2)}`
+    const estimate = edge.payload.properties.effect ?? edge.payload.properties.response?.destination_change
+    if (!estimate) return null
+    const mean = distributionMean(estimate.distribution)
+    const label = edge.payload.properties.response ? 'response' : 'effect'
+    return `mean ${label} ${mean >= 0 ? '+' : ''}${mean.toFixed(2)}`
   }
   if (edge.payload.kind === 'blocks') {
     return `mean degree ${distributionMean(edge.payload.properties.degree.distribution).toFixed(2)}`

@@ -182,10 +182,5 @@ fn signed_estimate(value: f64) -> Estimate<SignedInfluence> {
 }
 
 fn causal_effect(value: f64) -> CausalEffect {
-    CausalEffect {
-        effect: signed_estimate(value),
-        lag: None,
-        mechanism: String::new(),
-        evidence: Vec::new(),
-    }
+    CausalEffect::normalized(signed_estimate(value), None, String::new(), Vec::new())
 }

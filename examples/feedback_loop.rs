@@ -25,17 +25,17 @@ fn contributes(source: u64, destination: u64, estimate_id: u64) -> Edge {
         NodeKind::Factor,
         EntityId::new(destination),
         NodeKind::Factor,
-        EdgePayload::Contributes(CausalEffect {
-            effect: Estimate::<SignedInfluence>::new(
+        EdgePayload::Contributes(CausalEffect::normalized(
+            Estimate::<SignedInfluence>::new(
                 EstimateId::new(estimate_id),
                 Distribution::scaled_beta(8.0, 2.0, 0.0, 1.0)
                     .expect("positive influence distribution is valid"),
             )
             .expect("distribution fits signed influence support"),
-            lag: None,
-            mechanism: "Improvement reinforces the next delivery capability.".to_owned(),
-            evidence: vec!["Team retrospective".to_owned()],
-        }),
+            None,
+            "Improvement reinforces the next delivery capability.".to_owned(),
+            vec!["Team retrospective".to_owned()],
+        )),
     )
     .expect("factor-to-factor contribution is valid")
 }

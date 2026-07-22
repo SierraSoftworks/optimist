@@ -12,8 +12,7 @@ pub(super) fn relevant_states(scenario: &Scenario, edges: &[Edge]) -> BTreeSet<E
             matches!(
                 edge.payload,
                 EdgePayload::Contributes(_) | EdgePayload::Blocks(_)
-            ) && edge.destination_kind != NodeKind::Metric
-                && edge.destination_kind != NodeKind::Intervention
+            ) && edge.destination_kind != NodeKind::Intervention
         })
         .collect::<Vec<_>>();
     let forward = adjacency(

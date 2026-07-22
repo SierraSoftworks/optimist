@@ -15,7 +15,7 @@ export function endpointsAreValid(kind: EdgeKind, source: NodeKind, destination:
   switch (kind) {
     case 'contributes':
       return (
-        ['factor', 'outcome'].includes(source) &&
+        ['factor', 'metric', 'outcome'].includes(source) &&
         ['factor', 'metric', 'outcome'].includes(destination)
       )
     case 'measures':
@@ -65,6 +65,10 @@ interface PayloadInput {
   polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
   hard: boolean
   threshold: number | null
+  source?: GraphNode
+  destination?: GraphNode
+  sourceChange?: number
+  destinationChange?: number
 }
 
 function estimate(id: string, value: number) {
@@ -79,19 +83,33 @@ function estimate(id: string, value: number) {
 export function edgePayload(input: PayloadInput): EditableEdgePayload {
   switch (input.kind) {
     case 'contributes':
-    case 'changes':
-      return {
-        kind: input.kind,
-        properties: {
-          effect: estimate('A', input.effect),
-          lag: input.lag === null ? null : estimate('B', input.lag),
-          mechanism: input.mechanism,
-          evidence: input.evidence
-            .split('\n')
-            .map((value) => value.trim())
-            .filter(Boolean),
-        },
+      if (input.source?.payload.kind === 'metric' || input.destination?.payload.kind === 'metric') {
+        if (!input.source || !input.destination || !input.sourceChange || input.destinationChange === undefined) {
+          throw new Error('Native causal responses require nonzero source and destination changes.')
+        }
+        const sourceUnit = nodeUnit(input.source)
+        const destinationUnit = nodeUnit(input.destination)
+        if (!sourceUnit || !destinationUnit) {
+          throw new Error('Native causal response endpoints require canonical unit terms.')
+        }
+        return {
+          kind: 'contributes',
+          properties: {
+            response: {
+              source_change: input.sourceChange,
+              source_unit: sourceUnit,
+              destination_change: estimate('A', input.destinationChange),
+              destination_unit: destinationUnit,
+            },
+            lag: input.lag === null ? null : estimate('B', input.lag),
+            mechanism: input.mechanism,
+            evidence: evidence(input.evidence),
+          },
+        }
       }
+      return normalizedCausal(input, 'contributes')
+    case 'changes':
+      return normalizedCausal(input, 'changes')
     case 'measures':
       return { kind: 'measures', properties: { polarity: input.polarity, observations: [] } }
     case 'requires':
@@ -108,4 +126,24 @@ export function edgePayload(input: PayloadInput): EditableEdgePayload {
     case 'synergizes_with':
       return { kind: 'synergizes_with' }
   }
+}
+
+function normalizedCausal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableEdgePayload {
+  return {
+    kind,
+    properties: {
+      effect: estimate('A', input.effect),
+      lag: input.lag === null ? null : estimate('B', input.lag),
+      mechanism: input.mechanism,
+      evidence: evidence(input.evidence),
+    },
+  }
+}
+
+function evidence(value: string) {
+  return value.split('\n').map((item) => item.trim()).filter(Boolean)
+}
+
+export function nodeUnit(node: GraphNode) {
+  return node.payload.kind === 'metric' ? node.payload.properties.dimension ?? null : {}
 }

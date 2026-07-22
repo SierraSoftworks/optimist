@@ -1,15 +1,49 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::{
     Duration, EdgeKind, Estimate, MeasurementCalibration, MeasurementCalibrationError,
-    SignedInfluence,
+    QuantityValue, SignedInfluence, Unit,
 };
 
-/// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
+/// Mathematical model used by a causal `contributes` or `changes` relationship.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum CausalModel {
+    /// Legacy dimensionless response between normalized states.
+    Normalized {
+        /// Signed local strength on `[-1, 1]`.
+        effect: Estimate<SignedInfluence>,
+    },
+    /// Unit-aware linear response between source and destination quantities.
+    Linear {
+        /// Counterfactual anchor pair defining the uncertain local slope.
+        response: LinearResponse,
+    },
+}
+
+/// Unit-aware counterfactual anchor pair for one local linear response.
+///
+/// If the source moves by `source_change`, the destination is expected to move by
+/// the uncertain `destination_change`. Simulation samples the local coefficient
+/// $\beta=\Delta y/\Delta x$ and applies it to source movement from baseline.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct LinearResponse {
+    /// Finite nonzero source movement expressed in [`Self::source_unit`].
+    pub source_change: f64,
+    /// Canonical unit of the source movement.
+    pub source_unit: Unit,
+    /// Uncertain destination movement; deltas may be negative regardless of level support.
+    pub destination_change: Estimate<QuantityValue>,
+    /// Canonical unit of the destination movement.
+    pub destination_unit: Unit,
+}
+
+/// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CausalEffect {
-    /// Signed probability distribution for direction and normalized local strength.
-    pub effect: Estimate<SignedInfluence>,
+    /// Normalized legacy effect or a unit-aware counterfactual response.
+    #[serde(flatten)]
+    pub model: CausalModel,
     /// Optional non-negative delay before the effect reaches its destination.
     pub lag: Option<Estimate<Duration>>,
     /// Markdown explanation of the causal mechanism, boundaries, and assumptions.
@@ -17,6 +51,155 @@ pub struct CausalEffect {
     /// Aggregate-local evidence references supporting this relationship.
     #[serde(default)]
     pub evidence: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct CausalEffectWire {
+    #[serde(flatten)]
+    model: CausalModel,
+    lag: Option<Estimate<Duration>>,
+    mechanism: String,
+    #[serde(default)]
+    evidence: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for CausalEffect {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = CausalEffectWire::deserialize(deserializer)?;
+        match value.model {
+            CausalModel::Normalized { effect } => Ok(Self::normalized(
+                effect,
+                value.lag,
+                value.mechanism,
+                value.evidence,
+            )),
+            CausalModel::Linear { response } => {
+                Self::linear(response, value.lag, value.mechanism, value.evidence)
+                    .map_err(de::Error::custom)
+            }
+        }
+    }
+}
+
+impl CausalEffect {
+    /// Creates the existing normalized-state causal model.
+    pub fn normalized(
+        effect: Estimate<SignedInfluence>,
+        lag: Option<Estimate<Duration>>,
+        mechanism: String,
+        evidence: Vec<String>,
+    ) -> Self {
+        Self {
+            model: CausalModel::Normalized { effect },
+            lag,
+            mechanism,
+            evidence,
+        }
+    }
+
+    /// Creates a unit-aware local linear response after validating its anchor.
+    pub fn linear(
+        response: LinearResponse,
+        lag: Option<Estimate<Duration>>,
+        mechanism: String,
+        evidence: Vec<String>,
+    ) -> Result<Self, CausalResponseError> {
+        if !response.source_change.is_finite() || response.source_change == 0.0 {
+            return Err(CausalResponseError::InvalidSourceChange);
+        }
+        Ok(Self {
+            model: CausalModel::Linear { response },
+            lag,
+            mechanism,
+            evidence,
+        })
+    }
+
+    /// Returns the legacy signed effect when this is a normalized-state model.
+    pub fn normalized_effect(&self) -> Option<&Estimate<SignedInfluence>> {
+        match &self.model {
+            CausalModel::Normalized { effect } => Some(effect),
+            CausalModel::Linear { .. } => None,
+        }
+    }
+
+    /// Returns the mutable legacy signed effect when available.
+    pub fn normalized_effect_mut(&mut self) -> Option<&mut Estimate<SignedInfluence>> {
+        match &mut self.model {
+            CausalModel::Normalized { effect } => Some(effect),
+            CausalModel::Linear { .. } => None,
+        }
+    }
+
+    /// Returns the unit-aware linear response when this model defines one.
+    pub fn linear_response(&self) -> Option<&LinearResponse> {
+        match &self.model {
+            CausalModel::Linear { response } => Some(response),
+            CausalModel::Normalized { .. } => None,
+        }
+    }
+
+    /// Returns the mutable unit-aware linear response when available.
+    pub fn linear_response_mut(&mut self) -> Option<&mut LinearResponse> {
+        match &mut self.model {
+            CausalModel::Linear { response } => Some(response),
+            CausalModel::Normalized { .. } => None,
+        }
+    }
+}
+
+/// Invalid counterfactual response anchors.
+#[derive(Clone, Debug, thiserror::Error, PartialEq)]
+pub enum CausalResponseError {
+    /// A local slope cannot be derived from a zero or non-finite source movement.
+    #[error("a linear response requires a finite nonzero source change")]
+    InvalidSourceChange,
+}
+
+#[cfg(test)]
+mod causal_response_tests {
+    use super::*;
+    use crate::domain::{Distribution, EstimateId};
+
+    #[test]
+    fn linear_response_round_trips_and_rejects_zero_source_change() {
+        let response = LinearResponse {
+            source_change: 2.0,
+            source_unit: Unit::base("day").unwrap(),
+            destination_change: Estimate::<QuantityValue>::new(
+                EstimateId::new(0),
+                Distribution::point(-1.0).unwrap(),
+            )
+            .unwrap(),
+            destination_unit: Unit::base("incident").unwrap(),
+        };
+        let value = CausalEffect::linear(response, None, String::new(), vec![]).unwrap();
+        let mut json = serde_json::to_value(&value).unwrap();
+        assert_eq!(
+            serde_json::from_value::<CausalEffect>(json.clone()).unwrap(),
+            value
+        );
+        json["response"]["source_change"] = serde_json::json!(0.0);
+        assert!(serde_json::from_value::<CausalEffect>(json).is_err());
+    }
+
+    #[test]
+    fn normalized_effect_keeps_its_legacy_json_shape() {
+        let value = CausalEffect::normalized(
+            Estimate::<SignedInfluence>::new(EstimateId::new(0), Distribution::point(0.5).unwrap())
+                .unwrap(),
+            None,
+            String::new(),
+            vec![],
+        );
+        let json = serde_json::to_value(&value).unwrap();
+        assert!(json.get("effect").is_some());
+        assert!(json.get("response").is_none());
+        assert_eq!(serde_json::from_value::<CausalEffect>(json).unwrap(), value);
+    }
 }
 
 /// One immutable quantitative reading embedded in a [`Measurement`] edge payload.

@@ -65,6 +65,8 @@ Optimist samples the resolved equation and recommends an effective primitive fam
 
 Native quantities derive their target unit and support from the owning metric. Real quantities moment-match to Normal, non-negative quantities to LogNormal, and arbitrary bounded intervals to Scaled Beta on the declared native bounds. Legacy metrics without canonical unit terms remain usable for observations and direct estimates but cannot persist a typed Fermi source until their quantity definition is upgraded.
 
+Native causal responses apply the same source contract to the uncertain destination-change estimate. The target unit comes from the destination endpoint, while the source anchor carries the source endpoint unit. Squiggle annotations provide immediate feedback and Rust validates both formula output and endpoint dimensions before persistence.
+
 The hand-calculated `138.889` is the equation evaluated at entered central values; it is not generally equal to the Monte Carlo expectation of broad products and ratios. Five independent order-of-magnitude priors create a very wide distribution and may hit the sample limit. Refine variables with evidence rather than interpreting that broad default as calibrated confidence. The reported 90% interval belongs to the moment-matched recommendation and does not preserve multimodality or exact tail shape.
 
 ## Metric calibration

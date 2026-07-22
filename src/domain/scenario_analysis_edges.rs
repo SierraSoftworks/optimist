@@ -6,6 +6,7 @@ pub(super) struct PropagationEdge {
     pub(super) source: usize,
     pub(super) destination: usize,
     pub(super) effect: Distribution,
+    pub(super) source_change: f64,
     pub(super) lag: Option<Distribution>,
 }
 
@@ -25,19 +26,31 @@ pub(super) fn propagation(
             indices.contains_key(&edge.source) && indices.contains_key(&edge.destination)
         })
         .filter_map(|edge| match &edge.payload {
-            EdgePayload::Contributes(effect) if edge.destination_kind != NodeKind::Metric => {
-                Some((edge, &effect.effect.distribution, effect.lag.as_ref()))
+            EdgePayload::Contributes(effect) => {
+                if let Some(value) = effect.normalized_effect() {
+                    Some((edge, &value.distribution, 1.0, effect.lag.as_ref()))
+                } else {
+                    effect.linear_response().map(|response| {
+                        (
+                            edge,
+                            &response.destination_change.distribution,
+                            response.source_change,
+                            effect.lag.as_ref(),
+                        )
+                    })
+                }
             }
             EdgePayload::Blocks(effect) if edge.destination_kind != NodeKind::Intervention => {
-                Some((edge, &effect.degree.distribution, None))
+                Some((edge, &effect.degree.distribution, 1.0, None))
             }
             _ => None,
         })
-        .map(|(edge, effect, lag)| {
+        .map(|(edge, effect, source_change, lag)| {
             Ok(PropagationEdge {
                 source: indices[&edge.source],
                 destination: indices[&edge.destination],
                 effect: effect.clone(),
+                source_change,
                 lag: lag.map(|estimate| estimate.distribution.clone()),
             })
         })
@@ -55,9 +68,9 @@ pub(super) fn intervention(
             EdgePayload::Changes(effect)
                 if edge.source == candidate && indices.contains_key(&edge.destination) =>
             {
-                Some(InterventionEdge {
+                effect.normalized_effect().map(|value| InterventionEdge {
                     destination: indices[&edge.destination],
-                    effect: effect.effect.distribution.clone(),
+                    effect: value.distribution.clone(),
                     lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
                 })
             }

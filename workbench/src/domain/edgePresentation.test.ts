@@ -30,4 +30,24 @@ describe('edgePresentation', () => {
     } as unknown as GraphEdge
     expect(edgeMetadataLabel(edge)).toBe('mean degree 0.75')
   })
+
+  it('distinguishes a native destination response from normalized effect strength', () => {
+    const edge = {
+      payload: {
+        kind: 'contributes',
+        properties: {
+          response: {
+            source_change: 0.1,
+            source_unit: {},
+            destination_change: { distribution: { type: 'point', value: -2 } },
+            destination_unit: { day: 1 },
+          },
+          lag: null,
+          mechanism: '',
+          evidence: [],
+        },
+      },
+    } as unknown as GraphEdge
+    expect(edgeMetadataLabel(edge)).toBe('mean response -2.00')
+  })
 })

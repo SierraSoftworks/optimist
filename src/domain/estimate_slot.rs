@@ -26,6 +26,8 @@ pub enum EstimateSlot {
     ProbabilityOfSuccess,
     /// Signed causal effect of a contributes or changes edge.
     Effect,
+    /// Native-unit destination change in a unit-aware linear response.
+    Response,
     /// Non-negative lag of a contributes or changes edge.
     Lag,
     /// Signed blocking degree of a blocks edge.
@@ -55,6 +57,7 @@ impl EstimateSlot {
                 FermiEstimateSupport::Probability
             }
             Self::Effect | Self::Degree => FermiEstimateSupport::Signed,
+            Self::Response => FermiEstimateSupport::Real,
             Self::Cost(_) | Self::Duration | Self::Lag => FermiEstimateSupport::NonNegative,
         }
     }
@@ -70,6 +73,7 @@ impl EstimateSlot {
             | Self::Desired
             | Self::ProbabilityOfSuccess
             | Self::Effect
+            | Self::Response
             | Self::Degree => Ok(Unit::dimensionless()),
         }
     }

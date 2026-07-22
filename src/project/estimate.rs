@@ -72,6 +72,34 @@ fn fermi_target(
     address: &EstimateAddress,
     slot: &crate::domain::EstimateSlot,
 ) -> Result<(crate::domain::FermiEstimateSupport, crate::domain::Unit), ProjectError> {
+    if let EstimateOwner::Edge(id) = &address.owner
+        && matches!(slot, crate::domain::EstimateSlot::Response)
+    {
+        let edge = entry
+            .repository
+            .get_edge(id)?
+            .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
+        let response = match edge.payload {
+            crate::domain::EdgePayload::Contributes(value) => value
+                .linear_response()
+                .cloned()
+                .ok_or_else(|| EstimateCommandError::InvalidSlot {
+                    address: address.clone(),
+                    slot: slot.clone(),
+                })?,
+            _ => {
+                return Err(EstimateCommandError::InvalidSlot {
+                    address: address.clone(),
+                    slot: slot.clone(),
+                }
+                .into());
+            }
+        };
+        return Ok((
+            crate::domain::FermiEstimateSupport::Real,
+            response.destination_unit,
+        ));
+    }
     let EstimateOwner::Node(id) = &address.owner else {
         return Ok((
             slot.fermi_support(),
@@ -659,12 +687,12 @@ mod tests {
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(0),
                         destination: EntityId::new(1),
-                        payload: EdgePayload::Contributes(CausalEffect {
+                        payload: EdgePayload::Contributes(CausalEffect::normalized(
                             effect,
-                            lag: None,
-                            mechanism: String::new(),
-                            evidence: vec![],
-                        }),
+                            None,
+                            String::new(),
+                            vec![],
+                        )),
                     }),
                 ),
             )

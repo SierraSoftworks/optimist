@@ -139,7 +139,18 @@ export function parseCommand(input: string, nodes: GraphNode[], edges: GraphEdge
     if (edges.some((edge) =>
       edge.source === source.id && edge.destination === destination.id && edge.payload.kind === kind,
     )) return error('That relationship already exists.')
-    const effect = args[3] === undefined ? 0.5 : Number(args[3])
+    const nativeCausal = kind === 'contributes' && (
+      source.payload.kind === 'metric' || destination.payload.kind === 'metric'
+    )
+    const sourceChange = nativeCausal ? Number(args[3]) : undefined
+    const destinationChange = nativeCausal ? Number(args[4]) : undefined
+    if (nativeCausal && (args[3] === undefined || args[4] === undefined)) {
+      return hint('Provide source change and destination change for this native response.')
+    }
+    if (nativeCausal && (!Number.isFinite(sourceChange) || sourceChange === 0 || !Number.isFinite(destinationChange))) {
+      return error('Native response changes must be finite and source change cannot be zero.')
+    }
+    const effect = nativeCausal ? 0 : args[3] === undefined ? 0.5 : Number(args[3])
     if (!Number.isFinite(effect)) return error('Effect or degree must be a finite number.')
     if ((kind === 'blocks' && (effect < 0 || effect > 1)) || effect < -1 || effect > 1) {
       return error(kind === 'blocks' ? 'Blocking degree must be between 0 and 1.' : 'Effect must be between -1 and 1.')
@@ -158,6 +169,10 @@ export function parseCommand(input: string, nodes: GraphNode[], edges: GraphEdge
           polarity: 'higher_is_better',
           hard: true,
           threshold: null,
+          source,
+          destination,
+          sourceChange,
+          destinationChange,
         }),
       },
     })
@@ -191,7 +206,13 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
       ['Kind', payload.kind.replaceAll('_', ' ')],
     ]
     if (payload.kind === 'contributes' || payload.kind === 'changes') {
-      preview.push(['Effect', String(payload.properties.effect.distribution.value)])
+      if (payload.properties.effect) {
+        preview.push(['Effect', String(payload.properties.effect.distribution.value)])
+      }
+      if (payload.properties.response) {
+        preview.push(['Source change', String(payload.properties.response.source_change)])
+        preview.push(['Destination change', String(payload.properties.response.destination_change.distribution.value)])
+      }
     }
     if (payload.kind === 'blocks') {
       preview.push(['Degree', String(payload.properties.degree.distribution.value)])

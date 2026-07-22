@@ -16,8 +16,11 @@ pub(super) fn set(
     let count = count_id(&edge.payload, address.estimate);
     match (&mut edge.payload, slot.clone()) {
         (EdgePayload::Contributes(value) | EdgePayload::Changes(value), EstimateSlot::Effect) => {
+            let Some(current) = value.normalized_effect() else {
+                return Err(estimate_support::invalid_slot(address, slot));
+            };
             estimate_support::replacement(
-                Some(&value.effect),
+                Some(current),
                 address,
                 slot,
                 count,
@@ -26,7 +29,28 @@ pub(super) fn set(
                 provenance,
             )
             .map(|(estimate, result)| {
-                value.effect = estimate;
+                *value.normalized_effect_mut().expect("model checked") = estimate;
+                result
+            })
+        }
+        (EdgePayload::Contributes(value), EstimateSlot::Response) => {
+            let Some(current) = value.linear_response().map(|item| &item.destination_change) else {
+                return Err(estimate_support::invalid_slot(address, slot));
+            };
+            estimate_support::replacement(
+                Some(current),
+                address,
+                slot,
+                count,
+                distribution,
+                source,
+                provenance,
+            )
+            .map(|(estimate, result)| {
+                value
+                    .linear_response_mut()
+                    .expect("model checked")
+                    .destination_change = estimate;
                 result
             })
         }
@@ -71,11 +95,23 @@ pub(super) fn find(
     }
     match &edge.payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            if value.effect.id == address.estimate {
+            if let Some(effect) = value
+                .normalized_effect()
+                .filter(|effect| effect.id == address.estimate)
+            {
                 Some(PrimitiveEstimate::from_typed(
                     address.clone(),
                     EstimateSlot::Effect,
-                    &value.effect,
+                    effect,
+                ))
+            } else if let Some(response) = value
+                .linear_response()
+                .filter(|response| response.destination_change.id == address.estimate)
+            {
+                Some(PrimitiveEstimate::from_typed(
+                    address.clone(),
+                    EstimateSlot::Response,
+                    &response.destination_change,
                 ))
             } else {
                 value
@@ -105,11 +141,13 @@ pub(super) fn remove(
             value.lag = None;
             Ok(existing)
         }
-        (_, EstimateSlot::Effect | EstimateSlot::Degree) => Err(EstimateCommandError::Required {
-            address: address.clone(),
-            slot: existing.slot,
+        (_, EstimateSlot::Effect | EstimateSlot::Response | EstimateSlot::Degree) => {
+            Err(EstimateCommandError::Required {
+                address: address.clone(),
+                slot: existing.slot,
+            }
+            .into())
         }
-        .into()),
         _ => Err(estimate_support::invalid_slot(address, existing.slot)),
     }
 }
@@ -117,8 +155,15 @@ pub(super) fn remove(
 fn count_id(payload: &EdgePayload, id: EstimateId) -> usize {
     match payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            usize::from(value.effect.id == id)
-                + usize::from(value.lag.as_ref().is_some_and(|item| item.id == id))
+            usize::from(
+                value
+                    .normalized_effect()
+                    .is_some_and(|effect| effect.id == id),
+            ) + usize::from(
+                value
+                    .linear_response()
+                    .is_some_and(|response| response.destination_change.id == id),
+            ) + usize::from(value.lag.as_ref().is_some_and(|item| item.id == id))
         }
         EdgePayload::Blocks(value) => usize::from(value.degree.id == id),
         _ => 0,

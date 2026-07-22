@@ -245,16 +245,16 @@ mod tests {
             } else {
                 NodeKind::Factor
             },
-            EdgePayload::Contributes(CausalEffect {
-                effect: Estimate::<SignedInfluence>::new(
+            EdgePayload::Contributes(CausalEffect::normalized(
+                Estimate::<SignedInfluence>::new(
                     EstimateId::new(0),
                     Distribution::point(0.5).unwrap(),
                 )
                 .unwrap(),
-                lag: None,
-                mechanism: String::new(),
-                evidence: evidence.iter().map(|value| (*value).to_owned()).collect(),
-            }),
+                None,
+                String::new(),
+                evidence.iter().map(|value| (*value).to_owned()).collect(),
+            )),
         )
         .unwrap()
     }

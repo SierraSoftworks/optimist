@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { EdgeKind, NodeKind } from '../api/types'
+import type { EdgeKind, GraphNode, NodeKind } from '../api/types'
 import { edgePayload, endpointsAreValid } from './edgeAuthoring'
 
 const valid: Array<[EdgeKind, NodeKind, NodeKind]> = [
   ['contributes', 'factor', 'outcome'],
+  ['contributes', 'factor', 'metric'],
+  ['contributes', 'metric', 'metric'],
+  ['contributes', 'metric', 'outcome'],
   ['measures', 'metric', 'factor'],
   ['changes', 'intervention', 'factor'],
   ['requires', 'factor', 'intervention'],
@@ -54,6 +57,34 @@ describe('edge authoring', () => {
         },
         mechanism: 'Delayed influence',
         evidence: ['ADR-1', 'Experiment'],
+      },
+    })
+  })
+
+  it('constructs unit-aware counterfactual responses for metric endpoints', () => {
+    const source = {
+      id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
+    } as GraphNode
+    const destination = {
+      id: 'B', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
+      description: '', aliases: [], metadata: {},
+      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+    } as GraphNode
+    expect(edgePayload({
+      kind: 'contributes', effect: 0, lag: null, mechanism: 'Flow reduces delay', evidence: '',
+      polarity: 'higher_is_better', hard: true, threshold: null,
+      source, destination, sourceChange: 0.1, destinationChange: -2,
+    })).toMatchObject({
+      kind: 'contributes',
+      properties: {
+        response: {
+          source_change: 0.1,
+          source_unit: {},
+          destination_change: { distribution: { type: 'point', value: -2 } },
+          destination_unit: { day: 1 },
+        },
       },
     })
   })

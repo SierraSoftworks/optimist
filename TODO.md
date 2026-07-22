@@ -45,11 +45,12 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [ ] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
   - [ ] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
-  - [ ] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
+  - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
   - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.
   - [ ] Treat observational co-movement as evidence rather than causal identification unless the relationship records an experiment or explicit identification assumptions.
 - [ ] Make metrics measured causal variables: state-bearing, eligible for factor/metric/outcome relationships in both directions, and directly observable in native units.
   - [x] Author, validate, inspect, replace, show, and remove direct metric estimates in native units through the existing estimate lifecycle.
+  - [x] Allow factor, metric, and outcome `contributes` paths through metrics with unit-checked linear responses and native support-aware propagation.
   - [ ] Distinguish direct observations from proxy observation models for latent factors.
   - [ ] Infer or update uncertain relationships from paired measurements only through an explicit statistical model with diagnostics and retained source data.
 - [ ] Move maximize/minimize/target-range semantics entirely into scenario objectives and evaluate transparent native-unit utility or goal-attainment functions after causal propagation.
