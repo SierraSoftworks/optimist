@@ -55,10 +55,14 @@ async fn squiggle_assessment(
 ) -> Result<Json<SquiggleAssessmentResponse>, ApiError> {
     state.catalog.read().await.get(&project)?;
     let target_unit = request.definition.target_unit.clone();
-    let (_, assessment, effective_distribution) =
-        assess_squiggle_estimate(request.definition, &target_unit)
-            .map_err(EstimateCommandError::from)
-            .map_err(ProjectError::from)?;
+    let (_, assessment, effective_distribution) = state
+        .analysis_worker
+        .run(move || {
+            assess_squiggle_estimate(request.definition, &target_unit)
+                .map_err(EstimateCommandError::from)
+                .map_err(ProjectError::from)
+        })
+        .await?;
     Ok(Json(SquiggleAssessmentResponse {
         assessment,
         effective_distribution,

@@ -20,7 +20,13 @@ use crate::{
     },
 };
 
+use super::bounded_worker::BoundedWorker;
+
 mod command;
+
+const ANALYSIS_WORKERS: usize = 4;
+const ANALYSIS_QUEUE_TIMEOUT: Duration = Duration::from_millis(100);
+const ANALYSIS_EXECUTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub(super) struct AppState {
@@ -31,6 +37,7 @@ pub(super) struct AppState {
     persistence_tx: Option<mpsc::UnboundedSender<()>>,
     persistence_status: Arc<StdRwLock<PersistenceStatus>>,
     generation: Arc<AtomicU64>,
+    pub(super) analysis_worker: BoundedWorker,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -82,6 +89,11 @@ impl AppState {
             persistence_tx,
             persistence_status,
             generation,
+            analysis_worker: BoundedWorker::new(
+                ANALYSIS_WORKERS,
+                ANALYSIS_QUEUE_TIMEOUT,
+                ANALYSIS_EXECUTION_TIMEOUT,
+            ),
         }
     }
 

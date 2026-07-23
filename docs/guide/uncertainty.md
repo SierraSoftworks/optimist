@@ -27,7 +27,7 @@ interruptions = mixture([pointMass(0), gamma(3, 1)], [0.7, 0.3])
 base + interruptions
 ```
 
-The workbench sends source to Optimist after a short debounce. Rust is the only evaluator: it applies source and step bounds, lints the program, checks the result unit, evaluates with a fixed seed, and returns the family, mean, variance, median, and central 90% interval. The browser neither loads a second runtime nor submits a result distribution.
+The workbench sends source to Optimist after a short debounce. Rust is authoritative: it applies source and step bounds, lints the program, checks the result unit, evaluates with a fixed seed, and returns the family, mean, variance, median, and central 90% interval. Assessment runs in a blocking worker with bounded concurrency, queue wait, and response time, so malformed or expensive source cannot occupy async request workers indefinitely. The browser never submits the persisted result distribution.
 
 Each definition retains:
 

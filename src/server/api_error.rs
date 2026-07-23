@@ -3,6 +3,7 @@ use serde::Serialize;
 
 use crate::project::{BackupError, ProjectError};
 
+use super::bounded_worker::BoundedWorkerError;
 use super::project_error_response;
 use super::state::CatalogMutationError;
 
@@ -59,6 +60,34 @@ impl From<CatalogMutationError> for ApiError {
     }
 }
 
+impl From<BoundedWorkerError> for ApiError {
+    fn from(error: BoundedWorkerError) -> Self {
+        match error {
+            BoundedWorkerError::Project(error) => Self::from(error),
+            BoundedWorkerError::Busy => Self::analysis(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "analysis_capacity_busy",
+                error.to_string(),
+                vec!["Wait for an in-progress assessment to finish, then retry."],
+            ),
+            BoundedWorkerError::TimedOut => Self::analysis(
+                StatusCode::GATEWAY_TIMEOUT,
+                "analysis_timed_out",
+                error.to_string(),
+                vec![
+                    "Simplify the Squiggle calculation or reduce its retained sample count, then retry.",
+                ],
+            ),
+            BoundedWorkerError::Failed => Self::analysis(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "analysis_worker_failure",
+                error.to_string(),
+                vec!["Retry the assessment and inspect server logs if the problem persists."],
+            ),
+        }
+    }
+}
+
 impl From<BackupError> for ApiError {
     fn from(error: BackupError) -> Self {
         match error {
@@ -104,6 +133,24 @@ impl From<BackupError> for ApiError {
 }
 
 impl ApiError {
+    fn analysis(
+        status: StatusCode,
+        code: &'static str,
+        message: String,
+        advice: Vec<&'static str>,
+    ) -> Self {
+        Self {
+            status,
+            body: ErrorEnvelope {
+                error: ErrorBody {
+                    code,
+                    message,
+                    advice,
+                },
+            },
+        }
+    }
+
     fn backup(
         status: StatusCode,
         code: &'static str,
@@ -135,7 +182,7 @@ mod tests {
 
     use crate::{domain::EntityId, project::ProjectError, store::RepositoryError};
 
-    use super::ApiError;
+    use super::{ApiError, BoundedWorkerError};
 
     #[tokio::test]
     async fn incident_edges_return_an_actionable_conflict() {
@@ -148,5 +195,28 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "node_has_edges");
         assert!(!value["error"]["advice"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn bounded_analysis_failures_are_actionable() {
+        for (error, status, code) in [
+            (
+                BoundedWorkerError::Busy,
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "analysis_capacity_busy",
+            ),
+            (
+                BoundedWorkerError::TimedOut,
+                axum::http::StatusCode::GATEWAY_TIMEOUT,
+                "analysis_timed_out",
+            ),
+        ] {
+            let response = ApiError::from(error).into_response();
+            assert_eq!(response.status(), status);
+            let body = to_bytes(response.into_body(), 4096).await.unwrap();
+            let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(value["error"]["code"], code);
+            assert!(!value["error"]["advice"].as_array().unwrap().is_empty());
+        }
     }
 }

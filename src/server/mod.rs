@@ -1,6 +1,7 @@
 mod analysis;
 mod api_error;
 mod backups;
+mod bounded_worker;
 mod commands;
 mod error;
 mod estimate_error_response;
