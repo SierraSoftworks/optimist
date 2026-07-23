@@ -139,6 +139,37 @@ impl<'de> Deserialize<'de> for QuantityDefinition {
 }
 
 impl QuantityDefinition {
+    /// Returns the canonical definition for legacy factor and outcome state.
+    ///
+    /// Existing estimates remain dimensionless values on `[0, 1]`; this metadata
+    /// makes that inherited convention explicit without changing distributions or
+    /// causal calculations.
+    ///
+    /// ```
+    /// use optimist::domain::{QuantityDefinition, QuantitySupport};
+    ///
+    /// let quantity = QuantityDefinition::legacy_standardized_state();
+    /// assert_eq!(quantity.unit, "standardized_state");
+    /// assert_eq!(
+    ///     quantity.support,
+    ///     QuantitySupport::Bounded { lower: 0.0, upper: 1.0 },
+    /// );
+    /// ```
+    pub fn legacy_standardized_state() -> Self {
+        Self {
+            unit: "standardized_state".to_owned(),
+            dimension: Some(Unit::dimensionless()),
+            aggregation: None,
+            support: QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 1.0,
+            },
+            operational_definition: "Legacy standardized factor or outcome state where 0 and 1 are model-specific anchors.".to_owned(),
+            reference_time: None,
+            resolution_source: None,
+        }
+    }
+
     /// Creates a minimal validated quantity definition.
     pub fn new(
         unit: impl Into<String>,

@@ -55,6 +55,7 @@ interface PrimitiveEstimate {
   slot: { kind: StateEstimateSlot } | EdgeEstimateSlot | InterventionEstimateSlot
   revision: number
   distribution: import('./types').Distribution
+  quantity?: import('./types').QuantityDefinition
   source: EstimateSource
   provenance: string[]
   uncertainty?: import('./types').EstimateUncertainty

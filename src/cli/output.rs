@@ -239,6 +239,7 @@ mod tests {
             slot: EstimateSlot::Current,
             revision: 2,
             distribution: Distribution::beta(3.0, 2.0).unwrap(),
+            quantity: None,
             source: crate::domain::EstimateSource::Distribution,
             provenance: vec!["expert".to_owned()],
             uncertainty: crate::domain::EstimateUncertainty::new(
@@ -254,7 +255,7 @@ mod tests {
         );
         assert_eq!(
             OutputFormat::Table.estimate(&estimate).unwrap(),
-            "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\nA/node/A/estimate/B\tCurrent\t2\tdistribution\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\texpert\tlimited evidence\tweekly variation\tsampling error"
+            "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tQUANTITY\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\nA/node/A/estimate/B\tCurrent\t2\tdistribution\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\t-\texpert\tlimited evidence\tweekly variation\tsampling error"
         );
     }
 

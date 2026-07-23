@@ -42,6 +42,7 @@ export interface Estimate {
   id: string
   revision: number
   distribution: Distribution
+  quantity?: QuantityDefinition
   source?: EstimateSource
   provenance?: string[]
   uncertainty?: EstimateUncertainty
@@ -51,6 +52,16 @@ export interface EstimateUncertainty {
   epistemic?: string
   process?: string
   measurement?: string
+}
+
+export interface QuantityDefinition {
+  unit: string
+  dimension?: Unit
+  aggregation: string | null
+  support?: QuantitySupport
+  operational_definition?: string
+  reference_time?: string | null
+  resolution_source?: string | null
 }
 
 export type EstimateSource =

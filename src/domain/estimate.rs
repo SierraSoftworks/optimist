@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use super::{
     EntityId, EstimateUncertainty, EstimateUncertaintyError, FermiAssessment,
-    FermiEstimateDefinition, FermiEstimateError, SquiggleEstimateAssessment,
+    FermiEstimateDefinition, FermiEstimateError, QuantityDefinition, SquiggleEstimateAssessment,
     SquiggleEstimateDefinition, SquiggleEstimateError, Unit, assess_squiggle_estimate,
 };
 
@@ -306,6 +306,11 @@ pub trait EstimateDimension: sealed::Sealed {
 
     /// Reports whether a primitive distribution's complete support fits the dimension.
     fn accepts(distribution: &Distribution) -> bool;
+
+    /// Returns quantity metadata intrinsically owned by this estimate dimension.
+    fn quantity_definition() -> Option<QuantityDefinition> {
+        None
+    }
 }
 
 macro_rules! dimension {
@@ -344,12 +349,23 @@ dimension!(
     is_probability,
     "A probability whose complete support lies within `[0, 1]`, used for uncertain success or occurrence."
 );
-dimension!(
-    NormalizedState,
-    "normalized_state",
-    is_probability,
-    "A normalized factor or outcome state on `[0, 1]`, enabling relative causal models without pretending to have calibrated units."
-);
+/// A legacy standardized factor or outcome state on `[0, 1]`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NormalizedState;
+
+impl sealed::Sealed for NormalizedState {}
+
+impl EstimateDimension for NormalizedState {
+    const NAME: &'static str = "normalized_state";
+
+    fn accepts(distribution: &Distribution) -> bool {
+        distribution.is_probability()
+    }
+
+    fn quantity_definition() -> Option<QuantityDefinition> {
+        Some(QuantityDefinition::legacy_standardized_state())
+    }
+}
 dimension!(
     SignedInfluence,
     "signed_influence",
@@ -381,6 +397,9 @@ pub enum EstimateError {
     /// Descriptive uncertainty metadata exceeded its transport bound.
     #[error(transparent)]
     Uncertainty(#[from] EstimateUncertaintyError),
+    /// Persisted intrinsic quantity metadata conflicts with the estimate dimension.
+    #[error("quantity definition is invalid for estimate dimension {0}")]
+    InvalidQuantityDefinition(&'static str),
 }
 
 /// Exclusive source used to produce an estimate's effective distribution.
@@ -431,6 +450,9 @@ pub struct Estimate<T: EstimateDimension> {
     pub revision: u64,
     /// Validated prior distribution whose support is accepted by `T`.
     pub distribution: Distribution,
+    /// Explicit quantity metadata intrinsically owned by this estimate dimension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<QuantityDefinition>,
     /// Active authoring source; Fermi sources supersede direct distribution editing.
     #[serde(default)]
     pub source: EstimateSource,
@@ -458,6 +480,7 @@ impl<T: EstimateDimension> Estimate<T> {
             id,
             revision: 0,
             distribution,
+            quantity: T::quantity_definition(),
             source: EstimateSource::Distribution,
             provenance: Vec::new(),
             uncertainty: EstimateUncertainty::default(),
@@ -506,6 +529,8 @@ struct RawEstimate {
     id: EstimateId,
     revision: u64,
     distribution: Distribution,
+    #[serde(default)]
+    quantity: Option<QuantityDefinition>,
     #[serde(default)]
     source: EstimateSource,
     #[serde(default)]
@@ -561,6 +586,17 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
             }
         };
         estimate.revision = raw.revision;
+        let expected_quantity = T::quantity_definition();
+        estimate.quantity = match (expected_quantity, raw.quantity) {
+            (Some(expected), None) => Some(expected),
+            (Some(expected), Some(persisted)) if expected == persisted => Some(expected),
+            (None, None) => None,
+            _ => {
+                return Err(de::Error::custom(EstimateError::InvalidQuantityDefinition(
+                    T::NAME,
+                )));
+            }
+        };
         estimate.provenance = raw.provenance;
         estimate.uncertainty = raw.uncertainty;
         Ok(estimate)
@@ -691,6 +727,26 @@ mod tests {
                 .unwrap()
                 .contains("uncertainty")
         );
+    }
+
+    #[test]
+    fn legacy_normalized_states_gain_explicit_standardized_quantity_metadata() {
+        let json = r#"{
+            "id":"A",
+            "revision":0,
+            "distribution":{"type":"beta","alpha":2.0,"beta":3.0}
+        }"#;
+        let estimate = serde_json::from_str::<Estimate<NormalizedState>>(json).unwrap();
+        let serialized = serde_json::to_value(&estimate).unwrap();
+
+        assert_eq!(estimate.distribution, Distribution::beta(2.0, 3.0).unwrap());
+        assert_eq!(serialized["quantity"]["unit"], "standardized_state");
+        assert_eq!(serialized["quantity"]["support"]["lower"], 0.0);
+        assert_eq!(serialized["quantity"]["support"]["upper"], 1.0);
+
+        let mut conflicting = serialized;
+        conflicting["quantity"]["unit"] = serde_json::json!("probability");
+        assert!(serde_json::from_value::<Estimate<NormalizedState>>(conflicting).is_err());
     }
 
     #[test]

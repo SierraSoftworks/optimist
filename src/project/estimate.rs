@@ -383,6 +383,13 @@ mod tests {
             unreachable!()
         };
         assert_eq!(created.revision, 0);
+        assert_eq!(
+            created
+                .quantity
+                .as_ref()
+                .map(|quantity| quantity.unit.as_str()),
+            Some("standardized_state")
+        );
         assert_eq!(created.uncertainty.process, "daily variation");
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
         assert_eq!(

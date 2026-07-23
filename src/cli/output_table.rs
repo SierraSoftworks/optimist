@@ -109,13 +109,19 @@ pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_err
             format!("squiggle:{}", definition.source.replace(['\t', '\n'], " "))
         }
     };
+    let quantity = estimate
+        .quantity
+        .as_ref()
+        .map(|quantity| quantity.unit.as_str())
+        .unwrap_or("-");
     Ok(format!(
-        "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\n{}\t{:?}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+        "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tQUANTITY\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\n{}\t{:?}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         estimate.address,
         estimate.slot,
         estimate.revision,
         source,
         super::output_json::serialize(&estimate.distribution)?,
+        quantity,
         estimate.provenance.join("; "),
         estimate.uncertainty.epistemic.replace(['\t', '\n'], " "),
         estimate.uncertainty.process.replace(['\t', '\n'], " "),

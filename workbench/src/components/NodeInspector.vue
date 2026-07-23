@@ -128,6 +128,15 @@ function uncertaintyLabel(estimate: import('../api/types').Estimate | null | und
   return parts.length ? parts.join(' · ') : null
 }
 
+function quantityLabel(estimate: import('../api/types').Estimate | null | undefined) {
+  const quantity = estimate?.quantity
+  if (!quantity) return null
+  const support = quantity.support?.type === 'bounded'
+    ? `[${quantity.support.lower}, ${quantity.support.upper}]`
+    : quantity.support?.type.replaceAll('_', ' ') ?? 'real'
+  return `${quantity.unit} · ${support}`
+}
+
 function provenance(node: GraphNode, slot: 'current' | 'desired') {
   if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return []
   return node.payload.properties[slot]?.provenance ?? []
@@ -207,10 +216,12 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
           <div v-if="sourceLabel(node, 'current')"><dt>Current model</dt><dd>{{ sourceLabel(node, 'current') }}</dd></div>
           <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
+          <div v-if="quantityLabel(node.payload.properties.current)"><dt>Current quantity</dt><dd>{{ quantityLabel(node.payload.properties.current) }}</dd></div>
           <div v-if="uncertaintyLabel(node.payload.properties.current)"><dt>Current uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.current) }}</dd></div>
           <div><dt>Desired</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
           <div v-if="sourceLabel(node, 'desired')"><dt>Desired model</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
           <div v-if="provenance(node, 'desired').length"><dt>Desired source</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
+          <div v-if="quantityLabel(node.payload.properties.desired)"><dt>Desired quantity</dt><dd>{{ quantityLabel(node.payload.properties.desired) }}</dd></div>
           <div v-if="uncertaintyLabel(node.payload.properties.desired)"><dt>Desired uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.desired) }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>

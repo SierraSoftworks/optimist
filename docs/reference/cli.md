@@ -135,6 +135,8 @@ Slots: `current`, `desired`, `cost`, `duration`, `probability_of_success`, `effe
 
 Uncertainty JSON accepts optional `epistemic`, `process`, and `measurement` strings. They retain distinct assumptions and do not alter or decompose the effective distribution.
 
+Estimate output includes intrinsic quantity metadata when present. Legacy factor and outcome states are reported as dimensionless `standardized_state` quantities bounded to `[0,1]`; their stored distributions and model-specific anchors are unchanged.
+
 ### Formulas
 
 ```sh

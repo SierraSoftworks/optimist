@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use super::{
     Distribution, Estimate, EstimateAddress, EstimateDimension, EstimateSource,
-    EstimateUncertainty, FermiEstimateSupport, Unit,
+    EstimateUncertainty, FermiEstimateSupport, QuantityDefinition, Unit,
 };
 
 /// Semantic field within a node or edge payload where an estimate is embedded.
@@ -94,6 +94,9 @@ pub struct PrimitiveEstimate {
     pub revision: u64,
     /// Validated primitive probability distribution.
     pub distribution: Distribution,
+    /// Intrinsic quantity definition when the estimate dimension owns one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantity: Option<QuantityDefinition>,
     /// Active authoring source and retained assessment when formula-derived.
     pub source: EstimateSource,
     /// Evidence or elicitation records supporting the estimate.
@@ -115,6 +118,7 @@ impl PrimitiveEstimate {
             slot,
             revision: estimate.revision,
             distribution: estimate.distribution.clone(),
+            quantity: estimate.quantity.clone(),
             source: estimate.source.clone(),
             provenance: estimate.provenance.clone(),
             uncertainty: estimate.uncertainty.clone(),
