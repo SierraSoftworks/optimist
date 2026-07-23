@@ -496,7 +496,7 @@ describe('Optimist API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         assessment: { family: 'Beta', mean: 0.8, variance: 0.01, p05: 0.5, p50: 0.8, p95: 0.98, seed: 42, sample_count: 512 },
         effective_distribution: { type: 'empirical', samples: [0.5, 0.8, 0.98] },
-        predictive_checks: { attempted_draws: 512, valid_draws: 512, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, representative_outcomes: [] },
+        predictive_checks: { attempted_draws: 512, valid_draws: 512, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, support_compatible: true, support_requirement: 'values from 0 to 1', representative_outcomes: [] },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: 'request', project_revision: 8,

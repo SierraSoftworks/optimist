@@ -189,6 +189,8 @@ export async function mockApi(page: Page, state: FixtureState) {
             invalid_draws: 0,
             support_violation_draws: 0,
             support_violation_probability: 0,
+            support_compatible: true,
+            support_requirement: 'any finite real value',
             representative_outcomes: [
               { percentile: 0.1, value: sorted[0] },
               { percentile: 0.5, value: sorted[Math.floor(sorted.length / 2)] },

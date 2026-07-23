@@ -30,6 +30,28 @@ pub enum SquiggleEstimateSupport {
     },
 }
 
+impl SquiggleEstimateSupport {
+    pub(crate) fn accepts(self, distribution: &Distribution) -> bool {
+        match self {
+            Self::Real => true,
+            Self::NonNegative => distribution.is_non_negative(),
+            Self::Probability => distribution.is_probability(),
+            Self::Signed => distribution.is_signed_influence(),
+            Self::Bounded { lower, upper } => distribution.is_within(lower, upper),
+        }
+    }
+
+    pub(crate) fn description(self) -> String {
+        match self {
+            Self::Real => "any finite real value".to_owned(),
+            Self::NonNegative => "values zero or greater".to_owned(),
+            Self::Probability => "values from 0 to 1".to_owned(),
+            Self::Signed => "values from -1 to 1".to_owned(),
+            Self::Bounded { lower, upper } => format!("values from {lower} to {upper}"),
+        }
+    }
+}
+
 /// Reviewable Squiggle source and deterministic evaluation controls for an estimate.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SquiggleEstimateDefinition {

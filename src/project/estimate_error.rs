@@ -44,6 +44,14 @@ pub enum EstimateCommandError {
     /// The project dependence document still references this estimate.
     #[error("estimate {0} is referenced by the project dependence model")]
     ReferencedByDependence(EstimateAddress),
+    /// The evaluated Squiggle family has support outside the selected quantity.
+    #[error("Squiggle family {family} has support outside the required {required}")]
+    IncompatibleSupport {
+        /// Runtime family returned by Squiggle.
+        family: String,
+        /// Human-readable complete support required by the estimate owner.
+        required: String,
+    },
     /// A primitive distribution does not satisfy its slot's typed support.
     #[error(transparent)]
     Estimate(#[from] EstimateError),

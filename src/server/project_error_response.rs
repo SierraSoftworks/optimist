@@ -100,11 +100,11 @@ pub(super) fn classify(
             "native_state_unsupported",
             &["Choose a factor or outcome node before configuring native state."],
         ),
-        ProjectError::StateEstimatesAlreadyExist(_) => (
+        ProjectError::StateQuantityUsedByCausalEdge(_) => (
             StatusCode::CONFLICT,
-            "state_estimates_already_exist",
+            "state_quantity_in_use",
             &[
-                "Remove existing current and desired or forecast estimates before changing the state quantity.",
+                "Remove or replace incident causal relationships before changing the quantity's canonical unit terms.",
             ],
         ),
         ProjectError::Quantity(_) => (

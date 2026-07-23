@@ -42,6 +42,13 @@ pub(super) fn classify(
             "estimate_in_use",
             &["Replace or remove the project dependence document before removing this estimate."],
         ),
+        EstimateCommandError::IncompatibleSupport { .. } => (
+            StatusCode::BAD_REQUEST,
+            "incompatible_estimate_support",
+            &[
+                "Use a distribution family with matching support, explicitly truncate the Squiggle result, or edit the entity state type.",
+            ],
+        ),
         EstimateCommandError::Estimate(_) | EstimateCommandError::Quantity(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_estimate_distribution",

@@ -347,6 +347,8 @@ export interface SquiggleAssessmentResult {
     invalid_draws: number
     support_violation_draws: number
     support_violation_probability: number
+    support_compatible: boolean
+    support_requirement: string
     representative_outcomes: Array<{ percentile: number; value: number }>
   }
 }

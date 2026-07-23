@@ -13,6 +13,7 @@ export function setStateEstimate(
   if (node.native_state) {
     return {
       ...node,
+      revision: node.revision + 1,
       native_state: {
         ...node.native_state,
         [slot === 'current' ? 'current' : 'forecast']: estimate,
@@ -22,6 +23,7 @@ export function setStateEstimate(
   if (node.payload.kind === 'metric') {
     return {
       ...node,
+      revision: node.revision + 1,
       payload: {
         ...node.payload,
         properties: { ...node.payload.properties, current: estimate },
@@ -45,6 +47,7 @@ export function setInterventionEstimate(
       : [...node.payload.properties.costs, { dimension: slot.value, value: estimate }]
     return {
       ...node,
+      revision: node.revision + 1,
       payload: {
         ...node.payload,
         properties: { ...node.payload.properties, costs },
@@ -53,6 +56,7 @@ export function setInterventionEstimate(
   }
   return {
     ...node,
+    revision: node.revision + 1,
     payload: {
       ...node.payload,
       properties: {

@@ -21,11 +21,20 @@ watch(
   () => props.open,
   (open) => {
     if (!open) return
+    const quantity = props.node?.native_state?.quantity
+    const support = quantity?.support
     Object.assign(form, {
-      unit: '', aggregation: '', support: 'real', lower: 0, upper: 1,
-      operationalDefinition: '', referenceTime: '', resolutionSource: '',
+      unit: quantity?.unit ?? '',
+      aggregation: quantity?.aggregation ?? '',
+      support: support?.type ?? 'real',
+      lower: support?.type === 'bounded' ? support.lower : 0,
+      upper: support?.type === 'bounded' ? support.upper : 1,
+      operationalDefinition: quantity?.operational_definition ?? '',
+      referenceTime: quantity?.reference_time ?? '',
+      resolutionSource: quantity?.resolution_source ?? '',
     })
   },
+  { immediate: true },
 )
 
 const dimension = computed(() => {
@@ -71,7 +80,7 @@ function submit() {
         <header>
           <div>
             <span class="eyebrow">{{ node.title }}</span>
-            <h2 id="state-quantity-title">Configure native state</h2>
+            <h2 id="state-quantity-title">{{ node.native_state ? 'Edit state type' : 'Configure native state' }}</h2>
           </div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
         </header>
@@ -98,7 +107,7 @@ function submit() {
         <p class="muted">Causal relationships use this quantity's canonical unit in their counterfactual responses.</p>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending || !valid">{{ pending ? 'Saving…' : 'Use native state' }}</button>
+          <button type="submit" class="primary-button" :disabled="pending || !valid">{{ pending ? 'Saving…' : node.native_state ? 'Save state type' : 'Use native state' }}</button>
         </footer>
       </form>
     </div>

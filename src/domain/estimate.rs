@@ -275,7 +275,7 @@ impl Distribution {
         true
     }
 
-    fn is_probability(&self) -> bool {
+    pub(super) fn is_probability(&self) -> bool {
         match self.0 {
             DistributionKind::Point { value } => (0.0..=1.0).contains(&value),
             DistributionKind::Beta { .. } => true,
@@ -287,7 +287,7 @@ impl Distribution {
         }
     }
 
-    fn is_signed_influence(&self) -> bool {
+    pub(super) fn is_signed_influence(&self) -> bool {
         match self.0 {
             DistributionKind::Point { value } => (-1.0..=1.0).contains(&value),
             DistributionKind::Beta { .. } => true,

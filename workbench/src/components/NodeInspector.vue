@@ -32,9 +32,9 @@ const incidentEdges = computed(() =>
       )
     : [],
 )
-const canConfigureNativeState = computed(() => {
+const canEditNativeState = computed(() => {
   const node = props.node
-  return Boolean(node && !node.native_state && (node.payload.kind === 'factor' || node.payload.kind === 'outcome'))
+  return Boolean(node && (node.payload.kind === 'factor' || node.payload.kind === 'outcome'))
 })
 const measurementEdges = computed(() =>
   props.node?.payload.kind === 'metric'
@@ -124,11 +124,11 @@ function replacement(edge: GraphEdge, observation: Observation) {
           @click="emit('estimate')"
         ><Sigma :size="14" /> Estimate</button>
         <button
-          v-if="canConfigureNativeState"
+          v-if="canEditNativeState"
           type="button"
           class="secondary-button"
           @click="emit('quantity')"
-        ><Gauge :size="14" /> Native state</button>
+        ><Gauge :size="14" /> {{ node.native_state ? 'State type' : 'Native state' }}</button>
       </div>
 
       <section class="readiness-panel" :data-level="readiness?.level">

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::{Distribution, SquiggleEstimateSupport, Unit};
+use super::{Distribution, SquiggleEstimateError, SquiggleEstimateSupport, Unit};
 
 const MAX_UNIT_BYTES: usize = 256;
 const MAX_CONTEXT_BYTES: usize = 4_096;
@@ -34,11 +34,7 @@ impl QuantitySupport {
     }
 
     pub(super) fn accepts(&self, distribution: &Distribution) -> bool {
-        match self {
-            Self::Real => true,
-            Self::NonNegative => distribution.is_non_negative(),
-            Self::Bounded { lower, upper } => distribution.is_within(*lower, *upper),
-        }
+        self.estimate_support().accepts(distribution)
     }
 
     fn validated(self) -> Result<Self, QuantityError> {
@@ -53,8 +49,8 @@ impl QuantitySupport {
     }
 
     /// Returns the support used when assessing a Squiggle source.
-    pub fn estimate_support(self) -> SquiggleEstimateSupport {
-        match self {
+    pub fn estimate_support(&self) -> SquiggleEstimateSupport {
+        match *self {
             Self::Real => SquiggleEstimateSupport::Real,
             Self::NonNegative => SquiggleEstimateSupport::NonNegative,
             Self::Bounded { lower, upper } => SquiggleEstimateSupport::Bounded { lower, upper },
@@ -231,6 +227,9 @@ pub enum QuantityError {
     /// A quantity definition has no canonical unit terms.
     #[error("quantity requires a canonical dimension before it can be modelled")]
     MissingDimension,
+    /// An existing Squiggle estimate does not type-check against a proposed quantity.
+    #[error(transparent)]
+    Squiggle(#[from] SquiggleEstimateError),
 }
 
 #[cfg(test)]

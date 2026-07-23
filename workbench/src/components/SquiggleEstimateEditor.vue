@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { Braces, CheckCircle2, LoaderCircle } from '@lucide/vue'
+import { AlertTriangle, Braces, CheckCircle2, LoaderCircle } from '@lucide/vue'
 import { api } from '../api/client'
 import type {
   EstimateSupport,
@@ -69,7 +69,11 @@ function schedule() {
       emit('assessment', result)
       preview.status = 'ready'
       emit('update:modelValue', definition.value)
-      emit('validity', result.predictive_checks.support_violation_draws === 0)
+      emit(
+        'validity',
+        result.predictive_checks.support_compatible
+          && result.predictive_checks.support_violation_draws === 0,
+      )
     } catch (reason) {
       if (current !== revision) return
       preview.error = reason instanceof Error ? reason.message : 'Squiggle evaluation failed.'
@@ -91,18 +95,23 @@ function schedule() {
     <div class="evaluation-state" :data-status="preview.status" aria-live="polite">
       <template v-if="preview.status === 'pending'"><LoaderCircle class="spin" :size="15" /><span>Evaluating on the backend…</span></template>
       <template v-else-if="preview.status === 'error'"><span>{{ preview.error }}</span></template>
+      <template v-else-if="preview.result && !preview.result.predictive_checks.support_compatible">
+        <AlertTriangle :size="15" />
+        <span>{{ preview.result.assessment.family }} is incompatible with this state type</span>
+      </template>
       <template v-else-if="preview.result">
         <CheckCircle2 :size="15" />
         <span>Validated · {{ preview.result.assessment.sample_count.toLocaleString() }} effective samples</span>
       </template>
       <span v-else>Enter a calculation returning a number or distribution.</span>
     </div>
-    <section v-if="preview.result && (preview.result.predictive_checks.invalid_draws || preview.result.predictive_checks.support_violation_draws)" class="predictive-checks" data-valid="false">
+    <section v-if="preview.result && (!preview.result.predictive_checks.support_compatible || preview.result.predictive_checks.invalid_draws || preview.result.predictive_checks.support_violation_draws)" class="predictive-checks" data-valid="false">
       <header><strong>Validation issue</strong><span>{{ preview.result.predictive_checks.valid_draws.toLocaleString() }} / {{ preview.result.predictive_checks.attempted_draws.toLocaleString() }} valid draws</span></header>
       <dl>
         <div><dt>Invalid draws</dt><dd>{{ preview.result.predictive_checks.invalid_draws.toLocaleString() }}</dd></div>
         <div><dt>Outside support</dt><dd>{{ (preview.result.predictive_checks.support_violation_probability * 100).toFixed(2) }}%</dd></div>
       </dl>
+      <p v-if="!preview.result.predictive_checks.support_compatible">{{ preview.result.assessment.family }} does not guarantee {{ preview.result.predictive_checks.support_requirement }}. Use a matching family, truncate the result, or edit the entity state type.</p>
       <p v-if="preview.result.predictive_checks.support_violation_draws">{{ preview.result.predictive_checks.support_violation_draws.toLocaleString() }} retained draws fall outside this estimate slot. Revise or bound the calculation before saving.</p>
     </section>
   </section>

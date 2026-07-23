@@ -1,6 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::{Estimate, QuantityDefinition, QuantityError, QuantityValue};
+use super::{
+    Estimate, EstimateSource, QuantityDefinition, QuantityError, QuantityValue,
+    assess_squiggle_estimate,
+};
 
 /// Native-unit current and forecast state owned by a factor or outcome node.
 ///
@@ -65,6 +68,39 @@ impl QuantityState {
             quantity,
         })
     }
+
+    pub(crate) fn with_quantity(self, quantity: QuantityDefinition) -> Result<Self, QuantityError> {
+        let quantity = quantity.validated()?;
+        let (_, unit) = quantity.estimate_target()?;
+        Ok(Self {
+            current: retarget_estimate(self.current, &quantity, &unit)?,
+            forecast: retarget_estimate(self.forecast, &quantity, &unit)?,
+            quantity,
+        })
+    }
+}
+
+fn retarget_estimate(
+    estimate: Option<Estimate<QuantityValue>>,
+    quantity: &QuantityDefinition,
+    unit: &crate::domain::Unit,
+) -> Result<Option<Estimate<QuantityValue>>, QuantityError> {
+    let Some(mut estimate) = estimate else {
+        return Ok(None);
+    };
+    let EstimateSource::Squiggle { definition } = estimate.source;
+    let mut definition = *definition;
+    definition.target_unit = unit.clone();
+    let (definition, _, distribution) = assess_squiggle_estimate(definition, unit)?;
+    if !quantity.accepts(&distribution) {
+        return Err(QuantityError::EstimateOutsideSupport);
+    }
+    estimate.distribution = distribution;
+    estimate.quantity = Some(quantity.clone());
+    estimate.source = EstimateSource::Squiggle {
+        definition: Box::new(definition),
+    };
+    Ok(Some(estimate))
 }
 
 fn validate_estimate(

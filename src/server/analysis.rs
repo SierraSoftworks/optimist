@@ -53,6 +53,8 @@ struct SquigglePredictiveChecks {
     invalid_draws: usize,
     support_violation_draws: usize,
     support_violation_probability: f64,
+    support_compatible: bool,
+    support_requirement: String,
     representative_outcomes: Vec<RepresentativeOutcome>,
 }
 
@@ -91,6 +93,7 @@ fn predictive_checks(
     assessment: &SquiggleEstimateAssessment,
     support: SquiggleEstimateSupport,
 ) -> SquigglePredictiveChecks {
+    let support_compatible = support.accepts(distribution);
     let representative_outcomes = [0.1, 0.5, 0.9]
         .into_iter()
         .map(|percentile| RepresentativeOutcome {
@@ -121,6 +124,8 @@ fn predictive_checks(
         invalid_draws: 0,
         support_violation_draws,
         support_violation_probability: support_violation_draws as f64 / valid_draws as f64,
+        support_compatible,
+        support_requirement: support.description(),
         representative_outcomes,
     }
 }
@@ -279,5 +284,39 @@ mod tests {
         let body = to_bytes(invalid.into_body(), 16 * 1024).await.unwrap();
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["error"]["code"], "invalid_squiggle_estimate");
+    }
+
+    #[tokio::test]
+    async fn distinguishes_typed_units_from_symbolic_support() {
+        let response = app()
+            .oneshot(
+                Request::post("/api/v1/projects/A/analysis/squiggle-assessment")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "definition": {
+                                "source": "changesPerMonth :: change/month = normal({ p10: 50, p90: 500 })\nchangesPerMonth",
+                                "seed": 42,
+                                "sample_count": 256,
+                                "target_unit": {"change": 1, "month": -1}
+                            },
+                            "support": "non_negative"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 32 * 1024).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["assessment"]["family"], "Normal");
+        assert_eq!(value["predictive_checks"]["support_compatible"], false);
+        assert_eq!(
+            value["predictive_checks"]["support_requirement"],
+            "values zero or greater"
+        );
     }
 }

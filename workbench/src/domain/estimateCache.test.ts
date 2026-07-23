@@ -34,6 +34,7 @@ describe('estimate cache updates', () => {
       },
     }, 'forecast', estimate)
     expect(native.native_state?.forecast).toEqual(estimate)
+    expect(native.revision).toBe(1)
   })
 
   it('updates intervention slots without a node refetch', () => {
@@ -48,6 +49,7 @@ describe('estimate cache updates', () => {
     }
     const duration = setInterventionEstimate(intervention, { kind: 'duration' }, estimate)
     expect(duration.payload.kind === 'intervention' && duration.payload.properties.duration).toEqual(estimate)
+    expect(duration.revision).toBe(1)
 
     const cost = setInterventionEstimate(intervention, { kind: 'cost', value: 'usd' }, estimate)
     expect(cost.payload.kind === 'intervention' && cost.payload.properties.costs).toEqual([

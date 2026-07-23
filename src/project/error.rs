@@ -88,9 +88,9 @@ pub enum ProjectError {
     /// Only factors and outcomes may replace standardized state with native state.
     #[error("node {0} cannot own native quantity state")]
     NativeStateUnsupported(EntityId),
-    /// Existing state estimates must be removed before changing their quantity.
-    #[error("node {0} already has state estimates")]
-    StateEstimatesAlreadyExist(EntityId),
+    /// A state dimension change would invalidate an incident causal response.
+    #[error("state quantity change would invalidate causal edge {0}")]
+    StateQuantityUsedByCausalEdge(EdgeId),
     /// A native state quantity or estimate is internally inconsistent.
     #[error(transparent)]
     Quantity(#[from] QuantityError),

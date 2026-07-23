@@ -21,10 +21,17 @@ pub(super) fn set_squiggle(
         .slot
         .validated()
         .map_err(EstimateCommandError::from)?;
-    let (_, expected_unit) = estimate_target(entry, &command.address, &slot)?;
-    let (definition, _, distribution) =
+    let (support, expected_unit) = estimate_target(entry, &command.address, &slot)?;
+    let (definition, assessment, distribution) =
         assess_squiggle_estimate(command.definition, &expected_unit)
             .map_err(EstimateCommandError::from)?;
+    if !support.accepts(&distribution) {
+        return Err(EstimateCommandError::IncompatibleSupport {
+            family: assessment.family,
+            required: support.description(),
+        }
+        .into());
+    }
     let source = EstimateSource::Squiggle {
         definition: Box::new(definition),
     };
@@ -546,7 +553,9 @@ mod tests {
                 ),
             ),
             Err(ProjectError::EstimateCommand(
-                EstimateCommandError::Estimate(_) | EstimateCommandError::Quantity(_)
+                EstimateCommandError::Estimate(_)
+                    | EstimateCommandError::Quantity(_)
+                    | EstimateCommandError::IncompatibleSupport { .. }
             ))
         ));
 
@@ -569,6 +578,51 @@ mod tests {
         };
         assert!(matches!(created.source, EstimateSource::Squiggle { .. }));
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
+    }
+
+    #[test]
+    fn distinguishes_change_per_month_units_from_distribution_support() {
+        let unit = Unit::from_exponents([("change", 1), ("month", -1)]).unwrap();
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Change frequency".to_owned()).unwrap().id;
+        let quantity = QuantityDefinition::with_dimension(
+            "changes/month",
+            Some(unit.clone()),
+            Some("total monthly".to_owned()),
+            QuantitySupport::NonNegative,
+        )
+        .unwrap();
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    0,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "change_frequency".to_owned(),
+                        title: "Change frequency".to_owned(),
+                        payload: NodePayload::Metric(
+                            Metric::with_quantity(quantity, None).unwrap(),
+                        ),
+                    }),
+                ),
+            )
+            .unwrap();
+        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
+        let source =
+            "changesPerMonth :: change/month = normal({ p10: 50, p90: 500 })\nchangesPerMonth";
+        let result = catalog.execute(
+            &project,
+            CommandRequest::new(
+                1,
+                set_squiggle(address, EstimateSlot::Current, source, unit),
+            ),
+        );
+        assert!(matches!(
+            result,
+            Err(ProjectError::EstimateCommand(
+                EstimateCommandError::IncompatibleSupport { ref family, .. }
+            )) if family == "Normal"
+        ));
     }
 
     #[test]

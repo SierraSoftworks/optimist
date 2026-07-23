@@ -24,11 +24,14 @@ pub struct DeleteNode {
     pub id: EntityId,
 }
 
-/// Revision-checked configuration of native factor or outcome state.
+/// Revision-checked configuration or replacement of native factor or outcome state type.
+///
+/// Existing Squiggle estimates are reevaluated against the proposed canonical unit and support.
+/// Canonical dimension changes are rejected while an incident causal response uses the old unit.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SetNodeQuantityState {
-    /// Factor or outcome node whose state quantity is being configured.
+    /// Factor or outcome node whose state quantity is being configured or edited.
     pub node: EntityId,
     /// Node revision observed before preparing the quantity definition.
     pub expected_revision: u64,

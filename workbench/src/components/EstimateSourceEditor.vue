@@ -30,11 +30,10 @@ watch(() => [props.modelValue, props.existing, props.expectedUnit] as const, () 
 }, { deep: true })
 
 function initialDefinition(): SquiggleEstimateDefinition {
-  if (props.existing) {
-    return { ...props.existing.source.definition, target_unit: props.expectedUnit }
-  }
   return props.modelValue.definition
     ? { ...props.modelValue.definition, target_unit: props.expectedUnit }
+    : props.existing
+      ? { ...props.existing.source.definition, target_unit: props.expectedUnit }
     : defaultSquiggleDefinition(props.support, props.expectedUnit)
 }
 
