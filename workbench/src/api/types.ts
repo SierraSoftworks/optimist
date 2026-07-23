@@ -405,6 +405,14 @@ export interface SquiggleEstimateAssessment {
 export interface SquiggleAssessmentResult {
   assessment: SquiggleEstimateAssessment
   effective_distribution: Distribution
+  predictive_checks: {
+    attempted_draws: number
+    valid_draws: number
+    invalid_draws: number
+    support_violation_draws: number
+    support_violation_probability: number
+    representative_outcomes: Array<{ percentile: number; value: number }>
+  }
 }
 
 export interface ObjectiveProjection {

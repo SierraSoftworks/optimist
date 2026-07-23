@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
     assessSquiggle: vi.fn().mockResolvedValue({
       assessment: { family: 'PointMass', mean: 0.5, variance: 0, p05: 0.5, p50: 0.5, p95: 0.5, seed: 42, sample_count: 1 },
       effective_distribution: { type: 'point', value: 0.5 },
+      predictive_checks: { attempted_draws: 1, valid_draws: 1, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, representative_outcomes: [{ percentile: 0.1, value: 0.5 }, { percentile: 0.5, value: 0.5 }, { percentile: 0.9, value: 0.5 }] },
     }),
   },
 }))

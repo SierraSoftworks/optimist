@@ -67,16 +67,13 @@ function schedule() {
   emit('validity', false)
   timer = setTimeout(async () => {
     try {
-      const result = await api.assessSquiggle(props.projectId!, definition.value)
+      const result = await api.assessSquiggle(props.projectId!, definition.value, props.support)
       if (current !== revision) return
-      if (!fitsSupport(result, props.support)) {
-        throw new Error('The evaluated result has samples outside this estimate slot support.')
-      }
       preview.result = result
       emit('assessment', result)
       preview.status = 'ready'
       emit('update:modelValue', definition.value)
-      emit('validity', true)
+      emit('validity', result.predictive_checks.support_violation_draws === 0)
     } catch (reason) {
       if (current !== revision) return
       preview.error = reason instanceof Error ? reason.message : 'Squiggle evaluation failed.'
@@ -84,22 +81,6 @@ function schedule() {
       emit('validity', false)
     }
   }, 250)
-}
-
-function fitsSupport(result: SquiggleAssessmentResult, support: EstimateSupport) {
-  const distribution = result.effective_distribution
-  const samples = distribution.type === 'point'
-    ? [distribution.value ?? Number.NaN]
-    : distribution.samples ?? []
-  if (!samples.length || samples.some((value) => !Number.isFinite(value))) return false
-  if (support === 'real') return true
-  if (support === 'non_negative') return samples.every((value) => value >= 0)
-  const bounds = support === 'probability'
-    ? [0, 1]
-    : support === 'signed'
-      ? [-1, 1]
-      : [support.bounded.lower, support.bounded.upper]
-  return samples.every((value) => value >= bounds[0]! && value <= bounds[1]!)
 }
 
 function format(value: number | null | undefined) {
@@ -130,6 +111,17 @@ function format(value: number | null | undefined) {
       <div><dt>90% interval</dt><dd>{{ format(preview.result.assessment.p05) }}–{{ format(preview.result.assessment.p95) }}</dd></div>
       <div><dt>Median</dt><dd>{{ format(preview.result.assessment.p50) }}</dd></div>
     </dl>
+    <section v-if="preview.result" class="predictive-checks" :data-valid="preview.result.predictive_checks.support_violation_draws === 0">
+      <header><strong>Prior-predictive checks</strong><span>{{ preview.result.predictive_checks.valid_draws.toLocaleString() }} / {{ preview.result.predictive_checks.attempted_draws.toLocaleString() }} valid draws</span></header>
+      <dl>
+        <div><dt>Invalid draws</dt><dd>{{ preview.result.predictive_checks.invalid_draws.toLocaleString() }}</dd></div>
+        <div><dt>Outside support</dt><dd>{{ (preview.result.predictive_checks.support_violation_probability * 100).toFixed(2) }}%</dd></div>
+      </dl>
+      <div class="representative-outcomes">
+        <span v-for="outcome in preview.result.predictive_checks.representative_outcomes" :key="outcome.percentile"><small>P{{ outcome.percentile * 100 }}</small><strong>{{ format(outcome.value) }}</strong></span>
+      </div>
+      <p v-if="preview.result.predictive_checks.support_violation_draws">{{ preview.result.predictive_checks.support_violation_draws.toLocaleString() }} retained draws fall outside this estimate slot. Revise or bound the calculation before saving.</p>
+    </section>
   </section>
 </template>
 
@@ -147,6 +139,17 @@ function format(value: number | null | undefined) {
 .squiggle-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 5px; background: #f3f8f4; }
 .squiggle-summary div { display: grid; gap: 2px; }
 .squiggle-summary dd { color: var(--green); font: 9px 'IBM Plex Mono', monospace; }
+.predictive-checks { display: grid; gap: 8px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 5px; background: #f7faf7; }
+.predictive-checks[data-valid='false'] { border-color: #d8a098; background: #fff8f6; }
+.predictive-checks > header { display: flex; justify-content: space-between; gap: 8px; font-size: 9px; }
+.predictive-checks > header span { color: var(--muted); }
+.predictive-checks dl { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.predictive-checks dl div { display: grid; gap: 2px; }
+.representative-outcomes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.representative-outcomes > span { display: grid; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: white; }
+.representative-outcomes small { color: var(--muted); font-size: 7px; }
+.representative-outcomes strong { font: 9px 'IBM Plex Mono', monospace; }
+.predictive-checks p { margin: 0; color: #8c3429; font-size: 9px; line-height: 1.45; }
 
 @media (max-width: 760px) {
   .squiggle-summary { grid-template-columns: 1fr; }

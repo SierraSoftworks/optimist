@@ -25,6 +25,7 @@ import type {
   ServerHealth,
   SquiggleAssessmentResult,
   SquiggleEstimateDefinition,
+  EstimateSupport,
   StructuralAnalysis,
   SetInterventionEstimateInput,
   InterventionEstimateSlot,
@@ -241,10 +242,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  assessSquiggle: (project: string, definition: SquiggleEstimateDefinition) =>
+  assessSquiggle: (project: string, definition: SquiggleEstimateDefinition, support: EstimateSupport) =>
     request<SquiggleAssessmentResult>(`/api/v1/projects/${project}/analysis/squiggle-assessment`, {
       method: 'POST',
-      body: JSON.stringify({ definition }),
+      body: JSON.stringify({ definition, support }),
     }),
   scenarios: (project: string) =>
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),

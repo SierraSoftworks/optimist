@@ -40,12 +40,30 @@ pub(super) fn router() -> Router<AppState> {
 #[derive(serde::Deserialize)]
 struct SquiggleAssessmentRequest {
     definition: SquiggleEstimateDefinition,
+    support: FermiEstimateSupport,
 }
 
 #[derive(serde::Serialize)]
 struct SquiggleAssessmentResponse {
     assessment: SquiggleEstimateAssessment,
     effective_distribution: crate::domain::Distribution,
+    predictive_checks: SquigglePredictiveChecks,
+}
+
+#[derive(serde::Serialize)]
+struct SquigglePredictiveChecks {
+    attempted_draws: usize,
+    valid_draws: usize,
+    invalid_draws: usize,
+    support_violation_draws: usize,
+    support_violation_probability: f64,
+    representative_outcomes: Vec<RepresentativeOutcome>,
+}
+
+#[derive(serde::Serialize)]
+struct RepresentativeOutcome {
+    percentile: f64,
+    value: f64,
 }
 
 async fn squiggle_assessment(
@@ -55,6 +73,7 @@ async fn squiggle_assessment(
 ) -> Result<Json<SquiggleAssessmentResponse>, ApiError> {
     state.catalog.read().await.get(&project)?;
     let target_unit = request.definition.target_unit.clone();
+    let support = request.support;
     let (_, assessment, effective_distribution) = state
         .analysis_worker
         .run(move || {
@@ -63,10 +82,61 @@ async fn squiggle_assessment(
                 .map_err(ProjectError::from)
         })
         .await?;
+    let predictive_checks = predictive_checks(&effective_distribution, &assessment, support);
     Ok(Json(SquiggleAssessmentResponse {
         assessment,
         effective_distribution,
+        predictive_checks,
     }))
+}
+
+fn predictive_checks(
+    distribution: &crate::domain::Distribution,
+    assessment: &SquiggleEstimateAssessment,
+    support: FermiEstimateSupport,
+) -> SquigglePredictiveChecks {
+    let representative_outcomes = [0.1, 0.5, 0.9]
+        .into_iter()
+        .map(|percentile| RepresentativeOutcome {
+            percentile,
+            value: distribution.quantile(percentile),
+        })
+        .collect();
+    let retained = distribution.retained_draws();
+    let valid_draws = retained.map_or(assessment.sample_count, <[f64]>::len);
+    let support_violation_draws = retained.map_or_else(
+        || {
+            usize::from(
+                assessment
+                    .mean
+                    .is_some_and(|value| !support_contains(support, value)),
+            )
+        },
+        |draws| {
+            draws
+                .iter()
+                .filter(|draw| !support_contains(support, **draw))
+                .count()
+        },
+    );
+    SquigglePredictiveChecks {
+        attempted_draws: valid_draws,
+        valid_draws,
+        invalid_draws: 0,
+        support_violation_draws,
+        support_violation_probability: support_violation_draws as f64 / valid_draws as f64,
+        representative_outcomes,
+    }
+}
+
+fn support_contains(support: FermiEstimateSupport, value: f64) -> bool {
+    match support {
+        FermiEstimateSupport::Real => value.is_finite(),
+        FermiEstimateSupport::NonNegative => value >= 0.0,
+        FermiEstimateSupport::Probability => (0.0..=1.0).contains(&value),
+        FermiEstimateSupport::Signed => (-1.0..=1.0).contains(&value),
+        FermiEstimateSupport::Bounded { lower, upper } => (lower..=upper).contains(&value),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -239,7 +309,8 @@ mod tests {
                                 "seed": 42,
                                 "sample_count": 512,
                                 "target_unit": {"day": 1}
-                            }
+                            },
+                            "support": { "bounded": { "lower": 0.0, "upper": 30.0 } }
                         })
                         .to_string(),
                     ))
@@ -262,6 +333,21 @@ mod tests {
             value["assessment"]["p05"].as_f64().unwrap()
                 < value["assessment"]["p95"].as_f64().unwrap()
         );
+        assert_eq!(value["predictive_checks"]["attempted_draws"], 512);
+        assert_eq!(value["predictive_checks"]["invalid_draws"], 0);
+        assert!(
+            value["predictive_checks"]["support_violation_draws"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
+        assert_eq!(
+            value["predictive_checks"]["representative_outcomes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
 
         let invalid = app()
             .oneshot(
@@ -274,7 +360,8 @@ mod tests {
                                 "seed": 42,
                                 "sample_count": 512,
                                 "target_unit": {}
-                            }
+                            },
+                            "support": "real"
                         })
                         .to_string(),
                     ))

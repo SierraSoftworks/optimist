@@ -183,6 +183,18 @@ export async function mockApi(page: Page, state: FixtureState) {
             seed: definition.seed, sample_count: definition.sample_count,
           },
           effective_distribution: { type: 'empirical', samples },
+          predictive_checks: {
+            attempted_draws: samples.length,
+            valid_draws: samples.length,
+            invalid_draws: 0,
+            support_violation_draws: 0,
+            support_violation_probability: 0,
+            representative_outcomes: [
+              { percentile: 0.1, value: sorted[0] },
+              { percentile: 0.5, value: sorted[Math.floor(sorted.length / 2)] },
+              { percentile: 0.9, value: sorted.at(-1) },
+            ],
+          },
         })
       }
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {

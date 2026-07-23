@@ -170,6 +170,27 @@ impl Distribution {
         Self::validated(DistributionKind::Empirical { samples })
     }
 
+    /// Returns a clamped quantile for this validated distribution.
+    ///
+    /// `probability` is clamped to the open interval representable by the
+    /// implementation, avoiding infinite endpoint quantiles for unbounded families.
+    /// Empirical quantiles use linear interpolation between ordered retained draws.
+    pub fn quantile(&self, probability: f64) -> f64 {
+        self.inverse_cdf(probability)
+    }
+
+    /// Borrows deterministic draws retained by an empirical distribution.
+    ///
+    /// Analytical families and point masses return `None`. Squiggle-authored
+    /// distribution results retain empirical draws specifically so callers can
+    /// perform finite prior-predictive checks without reevaluating source.
+    pub fn retained_draws(&self) -> Option<&[f64]> {
+        match &self.0 {
+            DistributionKind::Empirical { samples } => Some(samples),
+            _ => None,
+        }
+    }
+
     fn validated(kind: DistributionKind) -> Result<Self, DistributionError> {
         let parameters_are_finite = match kind {
             DistributionKind::Point { value } => value.is_finite(),

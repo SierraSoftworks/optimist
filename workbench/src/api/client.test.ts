@@ -564,6 +564,7 @@ describe('Optimist API client', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         assessment: { family: 'Beta', mean: 0.8, variance: 0.01, p05: 0.5, p50: 0.8, p95: 0.98, seed: 42, sample_count: 512 },
         effective_distribution: { type: 'empirical', samples: [0.5, 0.8, 0.98] },
+        predictive_checks: { attempted_draws: 512, valid_draws: 512, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, representative_outcomes: [] },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: 'request', project_revision: 8,
@@ -580,11 +581,12 @@ describe('Optimist API client', () => {
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => 'request' })
 
-    await api.assessSquiggle('A', definition)
+    await api.assessSquiggle('A', definition, 'probability')
     await api.setStateEstimate(project, node, {
       slot: 'current', source: { type: 'squiggle', definition }, provenance: [],
     })
     expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/squiggle-assessment')
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string).support).toBe('probability')
     const body = JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)
     expect(body.command).toMatchObject({
       type: 'set_squiggle_estimate',

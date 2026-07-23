@@ -35,10 +35,10 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Report source-located syntax, reference, runtime, and unit diagnostics from one backend evaluator used by preview and save.
   - [x] Reevaluate persisted source during deserialization and reject assessment or effective-distribution integrity mismatches.
   - [x] Keep legacy direct-distribution and Fermi sources readable while all new workbench saves use Squiggle.
-- [ ] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
+- [x] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
   - [x] Provide one direct Squiggle editor with debounced Rust evaluation, family, mean, spread, median, central 90% interval, and empirical support validation.
   - [x] Evaluate in a bounded worker so malformed or expensive expressions cannot block the workbench.
-  - [ ] Show tail mass, invalid draws, and representative simulated outcomes before an estimate can be adopted.
+  - [x] Show tail mass, invalid draws, and representative simulated outcomes before an estimate can be adopted.
 - [ ] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
   - [x] Introduce validated native quantity definitions and state-bearing metric estimates while preserving legacy metric JSON as real-valued quantities.
   - [x] Assess real, non-negative, and arbitrary bounded metric Squiggle sources against owner-derived native units and support.
