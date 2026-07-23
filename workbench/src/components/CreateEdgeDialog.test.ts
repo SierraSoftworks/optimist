@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { api } from '../api/client'
 import type { GraphNode } from '../api/types'
 import CreateEdgeDialog from './CreateEdgeDialog.vue'
 
@@ -30,9 +31,30 @@ const causalNodes = nodes.map((node) => ({
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.mocked(api.assessSquiggle).mockClear()
 })
 
 describe('CreateEdgeDialog', () => {
+  it('does not evaluate a response before the target unit is available', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(CreateEdgeDialog, {
+      props: {
+        open: true, pending: false, projectId: 'A', nodes: causalNodes,
+        sourceId: 'A', destinationId: '', kind: 'contributes', sourceLocked: true,
+      },
+      attachTo: document.body,
+    })
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(api.assessSquiggle).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(api.assessSquiggle).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('prefills a relationship kind and source when opened from a node action', async () => {
     const wrapper = mount(CreateEdgeDialog, {
       props: {

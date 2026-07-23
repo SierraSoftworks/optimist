@@ -45,6 +45,7 @@ const nativeCausal = causal
 const sourceUnit = computed(() => source.value ? nodeUnit(source.value) : null)
 const destinationUnit = computed(() => destination.value ? nodeUnit(destination.value) : null)
 const nativeUnitsReady = computed(() => !nativeCausal.value || (sourceUnit.value !== null && destinationUnit.value !== null))
+const assessmentProjectId = computed(() => nativeUnitsReady.value ? props.projectId : null)
 
 watch(() => props.open, (open) => {
   if (!open) return
@@ -187,7 +188,7 @@ function assessedResponse(): Estimate | undefined {
           <label>{{ kind === 'changes' ? 'Intervention activation' : 'Source change' }} ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>
           <SquiggleEstimateEditor
             v-model="responseDefinition"
-            :project-id="projectId"
+            :project-id="assessmentProjectId"
             support="real"
             :expected-unit="destinationUnit ?? {}"
             @validity="responseValid = $event"

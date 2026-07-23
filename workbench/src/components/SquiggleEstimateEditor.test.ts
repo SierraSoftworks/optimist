@@ -49,4 +49,40 @@ describe('SquiggleEstimateEditor predictive checks', () => {
     expect(wrapper.text()).not.toContain('P10')
     expect(wrapper.emitted('validity')?.at(-1)).toEqual([false])
   })
+
+  it('does not reevaluate structurally equivalent assessment inputs', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api, 'assessSquiggle').mockResolvedValue({
+      assessment: {
+        family: 'PointMass', mean: 1, variance: 0,
+        p05: 1, p50: 1, p95: 1, seed: 42, sample_count: 1,
+      },
+      effective_distribution: { type: 'point', value: 1 },
+      predictive_checks: {
+        attempted_draws: 1,
+        valid_draws: 1,
+        invalid_draws: 0,
+        support_violation_draws: 0,
+        support_violation_probability: 0,
+        representative_outcomes: [],
+      },
+    })
+    const wrapper = mount(SquiggleEstimateEditor, {
+      props: {
+        projectId: 'A',
+        modelValue: { source: 'pointMass(1)', seed: 42, sample_count: 256, target_unit: {} },
+        support: 'real',
+        expectedUnit: {},
+      },
+    })
+
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+    expect(api.assessSquiggle).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ expectedUnit: {} })
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+    expect(api.assessSquiggle).toHaveBeenCalledTimes(1)
+  })
 })

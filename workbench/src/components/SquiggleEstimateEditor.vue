@@ -38,23 +38,31 @@ const definition = computed<SquiggleEstimateDefinition>(() => ({
   sample_count: props.modelValue.sample_count,
   target_unit: props.expectedUnit,
 }))
+const assessmentKey = computed(() => JSON.stringify({
+  projectId: props.projectId,
+  source: source.value,
+  seed: props.modelValue.seed,
+  sampleCount: props.modelValue.sample_count,
+  targetUnit: Object.entries(props.expectedUnit).sort(([left], [right]) => left.localeCompare(right)),
+  support: props.support,
+}))
 
 watch(() => props.modelValue, (value) => {
   if (value.source !== source.value) source.value = value.source
 }, { deep: true })
-watch([source, () => props.projectId, () => props.expectedUnit], schedule, {
-  deep: true,
-  immediate: true,
-})
+watch(assessmentKey, schedule, { immediate: true })
 onBeforeUnmount(() => clearTimeout(timer))
 
 function schedule() {
   const current = ++revision
+  const projectId = props.projectId
+  const scheduledDefinition = definition.value
+  const support = props.support
   clearTimeout(timer)
   preview.result = null
   emit('assessment', null)
   preview.error = null
-  if (!props.projectId || !source.value.trim()) {
+  if (!projectId || !scheduledDefinition.source.trim()) {
     preview.status = 'idle'
     emit('validity', false)
     return
@@ -63,12 +71,12 @@ function schedule() {
   emit('validity', false)
   timer = setTimeout(async () => {
     try {
-      const result = await api.assessSquiggle(props.projectId!, definition.value, props.support)
+      const result = await api.assessSquiggle(projectId, scheduledDefinition, support)
       if (current !== revision) return
       preview.result = result
       emit('assessment', result)
       preview.status = 'ready'
-      emit('update:modelValue', definition.value)
+      emit('update:modelValue', scheduledDefinition)
       emit(
         'validity',
         result.predictive_checks.support_compatible
