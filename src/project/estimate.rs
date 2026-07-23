@@ -21,13 +21,12 @@ pub(super) fn set_squiggle(
         .slot
         .validated()
         .map_err(EstimateCommandError::from)?;
-    let (_, expected_unit) = fermi_target(entry, &command.address, &slot)?;
-    let (definition, assessment, distribution) =
+    let (_, expected_unit) = estimate_target(entry, &command.address, &slot)?;
+    let (definition, _, distribution) =
         assess_squiggle_estimate(command.definition, &expected_unit)
             .map_err(EstimateCommandError::from)?;
     let source = EstimateSource::Squiggle {
         definition: Box::new(definition),
-        assessment: Box::new(assessment),
     };
     set_value(
         entry,
@@ -41,11 +40,11 @@ pub(super) fn set_squiggle(
     .map(CommandOutcome::SquiggleEstimateSet)
 }
 
-fn fermi_target(
+fn estimate_target(
     entry: &mut ProjectEntry,
     address: &EstimateAddress,
     slot: &crate::domain::EstimateSlot,
-) -> Result<(crate::domain::FermiEstimateSupport, crate::domain::Unit), ProjectError> {
+) -> Result<(crate::domain::SquiggleEstimateSupport, crate::domain::Unit), ProjectError> {
     if let EstimateOwner::Edge(id) = &address.owner
         && matches!(slot, crate::domain::EstimateSlot::Response)
     {
@@ -64,13 +63,13 @@ fn fermi_target(
             }
         };
         return Ok((
-            crate::domain::FermiEstimateSupport::Real,
+            crate::domain::SquiggleEstimateSupport::Real,
             response.destination_unit,
         ));
     }
     let EstimateOwner::Node(id) = &address.owner else {
         return Ok((
-            slot.fermi_support(),
+            slot.estimate_support(),
             slot.unit().map_err(EstimateCommandError::from)?,
         ));
     };
@@ -91,7 +90,7 @@ fn fermi_target(
         }
         return state
             .quantity
-            .fermi_target()
+            .estimate_target()
             .map_err(EstimateCommandError::from)
             .map_err(ProjectError::from);
     }
@@ -105,12 +104,12 @@ fn fermi_target(
         }
         return metric
             .quantity
-            .fermi_target()
+            .estimate_target()
             .map_err(EstimateCommandError::from)
             .map_err(ProjectError::from);
     }
     Ok((
-        slot.fermi_support(),
+        slot.estimate_support(),
         slot.unit().map_err(EstimateCommandError::from)?,
     ))
 }
@@ -170,13 +169,6 @@ pub(super) fn remove(
     }) {
         return Err(EstimateCommandError::ReferencedByDependence(command.address).into());
     }
-    if let Some(formula) = super::estimate_formula_references::find(entry, &command.address) {
-        return Err(EstimateCommandError::ReferencedByFormula {
-            address: command.address,
-            formula: Box::new(formula),
-        }
-        .into());
-    }
     let value = match &command.address.owner {
         EstimateOwner::Node(id) => {
             let mut node = entry
@@ -228,9 +220,6 @@ pub(super) fn get(
 fn validate_address(project: &ProjectId, address: &EstimateAddress) -> Result<(), ProjectError> {
     if &address.project != project {
         return Err(EstimateCommandError::CrossProjectAddress(address.clone()).into());
-    }
-    if !address.components.is_empty() {
-        return Err(EstimateCommandError::NestedAddress(address.clone()).into());
     }
     Ok(())
 }
@@ -443,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn persists_backend_evaluated_squiggle_sources_and_effective_samples() {
+    fn persists_squiggle_sources_and_preserves_symbolic_distributions() {
         let (mut catalog, project) = catalog();
         let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         let request = CommandRequest::new(
@@ -469,7 +458,7 @@ mod tests {
         assert!(matches!(created.source, EstimateSource::Squiggle { .. }));
         assert_eq!(
             serde_json::to_value(&created.distribution).unwrap()["type"],
-            "empirical"
+            "beta"
         );
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
 

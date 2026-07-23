@@ -58,7 +58,7 @@ impl QuantityState {
         forecast: Option<Estimate<QuantityValue>>,
     ) -> Result<Self, QuantityError> {
         let quantity = quantity.validated()?;
-        quantity.fermi_target()?;
+        quantity.estimate_target()?;
         Ok(Self {
             current: validate_estimate(current, &quantity)?,
             forecast: validate_estimate(forecast, &quantity)?,

@@ -1,7 +1,7 @@
 use crate::{
     domain::{
-        Edge, EdgeId, EntityId, EstimateAddress, FormulaCatalog, FormulaDefinition, Node,
-        PrimitiveEstimate, ProjectDependenceModel, ProjectId, Scenario, ScenarioId,
+        Edge, EdgeId, EntityId, EstimateAddress, Node, PrimitiveEstimate, ProjectDependenceModel,
+        ProjectId, Scenario, ScenarioId,
     },
     store::GraphRepository,
 };
@@ -48,28 +48,6 @@ impl ProjectCatalog {
             .get_mut(project)
             .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
         super::estimate::get(entry, address)
-    }
-
-    /// Lists compiled formulas and the current formula document revision.
-    pub fn list_formulas(&mut self, project: &ProjectId) -> Result<FormulaCatalog, ProjectError> {
-        let entry = self
-            .projects
-            .get_mut(project)
-            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
-        super::formulas::list(entry)
-    }
-
-    /// Retrieves one compiled Fermi component by nested estimate address.
-    pub fn get_formula(
-        &mut self,
-        project: &ProjectId,
-        address: &EstimateAddress,
-    ) -> Result<FormulaDefinition, ProjectError> {
-        let entry = self
-            .projects
-            .get_mut(project)
-            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
-        super::formulas::show(entry, address)
     }
 
     /// Lists scenario documents in deterministic project-local ID order.

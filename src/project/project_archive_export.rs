@@ -1,17 +1,15 @@
 use crate::{
-    markdown::{
-        EntityDocument, ProjectDocument, RenderedSnapshot, SCHEMA_VERSION, ScenarioDocument,
-        SourceDocument, ValidatedImport,
+    project_yaml::{
+        EntityDocument, ProjectDocument, SCHEMA_VERSION, ScenarioDocument, SourceDocument,
+        ValidatedImport,
     },
     store::GraphRepository,
 };
 
-use super::{
-    ProjectArchive, ProjectArchiveSummary, ProjectCatalog, ProjectError, catalog::ProjectEntry,
-};
+use super::{ProjectArchive, ProjectCatalog, ProjectError, catalog::ProjectEntry};
 
 impl ProjectCatalog {
-    /// Exports one immutable project snapshot as canonical Markdown files in JSON.
+    /// Exports one immutable project snapshot as a typed YAML project structure.
     pub fn export_archive(
         &mut self,
         project_id: &crate::domain::ProjectId,
@@ -21,15 +19,21 @@ impl ProjectCatalog {
             .get_mut(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
         let import = project_import(entry)?;
-        let snapshot = RenderedSnapshot::from_import(&import)?;
         Ok(ProjectArchive {
             schema_version: SCHEMA_VERSION,
             project: import.project.document.project.clone(),
-            files: snapshot
-                .files()
-                .map(|(path, contents)| (path.to_owned(), contents.to_owned()))
+            description: import.project.document.description.clone(),
+            dependence: import.project.document.dependence.clone(),
+            entities: import
+                .entities
+                .into_values()
+                .map(|source| source.document)
                 .collect(),
-            summary: summary(&import),
+            scenarios: import
+                .scenarios
+                .into_values()
+                .map(|source| source.document)
+                .collect(),
         })
     }
 }
@@ -71,24 +75,11 @@ fn project_import(entry: &mut ProjectEntry) -> Result<ValidatedImport, ProjectEr
         schema_version: SCHEMA_VERSION,
         project: entry.project.clone(),
         dependence: entry.dependence.clone(),
-        formulas: entry.formulas.clone(),
         description: entry.description.clone(),
     };
     Ok(ValidatedImport::new(
-        SourceDocument::new("_project.md", project),
+        SourceDocument::new("_project.yaml", project),
         entities,
         scenarios,
     )?)
-}
-
-pub(super) fn summary(import: &ValidatedImport) -> ProjectArchiveSummary {
-    ProjectArchiveSummary {
-        entities: import.entities.len(),
-        edges: import
-            .entities
-            .values()
-            .map(|source| source.document.outgoing_edges.len())
-            .sum(),
-        scenarios: import.scenarios.len(),
-    }
 }

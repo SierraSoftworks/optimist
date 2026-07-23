@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { AlertTriangle, FileUp, X } from '@lucide/vue'
+import { parse as parseYaml } from 'yaml'
 import type { ProjectArchive } from '../api/types'
 
 const props = defineProps<{
@@ -22,6 +23,14 @@ const requiresReplace = computed(
 const confirmed = computed(
   () => !requiresReplace.value || confirmation.value === archive.value?.project.id,
 )
+const summary = computed(() => ({
+  entities: archive.value?.entities.length ?? 0,
+  edges: archive.value?.entities.reduce(
+    (total, entity) => total + (entity.outgoing_edges?.length ?? 0),
+    0,
+  ) ?? 0,
+  scenarios: archive.value?.scenarios?.length ?? 0,
+}))
 
 watch(
   () => props.open,
@@ -38,13 +47,14 @@ async function load(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   try {
-    const parsed = JSON.parse(await file.text()) as ProjectArchive
+    const parsed = parseYaml(await file.text()) as ProjectArchive
     if (
       parsed.schema_version !== 1 ||
       typeof parsed.project?.id !== 'string' ||
       typeof parsed.project?.name !== 'string' ||
-      typeof parsed.files?.['_project.md'] !== 'string' ||
-      typeof parsed.summary?.entities !== 'number'
+      !Array.isArray(parsed.entities) ||
+      !parsed.entities.every((entity) => entity.node && Array.isArray(entity.outgoing_edges ?? [])) ||
+      (parsed.scenarios !== undefined && !Array.isArray(parsed.scenarios))
     ) {
       throw new Error('The file is not an Optimist project archive.')
     }
@@ -75,16 +85,16 @@ function submit() {
 
         <label class="file-picker">
           <FileUp :size="20" />
-          <span><strong>Choose archive</strong><small>.optimist.json</small></span>
-          <input ref="input" type="file" accept="application/json,.json,.optimist.json" @change="load" />
+          <span><strong>Choose archive</strong><small>.optimist.yaml</small></span>
+          <input ref="input" type="file" accept="application/yaml,text/yaml,.yaml,.yml,.optimist.yaml" @change="load" />
         </label>
         <p v-if="error" class="form-error">{{ error }}</p>
         <section v-if="archive" class="archive-preview">
           <div><span class="eyebrow">Project</span><strong>{{ archive.project.name }}</strong><code>{{ archive.project.id }} · r{{ archive.project.revision }}</code></div>
           <dl>
-            <div><dt>Entities</dt><dd>{{ archive.summary.entities }}</dd></div>
-            <div><dt>Relationships</dt><dd>{{ archive.summary.edges }}</dd></div>
-            <div><dt>Scenarios</dt><dd>{{ archive.summary.scenarios }}</dd></div>
+            <div><dt>Entities</dt><dd>{{ summary.entities }}</dd></div>
+            <div><dt>Relationships</dt><dd>{{ summary.edges }}</dd></div>
+            <div><dt>Scenarios</dt><dd>{{ summary.scenarios }}</dd></div>
           </dl>
         </section>
         <div v-if="requiresReplace" class="replace-warning">

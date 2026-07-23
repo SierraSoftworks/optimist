@@ -75,7 +75,7 @@ impl Distribution {
     /// $\log(X/Y)$ has location $\mu_X-\mu_Y$ and variance
     /// $\sigma_X^2+\sigma_Y^2-2c$. `covariance` is in log space; zero states
     /// log-space independence or zero correlation. The denominator is positive
-    /// almost surely by the LogNormal model, unlike generic formula ratios.
+    /// almost surely by the LogNormal model, unlike generic sampled ratios.
     pub fn log_normal_ratio(
         &self,
         other: &Self,

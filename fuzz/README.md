@@ -5,9 +5,7 @@ This cargo-fuzz package contains only targets backed by implemented Optimist beh
 - `entity_edge_ids` parses canonical `EntityId` and `EdgeId` text.
 - `tagged_aggregates` decodes and round-trips `Node`, `NodePayload`, `Edge`, `EdgePayload`, and `Observation` JSON.
 - `command_replay` decodes bounded command arrays, executes them against two in-memory catalogs, and checks deterministic results and retries.
-- `markdown_frontmatter` parses bounded project/entity Markdown documents.
-- `formula_units` decodes and validates formulas, units, and estimate addresses.
-- `probability_sampling` decodes distributions and formula sets, validates raw sampling controls, runs at most 64 joint draws, and checks deterministic reports and invalid-sample accounting.
+- `yaml_documents` parses bounded project, entity, and scenario YAML documents.
 - `dependence_model` decodes bounded project dependence documents, round-trips them, and checks deterministic matrix/project validation.
 
 The checked-in seed files and dictionaries use the `v1_` prefix. Keep old seeds when adding a new corpus version so previously discovered shapes remain covered.

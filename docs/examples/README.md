@@ -12,16 +12,6 @@ Builds three factors and causal edges, computes exact strongly connected compone
 
 [Read the source](https://github.com/SierraSoftworks/optimist/blob/main/examples/feedback_loop.rs)
 
-## Fermi delivery-time estimate
-
-```sh
-cargo run --example fermi_delivery_time
-```
-
-Combines uncertain deployment count and minutes per deployment using a unit-checked multiplication formula. Deterministic Monte Carlo sampling reports the resulting monthly effort and separates model variance from simulation error.
-
-[Read the source](https://github.com/SierraSoftworks/optimist/blob/main/examples/fermi_delivery_time.rs)
-
 ## Bayesian rollout success
 
 ```sh
@@ -37,7 +27,6 @@ Starts from a Beta prior, observes 17 successes in 20 trials, and applies the ex
 ```sh
 cargo check --examples
 cargo run --example feedback_loop
-cargo run --example fermi_delivery_time
 cargo run --example bayesian_delivery_success
 ```
 

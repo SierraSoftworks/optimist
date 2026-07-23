@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     domain::ProjectId,
-    markdown::{RenderedSnapshot, write_directory},
     project::ProjectArchive,
+    project_yaml::{RenderedSnapshot, write_directory},
 };
 
 use super::{client::ProjectClient, output::OutputFormat};
@@ -28,7 +28,7 @@ pub(super) enum SnapshotCommand {
     Show {
         revision: u64,
     },
-    /// Atomically publishes one retained immutable revision as a Markdown directory.
+    /// Atomically publishes one retained immutable revision as a YAML directory.
     Export {
         revision: u64,
         directory: PathBuf,
@@ -97,7 +97,7 @@ pub(super) fn publish_archive(
     write_directory(directory, &snapshot).map_err(|error| {
         human_errors::wrap_system(
             error,
-            "Optimist could not publish the Markdown export directory.",
+            "Optimist could not publish the YAML export directory.",
             &["Check directory permissions and retry with a writable destination."],
         )
     })
@@ -112,8 +112,8 @@ mod tests {
     use crate::{
         command::{CommandRequest, CreateNode, GraphCommand},
         domain::{Factor, NodePayload},
-        markdown::{RenderedSnapshot, read_directory},
         project::{CatalogStore, ProjectCatalog},
+        project_yaml::{RenderedSnapshot, read_directory},
     };
 
     use super::publish_archive;
@@ -167,23 +167,16 @@ mod tests {
             .get_project_snapshot(&project.id, retained.revision)
             .unwrap();
         let current = catalog.export_archive(&project.id).unwrap();
-        assert_ne!(archive.files, current.files);
+        assert_ne!(archive, current);
 
         publish_archive(&archive, &export).unwrap();
         let first = RenderedSnapshot::from_import(&read_directory(&export).unwrap()).unwrap();
-        fs::write(export.join("stale.md"), "stale").unwrap();
+        fs::write(export.join("stale.yaml"), "stale").unwrap();
         publish_archive(&archive, &export).unwrap();
         let second = RenderedSnapshot::from_import(&read_directory(&export).unwrap()).unwrap();
 
         assert_eq!(second, first);
-        assert!(!export.join("stale.md").exists());
-        assert_eq!(
-            archive.files,
-            second
-                .files()
-                .map(|(path, contents)| (path.to_owned(), contents.to_owned()))
-                .collect()
-        );
+        assert!(!export.join("stale.yaml").exists());
         fs::remove_dir_all(root).unwrap();
     }
 }

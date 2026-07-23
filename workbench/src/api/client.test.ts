@@ -8,53 +8,12 @@ function pointSource(value: number, targetUnit: Record<string, number> = {}) {
   return {
     type: 'squiggle' as const,
     definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: targetUnit },
-    assessment: {} as never,
   }
 }
 
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Optimist API client', () => {
-  it('assesses a unit-aware Fermi decomposition', async () => {
-    const assessment = {
-      compiled: { unit: {}, dependencies: [] },
-      report: {
-        estimates: [{ mean: 0.6, variance: 0.04, mean_standard_error: 0.001, variance_standard_error: 0.002 }],
-        covariance: [[0.04]],
-        diagnostics: {
-          seed: 42, attempted_samples: 1000, valid_samples: 1000,
-          invalid_samples: { zero_denominator: 0, non_finite_primitive: 0, non_finite_result: 0 },
-          criterion: { seed: 42, minimum_samples: 1000, maximum_samples: 10000, absolute_tolerance: 0.001, relative_tolerance: 0.01 },
-          status: 'converged',
-        },
-      },
-      recommendation: { status: 'moment_matched', distribution: { type: 'beta', alpha: 3, beta: 2 }, interval: { probability: 0.9, lower: 0.2, upper: 0.9 }, warning: 'Approximation' },
-    }
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(assessment), {
-        status: 200, headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-    vi.stubGlobal('fetch', fetch)
-    const formula = {
-      type: 'product' as const,
-      factors: [
-        { type: 'literal' as const, distribution: { type: 'point' as const, value: 0.6 }, unit: {} },
-        { type: 'literal' as const, distribution: { type: 'point' as const, value: 1 }, unit: {} },
-      ],
-    }
-    await expect(api.assessFermi('A', {
-      formula,
-      support: 'probability',
-      expected_unit: {},
-      monte_carlo: assessment.report.diagnostics.criterion,
-    })).resolves.toEqual(assessment)
-    expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/fermi-assessment')
-    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toMatchObject({
-      support: 'probability', expected_unit: {}, formula: { type: 'product' },
-    })
-  })
-
   it('sets measurement calibration under project and edge revision guards', async () => {
     const edge = {
       source: 'A', source_kind: 'metric' as const,
@@ -92,7 +51,7 @@ describe('Optimist API client', () => {
     const analysis = {
       revision: {
         project: 'A', graph_revision: 4, scenario: null,
-        dependence_revision: null, formula_revision: 0,
+        dependence_revision: null,
       },
       components: [{
         nodes: ['A', 'B'],
@@ -124,7 +83,7 @@ describe('Optimist API client', () => {
     const analysis = {
       revision: {
         project: 'A', graph_revision: 4, scenario: null,
-        dependence_revision: null, formula_revision: 0,
+        dependence_revision: null,
       },
       topology_candidates: [{
         factor: 'A', controllable: true, reachable_outcomes: ['B'],
@@ -163,7 +122,7 @@ describe('Optimist API client', () => {
     const analysis = {
       revision: {
         project: 'A', graph_revision: 5, scenario: ['A', 0],
-        dependence_revision: null, formula_revision: 0,
+        dependence_revision: null,
       },
       planning_horizon: 12,
       candidates: [],
@@ -334,8 +293,7 @@ describe('Optimist API client', () => {
     const archive: ProjectArchive = {
       schema_version: 1,
       project,
-      files: { '_project.md': '---\n---\n' },
-      summary: { entities: 0, edges: 0, scenarios: 0 },
+      entities: [],
     }
     const fetch = vi
       .fn()
@@ -446,7 +404,7 @@ describe('Optimist API client', () => {
   it('allocates distinct current and forecast state estimate addresses', async () => {
     const current = {
       id: 'A', revision: 0, distribution: { type: 'point' as const, value: 0.4 },
-      source: { type: 'squiggle' as const, definition: { source: 'pointMass(0.4)', seed: 42, sample_count: 256, target_unit: {} }, assessment: {} as never },
+      source: { type: 'squiggle' as const, definition: { source: 'pointMass(0.4)', seed: 42, sample_count: 256, target_unit: {} } },
     }
     const node = {
       id: 'A',
@@ -548,7 +506,7 @@ describe('Optimist API client', () => {
             address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
             slot: { kind: 'current' }, revision: 0,
             distribution: { type: 'empirical', samples: [0.5, 0.8, 0.98] },
-            source: { type: 'squiggle', definition, assessment: {} }, provenance: [],
+            source: { type: 'squiggle', definition }, provenance: [],
           },
         },
       }), { status: 201, headers: { 'Content-Type': 'application/json' } }))

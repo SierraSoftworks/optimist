@@ -23,7 +23,7 @@ const PROJECT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;
 const PROJECTS_DIRECTORY: &str = "projects";
 const PROJECT_METADATA_FILE: &str = "meta.json";
-const PROJECT_SNAPSHOT_FILE: &str = "project.json";
+const PROJECT_SNAPSHOT_FILE: &str = "project.yaml";
 const MAX_PROJECT_METADATA_BYTES: u64 = 64 * 1024;
 const MAX_SNAPSHOT_BYTES: u64 = 512 * 1024 * 1024;
 
@@ -53,6 +53,15 @@ pub enum CatalogPersistenceError {
         /// JSON decoding failure.
         #[source]
         source: serde_json::Error,
+    },
+    /// The authoritative project snapshot is not valid YAML.
+    #[error("catalog snapshot {path} is not valid YAML")]
+    Yaml {
+        /// Snapshot path containing invalid YAML.
+        path: PathBuf,
+        /// YAML decoding failure.
+        #[source]
+        source: serde_yaml_ng::Error,
     },
     /// The snapshot declares an unsupported schema version.
     #[error("catalog snapshot schema {0} is unsupported")]
@@ -182,7 +191,9 @@ impl CatalogStore {
                 schema_version: PROJECT_SNAPSHOT_SCHEMA_VERSION,
                 project: catalog.persisted_project(project)?,
             };
-            let bytes = serde_json::to_vec(&document).expect("project snapshots serialize");
+            let bytes = serde_yaml_ng::to_string(&document)
+                .expect("project snapshots serialize")
+                .into_bytes();
             if bytes.len() as u64 > MAX_SNAPSHOT_BYTES {
                 return Err(CatalogPersistenceError::TooLarge {
                     path: project_directory.join(PROJECT_SNAPSHOT_FILE),
@@ -333,8 +344,8 @@ impl CatalogStore {
             }
             let snapshot_path = path.join(PROJECT_SNAPSHOT_FILE);
             let document: ProjectSnapshotDocument =
-                serde_json::from_slice(&read_bounded(&snapshot_path)?).map_err(|source| {
-                    CatalogPersistenceError::Json {
+                serde_yaml_ng::from_slice(&read_bounded(&snapshot_path)?).map_err(|source| {
+                    CatalogPersistenceError::Yaml {
                         path: snapshot_path.clone(),
                         source,
                     }
@@ -601,7 +612,6 @@ fn clone_entry(entry: &ProjectEntry) -> Result<ProjectEntry, ProjectError> {
         next_scenario_id: entry.next_scenario_id,
         scenarios: entry.scenarios.clone(),
         dependence: entry.dependence.clone(),
-        formulas: entry.formulas.clone(),
     })
 }
 
@@ -930,16 +940,16 @@ mod tests {
         store.save(&mut catalog).unwrap();
         let path = snapshot_path(&fixture.root, &project.id);
         let valid = fs::read(&path).unwrap();
-        fs::write(&path, b"not json").unwrap();
+        fs::write(&path, b"not: [yaml").unwrap();
         assert!(matches!(
             store.load(),
-            Err(CatalogPersistenceError::Json { .. })
+            Err(CatalogPersistenceError::Yaml { .. })
         ));
         fs::write(&path, valid).unwrap();
-        let mut document: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        document["schema_version"] = serde_json::Value::from(99);
-        fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        let mut document: serde_yaml_ng::Value =
+            serde_yaml_ng::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["schema_version"] = serde_yaml_ng::to_value(99).unwrap();
+        fs::write(&path, serde_yaml_ng::to_string(&document).unwrap()).unwrap();
         assert!(matches!(
             store.load(),
             Err(CatalogPersistenceError::UnsupportedSchema(99))
@@ -965,11 +975,11 @@ mod tests {
             .unwrap();
         store.save(&mut catalog).unwrap();
         let path = snapshot_path(&fixture.root, &project.id);
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let mut value: serde_yaml_ng::Value =
+            serde_yaml_ng::from_slice(&fs::read(&path).unwrap()).unwrap();
         value["project"]["changes"][0]["request_id"] =
-            serde_json::Value::String(Uuid::nil().to_string());
-        let corrupted = serde_json::to_vec(&value).unwrap();
+            serde_yaml_ng::Value::String(Uuid::nil().to_string());
+        let corrupted = serde_yaml_ng::to_string(&value).unwrap().into_bytes();
         fs::write(&path, &corrupted).unwrap();
 
         assert!(matches!(
@@ -1211,14 +1221,14 @@ mod tests {
                 .join(PROJECTS_DIRECTORY)
                 .join("B")
                 .join(PROJECT_SNAPSHOT_FILE),
-            b"not json",
+            b"not: [yaml",
         )
         .unwrap();
 
         assert_eq!(store.list_project_metadata().unwrap(), catalog.list());
         assert!(matches!(
             store.load(),
-            Err(CatalogPersistenceError::Json { .. })
+            Err(CatalogPersistenceError::Yaml { .. })
         ));
     }
 

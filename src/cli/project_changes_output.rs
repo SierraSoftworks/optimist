@@ -21,13 +21,14 @@ pub(super) fn render(
 
 fn table(replay: &ChangeSetReplay) -> String {
     if let Some(snapshot) = &replay.snapshot {
+        let summary = snapshot.archive.summary();
         return format!(
             "SNAPSHOT_REVISION\tPROJECT\tENTITIES\tEDGES\tSCENARIOS\n{}\t{}\t{}\t{}\t{}",
             snapshot.revision,
             snapshot.archive.project.id,
-            snapshot.archive.summary.entities,
-            snapshot.archive.summary.edges,
-            snapshot.archive.summary.scenarios,
+            summary.entities,
+            summary.edges,
+            summary.scenarios,
         );
     }
     let rows = replay.changes.iter().map(|change| {
@@ -69,11 +70,9 @@ fn table(replay: &ChangeSetReplay) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use crate::{
         command::{ChangeSetReplay, ChangeSnapshot},
-        project::{Project, ProjectArchive, ProjectArchiveSummary},
+        project::{Project, ProjectArchive},
     };
 
     use super::*;
@@ -93,12 +92,10 @@ mod tests {
                 archive: ProjectArchive {
                     schema_version: 1,
                     project,
-                    files: BTreeMap::new(),
-                    summary: ProjectArchiveSummary {
-                        entities: 2,
-                        edges: 1,
-                        scenarios: 3,
-                    },
+                    description: String::new(),
+                    dependence: None,
+                    entities: vec![],
+                    scenarios: vec![],
                 },
             }),
         }
@@ -109,7 +106,7 @@ mod tests {
         let fallback = fallback();
         assert_eq!(
             render(OutputFormat::Table, &fallback).unwrap(),
-            "SNAPSHOT_REVISION\tPROJECT\tENTITIES\tEDGES\tSCENARIOS\n7\tA\t2\t1\t3"
+            "SNAPSHOT_REVISION\tPROJECT\tENTITIES\tEDGES\tSCENARIOS\n7\tA\t0\t0\t0"
         );
         let jsonl = render(OutputFormat::Jsonl, &fallback).unwrap();
         let value: serde_json::Value = serde_json::from_str(&jsonl).unwrap();

@@ -14,8 +14,6 @@ pub struct AnalysisRevisionKey {
     pub scenario: Option<(ScenarioId, u64)>,
     /// Residual dependence document revision, or `None` when independence is explicit.
     pub dependence_revision: Option<u64>,
-    /// Fermi formula document revision.
-    pub formula_revision: u64,
 }
 
 /// Explicit computational bounds for deterministic structural analysis.

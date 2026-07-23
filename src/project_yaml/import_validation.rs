@@ -4,7 +4,7 @@ use crate::domain::{EntityId, ScenarioId, normalize_name};
 
 use super::{EntityDocument, ImportError, ProjectDocument, ScenarioDocument, import_references};
 
-/// A parsed Markdown value paired with its project-relative source path.
+/// A parsed YAML value paired with its project-relative source path.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceDocument<T> {
     /// Relative path used for diagnostics and deterministic planning.
@@ -23,7 +23,7 @@ impl<T> SourceDocument<T> {
     }
 }
 
-/// A complete Markdown snapshot whose identities and base revision are consistent.
+/// A complete YAML project whose identities and base revision are consistent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedImport {
     /// Canonical project metadata document.

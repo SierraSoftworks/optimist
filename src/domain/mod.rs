@@ -13,15 +13,6 @@ mod estimate;
 mod estimate_address;
 mod estimate_slot;
 mod estimate_uncertainty;
-mod fermi_assessment;
-mod formula;
-mod formula_dependence;
-mod formula_document;
-mod formula_draw;
-mod formula_sampling;
-#[cfg(test)]
-mod formula_tests;
-mod formula_validation;
 mod id;
 mod impediment_analysis;
 mod impediment_analysis_compute;
@@ -70,25 +61,15 @@ pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
     EstimateId, EstimateSource, Money, Probability, QuantityValue, SignedInfluence,
 };
-pub use estimate_address::{
-    EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
-};
+pub use estimate_address::{EstimateAddress, EstimateAddressError, EstimateOwner};
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};
 pub use estimate_uncertainty::{EstimateUncertainty, EstimateUncertaintyError};
-pub use fermi_assessment::{
-    FermiAssessment, FermiAssessmentError, FermiEstimateSupport, FermiInterval,
-    FermiRecommendation, assess_fermi,
-};
-pub use formula::{CompiledFormula, Formula, FormulaError, FormulaSet};
-pub use formula_document::{FormulaCatalog, FormulaDefinition, FormulaDocument};
-pub use formula_sampling::MonteCarloError;
 pub use id::{EntityId, IdError, ProjectId};
 pub use impediment_analysis::{ImpedimentAnalysis, ImpedimentCandidate, RelationshipEvidence};
 pub use measurement_calibration::{MeasurementCalibration, MeasurementCalibrationError};
 pub use monte_carlo::{MonteCarloConfig, MonteCarloConfigError};
 pub use monte_carlo_report::{
-    ConvergenceStatus, InvalidSampleCounts, JointMonteCarloReport, MonteCarloDiagnostics,
-    MonteCarloEstimate,
+    ConvergenceStatus, InvalidSampleCounts, MonteCarloDiagnostics, MonteCarloEstimate,
 };
 pub use node::{
     CostEstimate, Evidence, Factor, Intervention, Metric, Node, NodeError, NodeKind, NodePayload,
@@ -114,6 +95,6 @@ pub use scenario_id::ScenarioId;
 pub use scenario_validation::ScenarioError;
 pub use squiggle_estimate::{
     SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError,
-    assess_squiggle_estimate,
+    SquiggleEstimateSupport, assess_squiggle_estimate,
 };
 pub use unit::{Dimension, Unit, UnitError};

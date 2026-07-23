@@ -100,7 +100,6 @@ function assessedResponse(): Estimate | undefined {
     source: {
       type: 'squiggle',
       definition: responseDefinition.value,
-      assessment: responseAssessment.value.assessment,
     },
     provenance: [],
   }

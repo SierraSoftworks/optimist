@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::{Distribution, FermiEstimateSupport, Unit};
+use super::{Distribution, SquiggleEstimateSupport, Unit};
 
 const MAX_UNIT_BYTES: usize = 256;
 const MAX_CONTEXT_BYTES: usize = 4_096;
@@ -52,12 +52,12 @@ impl QuantitySupport {
         }
     }
 
-    /// Returns the primitive family support used when assessing a Fermi source.
-    pub fn fermi_support(self) -> FermiEstimateSupport {
+    /// Returns the support used when assessing a Squiggle source.
+    pub fn estimate_support(self) -> SquiggleEstimateSupport {
         match self {
-            Self::Real => FermiEstimateSupport::Real,
-            Self::NonNegative => FermiEstimateSupport::NonNegative,
-            Self::Bounded { lower, upper } => FermiEstimateSupport::Bounded { lower, upper },
+            Self::Real => SquiggleEstimateSupport::Real,
+            Self::NonNegative => SquiggleEstimateSupport::NonNegative,
+            Self::Bounded { lower, upper } => SquiggleEstimateSupport::Bounded { lower, upper },
         }
     }
 }
@@ -83,7 +83,7 @@ impl QuantitySupport {
 pub struct QuantityDefinition {
     /// Human-authored unit used by observations, estimates, and explanations.
     pub unit: String,
-    /// Canonical unit terms used by typed formulas and Squiggle annotations.
+    /// Canonical unit terms used by Squiggle annotations and causal responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dimension: Option<Unit>,
     /// Optional aggregation and sampling window such as `p95 weekly`.
@@ -200,13 +200,13 @@ impl QuantityDefinition {
         self.support.accepts(distribution)
     }
 
-    /// Returns the unit and support required to persist a Fermi estimate.
-    pub fn fermi_target(&self) -> Result<(FermiEstimateSupport, Unit), QuantityError> {
+    /// Returns the unit and support required to persist a Squiggle estimate.
+    pub fn estimate_target(&self) -> Result<(SquiggleEstimateSupport, Unit), QuantityError> {
         let dimension = self
             .dimension
             .clone()
             .ok_or(QuantityError::MissingDimension)?;
-        Ok((self.support.fermi_support(), dimension))
+        Ok((self.support.estimate_support(), dimension))
     }
 }
 
@@ -229,7 +229,7 @@ pub enum QuantityError {
     #[error("estimate quantity metadata does not match its owning definition")]
     EstimateDefinitionMismatch,
     /// A quantity definition has no canonical unit terms.
-    #[error("quantity requires a canonical dimension before it can use typed formulas")]
+    #[error("quantity requires a canonical dimension before it can be modelled")]
     MissingDimension,
 }
 
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_dimensions_define_native_fermi_targets() {
+    fn explicit_dimensions_define_native_estimate_targets() {
         let dimension = Unit::from_exponents([("item", 1), ("day", -1)]).unwrap();
         let quantity = QuantityDefinition::with_dimension(
             "items/day",
@@ -266,9 +266,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            quantity.fermi_target(),
+            quantity.estimate_target(),
             Ok((
-                FermiEstimateSupport::Bounded {
+                SquiggleEstimateSupport::Bounded {
                     lower: 0.0,
                     upper: 30.0,
                 },

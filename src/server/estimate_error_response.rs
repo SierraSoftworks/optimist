@@ -11,13 +11,6 @@ pub(super) fn classify(
             "cross_project_estimate_address",
             &["Use an estimate address whose project ID matches the selected project."],
         ),
-        EstimateCommandError::NestedAddress(_) => (
-            StatusCode::BAD_REQUEST,
-            "nested_estimate_address",
-            &[
-                "Use a root estimate address without `/component/...` for primitive estimate commands.",
-            ],
-        ),
         EstimateCommandError::InvalidSlot { .. } | EstimateCommandError::Slot(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_estimate_slot",
@@ -48,11 +41,6 @@ pub(super) fn classify(
             StatusCode::CONFLICT,
             "estimate_in_use",
             &["Replace or remove the project dependence document before removing this estimate."],
-        ),
-        EstimateCommandError::ReferencedByFormula { .. } => (
-            StatusCode::CONFLICT,
-            "estimate_in_use",
-            &["Remove formulas rooted under or referencing this estimate before removing it."],
         ),
         EstimateCommandError::Estimate(_) | EstimateCommandError::Quantity(_) => (
             StatusCode::BAD_REQUEST,

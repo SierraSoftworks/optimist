@@ -21,7 +21,7 @@ optimist server --bind 127.0.0.1:3000 --data-dir .optimist
 optimist server --web-root workbench/dist
 ```
 
-`--data-dir` uses `projects/<ID>/` as its catalog. `meta.json` contains bounded project metadata for cheap listing, `project.json` contains the complete canonical project and replay state, and `journal.json` is an ordered project-local WAL. Commands acknowledge after WAL fsync and compact asynchronously per project. Unsupported, corrupt, or discontinuous project and journal schemas are rejected without modification; Optimist does not migrate older layouts.
+`--data-dir` uses `projects/<ID>/` as its catalog. `meta.json` contains bounded project metadata for cheap listing, `project.yaml` contains the complete canonical project and replay state, and `journal.json` is an ordered project-local WAL. Commands acknowledge after WAL fsync and compact asynchronously per project. Unsupported, corrupt, or discontinuous project and journal schemas are rejected without modification; Optimist does not migrate older layouts.
 
 `--web-root` points to a completed Vite build containing `index.html`; `OPTIMIST_WEB_ROOT` provides the environment equivalent. When omitted, Optimist uses `workbench/dist` if it exists relative to the process working directory. The server gives browser routes SPA fallback, keeps `/api` JSON-only, revalidates HTML, and serves generated `/assets` with immutable caching.
 
@@ -45,11 +45,11 @@ optimist project snapshot <PROJECT> show <REVISION>
 optimist project snapshot <PROJECT> export <REVISION> <DIRECTORY>
 ```
 
-Export downloads one immutable canonical Markdown snapshot and publishes it through a staged directory replacement. Import validates every document and reference before restoring the archive. Restoring over an existing project requires both `--replace` and `--yes`; replacement clears process-local command/replay history.
+Export downloads one immutable canonical YAML project and publishes it through a staged directory replacement. Import validates every document and reference before restoring the project. Restoring over an existing project requires both `--replace` and `--yes`; replacement clears process-local command/replay history.
 
 `project changes` normally renders retained events after the requested revision. If that cursor predates retained history, the server returns a canonical snapshot fallback. Table output identifies the snapshot revision/counts, JSON includes the complete archive, and JSON Lines emits one tagged snapshot object.
 
-Catalog backups retain complete project archives, replay history, retry results, and allocator state. Restore validates the selected backup before changing live state, requires `--yes`, and creates an immutable safety backup of the catalog being replaced. Project snapshots retain one canonical archive at an exact revision; repeated creation is idempotent, `show` returns that archive, and `export` atomically publishes its deterministic Markdown directory without reading mutable current state.
+Catalog backups retain complete project archives, replay history, retry results, and allocator state. Restore validates the selected backup before changing live state, requires `--yes`, and creates an immutable safety backup of the catalog being replaced. Project snapshots retain one canonical archive at an exact revision; repeated creation is idempotent, `show` returns that archive, and `export` atomically publishes its deterministic YAML directory without reading mutable current state.
 
 ### Command batches
 
@@ -136,7 +136,7 @@ Slots: `current`, `forecast`, `cost`, `duration`, `probability_of_success`, `res
 
 Uncertainty JSON accepts optional `epistemic`, `process`, and `measurement` strings. They retain distinct assumptions and do not alter or decompose the effective distribution.
 
-Estimate output includes the owning quantity metadata when present and always includes authoritative Squiggle source and assessment metadata.
+Estimate output includes the owning quantity metadata when present and always includes authoritative Squiggle source and deterministic controls. Runtime assessments are computed on demand and are not persisted with the estimate.
 
 Configure a factor or outcome for native current and forecast estimates before adding causal edges:
 
@@ -146,17 +146,6 @@ optimist --project A node quantity <NODE> \
 ```
 
 The `current` slot stores native current state. The `forecast` slot stores the native pre-intervention forecast.
-
-### Formulas
-
-```sh
-optimist --project A formula set <COMPONENT_ADDRESS> --formula <FORMULA_JSON>
-optimist --project A formula show <COMPONENT_ADDRESS>
-optimist --project A formula list
-optimist --project A formula remove <COMPONENT_ADDRESS>
-```
-
-Component addresses append one or more `/component/<name>` pairs to a primitive root.
 
 ### Scenarios and dependence
 

@@ -194,7 +194,6 @@ mod tests {
             graph_revision: 4,
             scenario: None,
             dependence_revision: None,
-            formula_revision: 0,
         }
     }
 

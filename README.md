@@ -2,7 +2,7 @@
 
 Optimist helps teams model complex systems, preserve uncertainty, identify feedback loops, and make investment decisions without reducing every judgement to an arbitrary confidence score.
 
-It combines a typed causal graph, project-scoped estimates and formulas, Bayesian updates, dependence-aware Monte Carlo sampling, structural feedback analysis, an HTTP/CLI workflow, deterministic Markdown documents, and ordered collaboration events.
+It combines a typed causal graph, Squiggle-authored estimates, Bayesian updates, dependence-aware sampling, structural feedback analysis, an HTTP/CLI workflow, deterministic YAML projects, and ordered collaboration events.
 
 > [!IMPORTANT]
 > Optimist is under active development. The modelling and statistical core is usable today. The default server atomically snapshots complete projects under `--data-dir`, while RocksDB-backed handles, durable command replay, and several decision workflows remain in progress.
@@ -10,8 +10,8 @@ It combines a typed causal graph, project-scoped estimates and formulas, Bayesia
 ## What it provides
 
 - **Typed systems models:** outcomes, metrics, factors, interventions, and validated structural relationships.
-- **Uncertainty with units:** Point, Normal, LogNormal, Beta, and Scaled Beta distributions wrapped in dimensioned estimates.
-- **Fermi decomposition:** unit-checked formula DAGs with shared references, deterministic sampling, convergence diagnostics, and invalid-draw accounting.
+- **Uncertainty with units:** Squiggle programs wrapped in dimensioned estimates with deterministic seeds.
+- **Composable models:** symbolic families, shared bindings, transforms, mixtures, and simulation-based calculations authored directly in Squiggle.
 - **Bayesian updating:** validated Beta-Binomial and Normal-Normal conjugate updates.
 - **Dependence modelling:** Gaussian copulas with positive-semidefinite correlation validation.
 - **Feedback discovery:** exact strongly connected components and bounded elementary-cycle enumeration.
@@ -23,27 +23,21 @@ It combines a typed causal graph, project-scoped estimates and formulas, Bayesia
 
 Suppose a delivery team wants to estimate how much time it spends deploying changes each month. It believes it performs between 8 and 30 deployments and that time per deployment is positive and multiplicative.
 
-Run the Fermi example:
-
-```sh
-cargo run --example fermi_delivery_time
-```
-
-It models
+Model
 
 $$
 T_{month} = N_{deployments} \times T_{per\ deployment}
 $$
 
-with a Scaled Beta distribution for deployment count and a LogNormal distribution for minutes per deployment. Optimist checks that the resulting unit is minutes, samples the expression with a pinned ChaCha20 stream, and reports both model variance and Monte Carlo error:
+directly in Squiggle:
 
-```text
-Expected monthly delivery time: 693.8 minutes
-Model variance: 77417.9; Monte Carlo mean SE: 1.888
-Samples: 21728 valid / 21728 attempted (Converged)
+```squiggle
+deployments :: item/month = Sym.triangular(8, 18, 30)
+minutes_per_deployment :: minute/item = Sym.lognormal(3.2, 0.4)
+deployments * minutes_per_deployment
 ```
 
-The random seed and stopping criteria are part of the model, so the result is reproducible. See [examples](examples/README.md) for feedback-loop and Bayesian examples as well.
+Optimist checks the resulting unit, preserves symbolic distributions when possible, and uses the estimate's seed whenever sampling is required. The project stores the Squiggle source and deterministic controls, not generated samples or summary statistics. See [examples](examples/README.md) for feedback-loop and Bayesian examples.
 
 ## Run the server and CLI
 
@@ -86,7 +80,7 @@ cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
 
-The filesystem is the catalog under `--data-dir`. Every `projects/<ID>/` directory contains a bounded `meta.json` for cheap discovery, a complete versioned `project.json`, and a project-local `journal.json` only while commands await compaction. Validated commands acknowledge after the small WAL is fsynced; after a short idle period, background compaction rewrites only the touched project's snapshot and removes the covered journal prefix. `/api/v1/health` reports `pending`, `idle`, or a visible degraded persistence error. Restart replays retained requests through UUID idempotency without duplicating graph state or `ChangeSet` history. Metadata-only tombstone directories preserve monotonic project allocation after deletion. Unknown or obsolete storage schemas are rejected rather than migrated.
+The filesystem is the catalog under `--data-dir`. Every `projects/<ID>/` directory contains a bounded `meta.json` for cheap discovery, a complete versioned `project.yaml`, and a project-local `journal.json` only while commands await compaction. Validated commands acknowledge after the small WAL is fsynced; after a short idle period, background compaction rewrites only the touched project's snapshot and removes the covered journal prefix. `/api/v1/health` reports `pending`, `idle`, or a visible degraded persistence error. Restart replays retained requests through UUID idempotency without duplicating graph state or `ChangeSet` history. Metadata-only tombstone directories preserve monotonic project allocation after deletion. Unknown or obsolete storage schemas are rejected rather than migrated.
 
 Create and restore immutable filesystem-catalog backups, or capture one project at an exact revision:
 
@@ -101,7 +95,7 @@ cargo run -- --output json project snapshot A show <REVISION>
 cargo run -- project snapshot A export <REVISION> ./retained-model
 ```
 
-Full backups copy validated project directories and bounded backup metadata. Restore validates those directories before acquiring them as live state and automatically creates a safety backup of the projects being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content. Snapshot export atomically publishes the selected retained revision as a deterministic Markdown directory, independently of later live changes.
+Full backups copy validated project directories and bounded backup metadata. Restore validates those directories before acquiring them as live state and automatically creates a safety backup of the projects being replaced. Project snapshots reuse the canonical project structure; creating the same revision twice is idempotent and never overwrites different content. Snapshot export publishes the selected retained revision as a deterministic YAML directory, independently of later live changes.
 
 Apply up to 100 typed commands atomically, or submit a reviewed compensation plan for one committed batch:
 
@@ -151,7 +145,6 @@ Rust builds do not invoke Node. If no valid web root is configured or discovered
 | Factor | A condition which influences outcomes or other factors. |
 | Intervention | An investable action with uncertain cost, duration, and success. |
 | Estimate | A typed distribution embedded in its owning node or edge. |
-| Formula | A unit-checked Fermi decomposition of primitive estimates and components. |
 | Scenario | Objectives, horizon, budgets, candidate interventions, and sampling controls. |
 | Dependence model | Residual correlations between uncertain marginals using a Gaussian copula. |
 

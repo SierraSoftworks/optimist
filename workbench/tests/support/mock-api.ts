@@ -52,7 +52,7 @@ export async function mockApi(page: Page, state: FixtureState) {
       }
       const estimate = { mean: 0.12, variance: 0.02, mean_standard_error: 0.004, variance_standard_error: 0.003 }
       return json({
-        revision: { project: 'A', graph_revision: state.revision, scenario: [scenario.id, scenario.revision], dependence_revision: null, formula_revision: 0 },
+        revision: { project: 'A', graph_revision: state.revision, scenario: [scenario.id, scenario.revision], dependence_revision: null },
         planning_horizon: scenario.planning_horizon,
         candidates: scenario.candidate_interventions.map((intervention) => ({
           intervention,
@@ -76,7 +76,7 @@ export async function mockApi(page: Page, state: FixtureState) {
             seed: scenario.monte_carlo.seed,
             attempted_samples: 120,
             valid_samples: 120,
-            invalid_samples: { zero_denominator: 0, non_finite_primitive: 0, non_finite_result: 0 },
+            invalid_samples: { non_finite_primitive: 0, non_finite_result: 0 },
             criterion: scenario.monte_carlo,
             status: 'converged',
           },
@@ -97,7 +97,7 @@ export async function mockApi(page: Page, state: FixtureState) {
           }))
         : []
       return json({
-        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null, formula_revision: 0 },
+        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null },
         components: cycleEdges.length
           ? [{ nodes: ['A', 'B'], edges: cycleEdges, is_feedback: true }]
           : state.nodes.map((node) => ({ nodes: [node.id], edges: [], is_feedback: false })),
@@ -157,7 +157,7 @@ export async function mockApi(page: Page, state: FixtureState) {
         )
         .map((candidate) => candidate.factor)
       return json({
-        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null, formula_revision: 0 },
+        revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null },
         topology_candidates: candidates,
         evidence_priority: evidencePriority,
       })

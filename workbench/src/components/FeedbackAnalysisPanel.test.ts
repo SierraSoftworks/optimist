@@ -7,7 +7,7 @@ function analysis(overrides: Partial<StructuralAnalysis> = {}): StructuralAnalys
   return {
     revision: {
       project: 'A', graph_revision: 4, scenario: null,
-      dependence_revision: null, formula_revision: 0,
+      dependence_revision: null,
     },
     components: [],
     cycles: [],

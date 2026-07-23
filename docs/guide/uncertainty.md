@@ -13,7 +13,7 @@ Estimate records distinguish epistemic, process, and measurement uncertainty as 
 | LogNormal | $(0,\infty)$ | Positive multiplicative quantities such as time or cost. |
 | Beta | $[0,1]$ | Probabilities and bounded proportions. |
 | Scaled Beta | $[l,u]$ | Bounded quantities such as signed influence. |
-| Empirical | Retained finite draws | Arbitrary Squiggle results used by downstream simulation. |
+| Empirical | Finite runtime draws | Composed Squiggle results used temporarily by downstream simulation. |
 
 Typed estimate dimensions reject incompatible support. Primitive distributions can be checked from their complete analytical support. Empirical distributions are checked from their retained draws, which is a finite prior-predictive check rather than proof that every possible tail value is valid.
 
@@ -29,11 +29,11 @@ base + interruptions
 
 The workbench sends source to Optimist after a short debounce. Rust is authoritative: it applies source and step bounds, lints the program, checks the result unit, evaluates with a fixed seed, and returns the family, mean, variance, median, and central 90% interval. Assessment runs in a blocking worker with bounded concurrency, queue wait, and response time, so malformed or expensive source cannot occupy async request workers indefinitely. The browser never submits the persisted result distribution.
 
-Each definition retains:
+Each persisted definition retains:
 
 - the authored source,
 - the deterministic seed,
-- 256 to 4,096 effective draws, with 2,048 as the workbench default,
+- a requested runtime sample count from 256 to 4,096, with 2,048 as the workbench default,
 - the canonical target unit derived from the owning estimate slot.
 
 Optimist wraps the calculation in a Squiggle unit annotation. A duration result is evaluated as if it were assigned to `optimist_result :: duration`; a native metric uses its canonical unit terms. Source annotations can make intermediate assumptions reviewable too:
@@ -44,11 +44,11 @@ effort :: hour/item = lognormal({p5: 0.5, p95: 3})
 deployments * effort
 ```
 
-For a numeric result, Optimist persists a point distribution. For a distribution result, it persists deterministic empirical draws so downstream causal and scenario analysis can sample rich, multimodal, truncated, or transformed results without forcing them into a Normal, LogNormal, or Beta approximation. The backend also persists its assessment. On load, deterministic reevaluation must reproduce both assessment and effective distribution; disagreement is an integrity error.
+Optimist persists neither the effective distribution nor its generated samples, moments, or quantiles. It reevaluates the authored source with the stored seed when runtime analysis needs those values. Point masses, Normal, Lognormal, and Beta results remain symbolic and use analytical statistics. Rich composed results use deterministic empirical draws in memory without forcing them into a primitive approximation.
 
-Probability, signed, non-negative, and bounded slots validate the effective draws before persistence. Before adoption, the editor reports attempted, valid, and invalid draw counts, empirical mass outside the requested support, and deterministic 10th/50th/90th percentile outcomes. A source which cannot produce finite valid draws fails closed rather than presenting a partial recommendation; successful assessments therefore report zero invalid draws. Nonzero support-tail mass remains visible and disables Save. These finite checks cannot prove that an unbounded symbolic tail has zero mass outside the target support, so authors should use bounded families or explicit truncation when support is part of the quantity definition.
+Probability, signed, non-negative, and bounded slots validate the runtime projection before adoption. The editor reports attempted, valid, and invalid draw counts, support-tail mass, and deterministic 10th/50th/90th percentile outcomes. A source which cannot produce finite valid results fails closed. Nonzero support-tail mass remains visible and disables Save. Finite checks cannot prove that an unbounded symbolic tail has zero mass outside the target support, so authors should use bounded families or explicit truncation when support is part of the quantity definition.
 
-One estimate has one authoritative Squiggle authoring source. Records without that source, its deterministic controls, and the backend assessment are rejected during deserialization.
+One estimate has one authoritative Squiggle authoring source. Records without that source and its deterministic controls are rejected during deserialization. Assessment output is transient and never part of project YAML.
 
 ### Decomposition
 
@@ -58,11 +58,7 @@ $$
 T_{month} = N_{deployments} \times T_{per\ deployment}
 $$
 
-The [typed formula example](../examples/#fermi-delivery-time-estimate) demonstrates the same statistical idea using the Rust `Formula` API. Formula references are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
-
-```sh
-cargo run --example fermi_delivery_time
-```
+Bindings make shared assumptions explicit inside one Squiggle program, so repeated uses of `deployments` refer to the same modelled quantity rather than separate stored formulas.
 
 ## Metric calibration
 

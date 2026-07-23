@@ -13,10 +13,10 @@ pub mod cli;
 pub mod command;
 /// Strongly typed causal graph aggregates and embedded probabilistic values.
 pub mod domain;
-/// Versioned Markdown document schemas, bounded parsing, and canonical rendering.
-pub mod markdown;
 /// Project metadata and isolated graph lifecycle management.
 pub mod project;
+/// Versioned YAML project schemas, bounded parsing, and canonical rendering.
+pub mod project_yaml;
 /// HTTP routing and server process lifecycle.
 pub mod server;
 /// Squiggle-compatible probabilistic language parsing and evaluation.

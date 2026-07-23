@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::domain::{EdgeId, EntityId, EstimateAddress, NodeKind, ScenarioId};
 
-/// Source-aware failures returned while validating a complete Markdown snapshot.
+/// Source-aware failures returned while validating a complete YAML project.
 #[derive(Clone, Debug, Error, PartialEq)]
 pub enum ImportError {
     /// Two imported documents use the same relative source path.
@@ -53,17 +53,17 @@ pub enum ImportError {
     },
     /// A document was exported from a different project revision.
     #[error(
-        "{path}: base project revision {actual} does not match _project.md revision {expected}"
+        "{path}: base project revision {actual} does not match _project.yaml revision {expected}"
     )]
     InconsistentBaseRevision {
         /// Path exported from the inconsistent revision.
         path: String,
-        /// Revision declared by `_project.md`.
+        /// Revision declared by `_project.yaml`.
         expected: u64,
         /// Revision declared by this document.
         actual: u64,
     },
-    /// An outgoing edge references an entity absent from the imported snapshot.
+    /// An outgoing edge references an entity absent from the imported project.
     #[error("{path}: outgoing edge {edge} references missing node {node}")]
     MissingEdgeEndpoint {
         /// Entity document containing the edge.
@@ -111,22 +111,6 @@ pub enum ImportError {
         /// Project document containing the dependence model.
         path: String,
         /// Unresolved project-scoped estimate address.
-        address: EstimateAddress,
-    },
-    /// The project formula document is inconsistent with imported primitives or units.
-    #[error("{path}: invalid project formulas: {message}")]
-    InvalidFormulas {
-        /// Project document containing the formulas.
-        path: String,
-        /// Formula projection or validation diagnostic.
-        message: String,
-    },
-    /// Formula provenance names an address absent from the formula source map.
-    #[error("{path}: formula provenance references missing formula {address}")]
-    OrphanFormulaProvenance {
-        /// Project document containing the provenance record.
-        path: String,
-        /// Formula address absent from the formula map.
         address: EstimateAddress,
     },
 }

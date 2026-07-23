@@ -67,7 +67,7 @@ fn render(
 ) -> Result<String, human_errors::Error> {
     match output {
         OutputFormat::Table => Ok(format!(
-            "PROJECT\tGRAPH_REVISION\tSCENARIO\tDEPENDENCE_REVISION\tFORMULA_REVISION\tCOMPONENTS\tFEEDBACK_COMPONENTS\tCYCLES\tTRUNCATED\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "PROJECT\tGRAPH_REVISION\tSCENARIO\tDEPENDENCE_REVISION\tCOMPONENTS\tFEEDBACK_COMPONENTS\tCYCLES\tTRUNCATED\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             analysis.revision.project,
             analysis.revision.graph_revision,
             analysis
@@ -80,7 +80,6 @@ fn render(
                 .dependence_revision
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "-".to_owned()),
-            analysis.revision.formula_revision,
             analysis.components.len(),
             analysis
                 .components

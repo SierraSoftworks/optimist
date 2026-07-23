@@ -51,7 +51,6 @@ describe('simulationReadiness', () => {
       source: {
         type: 'squiggle' as const,
         definition: { source: 'beta(2, 2)', seed: 42, sample_count: 256, target_unit: {} },
-        assessment: {} as never,
       },
     }
     expect(simulationReadiness({

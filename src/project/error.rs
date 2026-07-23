@@ -1,20 +1,16 @@
 use thiserror::Error;
 
-use crate::markdown::{ImportError, MarkdownError};
+use crate::project_yaml::{ImportError, YamlError};
 use crate::{
     domain::{
         AnalysisError, DependenceError, EdgeId, EdgeIdError, EntityId, EstimateAddress,
-        EstimateAddressError, FermiAssessmentError, MeasurementCalibrationError, NodeError,
-        NodeKind, ObservationError, ProjectId, QuantityError, ScenarioAnalysisError, ScenarioError,
-        ScenarioId,
+        EstimateAddressError, MeasurementCalibrationError, NodeError, NodeKind, ObservationError,
+        ProjectId, QuantityError, ScenarioAnalysisError, ScenarioError, ScenarioId,
     },
     store::RepositoryError,
 };
 
-use super::{
-    AggregateUpdateError, CommandBatchError, EstimateCommandError, EvidenceCommandError,
-    FormulaCommandError,
-};
+use super::{AggregateUpdateError, CommandBatchError, EstimateCommandError, EvidenceCommandError};
 
 /// Failures which prevent project lifecycle operations from completing.
 ///
@@ -185,22 +181,16 @@ pub enum ProjectError {
     /// Primitive estimate authoring or lookup validation failed.
     #[error(transparent)]
     EstimateCommand(#[from] EstimateCommandError),
-    /// Fermi component formula authoring or lookup validation failed.
-    #[error(transparent)]
-    FormulaCommand(#[from] FormulaCommandError),
     /// Exact structural analysis input or bounds are invalid.
     #[error(transparent)]
     Analysis(#[from] AnalysisError),
-    /// A proposed Fermi decomposition could not be validated or sampled.
-    #[error(transparent)]
-    FermiAssessment(#[from] FermiAssessmentError),
     /// Finite-horizon scenario propagation inputs or assumptions are invalid.
     #[error(transparent)]
     ScenarioAnalysis(#[from] ScenarioAnalysisError),
-    /// A canonical Markdown archive could not be parsed or rendered.
+    /// A canonical YAML project document could not be parsed or rendered.
     #[error(transparent)]
-    Markdown(#[from] MarkdownError),
-    /// A complete Markdown archive failed cross-document validation.
+    Yaml(#[from] YamlError),
+    /// A complete YAML project structure failed cross-document validation.
     #[error(transparent)]
     Import(#[from] ImportError),
     /// An archive replacement was requested without explicit destructive confirmation.
@@ -209,18 +199,15 @@ pub enum ProjectError {
     /// A non-replacement import attempted to restore an ID which already exists.
     #[error("project {0} already exists; explicit replacement is required")]
     ImportProjectExists(ProjectId),
-    /// The archive omits `_project.md` or uses an unsupported path.
-    #[error("invalid archive path {0:?}")]
+    /// A persisted project path or document identity is invalid.
+    #[error("invalid persisted project path {0:?}")]
     InvalidArchivePath(String),
     /// The archive exceeds the bounded project file count.
     #[error("project archive exceeds the 10,001 file limit")]
     ArchiveTooManyFiles,
-    /// Canonical Markdown content exceeds the bounded archive size.
+    /// Canonical YAML content exceeds the bounded archive size.
     #[error("project archive exceeds the 32 MiB content limit")]
     ArchiveTooLarge,
-    /// Envelope metadata disagrees with canonical `_project.md` content.
-    #[error("project archive metadata does not match _project.md")]
-    ArchiveMetadataMismatch,
     /// Creating or accessing the project's isolated graph repository failed.
     #[error(transparent)]
     Repository(#[from] RepositoryError),

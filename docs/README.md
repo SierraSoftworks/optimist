@@ -19,7 +19,7 @@ features:
   - title: Typed systems models
     details: Outcomes, metrics, factors, interventions, and validated relationships keep the graph meaningful and machine-readable.
   - title: Probability with guardrails
-    details: Dimensioned estimates, Bayesian updates, Fermi formulas, Gaussian copulas, and deterministic Monte Carlo preserve assumptions and uncertainty.
+    details: Dimensioned Squiggle estimates, Bayesian updates, Gaussian copulas, and deterministic sampling preserve assumptions and uncertainty.
   - title: Feedback and collaboration
     details: Exact structural loop discovery, revision-checked commands, ordered ChangeSet replay, and WebSocket streams support shared modelling workflows.
 ---
@@ -42,13 +42,12 @@ A delivery team wants to understand why lead time remains high. It models:
 4. Current states, desired states, costs, durations, and causal effects as typed uncertain estimates.
 5. A scenario containing objectives, budget, planning horizon, and candidate interventions.
 
-Optimist can validate and store that model, detect structural feedback loops, update selected priors with conjugate Bayesian evidence, evaluate unit-checked Fermi decompositions, and project each candidate over a finite scenario horizon. Dependence-aware decision optimization and the visual workbench are the next major implementation stage.
+Optimist can validate and store that model, detect structural feedback loops, update selected priors with conjugate Bayesian evidence, evaluate unit-checked Squiggle calculations, and project each candidate over a finite scenario horizon.
 
 ## Try the core
 
 ```sh
 cargo run --example feedback_loop
-cargo run --example fermi_delivery_time
 cargo run --example bayesian_delivery_success
 ```
 

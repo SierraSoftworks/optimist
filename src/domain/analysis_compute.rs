@@ -49,7 +49,6 @@ mod tests {
             graph_revision: 7,
             scenario: None,
             dependence_revision: None,
-            formula_revision: 2,
         }
     }
 

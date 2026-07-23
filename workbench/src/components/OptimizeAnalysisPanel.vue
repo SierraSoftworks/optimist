@@ -36,7 +36,7 @@ function number(value: number | null, digits = 3) {
 
 function invalidSamples(candidate: ScenarioAnalysis['candidates'][number]) {
   const invalid = candidate.diagnostics.invalid_samples
-  return invalid.zero_denominator + invalid.non_finite_primitive + invalid.non_finite_result
+  return invalid.non_finite_primitive + invalid.non_finite_result
 }
 
 function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {

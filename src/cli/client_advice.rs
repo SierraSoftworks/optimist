@@ -100,9 +100,6 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "cross_project_estimate_address" => {
             &["Use an address whose project ID matches `--project`."]
         }
-        "nested_estimate_address" => {
-            &["Use a root address without `/component/...` for primitive estimate commands."]
-        }
         "invalid_estimate_slot" => {
             &["Choose a slot supported by the addressed node or edge payload."]
         }
@@ -116,22 +113,10 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
             "Required causal effect and blocking degree estimates may be replaced but not removed.",
         ],
         "estimate_in_use" => {
-            &["Remove project dependence or formulas which reference this estimate, then retry."]
+            &["Remove project dependence which references this estimate, then retry."]
         }
         "invalid_estimate_distribution" => {
             &["Use a distribution whose complete support fits the selected slot dimension."]
-        }
-        "invalid_formula" => {
-            &["Check component/root addresses, references, formula arity, bounds, and units."]
-        }
-        "formula_not_found" => {
-            &["Run `optimist formula list` and retry with a returned component address."]
-        }
-        "formula_revision_conflict" => {
-            &["Run `optimist formula list` and retry against its current revision."]
-        }
-        "formula_in_use" => {
-            &["Remove dependent or descendant formulas before removing this component."]
         }
         "invalid_analysis" => {
             &["Use positive cycle limits and select a scenario which still exists."]

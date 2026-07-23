@@ -50,7 +50,7 @@ export default defineUserConfig({
       },
       {
         text: 'Reference',
-        children: ['/reference/cli.md', '/reference/http-api.md', '/reference/markdown.md'],
+        children: ['/reference/cli.md', '/reference/http-api.md', '/reference/yaml.md'],
       },
       { text: 'Examples', link: '/examples/' },
       {
@@ -80,7 +80,7 @@ export default defineUserConfig({
             '/reference/README.md',
             '/reference/cli.md',
             '/reference/http-api.md',
-            '/reference/markdown.md',
+            '/reference/yaml.md',
           ],
         },
       ],

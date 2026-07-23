@@ -42,13 +42,14 @@ pub(super) fn project_snapshots(snapshots: &[ProjectSnapshot]) -> String {
 }
 
 pub(super) fn project_archive(archive: &ProjectArchive) -> String {
+    let summary = archive.summary();
     format!(
         "PROJECT\tREVISION\tENTITIES\tEDGES\tSCENARIOS\n{}\t{}\t{}\t{}\t{}",
         archive.project.id,
         archive.project.revision,
-        archive.summary.entities,
-        archive.summary.edges,
-        archive.summary.scenarios
+        summary.entities,
+        summary.edges,
+        summary.scenarios
     )
 }
 

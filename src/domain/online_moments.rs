@@ -8,7 +8,7 @@
 //! $C_{xy,n}=C_{xy,n-1}+\delta_x(y_n-m_{y,n})$, yielding sample covariance
 //! $C_{xy}/(n-1)$. This avoids retaining draws and reduces cancellation compared
 //! with subtracting raw sums. It does not prevent overflow for extreme finite
-//! values, nor does it correct autocorrelation; formula draws are pseudorandom
+//! values, nor does it correct autocorrelation; sample draws are pseudorandom
 //! independent stream positions. See Pébay, *Formulas for Robust, One-Pass
 //! Parallel Computation of Covariances and Arbitrary-Order Statistical Moments*,
 //! SAND2008-6212, equations 1.5-1.8.

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { stringify as stringifyYaml } from 'yaml'
 import {
   Activity,
   AlertTriangle,
@@ -484,15 +485,15 @@ async function exportProject() {
   mutationError.value = null
   try {
     const archive = await api.exportProject(selectedProjectId.value)
-    const blob = new Blob([JSON.stringify(archive, null, 2)], {
-      type: 'application/json',
+    const blob = new Blob([stringifyYaml(archive, { lineWidth: 0 })], {
+      type: 'application/yaml',
     })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = `${archive.project.id}-${archive.project.name
       .toLocaleLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')}.optimist.json`
+      .replace(/[^a-z0-9]+/g, '-')}.optimist.yaml`
     link.click()
     URL.revokeObjectURL(url)
   } catch (error) {

@@ -17,7 +17,7 @@ pub(super) fn validate(
         .iter()
         .flat_map(|group| &group.members)
     {
-        if !address.components.is_empty() || !contains(entry, address)? {
+        if !contains(entry, address)? {
             return Err(ProjectError::MissingEstimateAddress(address.clone()));
         }
     }

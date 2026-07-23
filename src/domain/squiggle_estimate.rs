@@ -9,6 +9,27 @@ const MAX_SOURCE_BYTES: usize = 65_536;
 const MIN_SAMPLES: usize = 256;
 const MAX_SAMPLES: usize = 4_096;
 
+/// Complete support required by a Squiggle-authored estimate.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SquiggleEstimateSupport {
+    /// Any finite real value.
+    Real,
+    /// Values at or above zero.
+    NonNegative,
+    /// Normalized state or probability on `[0, 1]`.
+    Probability,
+    /// Relationship influence on `[-1, 1]`.
+    Signed,
+    /// Native quantity constrained to an arbitrary inclusive interval.
+    Bounded {
+        /// Smallest legal value in the target quantity's native unit.
+        lower: f64,
+        /// Largest legal value in the target quantity's native unit.
+        upper: f64,
+    },
+}
+
 /// Reviewable Squiggle source and deterministic evaluation controls for an estimate.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SquiggleEstimateDefinition {
@@ -50,9 +71,9 @@ pub struct SquiggleEstimateAssessment {
     pub p50: f64,
     /// Ninety-fifth percentile of the evaluated result.
     pub p95: f64,
-    /// Seed used for reproducible evaluation and retained draws.
+    /// Seed used for reproducible evaluation and runtime draws.
     pub seed: u64,
-    /// Number of retained effective draws, or one for a scalar result.
+    /// Requested draw count used for predictive checks and empirical fallback.
     pub sample_count: usize,
 }
 
@@ -77,9 +98,6 @@ pub enum SquiggleEstimateError {
     /// Client-supplied target unit disagrees with the estimate owner.
     #[error("Squiggle estimate target unit does not match its owner")]
     TargetUnitMismatch,
-    /// Persisted effective draws or assessment disagree with deterministic reevaluation.
-    #[error("persisted Squiggle result does not match deterministic backend evaluation")]
-    ResultMismatch,
 }
 
 /// Evaluates source against a target unit and returns an effective domain distribution.
@@ -125,12 +143,18 @@ pub fn assess_squiggle_estimate(
             1,
         ),
         Value::Distribution(value) => {
-            let samples = (0..definition.sample_count)
-                .map(|index| value.sample_seeded(sample_seed(definition.seed, index)))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(SquiggleEstimateError::InvalidDistribution)?;
-            let effective = Distribution::empirical(samples)
-                .map_err(|error| SquiggleEstimateError::InvalidDistribution(error.to_string()))?;
+            let effective = symbolic_distribution(&value).map_or_else(
+                || {
+                    let samples = (0..definition.sample_count)
+                        .map(|index| value.sample_seeded(sample_seed(definition.seed, index)))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(SquiggleEstimateError::InvalidDistribution)?;
+                    Distribution::empirical(samples).map_err(|error| {
+                        SquiggleEstimateError::InvalidDistribution(error.to_string())
+                    })
+                },
+                Ok,
+            )?;
             (
                 value.family().to_owned(),
                 value.mean().ok().filter(|value| value.is_finite()),
@@ -168,6 +192,22 @@ pub fn assess_squiggle_estimate(
         },
         distribution,
     ))
+}
+
+fn symbolic_distribution(value: &crate::squiggle::Distribution) -> Option<Distribution> {
+    if let Some(value) = value.point_value() {
+        return Distribution::point(value).ok();
+    }
+    if let Some((mean, standard_deviation)) = value.normal_parameters() {
+        return Distribution::normal(mean, standard_deviation).ok();
+    }
+    if let Some((location, scale)) = value.lognormal_parameters() {
+        return Distribution::log_normal(location, scale).ok();
+    }
+    if let Some((alpha, beta)) = value.beta_parameters() {
+        return Distribution::beta(alpha, beta).ok();
+    }
+    None
 }
 
 fn wrapped_source(source: &str, unit: &Unit) -> String {
@@ -267,6 +307,21 @@ mod tests {
             serde_json::to_value(effective).unwrap()["type"],
             "empirical"
         );
+    }
+
+    #[test]
+    fn preserves_supported_symbolic_distributions_without_effective_draws() {
+        let definition = SquiggleEstimateDefinition {
+            source: "Sym.beta(8, 2)".to_owned(),
+            seed: 42,
+            sample_count: 512,
+            target_unit: Unit::dimensionless(),
+        };
+        let (_, assessment, effective) =
+            assess_squiggle_estimate(definition, &Unit::dimensionless()).unwrap();
+        assert_eq!(assessment.family, "Beta");
+        assert!(effective.retained_draws().is_none());
+        assert_eq!(serde_json::to_value(effective).unwrap()["type"], "beta");
     }
 
     #[test]

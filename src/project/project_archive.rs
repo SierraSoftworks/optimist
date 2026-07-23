@@ -1,9 +1,8 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
-use crate::markdown::{
-    SCHEMA_VERSION, SourceDocument, ValidatedImport, parse_entity, parse_project, parse_scenario,
+use crate::project_yaml::{
+    EntityDocument, ProjectDocument, SCHEMA_VERSION, ScenarioDocument, SourceDocument,
+    ValidatedImport, render_entity, render_project, render_scenario,
 };
 
 use super::ProjectError;
@@ -11,20 +10,26 @@ use super::ProjectError;
 const MAX_ARCHIVE_FILES: usize = 10_001;
 pub(crate) const MAX_ARCHIVE_BYTES: usize = 32 * 1024 * 1024;
 
-/// Portable JSON envelope containing canonical Markdown project files.
-///
-/// File contents remain byte-identical to directory export while the map gives
-/// browser clients one downloadable/uploadable document without a ZIP dependency.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Portable project structure serialized directly as YAML.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectArchive {
-    /// Archive envelope version, independent from the Markdown schema version.
+    /// YAML project schema version.
     pub schema_version: u32,
-    /// Project identity and revision declared by the canonical `_project.md` file.
+    /// Project identity and revision.
     pub project: crate::project::Project,
-    /// Canonical project-relative Markdown files ordered by path.
-    pub files: BTreeMap<String, String>,
-    /// Counts useful for upload confirmation and diagnostics.
-    pub summary: ProjectArchiveSummary,
+    /// Project rationale and scope.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// Optional project-level Gaussian residual dependence document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dependence: Option<crate::domain::ProjectDependenceModel>,
+    /// Complete entity documents ordered by project-local identity.
+    #[serde(default)]
+    pub entities: Vec<EntityDocument>,
+    /// Complete scenario documents ordered by project-local identity.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<ScenarioDocument>,
 }
 
 /// Aggregate counts retained beside one portable project archive.
@@ -39,62 +44,68 @@ pub struct ProjectArchiveSummary {
 }
 
 impl ProjectArchive {
-    /// Parses and cross-validates every canonical Markdown file in this archive.
+    /// Returns aggregate counts derived from the typed project structure.
+    pub fn summary(&self) -> ProjectArchiveSummary {
+        ProjectArchiveSummary {
+            entities: self.entities.len(),
+            edges: self
+                .entities
+                .iter()
+                .map(|entity| entity.outgoing_edges.len())
+                .sum(),
+            scenarios: self.scenarios.len(),
+        }
+    }
+
+    /// Validates every YAML document and all cross-document references.
     pub fn validated_import(&self) -> Result<ValidatedImport, ProjectError> {
         if self.schema_version != SCHEMA_VERSION {
-            return Err(ProjectError::Markdown(
-                crate::markdown::MarkdownError::UnsupportedSchema {
+            return Err(ProjectError::Yaml(
+                crate::project_yaml::YamlError::UnsupportedSchema {
                     path: "<archive>".to_owned(),
                     version: self.schema_version,
                 },
             ));
         }
-        if self.files.len() > MAX_ARCHIVE_FILES {
+        if 1 + self.entities.len() + self.scenarios.len() > MAX_ARCHIVE_FILES {
             return Err(ProjectError::ArchiveTooManyFiles);
         }
-        let bytes = self
-            .files
-            .values()
-            .try_fold(0_usize, |total, contents| total.checked_add(contents.len()));
-        if bytes.is_none_or(|bytes| bytes > MAX_ARCHIVE_BYTES) {
+        let bytes = serde_yaml_ng::to_string(self)
+            .map_err(|error| crate::project_yaml::YamlError::Render(error.to_string()))?
+            .len();
+        if bytes > MAX_ARCHIVE_BYTES {
             return Err(ProjectError::ArchiveTooLarge);
         }
-        let project_text = self
-            .files
-            .get("_project.md")
-            .ok_or_else(|| ProjectError::InvalidArchivePath("_project.md".to_owned()))?;
-        let project =
-            SourceDocument::new("_project.md", parse_project("_project.md", project_text)?);
-        if project.document.project != self.project {
-            return Err(ProjectError::ArchiveMetadataMismatch);
-        }
-        let mut entities = Vec::new();
-        let mut scenarios = Vec::new();
-        for (path, contents) in &self.files {
-            if path == "_project.md" {
-                continue;
-            }
-            if path.starts_with("entities/") && path.ends_with(".md") {
-                let document = parse_entity(path, contents)?;
-                if document.canonical_path() != *path {
-                    return Err(ProjectError::InvalidArchivePath(path.clone()));
-                }
-                entities.push(SourceDocument::new(path, document));
-            } else if path.starts_with("scenarios/") && path.ends_with(".md") {
-                let document = parse_scenario(path, contents)?;
-                if document.canonical_path() != *path {
-                    return Err(ProjectError::InvalidArchivePath(path.clone()));
-                }
-                scenarios.push(SourceDocument::new(path, document));
-            } else {
-                return Err(ProjectError::InvalidArchivePath(path.clone()));
-            }
-        }
-        let import = ValidatedImport::new(project, entities, scenarios)?;
-        if super::project_archive_export::summary(&import) != self.summary {
-            return Err(ProjectError::ArchiveMetadataMismatch);
-        }
-        Ok(import)
+        let project_document = ProjectDocument {
+            schema_version: self.schema_version,
+            project: self.project.clone(),
+            dependence: self.dependence.clone(),
+            description: self.description.clone(),
+        };
+        render_project(&project_document)?;
+        let entities = self
+            .entities
+            .iter()
+            .cloned()
+            .map(|document| {
+                render_entity(&document)?;
+                Ok(SourceDocument::new(document.canonical_path(), document))
+            })
+            .collect::<Result<Vec<_>, ProjectError>>()?;
+        let scenarios = self
+            .scenarios
+            .iter()
+            .cloned()
+            .map(|document| {
+                render_scenario(&document)?;
+                Ok(SourceDocument::new(document.canonical_path(), document))
+            })
+            .collect::<Result<Vec<_>, ProjectError>>()?;
+        Ok(ValidatedImport::new(
+            SourceDocument::new("_project.yaml", project_document),
+            entities,
+            scenarios,
+        )?)
     }
 }
 
@@ -102,21 +113,34 @@ impl ProjectArchive {
 mod tests {
     use crate::{
         command::{
-            CommandRequest, CreateEdge, CreateNode, CreateScenario, GraphCommand, SetFormula,
+            CommandRequest, CreateEdge, CreateNode, CreateScenario, GraphCommand,
             SetNodeQuantityState, SetProjectDependence, SetSquiggleEstimate,
         },
         domain::{
-            CorrelationScale, Distribution, EdgePayload, EntityId, EstimateAddress,
-            EstimateComponentId, EstimateId, EstimateOwner, EstimateSlot, EstimateUncertainty,
-            Factor, Formula, GaussianCopulaCorrelation, Intervention, MonteCarloConfig,
-            NodePayload, Outcome, OutcomeDirection, ProjectDependenceModel, QuantityDefinition,
-            QuantitySupport, Requirement, ResidualDependenceGroup, ScenarioDraft,
-            ScenarioObjective, Unit, UtilityDirection,
+            CorrelationScale, EdgePayload, EntityId, EstimateAddress, EstimateId, EstimateOwner,
+            EstimateSlot, EstimateUncertainty, Factor, GaussianCopulaCorrelation, Intervention,
+            MonteCarloConfig, NodePayload, Outcome, OutcomeDirection, ProjectDependenceModel,
+            QuantityDefinition, QuantitySupport, Requirement, ResidualDependenceGroup,
+            ScenarioDraft, ScenarioObjective, Unit, UtilityDirection,
         },
     };
 
     use super::*;
     use crate::project::ProjectCatalog;
+
+    fn contains_yaml_key(value: &serde_yaml_ng::Value, key: &str) -> bool {
+        match value {
+            serde_yaml_ng::Value::Mapping(values) => values.iter().any(|(candidate, value)| {
+                candidate.as_str() == Some(key)
+                    || contains_yaml_key(candidate, key)
+                    || contains_yaml_key(value, key)
+            }),
+            serde_yaml_ng::Value::Sequence(values) => {
+                values.iter().any(|value| contains_yaml_key(value, key))
+            }
+            _ => false,
+        }
+    }
 
     fn populated_catalog() -> (ProjectCatalog, crate::domain::ProjectId) {
         let mut catalog = ProjectCatalog::new();
@@ -164,8 +188,8 @@ mod tests {
         let first = catalog.export_archive(&project).unwrap();
         let second = catalog.export_archive(&project).unwrap();
         assert_eq!(first, second);
-        assert_eq!(first.summary.entities, 2);
-        assert_eq!(first.summary.edges, 1);
+        assert_eq!(first.summary().entities, 2);
+        assert_eq!(first.summary().edges, 1);
         assert!(matches!(
             catalog.import_archive(&first, false, false),
             Err(ProjectError::ImportProjectExists(_))
@@ -175,21 +199,11 @@ mod tests {
             Err(ProjectError::ReplaceConfirmationRequired(_))
         ));
 
-        let mut metadata = first.clone();
-        metadata.summary.entities += 1;
-        assert_eq!(
-            metadata.validated_import(),
-            Err(ProjectError::ArchiveMetadataMismatch)
-        );
-        let mut path = first;
-        let entity = path
-            .files
-            .remove("entities/A-feedback.md")
-            .expect("fixture entity path");
-        path.files.insert("entities/alias.md".to_owned(), entity);
+        let mut unsupported = first;
+        unsupported.schema_version += 1;
         assert!(matches!(
-            path.validated_import(),
-            Err(ProjectError::InvalidArchivePath(_))
+            unsupported.validated_import(),
+            Err(ProjectError::Yaml(_))
         ));
     }
 
@@ -240,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn restores_scenarios_formulas_and_dependence_documents() {
+    fn restores_scenarios_dependence_and_squiggle_sources() {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Complete".to_owned()).unwrap();
         let payloads = [
@@ -355,31 +369,6 @@ mod tests {
                 ),
             )
             .unwrap();
-        let root = EstimateAddress::new(
-            project.id.clone(),
-            EstimateOwner::Node(EntityId::new(2)),
-            EstimateId::new(0),
-        );
-        let formula = root
-            .clone()
-            .with_component(EstimateComponentId::new("baseline").unwrap());
-        catalog
-            .execute(
-                &project.id,
-                CommandRequest::new(
-                    revision + 1,
-                    GraphCommand::SetFormula(SetFormula {
-                        address: formula,
-                        formula: Formula::Literal {
-                            distribution: Distribution::point(0.5).unwrap(),
-                            unit: Unit::dimensionless(),
-                        },
-                        expected_revision: 0,
-                        provenance: vec!["archive fixture".to_owned()],
-                    }),
-                ),
-            )
-            .unwrap();
         let member = |id| {
             EstimateAddress::new(
                 project.id.clone(),
@@ -391,7 +380,7 @@ mod tests {
             .execute(
                 &project.id,
                 CommandRequest::new(
-                    revision + 2,
+                    revision + 1,
                     GraphCommand::SetProjectDependence(SetProjectDependence {
                         model: ProjectDependenceModel {
                             revision: 0,
@@ -409,11 +398,21 @@ mod tests {
             .unwrap();
 
         let before = catalog.export_archive(&project.id).unwrap();
+        let yaml = serde_yaml_ng::to_string(&before).unwrap();
+        assert!(yaml.contains("source: beta(2, 2)"));
+        assert!(yaml.contains("seed: 42"));
+        let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&yaml).unwrap();
+        for derived in ["distribution:", "samples:", "assessment:", "p50:", "p90:"] {
+            let key = derived.trim_end_matches(':');
+            assert!(
+                !contains_yaml_key(&value, key),
+                "persisted derived field {key}"
+            );
+        }
         catalog.delete(&project.id).unwrap();
         catalog.import_archive(&before, false, false).unwrap();
         assert_eq!(catalog.export_archive(&project.id).unwrap(), before);
         assert_eq!(catalog.list_scenarios(&project.id).unwrap().len(), 1);
-        assert_eq!(catalog.list_formulas(&project.id).unwrap().revision, 1);
         assert_eq!(
             catalog
                 .get_dependence(&project.id)

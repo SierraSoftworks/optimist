@@ -26,7 +26,7 @@ Create body:
 {"name":"Delivery reliability"}
 ```
 
-Archive responses are bounded JSON envelopes containing validated project metadata, summary counts, and a `files` map of canonical Markdown paths to UTF-8 content. Import validates envelope metadata, file/path/byte limits, every Markdown document, cross-references, formulas, and dependence before atomically publishing a fresh in-memory project entry. Existing IDs return `project_import_requires_replace` unless both replacement flags are true.
+Archive responses contain the typed project structure: metadata, description, optional dependence, entities with source-owned outgoing edges, and scenarios. Import validates document and byte limits, canonical identities, cross-references, estimates, and dependence before atomically publishing a fresh in-memory project entry. The workbench serializes this response as `.optimist.yaml`; existing IDs return `project_import_requires_replace` unless both replacement flags are true.
 
 ## Backups and immutable snapshots
 
@@ -117,11 +117,9 @@ Edge and estimate addresses are URL-encoded by clients.
 GET /api/v1/projects/{project}/scenarios
 GET /api/v1/projects/{project}/scenarios/{scenario}
 GET /api/v1/projects/{project}/dependence
-GET /api/v1/projects/{project}/formulas
-GET /api/v1/projects/{project}/formula?address={component_address}
 ```
 
-Scenario, formula, and dependence mutations use the command endpoint.
+Scenario and dependence mutations use the command endpoint.
 
 ## Structural analysis
 
@@ -140,7 +138,7 @@ The response contains an immutable revision key, exact SCCs, canonical cycles, l
 GET /api/v1/projects/{project}/scenarios/{scenario}/analysis
 ```
 
-The response contains the immutable graph/scenario/dependence/formula revision key, planning horizon, and independently sampled candidate/objective projections. A `422 scenario_analysis_unavailable` response identifies missing baselines or unsupported non-empty dynamic dependence.
+The response contains the immutable graph/scenario/dependence revision key, planning horizon, and independently sampled candidate/objective projections. A `422 scenario_analysis_unavailable` response identifies missing baselines or unsupported non-empty dynamic dependence.
 
 ## Change replay
 

@@ -31,7 +31,7 @@ const trajectory = [
   { period: 12, state: { ...estimate, mean: 0.62 }, improvement: estimate },
 ]
 const analysis: ScenarioAnalysis = {
-  revision: { project: 'A', graph_revision: 5, scenario: ['A', 0], dependence_revision: null, formula_revision: 0 },
+  revision: { project: 'A', graph_revision: 5, scenario: ['A', 0], dependence_revision: null },
   planning_horizon: 12,
   candidates: [{
     intervention: 'B',
@@ -43,7 +43,7 @@ const analysis: ScenarioAnalysis = {
     clamped_state_updates: 3,
     diagnostics: {
       seed: 42, attempted_samples: 120, valid_samples: 118,
-      invalid_samples: { zero_denominator: 0, non_finite_primitive: 2, non_finite_result: 0 },
+      invalid_samples: { non_finite_primitive: 2, non_finite_result: 0 },
       criterion: config, status: 'converged',
     },
   }],

@@ -4,6 +4,7 @@ import { Pencil, Trash2, X } from '@lucide/vue'
 import type {
   Distribution,
   EdgeEstimateSlot,
+  Estimate,
   GraphEdge,
   MeasurementCalibration,
   SetMeasurementCalibrationInput,
@@ -84,6 +85,11 @@ function distributionLabel(value: Distribution) {
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
+function estimateLabel(value: Estimate) {
+  if (value.distribution) return distributionLabel(value.distribution)
+  return `Squiggle · ${value.source.definition.source.trim().split('\n')[0]}`
+}
+
 </script>
 
 <template>
@@ -99,17 +105,17 @@ function distributionLabel(value: Distribution) {
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong></div>
+            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ estimateLabel(edge.payload.properties.response.destination_change) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit destination response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
-            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong></div>
+            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? estimateLabel(edge.payload.properties.lag) : 'Not set' }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
         </section>
         <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong></div>
+            <div><span>Blocking degree</span><strong>{{ estimateLabel(edge.payload.properties.degree) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
           </div>
         </section>

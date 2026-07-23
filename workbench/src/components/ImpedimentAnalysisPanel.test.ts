@@ -22,7 +22,7 @@ const nodes: GraphNode[] = [
 ]
 const edge = (source: string, destination: string) => ({ source, kind: 'contributes' as const, destination })
 const analysis: ImpedimentAnalysis = {
-  revision: { project: 'A', graph_revision: 5, scenario: null, dependence_revision: null, formula_revision: 0 },
+  revision: { project: 'A', graph_revision: 5, scenario: null, dependence_revision: null },
   topology_candidates: [
     {
       factor: 'A', controllable: true, reachable_outcomes: ['C', 'D'], nearest_outcome_distance: 1,

@@ -29,7 +29,7 @@ impl ProjectCatalog {
 }
 
 fn entry_from_import(
-    import: &crate::markdown::ValidatedImport,
+    import: &crate::project_yaml::ValidatedImport,
 ) -> Result<ProjectEntry, ProjectError> {
     let project = import.project.document.project.clone();
     let mut repository = IndraDbRepository::<MemoryDatastore>::memory(project.id.clone())?;
@@ -63,14 +63,11 @@ fn entry_from_import(
             .map(|(id, source)| (*id, source.document.scenario.clone()))
             .collect(),
         dependence: import.project.document.dependence.clone(),
-        formulas: import.project.document.formulas.clone(),
     };
     // This entry is local and is dropped on any error below. The catalog only sees
     // it after every imported document validates against the fresh repository.
     if let Some(dependence) = entry.dependence.clone() {
         super::dependence_addresses::validate(&mut entry, &dependence)?;
     }
-    let formulas = entry.formulas.formulas.clone();
-    super::formula_projection::compile(&mut entry, &formulas)?;
     Ok(entry)
 }

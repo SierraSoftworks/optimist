@@ -173,6 +173,38 @@ impl Distribution {
             None
         }
     }
+
+    /// Returns the value when this distribution is a symbolic point mass.
+    pub fn point_value(&self) -> Option<f64> {
+        match self.0 {
+            Kind::Point(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Returns `(mean, standard_deviation)` for a symbolic Normal distribution.
+    pub fn normal_parameters(&self) -> Option<(f64, f64)> {
+        match self.0 {
+            Kind::Normal(mean, standard_deviation) => Some((mean, standard_deviation)),
+            _ => None,
+        }
+    }
+
+    /// Returns `(location, scale)` for a symbolic Lognormal distribution.
+    pub fn lognormal_parameters(&self) -> Option<(f64, f64)> {
+        match self.0 {
+            Kind::Lognormal(location, scale) => Some((location, scale)),
+            _ => None,
+        }
+    }
+
+    /// Returns `(alpha, beta)` for a symbolic Beta distribution.
+    pub fn beta_parameters(&self) -> Option<(f64, f64)> {
+        match self.0 {
+            Kind::Beta(alpha, beta) => Some((alpha, beta)),
+            _ => None,
+        }
+    }
 }
 
 fn finite(value: f64, name: &str) -> Result<(), String> {

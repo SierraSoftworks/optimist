@@ -5,12 +5,10 @@ use thiserror::Error;
 
 use super::{
     EntityId, EstimateUncertainty, EstimateUncertaintyError, QuantityDefinition,
-    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError, Unit,
-    assess_squiggle_estimate,
+    SquiggleEstimateDefinition, SquiggleEstimateError, Unit, assess_squiggle_estimate,
 };
 
 const MAX_EMPIRICAL_SAMPLES: usize = 4_096;
-const SQUIGGLE_INTEGRITY_ULPS: f64 = 16.0;
 
 /// Identifies an estimate within its owning node or edge aggregate.
 ///
@@ -130,7 +128,7 @@ impl Distribution {
     /// Creates a LogNormal distribution in log-space parameterization.
     ///
     /// If `X` is returned, then `ln(X) ~ Normal(location, scale²)`. This family is
-    /// appropriate for positive Fermi factors such as costs and durations.
+    /// appropriate for positive multiplicative quantities such as costs and durations.
     pub fn log_normal(location: f64, scale: f64) -> Result<Self, DistributionError> {
         Self::validated(DistributionKind::LogNormal { location, scale })
     }
@@ -408,7 +406,7 @@ pub enum EstimateError {
     /// The distribution has support outside the estimate dimension's legal range.
     #[error("distribution support is invalid for estimate dimension {0}")]
     InvalidSupport(&'static str),
-    /// Persisted Squiggle source or assessment is invalid.
+    /// Persisted Squiggle source or deterministic controls are invalid.
     #[error(transparent)]
     Squiggle(#[from] SquiggleEstimateError),
     /// Descriptive uncertainty metadata exceeded its transport bound.
@@ -419,16 +417,14 @@ pub enum EstimateError {
     InvalidQuantityDefinition(&'static str),
 }
 
-/// Exclusive source used to produce an estimate's effective distribution.
+/// Exclusive Squiggle source used to derive an estimate at runtime.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EstimateSource {
-    /// A retained Squiggle calculation evaluated by the Rust backend.
+    /// A retained Squiggle calculation evaluated deterministically by the backend.
     Squiggle {
         /// Reviewable authored source and deterministic evaluation controls.
         definition: Box<SquiggleEstimateDefinition>,
-        /// Server-generated family, moments, quantiles, and sampling metadata.
-        assessment: Box<SquiggleEstimateAssessment>,
     },
 }
 
@@ -461,12 +457,13 @@ pub struct Estimate<T: EstimateDimension> {
     pub id: EstimateId,
     /// Optimistic-concurrency revision incremented when the estimate changes.
     pub revision: u64,
-    /// Validated prior distribution whose support is accepted by `T`.
+    /// Runtime distribution derived from [`Self::source`]; never persisted.
+    #[serde(skip)]
     pub distribution: Distribution,
     /// Explicit quantity metadata intrinsically owned by this estimate dimension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantity: Option<QuantityDefinition>,
-    /// Authoritative Squiggle source and retained backend assessment.
+    /// Authoritative Squiggle source and deterministic evaluation controls.
     pub source: EstimateSource,
     /// Human-readable evidence, source, or elicitation records supporting the estimate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -540,11 +537,9 @@ impl<T: EstimateDimension> Estimate<T> {
         definition: SquiggleEstimateDefinition,
         expected_unit: &Unit,
     ) -> Result<Self, EstimateError> {
-        let (definition, assessment, distribution) =
-            assess_squiggle_estimate(definition, expected_unit)?;
+        let (definition, _, distribution) = assess_squiggle_estimate(definition, expected_unit)?;
         let source = EstimateSource::Squiggle {
             definition: Box::new(definition),
-            assessment: Box::new(assessment),
         };
         Self::from_evaluated_squiggle(id, distribution, source)
     }
@@ -555,7 +550,6 @@ impl<T: EstimateDimension> Estimate<T> {
 struct RawEstimate {
     id: EstimateId,
     revision: u64,
-    distribution: Distribution,
     #[serde(default)]
     quantity: Option<QuantityDefinition>,
     source: EstimateSource,
@@ -572,26 +566,10 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
     {
         let raw = RawEstimate::deserialize(deserializer)?;
         let mut estimate = match raw.source {
-            EstimateSource::Squiggle {
-                definition,
-                assessment,
-            } => {
+            EstimateSource::Squiggle { definition } => {
                 let expected_unit = definition.target_unit.clone();
-                let estimate = Self::from_squiggle(raw.id, *definition, &expected_unit)
-                    .map_err(de::Error::custom)?;
-                let EstimateSource::Squiggle {
-                    assessment: evaluated,
-                    ..
-                } = &estimate.source;
-                if !squiggle_result_matches(
-                    &estimate.distribution,
-                    &raw.distribution,
-                    evaluated,
-                    &assessment,
-                ) {
-                    return Err(de::Error::custom(SquiggleEstimateError::ResultMismatch));
-                }
-                estimate
+                Self::from_squiggle(raw.id, *definition, &expected_unit)
+                    .map_err(de::Error::custom)?
             }
         };
         estimate.revision = raw.revision;
@@ -611,58 +589,6 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
         estimate.uncertainty = raw.uncertainty;
         Ok(estimate)
     }
-}
-
-fn squiggle_result_matches(
-    evaluated_distribution: &Distribution,
-    persisted_distribution: &Distribution,
-    evaluated_assessment: &SquiggleEstimateAssessment,
-    persisted_assessment: &SquiggleEstimateAssessment,
-) -> bool {
-    evaluated_assessment.family == persisted_assessment.family
-        && evaluated_assessment.seed == persisted_assessment.seed
-        && evaluated_assessment.sample_count == persisted_assessment.sample_count
-        && optional_float_matches(evaluated_assessment.mean, persisted_assessment.mean)
-        && optional_float_matches(evaluated_assessment.variance, persisted_assessment.variance)
-        && float_matches(evaluated_assessment.p05, persisted_assessment.p05)
-        && float_matches(evaluated_assessment.p50, persisted_assessment.p50)
-        && float_matches(evaluated_assessment.p95, persisted_assessment.p95)
-        && distribution_result_matches(evaluated_distribution, persisted_distribution)
-}
-
-fn distribution_result_matches(evaluated: &Distribution, persisted: &Distribution) -> bool {
-    match (&evaluated.0, &persisted.0) {
-        (
-            DistributionKind::Point { value: evaluated },
-            DistributionKind::Point { value: persisted },
-        ) => float_matches(*evaluated, *persisted),
-        (
-            DistributionKind::Empirical { samples: evaluated },
-            DistributionKind::Empirical { samples: persisted },
-        ) => {
-            evaluated.len() == persisted.len()
-                && evaluated
-                    .iter()
-                    .zip(persisted)
-                    .all(|(evaluated, persisted)| float_matches(*evaluated, *persisted))
-        }
-        _ => false,
-    }
-}
-
-fn optional_float_matches(evaluated: Option<f64>, persisted: Option<f64>) -> bool {
-    match (evaluated, persisted) {
-        (Some(evaluated), Some(persisted)) => float_matches(evaluated, persisted),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-fn float_matches(evaluated: f64, persisted: f64) -> bool {
-    // JSON and graph-store round trips may move a finite result by a few ULPs.
-    // The relative bound is τ = 16 ε max(1, |x|, |y|); larger drift is corruption.
-    let scale = evaluated.abs().max(persisted.abs()).max(1.0);
-    (evaluated - persisted).abs() <= SQUIGGLE_INTEGRITY_ULPS * f64::EPSILON * scale
 }
 
 #[cfg(test)]
@@ -756,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn squiggle_sources_round_trip_and_reject_tampered_effective_samples() {
+    fn squiggle_sources_round_trip_without_serializing_derived_results() {
         let estimate = Estimate::<Probability>::from_squiggle(
             EstimateId::new(0),
             SquiggleEstimateDefinition {
@@ -769,17 +695,10 @@ mod tests {
         )
         .unwrap();
         let value = serde_json::to_value(&estimate).unwrap();
-        assert_eq!(
-            serde_json::from_value::<Estimate<Probability>>(value.clone()).unwrap(),
-            estimate
-        );
-        let mut rounded = value.clone();
-        let sample = rounded["distribution"]["samples"][3].as_f64().unwrap();
-        rounded["distribution"]["samples"][3] =
-            serde_json::json!(f64::from_bits(sample.to_bits() + 1));
-        assert!(serde_json::from_value::<Estimate<Probability>>(rounded).is_ok());
-        let mut tampered = value;
-        tampered["distribution"]["samples"][0] = serde_json::json!(2.0);
-        assert!(serde_json::from_value::<Estimate<Probability>>(tampered).is_err());
+        assert!(value.get("distribution").is_none());
+        assert!(value["source"].get("assessment").is_none());
+
+        let restored = serde_json::from_value::<Estimate<Probability>>(value).unwrap();
+        assert_eq!(restored, estimate);
     }
 }

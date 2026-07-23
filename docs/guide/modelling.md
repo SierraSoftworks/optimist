@@ -27,7 +27,7 @@ The metric's optional current estimate is expressed directly in that native unit
 
 Factors and outcomes use the same native quantity contract. Their state owns one quantity definition, an uncertain current estimate, and an optional pre-intervention forecast. Scenario analysis uses the forecast when present, otherwise current, and clamps simulated values only to the declared support. Configure the quantity before authoring either estimate or creating a causal relationship.
 
-Every persisted estimate retains Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, retains deterministic empirical draws for distribution-valued results, and rejects effective draws outside the quantity support.
+Every persisted estimate retains Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, preserves supported symbolic families, and creates deterministic empirical draws only in memory for composed results.
 
 Every estimate can retain provenance plus separate descriptions of epistemic uncertainty (knowledge and model gaps), process uncertainty (variation between realizations), and measurement uncertainty (observation and resolution error). These descriptions are reviewable assumptions alongside the authoritative total distribution. Optimist does not assign numeric shares, add component variances, or assume that the categories are independent.
 
@@ -55,8 +55,7 @@ Optimist deliberately does not create graph vertices for:
 - estimates,
 - observations,
 - intervention costs,
-- evidence,
-- formula components.
+- evidence.
 
 An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal response belongs to one causal edge.
 
@@ -100,10 +99,9 @@ These commands preserve identity, names, aliases, endpoint kinds, typed payloads
 Some concepts span several graph aggregates and therefore live outside the graph:
 
 - **Scenarios** define objectives, horizon, budgets, candidates, and sampling controls.
-- **Formula documents** define project-scoped unit-checked component DAGs.
 - **Dependence documents** group residual marginals under Gaussian copulas.
 
-Each document has its own revision. Structural analysis keys include the graph, scenario, formula, and dependence revisions, making the input snapshot explicit.
+Each document has its own revision. Structural analysis keys include the graph, scenario, and dependence revisions, making the input snapshot explicit.
 
 ## Choosing model detail
 
@@ -113,7 +111,7 @@ Start with the smallest graph which can answer the question:
 2. Add factors with a plausible direct causal mechanism.
 3. Add metrics only where observations can be supplied.
 4. Add interventions only when a team can choose or fund them.
-5. Decompose uncertain quantities into estimates/formulas rather than creating structural nodes for arithmetic.
+5. Decompose uncertain quantities with named Squiggle bindings rather than creating structural nodes for arithmetic.
 6. Add dependence only when shared causes or residual correlation are justified.
 
 A denser graph is not automatically a better model. Every causal edge should have a mechanism, evidence boundary, and uncertainty model that can be reviewed.

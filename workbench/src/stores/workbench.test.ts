@@ -56,7 +56,6 @@ describe('workbench state', () => {
         source: {
           type: 'squiggle',
           definition: { source: 'pointMass(0.5)', seed: 42, sample_count: 256, target_unit: {} },
-          assessment: {} as never,
         },
       },
       forecast: null,

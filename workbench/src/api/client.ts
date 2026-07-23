@@ -11,8 +11,6 @@ import type {
   EstimateSourceInput,
   Evidence,
   EvidenceInput,
-  FermiAssessment,
-  FermiAssessmentInput,
   GraphEdge,
   ImpedimentAnalysis,
   GraphNode,
@@ -55,7 +53,7 @@ interface PrimitiveEstimate {
   }
   slot: { kind: StateEstimateSlot } | EdgeEstimateSlot | InterventionEstimateSlot
   revision: number
-  distribution: import('./types').Distribution
+  distribution?: import('./types').Distribution
   quantity?: import('./types').QuantityDefinition
   source: EstimateSource
   provenance: string[]
@@ -215,11 +213,6 @@ export const api = {
     request<StructuralAnalysis>(`/api/v1/projects/${project}/analysis/structure`),
   impedimentAnalysis: (project: string) =>
     request<ImpedimentAnalysis>(`/api/v1/projects/${project}/analysis/impediments`),
-  assessFermi: (project: string, input: FermiAssessmentInput) =>
-    request<FermiAssessment>(`/api/v1/projects/${project}/analysis/fermi-assessment`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
   assessSquiggle: (project: string, definition: SquiggleEstimateDefinition, support: EstimateSupport) =>
     request<SquiggleAssessmentResult>(`/api/v1/projects/${project}/analysis/squiggle-assessment`, {
       method: 'POST',

@@ -4,8 +4,8 @@ use clap::{Args, Subcommand};
 
 use crate::{
     domain::ProjectId,
-    markdown::{RenderedSnapshot, read_directory},
     project::ProjectArchive,
+    project_yaml::{SCHEMA_VERSION, read_directory},
 };
 
 use super::{
@@ -83,33 +83,25 @@ pub(super) async fn run(
             let import = read_directory(&directory).map_err(|error| {
                 human_errors::wrap_user(
                     error,
-                    "Optimist could not read the Markdown project directory.",
-                    &["Correct the reported Markdown file and retry the import."],
-                )
-            })?;
-            let snapshot = RenderedSnapshot::from_import(&import).map_err(|error| {
-                human_errors::wrap_user(
-                    error,
-                    "Optimist could not render the validated project archive.",
-                    &["Correct the reported project document and retry the import."],
+                    "Optimist could not read the YAML project directory.",
+                    &["Correct the reported YAML file and retry the import."],
                 )
             })?;
             let archive = ProjectArchive {
-                schema_version: crate::markdown::SCHEMA_VERSION,
+                schema_version: SCHEMA_VERSION,
                 project: import.project.document.project.clone(),
-                files: snapshot
-                    .files()
-                    .map(|(path, contents)| (path.to_owned(), contents.to_owned()))
+                description: import.project.document.description.clone(),
+                dependence: import.project.document.dependence.clone(),
+                entities: import
+                    .entities
+                    .into_values()
+                    .map(|source| source.document)
                     .collect(),
-                summary: crate::project::ProjectArchiveSummary {
-                    entities: import.entities.len(),
-                    edges: import
-                        .entities
-                        .values()
-                        .map(|source| source.document.outgoing_edges.len())
-                        .sum(),
-                    scenarios: import.scenarios.len(),
-                },
+                scenarios: import
+                    .scenarios
+                    .into_values()
+                    .map(|source| source.document)
+                    .collect(),
             };
             output.project(&client.import_archive(&archive, replace, yes).await?)?
         }
@@ -218,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exports_and_imports_markdown_directories_over_http() {
+    async fn exports_and_imports_yaml_directories_over_http() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
@@ -242,7 +234,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(directory.join("_project.md").exists());
+        assert!(directory.join("_project.yaml").exists());
         client.delete(&project.id).await.unwrap();
         run(
             ProjectArgs {

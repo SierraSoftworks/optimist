@@ -18,10 +18,7 @@ pub(super) fn validate(
         .iter()
         .flat_map(|group| &group.members)
     {
-        if !address.components.is_empty()
-            || address.project != project.document.project.id
-            || !contains_estimate(entities, address)
-        {
+        if address.project != project.document.project.id || !contains_estimate(entities, address) {
             return Err(ImportError::MissingDependenceEstimate {
                 path: project.path.clone(),
                 address: address.clone(),

@@ -17,18 +17,16 @@ pub enum ConvergenceStatus {
 /// Counts joint draws rejected by numerical failure category.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InvalidSampleCounts {
-    /// Draws where a generic formula ratio had an exactly zero denominator.
-    pub zero_denominator: u64,
     /// Draws where a primitive sampler returned NaN or infinity.
     pub non_finite_primitive: u64,
-    /// Draws where formula arithmetic overflowed or otherwise became non-finite.
+    /// Draws where analysis arithmetic overflowed or otherwise became non-finite.
     pub non_finite_result: u64,
 }
 
 impl InvalidSampleCounts {
     /// Returns the total rejected joint draws.
     pub const fn total(self) -> u64 {
-        self.zero_denominator + self.non_finite_primitive + self.non_finite_result
+        self.non_finite_primitive + self.non_finite_result
     }
 }
 
@@ -66,18 +64,4 @@ pub struct MonteCarloEstimate {
     pub mean_standard_error: Option<f64>,
     /// Estimated standard error of the sample variance.
     pub variance_standard_error: Option<f64>,
-}
-
-/// Aligned estimates and covariance from a deterministic joint formula run.
-///
-/// The covariance matrix uses Bessel's correction and the root order supplied by
-/// the caller. Any invalid root rejects the entire draw, preserving alignment.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct JointMonteCarloReport {
-    /// Per-root estimates in caller-supplied order.
-    pub estimates: Vec<MonteCarloEstimate>,
-    /// Sample covariance matrix; entries are absent below two valid draws.
-    pub covariance: Vec<Vec<Option<f64>>>,
-    /// Reproducibility and stopping diagnostics.
-    pub diagnostics: MonteCarloDiagnostics,
 }

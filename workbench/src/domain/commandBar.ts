@@ -189,10 +189,10 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
     ]
     if (payload.kind === 'contributes' || payload.kind === 'changes') {
       preview.push(['Source change', String(payload.properties.response.source_change)])
-      preview.push(['Destination change', String(payload.properties.response.destination_change.distribution.value)])
+      preview.push(['Destination change', String(payload.properties.response.destination_change.distribution?.value ?? payload.properties.response.destination_change.source.definition.source)])
     }
     if (payload.kind === 'blocks') {
-      preview.push(['Degree', String(payload.properties.degree.distribution.value)])
+      preview.push(['Degree', String(payload.properties.degree.distribution?.value ?? payload.properties.degree.source.definition.source)])
     }
     return preview
   }

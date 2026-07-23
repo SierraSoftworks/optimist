@@ -10,14 +10,6 @@ cargo run --example feedback_loop
 
 Builds a three-factor reinforcing loop with typed causal effects, then computes exact strongly connected components and bounded elementary cycles. Use it as a starting point for structural feedback analysis.
 
-## Fermi delivery-time estimate
-
-```sh
-cargo run --example fermi_delivery_time
-```
-
-Estimates monthly delivery effort as uncertain deployment count multiplied by uncertain minutes per deployment. The example validates units, runs deterministic Monte Carlo sampling, and reports model variance separately from Monte Carlo error.
-
 ## Bayesian rollout success
 
 ```sh
@@ -31,7 +23,6 @@ Updates a Beta prior after observing 17 successful rollouts in 20 trials. It dem
 ```sh
 cargo check --examples
 cargo run --example feedback_loop
-cargo run --example fermi_delivery_time
 cargo run --example bayesian_delivery_success
 ```
 

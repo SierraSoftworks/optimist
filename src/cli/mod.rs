@@ -12,8 +12,6 @@ mod edge_client;
 mod edge_payload;
 mod estimate;
 mod estimate_client;
-mod formula;
-mod formula_client;
 mod node;
 mod node_client;
 mod node_payload;
@@ -27,7 +25,6 @@ mod output_json;
 mod output_scenario_analysis;
 mod output_table;
 mod output_table_backup;
-mod output_table_formula;
 mod project;
 mod project_archive_client;
 mod project_backup;
@@ -46,7 +43,6 @@ use batch::BatchArgs;
 use dependence::DependenceArgs;
 use edge::EdgeArgs;
 use estimate::EstimateArgs;
-use formula::FormulaArgs;
 use node::NodeArgs;
 use observe::ObserveArgs;
 use output::OutputFormat;
@@ -99,7 +95,6 @@ enum Command {
     Edge(EdgeArgs),
     Observe(ObserveArgs),
     Estimate(EstimateArgs),
-    Formula(FormulaArgs),
     Scenario(ScenarioArgs),
     Dependence(DependenceArgs),
     Apply(ApplyArgs),
@@ -133,9 +128,6 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         }
         Command::Estimate(args) => {
             estimate::run(args, cli.project.as_ref(), &server_url, output).await
-        }
-        Command::Formula(args) => {
-            formula::run(args, cli.project.as_ref(), &server_url, output).await
         }
         Command::Scenario(args) => {
             scenario::run(args, cli.project.as_ref(), &server_url, output).await

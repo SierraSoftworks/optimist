@@ -22,8 +22,8 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Embedded measurement observations with immutable correction chains.
 - [x] Primitive validated distributions and dimensioned `Estimate<T>` values.
 - [x] Runtime unit algebra for custom dimensions and formula validation.
-- [x] Stable addresses for estimates embedded in nodes, edges, and nested Fermi components.
-- [x] Typed Fermi formula AST (`Sum`, `Product`, `Ratio`, bounded transform, reference).
+- [x] Stable root addresses for estimates embedded in nodes and edges.
+- [x] Squiggle as the sole persisted representation for distributions and mathematical expressions.
 - [x] Quantile-based Normal/LogNormal prior elicitation with retained inputs and residual diagnostics.
 - [x] Project dependence model for shared variables and residual correlations.
 - [x] Typed scenario/project documents outside the causal graph.
@@ -31,10 +31,11 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 ### Quantity-First Modelling And Elicitation
 
 - [x] Define a persisted Squiggle estimate contract evaluated by Optimist's Rust runtime.
-  - [x] Retain authored source, canonical target units, seeds, bounded sample counts, backend assessments, and deterministic effective draws.
+  - [x] Retain only authored source, canonical target units, seeds, and bounded runtime sample controls.
   - [x] Report source-located syntax, reference, runtime, and unit diagnostics from one backend evaluator used by preview and save.
-  - [x] Reevaluate persisted source during deserialization and reject assessment or effective-distribution integrity mismatches.
-  - [x] Reject persisted estimates without authoritative Squiggle source and backend assessment metadata.
+  - [x] Reevaluate persisted source during deserialization instead of storing effective distributions or generated samples.
+  - [x] Reject persisted estimates without authoritative Squiggle source and deterministic controls.
+  - [x] Preserve supported symbolic Squiggle families and use seeded empirical runtime fallback only for composed results.
 - [x] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
   - [x] Provide one direct Squiggle editor with debounced Rust evaluation, family, mean, spread, median, central 90% interval, and empirical support validation.
   - [x] Evaluate in a bounded worker so malformed or expensive expressions cannot block the workbench.
@@ -65,7 +66,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Generic IndraDB adapter using `MemoryDatastore`.
 - [x] Atomic single-node and single-edge payload insertion/update.
 - [x] Process-local project catalog with isolated repositories and counters.
-- [x] Use the filesystem as the catalog with per-project `meta.json`, `project.json`, ordered WAL, independent compaction, and directory-copy backup/restore under `--data-dir`.
+- [x] Use the filesystem as the catalog with per-project `meta.json`, `project.yaml`, ordered WAL, independent compaction, and directory-copy backup/restore under `--data-dir`.
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
   - [x] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
 - [x] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
@@ -85,7 +86,6 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Revision-checked node and edge delete commands.
 - [x] Typed node/edge metadata and Markdown description updates.
 - [x] Primitive estimate set/show/remove commands and CLI.
-- [x] Fermi component and formula authoring commands.
 - [x] Squiggle estimate preview and durable set commands for every state, intervention, and edge estimate slot.
 - [x] Scenario create/list/show/update/delete commands.
   - [x] Scenario analysis command and result transport.
@@ -93,23 +93,20 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
 - [ ] Add pagination/filter/search endpoints and CLI flags.
 
-## 4. Markdown Import And Export
+## 4. YAML Import And Export
 
-- [x] Versioned `_project.md` schema foundation for project identity and base revision.
-  - [ ] Extend `_project.md` with constraints, unit registry, and dependence documents.
-    - [x] Persist and render project dependence documents.
-    - [x] Persist, render, and cross-validate project formula documents.
-- [x] Canonical entity document schema with outgoing edge payloads and Markdown description body.
-- [x] Canonical `scenarios/<id>-<slug>.md` schema.
-- [x] Bounded YAML frontmatter parser with path/line/column diagnostics and schema rejection.
+- [x] Versioned `_project.yaml` schema for project identity, revision, description, and dependence.
+- [x] Canonical `entities/<id>-<slug>.yaml` documents with outgoing edges owned by their source node.
+- [x] Canonical `scenarios/<id>-<slug>.yaml` documents.
+- [x] Bounded strict YAML parser with path-aware diagnostics and schema rejection.
   - [x] Deterministic in-memory rendering and parse-render-parse semantic stability.
 - [x] Two-pass reference and project-constraint validation.
-- [x] Safe merge import plan with create/update/unchanged/conflict reporting.
 - [x] Explicit `--replace --yes` destructive restore semantics.
 - [x] Deterministic atomic directory export from one immutable revision.
   - [x] Deterministic rendered snapshots with bounded directory loading and staged rollback-aware publication.
 - [x] Export-import-export semantic and byte-stability tests.
 - [x] Implement `optimist project import|export` as HTTP clients.
+- [x] Reject Markdown project files and remove backwards-compatible import paths.
 
 ## 5. Real-Time Collaboration
 
@@ -158,7 +155,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Typed inspector for embedded estimates, evidence, costs, and measurement histories.
   - [x] Official Squiggle editor/chart islands for estimate authoring and persisted distribution review.
   - [x] Direct Squiggle authoring with backend diagnostics, typed units, support-aware starter calculations, and deterministic prior-predictive summaries.
-  - [x] Persist and reopen Squiggle source with server-assessed empirical effective distributions for every estimate slot.
+  - [x] Persist and reopen Squiggle source while deriving symbolic or seeded empirical runtime projections for every estimate slot.
   - [x] Use Squiggle as the only persisted estimate authoring source in every editor and command.
   - [x] Metric-to-state calibration with visible observation translation and explicit estimate adoption.
 - [x] Direct graph/property editing through typed commands.

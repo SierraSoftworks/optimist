@@ -27,7 +27,6 @@ impl ProjectCatalog {
             graph_revision: entry.graph_revision,
             scenario: None,
             dependence_revision: entry.dependence.as_ref().map(|model| model.revision),
-            formula_revision: entry.formulas.revision,
         };
         let nodes = entry.repository.list_nodes()?;
         let edges = entry.repository.list_edges()?;
@@ -37,7 +36,7 @@ impl ProjectCatalog {
     /// Computes exact structural topology from one immutable project snapshot.
     ///
     /// The revision key includes the independently tracked graph revision plus the
-    /// selected scenario and current dependence/formula document revisions. The
+    /// selected scenario and current dependence document revision. The
     /// current implementation computes eagerly and returns no cached stale result.
     pub fn analyze_structure(
         &mut self,
@@ -65,7 +64,6 @@ impl ProjectCatalog {
             graph_revision: entry.graph_revision,
             scenario,
             dependence_revision: entry.dependence.as_ref().map(|model| model.revision),
-            formula_revision: entry.formulas.revision,
         };
         let nodes = entry.repository.list_nodes()?;
         let edges = entry.repository.list_edges()?;
@@ -105,7 +103,6 @@ impl ProjectCatalog {
             graph_revision: entry.graph_revision,
             scenario: Some((scenario.id, scenario.revision)),
             dependence_revision: entry.dependence.as_ref().map(|model| model.revision),
-            formula_revision: entry.formulas.revision,
         };
         let nodes = entry.repository.list_nodes()?;
         let edges = entry.repository.list_edges()?;

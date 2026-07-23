@@ -5,7 +5,7 @@ use crate::domain::ProjectId;
 use super::{
     CatalogStore, ProjectArchive, ProjectCatalog,
     catalog_backup::{BackupError, ProjectSnapshot},
-    catalog_backup_files::{io_error, read_json, write_immutable},
+    catalog_backup_files::{io_error, write_immutable},
 };
 
 const PROJECT_SNAPSHOTS_DIRECTORY: &str = "project-snapshots";
@@ -17,10 +17,12 @@ impl CatalogStore {
         project: &ProjectId,
     ) -> Result<ProjectSnapshot, BackupError> {
         let archive = catalog.export_archive(project)?;
-        let bytes = serde_json::to_vec(&archive).expect("project archives serialize");
+        let bytes = serde_yaml_ng::to_string(&archive)
+            .expect("project archives serialize")
+            .into_bytes();
         let path = self.project_snapshot_path(project, archive.project.revision);
         if path.exists() {
-            let existing: ProjectArchive = read_json(&path)?;
+            let existing = read_yaml(&path)?;
             if existing != archive {
                 return Err(io_error(
                     path,
@@ -55,9 +57,9 @@ impl CatalogStore {
             if entry
                 .path()
                 .extension()
-                .is_some_and(|extension| extension == "json")
+                .is_some_and(|extension| extension == "yaml")
             {
-                let archive: ProjectArchive = read_json(&entry.path())?;
+                let archive = read_yaml(&entry.path())?;
                 archive.validated_import()?;
                 let bytes = entry
                     .metadata()
@@ -82,7 +84,7 @@ impl CatalogStore {
                 revision,
             });
         }
-        let archive: ProjectArchive = read_json(&path)?;
+        let archive = read_yaml(&path)?;
         archive.validated_import()?;
         Ok(archive)
     }
@@ -91,7 +93,7 @@ impl CatalogStore {
         self.root
             .join(PROJECT_SNAPSHOTS_DIRECTORY)
             .join(project.as_str())
-            .join(format!("{revision}.json"))
+            .join(format!("{revision}.yaml"))
     }
 }
 
@@ -100,8 +102,18 @@ fn project_snapshot(archive: &ProjectArchive, size_bytes: u64) -> ProjectSnapsho
         project: archive.project.id.clone(),
         revision: archive.project.revision,
         size_bytes,
-        summary: archive.summary.clone(),
+        summary: archive.summary(),
     }
+}
+
+fn read_yaml(path: &std::path::Path) -> Result<ProjectArchive, BackupError> {
+    let bytes = std::fs::read(path).map_err(|source| io_error(path.to_owned(), source))?;
+    serde_yaml_ng::from_slice(&bytes).map_err(|source| {
+        io_error(
+            path.to_owned(),
+            std::io::Error::new(std::io::ErrorKind::InvalidData, source),
+        )
+    })
 }
 
 #[cfg(test)]

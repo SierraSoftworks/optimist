@@ -11,7 +11,7 @@ use super::{
 const BACKUPS_DIRECTORY: &str = "backups";
 const BACKUP_METADATA: &str = "metadata.json";
 const PROJECTS_DIRECTORY: &str = "projects";
-const PROJECT_FILES: [&str; 2] = ["meta.json", "project.json"];
+const PROJECT_FILES: [&str; 2] = ["meta.json", "project.yaml"];
 
 impl CatalogStore {
     pub(crate) fn create_backup(

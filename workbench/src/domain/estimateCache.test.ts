@@ -8,7 +8,6 @@ const estimate: Estimate = {
   source: {
     type: 'squiggle',
     definition: { source: 'pointMass(12)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
-    assessment: {} as never,
   },
   provenance: [],
 }

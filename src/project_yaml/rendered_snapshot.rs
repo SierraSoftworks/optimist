@@ -1,11 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::{MarkdownError, ValidatedImport, render_entity, render_project, render_scenario};
+use super::{ValidatedImport, YamlError, render_entity, render_project, render_scenario};
 
-/// Canonical project-relative Markdown files rendered from one validated revision.
-///
-/// The ordered map makes file order deterministic and contains no filesystem
-/// metadata, so equal snapshots produce byte-identical contents on every export.
+/// Canonical project-relative YAML files rendered from one validated revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenderedSnapshot {
     files: BTreeMap<String, String>,
@@ -13,9 +10,9 @@ pub struct RenderedSnapshot {
 
 impl RenderedSnapshot {
     /// Renders a complete validated import using canonical paths and LF endings.
-    pub fn from_import(import: &ValidatedImport) -> Result<Self, MarkdownError> {
+    pub fn from_import(import: &ValidatedImport) -> Result<Self, YamlError> {
         let mut files = BTreeMap::from([(
-            "_project.md".to_owned(),
+            "_project.yaml".to_owned(),
             render_project(&import.project.document)?,
         )]);
         for source in import.entities.values() {

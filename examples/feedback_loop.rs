@@ -87,7 +87,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             graph_revision: 1,
             scenario: None,
             dependence_revision: None,
-            formula_revision: 0,
         },
         &nodes,
         &edges,

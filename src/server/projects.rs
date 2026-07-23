@@ -224,7 +224,8 @@ mod tests {
             .await
             .unwrap();
         let archive = body(archive).await;
-        assert!(archive["files"]["_project.md"].is_string());
+        assert_eq!(archive["entities"].as_array().unwrap().len(), 1);
+        assert!(archive.get("files").is_none());
 
         let conflict = app
             .clone()

@@ -199,7 +199,6 @@ mod tests {
             graph_revision: 4,
             scenario: Some((scenario.id, scenario.revision)),
             dependence_revision: None,
-            formula_revision: 0,
         };
         let result = ScenarioAnalysis::compute(
             revision,
@@ -577,7 +576,6 @@ mod tests {
             graph_revision: 4,
             scenario: Some((scenario.id, scenario.revision)),
             dependence_revision: None,
-            formula_revision: 0,
         };
         (
             scenario,

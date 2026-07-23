@@ -5,9 +5,9 @@ use axum::{
 };
 
 use crate::domain::{
-    AnalysisLimits, FermiAssessment, FermiEstimateSupport, Formula, ImpedimentAnalysis,
-    MonteCarloConfig, ProjectId, ScenarioAnalysis, ScenarioId, SquiggleEstimateAssessment,
-    SquiggleEstimateDefinition, StructuralAnalysis, Unit, assess_fermi, assess_squiggle_estimate,
+    AnalysisLimits, ImpedimentAnalysis, ProjectId, ScenarioAnalysis, ScenarioId,
+    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateSupport,
+    StructuralAnalysis, assess_squiggle_estimate,
 };
 use crate::project::{EstimateCommandError, ProjectError};
 
@@ -28,10 +28,6 @@ pub(super) fn router() -> Router<AppState> {
             get(scenario),
         )
         .route(
-            "/api/v1/projects/{project}/analysis/fermi-assessment",
-            post(fermi_assessment),
-        )
-        .route(
             "/api/v1/projects/{project}/analysis/squiggle-assessment",
             post(squiggle_assessment),
         )
@@ -40,7 +36,7 @@ pub(super) fn router() -> Router<AppState> {
 #[derive(serde::Deserialize)]
 struct SquiggleAssessmentRequest {
     definition: SquiggleEstimateDefinition,
-    support: FermiEstimateSupport,
+    support: SquiggleEstimateSupport,
 }
 
 #[derive(serde::Serialize)]
@@ -93,7 +89,7 @@ async fn squiggle_assessment(
 fn predictive_checks(
     distribution: &crate::domain::Distribution,
     assessment: &SquiggleEstimateAssessment,
-    support: FermiEstimateSupport,
+    support: SquiggleEstimateSupport,
 ) -> SquigglePredictiveChecks {
     let representative_outcomes = [0.1, 0.5, 0.9]
         .into_iter()
@@ -129,40 +125,14 @@ fn predictive_checks(
     }
 }
 
-fn support_contains(support: FermiEstimateSupport, value: f64) -> bool {
+fn support_contains(support: SquiggleEstimateSupport, value: f64) -> bool {
     match support {
-        FermiEstimateSupport::Real => value.is_finite(),
-        FermiEstimateSupport::NonNegative => value >= 0.0,
-        FermiEstimateSupport::Probability => (0.0..=1.0).contains(&value),
-        FermiEstimateSupport::Signed => (-1.0..=1.0).contains(&value),
-        FermiEstimateSupport::Bounded { lower, upper } => (lower..=upper).contains(&value),
+        SquiggleEstimateSupport::Real => value.is_finite(),
+        SquiggleEstimateSupport::NonNegative => value >= 0.0,
+        SquiggleEstimateSupport::Probability => (0.0..=1.0).contains(&value),
+        SquiggleEstimateSupport::Signed => (-1.0..=1.0).contains(&value),
+        SquiggleEstimateSupport::Bounded { lower, upper } => (lower..=upper).contains(&value),
     }
-}
-
-#[derive(serde::Deserialize)]
-struct FermiAssessmentRequest {
-    formula: Formula,
-    support: FermiEstimateSupport,
-    expected_unit: Unit,
-    monte_carlo: MonteCarloConfig,
-}
-
-async fn fermi_assessment(
-    State(state): State<AppState>,
-    Path(project): Path<ProjectId>,
-    Json(request): Json<FermiAssessmentRequest>,
-) -> Result<Json<FermiAssessment>, ApiError> {
-    state.catalog.read().await.get(&project)?;
-    Ok(Json(
-        assess_fermi(
-            &project,
-            request.formula,
-            request.support,
-            request.expected_unit,
-            request.monte_carlo,
-        )
-        .map_err(ProjectError::from)?,
-    ))
 }
 
 async fn impediments(
@@ -230,70 +200,6 @@ mod tests {
         let project = catalog.create("Delivery".to_owned()).unwrap();
         assert_eq!(project.id.to_string(), "A");
         router_with_catalog(catalog)
-    }
-
-    #[tokio::test]
-    async fn assesses_literal_fermi_decompositions() {
-        let response = app()
-            .oneshot(
-                Request::post("/api/v1/projects/A/analysis/fermi-assessment")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        json!({
-                            "formula": {
-                                "type": "product",
-                                "factors": [
-                                    { "type": "literal", "distribution": { "type": "scaled_beta", "alpha": 3.0, "beta": 3.0, "lower": 0.5, "upper": 0.9 }, "unit": {} },
-                                    { "type": "literal", "distribution": { "type": "scaled_beta", "alpha": 4.0, "beta": 2.0, "lower": 0.6, "upper": 1.0 }, "unit": {} }
-                                ]
-                            },
-                            "support": "probability",
-                            "expected_unit": {},
-                            "monte_carlo": { "seed": 42, "minimum_samples": 1000, "maximum_samples": 10000, "absolute_tolerance": 0.001, "relative_tolerance": 0.01 }
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(value["recommendation"]["status"], "moment_matched");
-        assert_eq!(value["recommendation"]["distribution"]["type"], "beta");
-        assert!(
-            value["report"]["diagnostics"]["valid_samples"]
-                .as_u64()
-                .unwrap()
-                >= 1000
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_invalid_fermi_formulas_with_advice() {
-        let response = app()
-            .oneshot(
-                Request::post("/api/v1/projects/A/analysis/fermi-assessment")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        json!({
-                            "formula": { "type": "sum", "terms": [{ "type": "literal", "distribution": { "type": "point", "value": 1.0 }, "unit": {} }] },
-                            "support": "real",
-                            "expected_unit": {},
-                            "monte_carlo": { "seed": 42, "minimum_samples": 100, "maximum_samples": 1000, "absolute_tolerance": 0.001, "relative_tolerance": 0.01 }
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        let body = to_bytes(response.into_body(), 16 * 1024).await.unwrap();
-        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(value["error"]["code"], "invalid_fermi_assessment");
-        assert!(!value["error"]["advice"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]

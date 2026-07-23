@@ -47,7 +47,7 @@ pub struct ChangeSetReplay {
 }
 
 /// Canonical project replacement supplied when incremental replay cannot bridge a history gap.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ChangeSnapshot {
     /// Project revision represented by [`ChangeSnapshot::archive`].
     pub revision: u64,

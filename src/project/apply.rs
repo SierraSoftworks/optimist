@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
     ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, evidence,
-    formulas, node_state, scenarios,
+    node_state, scenarios,
 };
 
 pub(super) fn command(
@@ -99,8 +99,6 @@ pub(super) fn command(
         }
         GraphCommand::SetSquiggleEstimate(command) => estimate::set_squiggle(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
-        GraphCommand::SetFormula(command) => formulas::set(entry, command),
-        GraphCommand::RemoveFormula(command) => formulas::remove(entry, command),
         GraphCommand::CreateScenario(command) => scenarios::create(entry, command),
         GraphCommand::UpdateScenario(command) => scenarios::update(entry, command),
         GraphCommand::DeleteScenario(command) => scenarios::delete(entry, command),

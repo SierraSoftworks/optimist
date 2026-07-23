@@ -8,7 +8,7 @@ This guide builds a small delivery-reliability model using the HTTP server and C
 - A local checkout of Optimist
 - Two terminal windows
 
-The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.json` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Unknown or obsolete schemas are rejected rather than migrated. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show|export` captures canonical project archives at exact revisions and publishes retained revisions as deterministic Markdown directories.
+The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.yaml` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Unknown or obsolete schemas are rejected rather than migrated. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show|export` captures canonical project archives at exact revisions and publishes retained revisions as deterministic YAML directories.
 
 ## Start the server
 
@@ -96,19 +96,6 @@ Read it back:
 cargo run -- estimate show A/node/A/estimate/A
 ```
 
-## Add a Fermi component
-
-Formula components live under a primitive root address. This component references the outcome's current estimate:
-
-```sh
-cargo run -- formula set \
-  A/node/A/estimate/A/component/reviewed_baseline \
-  --formula '{"type":"reference","address":{"project":"A","owner":{"kind":"node","id":"A"},"estimate":"A"}}' \
-  --provenance '["Baseline retained for scenario review"]'
-```
-
-Formula validation checks project scope, references, cycles, arity, bounds, and runtime units before committing the document.
-
 ## Inspect structure and history
 
 ```sh
@@ -123,7 +110,7 @@ Change replay returns every committed mutation in project-revision order. Repeat
 ## Next steps
 
 - Learn the [graph and ownership model](./modelling.md).
-- Add disciplined [uncertainty and Fermi estimates](./uncertainty.md).
+- Add disciplined [uncertainty and Squiggle estimates](./uncertainty.md).
 - Understand [structural analysis boundaries](./analysis.md).
 - Integrate clients with [revision replay and WebSockets](./collaboration.md).
 - Run the [compileable examples](../examples/README.md).

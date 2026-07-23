@@ -35,22 +35,8 @@ doc = false
 bench = false
 
 [[bin]]
-name = "markdown_frontmatter"
-path = "fuzz_targets/markdown_frontmatter.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "formula_units"
-path = "fuzz_targets/formula_units.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "probability_sampling"
-path = "fuzz_targets/probability_sampling.rs"
+name = "yaml_documents"
+path = "fuzz_targets/yaml_documents.rs"
 test = false
 doc = false
 bench = false

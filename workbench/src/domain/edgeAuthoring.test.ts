@@ -74,7 +74,6 @@ describe('edge authoring', () => {
       source: {
         type: 'squiggle' as const,
         definition: { source: 'pointMass(-2)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
-        assessment: {} as never,
       },
       provenance: [],
     }

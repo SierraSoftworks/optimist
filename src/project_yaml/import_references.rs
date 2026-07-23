@@ -4,7 +4,7 @@ use crate::domain::{Edge, EntityId, NodeKind, ScenarioId};
 
 use super::{
     EntityDocument, ImportError, ProjectDocument, ScenarioDocument, SourceDocument,
-    import_dependence, import_formulas,
+    import_dependence,
 };
 
 pub(super) fn validate(
@@ -33,7 +33,6 @@ pub(super) fn validate(
         }
     }
     import_dependence::validate(project, entities)?;
-    import_formulas::validate(project, entities)?;
     Ok(())
 }
 

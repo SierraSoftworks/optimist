@@ -41,7 +41,7 @@ export interface Distribution {
 export interface Estimate {
   id: string
   revision: number
-  distribution: Distribution
+  distribution?: Distribution
   quantity?: QuantityDefinition
   source: EstimateSource
   provenance?: string[]
@@ -77,7 +77,6 @@ export interface SetNodeQuantityStateInput {
 export interface EstimateSource {
   type: 'squiggle'
   definition: SquiggleEstimateDefinition
-  assessment: SquiggleEstimateAssessment
 }
 
 export interface EstimateSourceInput {
@@ -235,7 +234,6 @@ export interface AnalysisRevisionKey {
   graph_revision: number
   scenario: [string, number] | null
   dependence_revision: number | null
-  formula_revision: number
 }
 
 export interface StronglyConnectedComponent {
@@ -306,7 +304,6 @@ export interface MonteCarloDiagnostics {
   attempted_samples: number
   valid_samples: number
   invalid_samples: {
-    zero_denominator: number
     non_finite_primitive: number
     non_finite_result: number
   }
@@ -316,46 +313,12 @@ export interface MonteCarloDiagnostics {
 
 export type Unit = Record<string, number>
 
-export type Formula =
-  | { type: 'literal'; distribution: Distribution; unit: Unit }
-  | { type: 'sum'; terms: Formula[] }
-  | { type: 'product'; factors: Formula[] }
-  | { type: 'ratio'; numerator: Formula; denominator: Formula }
-  | { type: 'power'; base: Formula; exponent: number }
-  | { type: 'bounded'; input: Formula; lower: number; upper: number }
-
-export interface FermiAssessmentInput {
-  formula: Formula
-  support: EstimateSupport
-  expected_unit: Unit
-  monte_carlo: MonteCarloConfig
-}
-
 export type EstimateSupport =
   | 'real'
   | 'non_negative'
   | 'probability'
   | 'signed'
   | { bounded: { lower: number; upper: number } }
-
-export interface FermiAssessment {
-  compiled: { unit: Unit; dependencies: unknown[] }
-  report: {
-    estimates: MonteCarloEstimate[]
-    covariance: Array<Array<number | null>>
-    diagnostics: MonteCarloDiagnostics
-  }
-  recommendation:
-    | { status: 'exact'; distribution: Distribution; interval: FermiInterval }
-    | { status: 'moment_matched'; distribution: Distribution; interval: FermiInterval; warning: string }
-    | { status: 'unavailable'; reason: string }
-}
-
-export interface FermiInterval {
-  probability: number
-  lower: number
-  upper: number
-}
 
 export interface SquiggleEstimateDefinition {
   source: string
@@ -535,10 +498,17 @@ export interface ApiErrorBody {
 export interface ProjectArchive {
   schema_version: number
   project: Project
-  files: Record<string, string>
-  summary: {
-    entities: number
-    edges: number
-    scenarios: number
-  }
+  description?: string
+  dependence?: unknown
+  entities: Array<{
+    schema_version: number
+    base_project_revision: number
+    node: GraphNode
+    outgoing_edges?: GraphEdge[]
+  }>
+  scenarios?: Array<{
+    schema_version: number
+    base_project_revision: number
+    scenario: Scenario
+  }>
 }

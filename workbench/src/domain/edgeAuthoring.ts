@@ -84,12 +84,7 @@ function pointEstimate(id: string, value: number, targetUnit: Unit): Estimate {
     source: {
       type: 'squiggle',
       definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: targetUnit },
-      assessment: {
-        family: 'PointMass', mean: value, variance: 0, p05: value, p50: value, p95: value,
-        seed: 42, sample_count: 256,
-      },
     },
-    provenance: [],
   }
 }
 

@@ -13,7 +13,7 @@ use crate::{
     store::RepositoryError,
 };
 
-use super::{AppState, api_error::ApiError, formulas};
+use super::{AppState, api_error::ApiError};
 
 pub(super) fn router() -> Router<AppState> {
     Router::new()
@@ -22,7 +22,6 @@ pub(super) fn router() -> Router<AppState> {
         .route("/api/v1/projects/{project}/edges", get(list_edges))
         .route("/api/v1/projects/{project}/edges/{edge}", get(show_edge))
         .route("/api/v1/projects/{project}/estimates", get(show_estimate))
-        .merge(formulas::router())
         .route("/api/v1/projects/{project}/scenarios", get(list_scenarios))
         .route(
             "/api/v1/projects/{project}/scenarios/{scenario}",

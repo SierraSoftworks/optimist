@@ -39,8 +39,7 @@ describe('EditStateEstimateDialog', () => {
           source: {
             type: 'squiggle' as const,
             definition: { source: 'pointMass(0.5)', seed: 42, sample_count: 256, target_unit: {} },
-            assessment: {} as never,
-            },
+          },
           provenance: ['existing source'],
           uncertainty: { epistemic: 'existing assumption' },
         },
@@ -59,7 +58,7 @@ describe('EditStateEstimateDialog', () => {
     expect(wrapper.find('.uncertainty-editor').exists()).toBe(false)
   })
 
-  it('edits a bounded metric directly in its native unit without offering Fermi', async () => {
+  it('edits a bounded metric directly in its native unit with Squiggle', async () => {
     const metric = {
       id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
       description: '', aliases: [], metadata: {},
