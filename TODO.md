@@ -9,7 +9,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] `cargo test` and `cargo test --doc` pass.
 - [x] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` passes.
 - [x] `cargo clippy --all-targets -- -D warnings` passes for default features.
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings` passes.
+- [x] `cargo clippy --all-targets --all-features -- -D warnings` passes.
 - [x] Touched production modules stay below 150 implementation lines, excluding tests and public docs.
 - [x] User-facing failures include actionable `human-errors` or API advice.
 
@@ -67,7 +67,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Process-local project catalog with isolated repositories and counters.
 - [x] Persist project catalog metadata and complete canonical project snapshots under `--data-dir`.
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
-  - [ ] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
+  - [x] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
 - [x] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
 - [x] Add forward-only schema migrations and startup integrity checks.
 - [ ] Add lazy project open/close handles and idle eviction.
