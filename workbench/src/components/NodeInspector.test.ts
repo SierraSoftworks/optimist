@@ -54,6 +54,24 @@ describe('NodeInspector readiness', () => {
     }
 
     const wrapper = mount(NodeInspector, { props: { node, edges: [] } })
-    expect(wrapper.text()).toContain('days · [0, 30]')
+    expect(wrapper.text()).toContain('State model days')
+    expect(wrapper.text()).toContain('Support0 to 30')
+  })
+
+  it('orders model work before relationships, details, and deletion', () => {
+    const node: GraphNode = {
+      ...factor,
+      native_state: {
+        quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null },
+        current: null,
+        forecast: null,
+      },
+    }
+    const wrapper = mount(NodeInspector, { props: { node, edges: [] } })
+    const text = wrapper.text()
+    expect(text.indexOf('State model')).toBeLessThan(text.indexOf('Relationships'))
+    expect(text.indexOf('Relationships')).toBeLessThan(text.indexOf('Identity and metadata'))
+    expect(text.indexOf('Identity and metadata')).toBeLessThan(text.indexOf('Delete node'))
+    expect(wrapper.get('details').attributes('open')).toBeUndefined()
   })
 })

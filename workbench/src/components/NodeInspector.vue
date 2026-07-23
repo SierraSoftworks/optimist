@@ -7,6 +7,7 @@ import type {
   GraphNode,
   InterventionEstimateSlot,
   Observation,
+  QuantityDefinition,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
@@ -87,13 +88,11 @@ function formatDistribution(value: Distribution) {
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
-function quantityLabel(estimate: import('../api/types').Estimate | null | undefined) {
-  const quantity = estimate?.quantity
-  if (!quantity) return null
-  const support = quantity.support?.type === 'bounded'
-    ? `[${quantity.support.lower}, ${quantity.support.upper}]`
-    : quantity.support?.type.replaceAll('_', ' ') ?? 'real'
-  return `${quantity.unit} · ${support}`
+function supportLabel(quantity: QuantityDefinition) {
+  if (quantity.support?.type === 'bounded') {
+    return `${quantity.support.lower} to ${quantity.support.upper}`
+  }
+  return quantity.support?.type.replaceAll('_', ' ') ?? 'Any real value'
 }
 
 function replacement(edge: GraphEdge, observation: Observation) {
@@ -150,68 +149,48 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <p v-if="node.description" class="description">{{ node.description }}</p>
       <p v-else class="muted">No description has been added.</p>
 
-      <section class="inspector-section">
-        <h3>Identity</h3>
-        <dl>
-          <div><dt>Name</dt><dd>{{ node.name }}</dd></div>
-          <div><dt>Revision</dt><dd>{{ node.revision }}</dd></div>
-          <div v-if="node.aliases.length"><dt>Aliases</dt><dd>{{ node.aliases.join(', ') }}</dd></div>
-        </dl>
-      </section>
-
-      <section class="inspector-section danger-section">
-        <h3>Delete node</h3>
-        <p v-if="incidentEdges.length" class="muted">Delete {{ incidentEdges.length }} connected relationship{{ incidentEdges.length === 1 ? '' : 's' }} first.</p>
-        <button
-          type="button"
-          class="danger-button"
-          :disabled="incidentEdges.length > 0"
-          @click="confirmDelete ? emit('delete') : (confirmDelete = true)"
-        ><Trash2 :size="14" /> {{ confirmDelete ? `Confirm delete ${node.id}` : 'Delete node' }}</button>
-      </section>
-
-      <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section">
-        <h3>State estimates</h3>
+      <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section model-section">
+        <h3>State model <span v-if="node.native_state">{{ node.native_state.quantity.unit }}</span></h3>
+        <div v-if="node.native_state" class="model-facts">
+          <div><span>Support</span><strong>{{ supportLabel(node.native_state.quantity) }}</strong></div>
+          <div><span>Aggregation</span><strong>{{ node.native_state.quantity.aggregation ?? 'Not set' }}</strong></div>
+          <div><span>{{ node.payload.kind === 'factor' ? 'Control' : 'Direction' }}</span><strong>{{ node.payload.kind === 'factor' ? (node.payload.properties.controllable ? 'Direct' : 'Indirect') : node.payload.properties.direction.replaceAll('_', ' ') }}</strong></div>
+        </div>
+        <div v-else class="model-empty">
+          <Gauge :size="17" />
+          <div><strong>No state quantity</strong><span>Define the unit and support before adding estimates.</span></div>
+          <button type="button" class="secondary-button" @click="emit('quantity')">Configure</button>
+        </div>
         <dl>
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
-          <div v-if="quantityLabel(stateEstimate(node, 'current'))"><dt>Current quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'current')) }}</dd></div>
           <div><dt>Forecast</dt><dd>{{ distributionLabel(node, 'forecast') }}</dd></div>
-          <div v-if="quantityLabel(stateEstimate(node, 'forecast'))"><dt>Forecast quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'forecast')) }}</dd></div>
-          <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
-          <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
+        <p v-if="node.native_state?.quantity.operational_definition" class="model-definition">{{ node.native_state.quantity.operational_definition }}</p>
       </section>
 
-      <section v-if="node.native_state" class="inspector-section">
-        <h3>Native state</h3>
+      <section v-if="(node.payload.kind === 'factor' || node.payload.kind === 'outcome') && node.payload.properties.evidence.length" class="inspector-section">
+        <h3>Evidence <span>{{ node.payload.properties.evidence.length }}</span></h3>
+        <ul class="evidence-list">
+          <li v-for="item in node.payload.properties.evidence" :key="item.id">
+            <strong>{{ item.summary }}</strong>
+            <span>{{ item.source ?? 'No source recorded' }}</span>
+          </li>
+        </ul>
+      </section>
+
+      <section v-if="node.payload.kind === 'metric'" class="inspector-section model-section">
+        <h3>Metric model <span>{{ node.payload.properties.quantity.unit }}</span></h3>
+        <div class="model-facts">
+          <div><span>Support</span><strong>{{ supportLabel(node.payload.properties.quantity) }}</strong></div>
+          <div><span>Aggregation</span><strong>{{ node.payload.properties.quantity.aggregation ?? 'Not set' }}</strong></div>
+          <div><span>Series</span><strong>{{ measurementEdges.length }}</strong></div>
+        </div>
         <dl>
-          <div><dt>Unit</dt><dd>{{ node.native_state.quantity.unit }}</dd></div>
-          <div><dt>Aggregation</dt><dd>{{ node.native_state.quantity.aggregation ?? 'Not set' }}</dd></div>
-          <div><dt>Support</dt><dd>{{ node.native_state.quantity.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
-          <div v-if="node.native_state.quantity.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.native_state.quantity.support.lower }}–{{ node.native_state.quantity.support.upper }}</dd></div>
-          <div v-if="node.native_state.quantity.operational_definition"><dt>Definition</dt><dd>{{ node.native_state.quantity.operational_definition }}</dd></div>
-          <div v-if="node.native_state.quantity.reference_time"><dt>Reference time</dt><dd>{{ node.native_state.quantity.reference_time }}</dd></div>
-          <div v-if="node.native_state.quantity.resolution_source"><dt>Resolution source</dt><dd>{{ node.native_state.quantity.resolution_source }}</dd></div>
-        </dl>
-      </section>
-
-      <section v-if="Object.keys(node.metadata).length" class="inspector-section">
-        <h3>Metadata</h3>
-        <pre class="metadata-view">{{ JSON.stringify(node.metadata, null, 2) }}</pre>
-      </section>
-
-      <section v-if="node.payload.kind === 'metric'" class="inspector-section">
-        <h3>Native quantity</h3>
-        <dl>
-          <div><dt>Unit</dt><dd>{{ node.payload.properties.quantity.unit }}</dd></div>
-          <div><dt>Aggregation</dt><dd>{{ node.payload.properties.quantity.aggregation ?? 'Not set' }}</dd></div>
-          <div><dt>Support</dt><dd>{{ node.payload.properties.quantity.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
-          <div v-if="node.payload.properties.quantity.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.quantity.support.lower }}–{{ node.payload.properties.quantity.support.upper }}</dd></div>
           <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
-          <div v-if="node.payload.properties.quantity.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.quantity.operational_definition }}</dd></div>
           <div v-if="node.payload.properties.quantity.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.quantity.reference_time }}</dd></div>
           <div v-if="node.payload.properties.quantity.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.quantity.resolution_source }}</dd></div>
         </dl>
+        <p v-if="node.payload.properties.quantity.operational_definition" class="model-definition">{{ node.payload.properties.quantity.operational_definition }}</p>
       </section>
 
       <section v-if="node.payload.kind === 'metric'" class="inspector-section">
@@ -275,6 +254,27 @@ function replacement(edge: GraphEdge, observation: Observation) {
         </ul>
         <p v-else class="muted">No connected relationships.</p>
       </section>
+
+      <details class="inspector-details">
+        <summary>Identity and metadata</summary>
+        <dl>
+          <div><dt>Name</dt><dd>{{ node.name }}</dd></div>
+          <div><dt>Revision</dt><dd>{{ node.revision }}</dd></div>
+          <div v-if="node.aliases.length"><dt>Aliases</dt><dd>{{ node.aliases.join(', ') }}</dd></div>
+        </dl>
+        <pre v-if="Object.keys(node.metadata).length" class="metadata-view">{{ JSON.stringify(node.metadata, null, 2) }}</pre>
+      </details>
+
+      <section class="inspector-section danger-section">
+        <h3>Delete node</h3>
+        <p v-if="incidentEdges.length" class="muted">Delete {{ incidentEdges.length }} connected relationship{{ incidentEdges.length === 1 ? '' : 's' }} first.</p>
+        <button
+          type="button"
+          class="danger-button"
+          :disabled="incidentEdges.length > 0"
+          @click="confirmDelete ? emit('delete') : (confirmDelete = true)"
+        ><Trash2 :size="14" /> {{ confirmDelete ? `Confirm delete ${node.id}` : 'Delete node' }}</button>
+      </section>
     </template>
 
     <div v-else class="empty-inspector">
@@ -303,6 +303,26 @@ function replacement(edge: GraphEdge, observation: Observation) {
 .inspector-section { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
 .inspector-section h3 { display: flex; justify-content: space-between; margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .inspector-section h3 span { color: var(--muted); }
+.model-section dl { margin-top: 14px; }
+.model-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.model-facts > div { min-width: 0; display: grid; gap: 3px; padding: 8px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.model-facts span { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.model-facts strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; text-transform: capitalize; }
+.model-definition { margin: 12px 0 0; padding-left: 10px; border-left: 2px solid var(--green-soft); color: var(--muted); font-size: 10px; line-height: 1.5; }
+.model-empty { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px; border: 1px dashed #b9c2bc; border-radius: 5px; color: var(--muted); }
+.model-empty > div { display: grid; gap: 2px; }
+.model-empty strong { color: var(--ink); font-size: 10px; }
+.model-empty span { font-size: 9px; line-height: 1.4; }
+.model-empty .secondary-button { min-height: 28px; padding: 0 8px; font-size: 9px; }
+.evidence-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.evidence-list li { display: grid; gap: 3px; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+.evidence-list strong { font-size: 10px; line-height: 1.45; }
+.evidence-list span { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.inspector-details { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.inspector-details summary { cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.inspector-details[open] summary { margin-bottom: 12px; color: var(--ink); }
+.inspector-details .metadata-view { margin-top: 12px; }
+.danger-section { margin-top: 28px; padding-bottom: 8px; }
 .relationship-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .relationship-list li { background: white; border: 1px solid var(--line); border-radius: 5px; }
 .relationship-list button { width: 100%; display: grid; grid-template-columns: minmax(42px, .6fr) minmax(110px, 1.4fr) minmax(42px, .6fr); gap: 8px; align-items: center; padding: 10px; border: 0; background: transparent; font: 11px 'IBM Plex Mono', monospace; color: var(--ink); }
