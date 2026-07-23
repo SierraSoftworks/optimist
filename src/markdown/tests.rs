@@ -167,6 +167,23 @@ fn rejects_noncanonical_or_oversized_documents() {
         parse_project("_project.md", &oversized),
         Err(MarkdownError::DocumentTooLarge { .. })
     ));
+
+    let dense_frontmatter = format!(
+        "---\n{}schema_version: 1\nproject:\n  id: A\n  name: Delivery\n  revision: 0\n---\n",
+        "# retained empirical data\n".repeat(12_000)
+    );
+    assert!(dense_frontmatter.len() > 256 * 1024);
+    assert!(parse_project("_project.md", &dense_frontmatter).is_ok());
+
+    let oversized_frontmatter = format!(
+        "---\n{}\n---\n",
+        "# bounded structured data\n".repeat(21_000)
+    );
+    assert!(oversized_frontmatter.len() < 1024 * 1024);
+    assert!(matches!(
+        parse_project("_project.md", &oversized_frontmatter),
+        Err(MarkdownError::FrontmatterTooLarge { .. })
+    ));
 }
 
 #[test]

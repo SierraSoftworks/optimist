@@ -8,7 +8,7 @@ use super::{
 };
 
 const MAX_DOCUMENT_BYTES: usize = 1024 * 1024;
-const MAX_FRONTMATTER_BYTES: usize = 256 * 1024;
+const MAX_FRONTMATTER_BYTES: usize = 512 * 1024;
 
 /// Parses a bounded `_project.md` string with source-aware YAML diagnostics.
 pub fn parse_project(
