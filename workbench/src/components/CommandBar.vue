@@ -73,7 +73,7 @@ function keys(event: KeyboardEvent) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="command-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="command-backdrop" @pointerdown.self="emit('close')">
       <form class="command-bar" role="dialog" aria-modal="true" aria-labelledby="command-bar-title" @submit.prevent="submit">
         <header>
           <span><SquareTerminal :size="17" /><strong id="command-bar-title">Command bar</strong></span>

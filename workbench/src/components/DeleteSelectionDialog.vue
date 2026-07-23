@@ -13,7 +13,7 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog delete-selection-dialog" aria-labelledby="delete-selection-title" @submit.prevent="emit('confirm')">
         <header>
           <div><span class="eyebrow">Graph selection</span><h2 id="delete-selection-title">Delete {{ kind }}</h2></div>

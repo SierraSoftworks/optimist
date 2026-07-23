@@ -27,7 +27,7 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open && edge && observation" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open && edge && observation" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog" aria-labelledby="correct-observation-title" @submit.prevent="submit">
         <header>
           <div>

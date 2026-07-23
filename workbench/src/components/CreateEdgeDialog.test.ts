@@ -35,6 +35,29 @@ afterEach(() => {
 })
 
 describe('CreateEdgeDialog', () => {
+  it('dismisses only when the pointer starts on the backdrop', async () => {
+    const wrapper = mount(CreateEdgeDialog, {
+      props: {
+        open: true, pending: false, projectId: 'A', nodes,
+        sourceId: 'A', destinationId: '', kind: 'part_of', sourceLocked: true,
+      },
+      attachTo: document.body,
+    })
+    const backdrop = document.body.querySelector<HTMLElement>('.dialog-backdrop')!
+    const dialog = backdrop.querySelector<HTMLElement>('.dialog')!
+
+    dialog.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    backdrop.dispatchEvent(new Event('pointerup', { bubbles: true }))
+    backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.emitted('close')).toBeUndefined()
+
+    backdrop.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('does not evaluate a response before the target unit is available', async () => {
     vi.useFakeTimers()
     const wrapper = mount(CreateEdgeDialog, {

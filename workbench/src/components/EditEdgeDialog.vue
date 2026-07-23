@@ -94,7 +94,7 @@ function estimateLabel(value: Estimate) {
 
 <template>
   <Teleport to="body">
-    <div v-if="open && edge" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open && edge" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <section class="dialog edge-edit-dialog" role="dialog" aria-labelledby="edit-edge-title">
         <header>
           <div>

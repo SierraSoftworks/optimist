@@ -148,7 +148,7 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog node-dialog" aria-labelledby="create-node-title" @submit.prevent="submit">
         <header>
           <div>

@@ -133,7 +133,7 @@ function assessedResponse(): Estimate | undefined {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog relationship-dialog" :class="{ 'native-relationship-dialog': nativeCausal }" aria-labelledby="create-edge-title" @submit.prevent="submit">
         <header>
           <div><span class="eyebrow">Graph structure</span><h2 id="create-edge-title">Add relationship</h2></div>

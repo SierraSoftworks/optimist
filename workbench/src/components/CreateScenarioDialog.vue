@@ -94,7 +94,7 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog scenario-dialog" aria-labelledby="create-scenario-title" @submit.prevent="submit">
         <header>
           <div><span class="eyebrow">Finite-horizon comparison</span><h2 id="create-scenario-title">{{ scenario ? 'Edit scenario' : 'Create scenario' }}</h2></div>

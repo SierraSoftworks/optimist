@@ -84,7 +84,7 @@ function submit() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open && edge && slot" class="dialog-backdrop" @click.self="emit('close')">
+    <div v-if="open && edge && slot" class="dialog-backdrop" @pointerdown.self="emit('close')">
       <form class="dialog estimate-dialog" aria-labelledby="edit-edge-estimate-title" @submit.prevent="submit">
         <header>
           <div>
