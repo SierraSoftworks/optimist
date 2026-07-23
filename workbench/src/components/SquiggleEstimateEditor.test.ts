@@ -9,7 +9,7 @@ describe('SquiggleEstimateEditor predictive checks', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows support-tail mass and representative outcomes before adoption', async () => {
+  it('shows compact support validation failures before adoption', async () => {
     vi.useFakeTimers()
     vi.spyOn(api, 'assessSquiggle').mockResolvedValue({
       assessment: {
@@ -43,12 +43,10 @@ describe('SquiggleEstimateEditor predictive checks', () => {
     await flushPromises()
 
     expect(api.assessSquiggle).toHaveBeenCalledWith('A', expect.any(Object), 'probability')
-    expect(wrapper.text()).toContain('Prior-predictive checks')
+    expect(wrapper.text()).toContain('Validation issue')
     expect(wrapper.text()).toContain('40.00%')
     expect(wrapper.text()).toContain('2 retained draws fall outside this estimate slot')
-    expect(wrapper.text()).toContain('P10')
-    expect(wrapper.text()).toContain('P50')
-    expect(wrapper.text()).toContain('P90')
+    expect(wrapper.text()).not.toContain('P10')
     expect(wrapper.emitted('validity')?.at(-1)).toEqual([false])
   })
 })
