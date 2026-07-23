@@ -43,7 +43,7 @@ export interface Estimate {
   revision: number
   distribution: Distribution
   quantity?: QuantityDefinition
-  source?: EstimateSource
+  source: EstimateSource
   provenance?: string[]
   uncertainty?: EstimateUncertainty
 }
@@ -72,18 +72,18 @@ export interface QuantityState {
 
 export interface SetNodeQuantityStateInput {
   quantity: QuantityDefinition
-  legacy_mapping?: { state_zero: number; state_one: number }
 }
 
-export type EstimateSource =
-  | { type: 'distribution' }
-  | { type: 'fermi'; definition: FermiEstimateDefinition; assessment: FermiAssessment }
-  | { type: 'squiggle'; definition: SquiggleEstimateDefinition; assessment: SquiggleEstimateAssessment }
+export interface EstimateSource {
+  type: 'squiggle'
+  definition: SquiggleEstimateDefinition
+  assessment: SquiggleEstimateAssessment
+}
 
-export type EstimateSourceInput =
-  | { type: 'distribution'; distribution: Distribution }
-  | { type: 'fermi'; definition: FermiEstimateDefinition }
-  | { type: 'squiggle'; definition: SquiggleEstimateDefinition }
+export interface EstimateSourceInput {
+  type: 'squiggle'
+  definition: SquiggleEstimateDefinition
+}
 
 export interface Evidence {
   id: number
@@ -141,29 +141,19 @@ export type NodePayload =
       kind: 'outcome'
       properties: {
         direction: 'maximize' | 'minimize' | 'target_range'
-        current: Estimate | null
-        desired: Estimate | null
         evidence: Evidence[]
       }
     }
   | {
       kind: 'metric'
       properties: {
-        unit: string
-        dimension?: Unit
-        aggregation: string | null
-        support?: QuantitySupport
-        operational_definition?: string
-        reference_time?: string | null
-        resolution_source?: string | null
+        quantity: QuantityDefinition
         current?: Estimate | null
       }
     }
   | {
       kind: 'factor'
       properties: {
-        current: Estimate | null
-        desired: Estimate | null
         controllable: boolean
         evidence: Evidence[]
       }
@@ -202,13 +192,8 @@ export interface GraphEdge {
   payload:
     | {
         kind: 'contributes' | 'changes'
-        properties: ({
-          effect: Estimate
-          response?: never
-        } | {
-          effect?: never
+        properties: {
           response: LinearResponse
-        }) & {
           lag: Estimate | null
           mechanism: string
           evidence: string[]
@@ -353,23 +338,6 @@ export type EstimateSupport =
   | 'signed'
   | { bounded: { lower: number; upper: number } }
 
-export interface FermiEstimateDefinition {
-  language: 'optimist_squiggle_v1'
-  equation: string
-  variables: FermiVariable[]
-  formula: Formula
-  monte_carlo: MonteCarloConfig
-}
-
-export interface FermiVariable {
-  name: string
-  estimate: number
-  unit: string
-  uncertainty:
-    | { type: 'order_of_magnitude' }
-    | { type: 'three_point'; low: number; high: number }
-}
-
 export interface FermiAssessment {
   compiled: { unit: Unit; dependencies: unknown[] }
   report: {
@@ -485,7 +453,7 @@ export interface UpdateNodeInput {
   metadata: Record<string, unknown>
 }
 
-export type StateEstimateSlot = 'current' | 'desired'
+export type StateEstimateSlot = 'current' | 'forecast'
 
 export interface SetStateEstimateInput {
   slot: StateEstimateSlot
@@ -506,7 +474,7 @@ export interface SetInterventionEstimateInput {
   uncertainty?: EstimateUncertainty
 }
 
-export type EdgeEstimateSlot = { kind: 'effect' | 'response' | 'lag' | 'degree' }
+export type EdgeEstimateSlot = { kind: 'response' | 'lag' | 'degree' }
 
 export interface SetEdgeEstimateInput {
   slot: EdgeEstimateSlot
@@ -527,13 +495,8 @@ export interface SetMeasurementCalibrationInput {
 export type EditableEdgePayload =
   | {
       kind: 'contributes' | 'changes'
-      properties: ({
-        effect: Estimate
-        response?: never
-      } | {
-        effect?: never
+      properties: {
         response: LinearResponse
-      }) & {
         lag: Estimate | null
         mechanism: string
         evidence: string[]

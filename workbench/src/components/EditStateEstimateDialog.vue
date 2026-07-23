@@ -2,9 +2,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
 import type { EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
-import { defaultSquiggleSourceInput, squiggleSourceInput } from '../domain/squiggleEstimate'
+import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
-import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
 const props = defineProps<{
   open: boolean
@@ -26,18 +25,16 @@ const existing = computed(() => {
       : props.node.native_state.forecast ?? null
   }
   if (props.node?.payload.kind === 'metric') return props.node.payload.properties.current ?? null
-  if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return null
-  return props.node.payload.properties[form.slot]
+  return null
 })
 const metricSupport = computed<QuantitySupport>(() =>
   props.node?.native_state
     ? props.node.native_state.quantity.support ?? { type: 'real' }
     : props.node?.payload.kind === 'metric'
-    ? props.node.payload.properties.support ?? { type: 'real' }
-    : { type: 'bounded', lower: 0, upper: 1 },
+    ? props.node.payload.properties.quantity.support ?? { type: 'real' }
+    : { type: 'real' },
 )
 const estimateSupport = computed<EstimateSupport>(() => {
-  if (!props.node?.native_state && props.node?.payload.kind !== 'metric') return 'probability'
   if (metricSupport.value.type === 'bounded') {
     return { bounded: { lower: metricSupport.value.lower, upper: metricSupport.value.upper } }
   }
@@ -46,37 +43,21 @@ const estimateSupport = computed<EstimateSupport>(() => {
 const expectedUnit = computed<Unit>(() =>
   props.node?.native_state
     ? props.node.native_state.quantity.dimension ?? {}
-    : props.node?.payload.kind === 'metric' ? props.node.payload.properties.dimension ?? {} : {},
+    : props.node?.payload.kind === 'metric' ? props.node.payload.properties.quantity.dimension ?? {} : {},
 )
 const canAuthor = computed(() =>
   props.node?.native_state
     ? props.node.native_state.quantity.dimension !== undefined
-    : props.node?.payload.kind !== 'metric' || props.node.payload.properties.dimension !== undefined,
+    : props.node?.payload.kind === 'metric' && props.node.payload.properties.quantity.dimension !== undefined,
 )
-const calibratedReadings = computed(() => {
-  if (props.node?.native_state || (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome')) return []
-  return props.edges.flatMap((edge) => {
-    if (edge.destination !== props.node?.id || edge.payload.kind !== 'measures') return []
-    const calibration = edge.payload.properties.calibration
-    const observation = latestObservation(edge.payload.properties.observations)
-    if (!calibration || !observation) return []
-    const state = calibratedState(calibration, observation.value)
-    return state === null ? [] : [{ edge, calibration, observation, state }]
-  })
-})
 
 watch(
   () => [props.open, props.node, form.slot] as const,
   ([open]) => {
     if (!open) return
     if (props.node?.payload.kind === 'metric') form.slot = 'current'
-    const currentDistribution = existing.value?.distribution
-    if (currentDistribution) {
-      source.value = existing.value?.source?.type === 'fermi'
-        ? { type: 'fermi', definition: existing.value.source.definition }
-        : existing.value?.source?.type === 'squiggle'
-          ? { type: 'squiggle', definition: existing.value.source.definition }
-          : { type: 'distribution', distribution: currentDistribution }
+    if (existing.value) {
+      source.value = { type: 'squiggle', definition: existing.value.source.definition }
     } else {
       source.value = defaultSquiggleSourceInput(estimateSupport.value, expectedUnit.value)
     }
@@ -94,10 +75,6 @@ function submit() {
   })
 }
 
-function useReading(reading: typeof calibratedReadings.value[number]) {
-  source.value = squiggleSourceInput(`pointMass(${reading.state})`, expectedUnit.value)
-  sourceValid.value = true
-}
 </script>
 
 <template>
@@ -115,7 +92,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
           State
           <select v-model="form.slot">
             <option value="current">Current</option>
-            <option value="desired">{{ node.native_state ? 'Forecast' : 'Desired' }}</option>
+            <option value="forecast">Forecast</option>
           </select>
         </label>
         <EstimateSourceEditor
@@ -127,18 +104,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
           :expected-unit="expectedUnit"
           @validity="sourceValid = $event"
         />
-        <p v-else class="form-error">Add canonical unit terms to this legacy metric before authoring a Squiggle estimate.</p>
-        <section v-if="calibratedReadings.length" class="calibrated-evidence">
-          <div><strong>Metric evidence</strong><span>Latest unsuperseded readings</span></div>
-          <article v-for="reading in calibratedReadings" :key="`${reading.edge.source}-${reading.observation.id}`">
-            <div>
-              <strong>{{ reading.observation.value }} {{ reading.observation.unit }} → {{ reading.state.toFixed(3) }}</strong>
-              <span>{{ calibrationLabel(reading.calibration, reading.observation.unit) }}</span>
-              <small>{{ new Date(reading.observation.observed_at).toLocaleString() }} · {{ reading.observation.source }}</small>
-            </div>
-            <button type="button" class="secondary-button" @click="useReading(reading)">Use reading</button>
-          </article>
-        </section>
+        <p v-else class="form-error">Configure a canonical quantity before authoring a Squiggle estimate.</p>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
           <button type="submit" class="primary-button" :disabled="pending || !sourceValid || !canAuthor">

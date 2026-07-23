@@ -59,8 +59,6 @@ mod tests {
             format!("node-{id}"),
             format!("Node {id}"),
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),

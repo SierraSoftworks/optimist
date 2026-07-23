@@ -21,7 +21,7 @@ optimist server --bind 127.0.0.1:3000 --data-dir .optimist
 optimist server --web-root workbench/dist
 ```
 
-`--data-dir` uses `projects/<ID>/` as its catalog. `meta.json` contains bounded project metadata for cheap listing, `project.json` contains the complete canonical project and replay state, and `journal.json` is an ordered project-local WAL. Commands acknowledge after WAL fsync and compact asynchronously per project. Legacy schema-v1/v2 `catalog.json` snapshots migrate into this layout after validation. Corrupt, discontinuous, and unknown future project or journal schemas are rejected without modifying their source files.
+`--data-dir` uses `projects/<ID>/` as its catalog. `meta.json` contains bounded project metadata for cheap listing, `project.json` contains the complete canonical project and replay state, and `journal.json` is an ordered project-local WAL. Commands acknowledge after WAL fsync and compact asynchronously per project. Unsupported, corrupt, or discontinuous project and journal schemas are rejected without modification; Optimist does not migrate older layouts.
 
 `--web-root` points to a completed Vite build containing `index.html`; `OPTIMIST_WEB_ROOT` provides the environment equivalent. When omitted, Optimist uses `workbench/dist` if it exists relative to the process working directory. The server gives browser routes SPA fallback, keeps `/api` JSON-only, revalidates HTML, and serves generated `/assets` with immutable caching.
 
@@ -118,7 +118,7 @@ Corrections append an immutable observation whose `supersedes` field points to t
 ```sh
 optimist --project A estimate set <ADDRESS> \
   --slot <ESTIMATE_SLOT_JSON> \
-  --distribution <DISTRIBUTION_JSON> \
+  --definition <SQUIGGLE_ESTIMATE_DEFINITION_JSON> \
   [--provenance <JSON_STRING_ARRAY>] \
   [--uncertainty <ESTIMATE_UNCERTAINTY_JSON>]
 
@@ -132,11 +132,11 @@ Canonical root address:
 <project>/<node|edge>/<owner>/estimate/<id>
 ```
 
-Slots: `current`, `desired`, `cost`, `duration`, `probability_of_success`, `effect`, `lag`, and `degree`.
+Slots: `current`, `forecast`, `cost`, `duration`, `probability_of_success`, `response`, `lag`, and `degree`.
 
 Uncertainty JSON accepts optional `epistemic`, `process`, and `measurement` strings. They retain distinct assumptions and do not alter or decompose the effective distribution.
 
-Estimate output includes intrinsic quantity metadata when present. Legacy factor and outcome states are reported as dimensionless `standardized_state` quantities bounded to `[0,1]`; their stored distributions and model-specific anchors are unchanged.
+Estimate output includes the owning quantity metadata when present and always includes authoritative Squiggle source and assessment metadata.
 
 Configure a factor or outcome for native current and forecast estimates before adding causal edges:
 
@@ -145,18 +145,7 @@ optimist --project A node quantity <NODE> \
   --definition '{"unit":"days","dimension":{"day":1},"aggregation":null,"support":{"type":"non_negative"},"operational_definition":"Elapsed lead time"}'
 ```
 
-For populated standardized state, provide the native values represented by legacy states zero and one:
-
-```sh
-optimist --project A node quantity <NODE> \
-  --definition '{"unit":"days","dimension":{"day":1},"aggregation":null,"support":{"type":"bounded","lower":10,"upper":30}}' \
-  --legacy-state-zero 10 \
-  --legacy-state-one 30
-```
-
-Conversion applies $y=10+20x$ to both distributions. Squiggle source remains reviewable and is reevaluated in the native unit. Incident normalized causal edges and formula-referenced estimates must be replaced before conversion.
-
-The existing `current` estimate slot stores native current state. The compatibility slot spelling `desired` stores the native pre-intervention forecast and is labelled **Forecast** in the workbench.
+The `current` slot stores native current state. The `forecast` slot stores the native pre-intervention forecast.
 
 ### Formulas
 

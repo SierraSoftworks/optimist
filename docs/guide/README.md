@@ -8,7 +8,7 @@ This guide builds a small delivery-reliability model using the HTTP server and C
 - A local checkout of Optimist
 - Two terminal windows
 
-The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.json` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Known monolithic catalog schemas migrate forward during startup only after full integrity validation. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show|export` captures canonical project archives at exact revisions and publishes retained revisions as deterministic Markdown directories.
+The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.json` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Unknown or obsolete schemas are rejected rather than migrated. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show|export` captures canonical project archives at exact revisions and publishes retained revisions as deterministic Markdown directories.
 
 ## Start the server
 
@@ -76,16 +76,19 @@ Causal `contributes`, `changes`, and `blocks` edges carry typed uncertain estima
 
 ## Add uncertain state
 
-An `EstimateAddress` includes the project, owner, and owner-local estimate ID. The following command assigns estimate `A` to the `current` slot on outcome node `A`:
+First configure the outcome's native quantity, then assign estimate `A` to its `current` slot:
+
+```sh
+cargo run -- node quantity A \
+  --definition '{"unit":"reliability","dimension":{"reliability":1},"aggregation":null,"support":{"type":"bounded","lower":0,"upper":1},"operational_definition":"Share of successful deliveries"}'
+```
 
 ```sh
 cargo run -- estimate set A/node/A/estimate/A \
   --slot '{"kind":"current"}' \
-  --distribution '{"type":"beta","alpha":3,"beta":2}' \
+  --definition '{"source":"beta(3, 2)","seed":42,"sample_count":2048,"target_unit":{"reliability":1}}' \
   --provenance '["Weekly delivery review"]'
 ```
-
-The Beta distribution is supported on $[0,1]$, which matches a normalized state. Optimist rejects an unbounded Normal distribution in this slot rather than silently clipping it.
 
 Read it back:
 

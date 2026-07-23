@@ -20,10 +20,10 @@ describe('simulationReadiness', () => {
   it('blocks outcomes and factors without a current baseline', () => {
     const readiness = simulationReadiness(node({
       kind: 'factor',
-      properties: { current: null, desired: null, controllable: false, evidence: [] },
+      properties: { controllable: false, evidence: [] },
     }))
     expect(readiness.level).toBe('required')
-    expect(readinessLabel(readiness)).toContain('Current state estimate')
+    expect(readinessLabel(readiness)).toContain('State quantity')
   })
 
   it('treats intervention planning inputs as recommendations', () => {
@@ -48,15 +48,26 @@ describe('simulationReadiness', () => {
       id: 'A',
       revision: 0,
       distribution: { type: 'beta' as const, alpha: 2, beta: 2 },
-      source: { type: 'distribution' as const },
+      source: {
+        type: 'squiggle' as const,
+        definition: { source: 'beta(2, 2)', seed: 42, sample_count: 256, target_unit: {} },
+        assessment: {} as never,
+      },
     }
-    expect(simulationReadiness(node({
+    expect(simulationReadiness({
+      ...node({
       kind: 'outcome',
-      properties: { direction: 'maximize', current: estimate, desired: null, evidence: [] },
-    })).level).toBe('ready')
+      properties: { direction: 'maximize', evidence: [] },
+      }),
+      native_state: {
+        quantity: { unit: 'state', dimension: {}, aggregation: null },
+        current: estimate,
+        forecast: null,
+      },
+    }).level).toBe('ready')
     expect(simulationReadiness(node({
       kind: 'metric',
-      properties: { unit: 'minutes', aggregation: null },
+      properties: { quantity: { unit: 'minutes', dimension: { minutes: 1 }, aggregation: null } },
     })).level).toBe('ready')
   })
 })

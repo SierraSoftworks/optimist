@@ -34,10 +34,7 @@ const incidentEdges = computed(() =>
 )
 const canConfigureNativeState = computed(() => {
   const node = props.node
-  if (!node || node.native_state || (node.payload.kind !== 'factor' && node.payload.kind !== 'outcome')) return false
-  return !incidentEdges.value.some((edge) =>
-    (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') && 'effect' in edge.payload.properties,
-  )
+  return Boolean(node && !node.native_state && (node.payload.kind === 'factor' || node.payload.kind === 'outcome'))
 })
 const measurementEdges = computed(() =>
   props.node?.payload.kind === 'metric'
@@ -62,19 +59,18 @@ const Icon = computed(() => {
   }
 })
 
-function stateEstimate(node: GraphNode, slot: 'current' | 'desired') {
+function stateEstimate(node: GraphNode, slot: 'current' | 'forecast') {
   if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return null
-  if (node.native_state) {
-    return slot === 'current' ? node.native_state.current ?? null : node.native_state.forecast ?? null
-  }
-  return node.payload.properties[slot]
+  return slot === 'current'
+    ? node.native_state?.current ?? null
+    : node.native_state?.forecast ?? null
 }
 
-function distribution(node: GraphNode, slot: 'current' | 'desired') {
+function distribution(node: GraphNode, slot: 'current' | 'forecast') {
   return stateEstimate(node, slot)?.distribution ?? null
 }
 
-function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
+function distributionLabel(node: GraphNode, slot: 'current' | 'forecast') {
   const value = distribution(node, slot)
   if (!value) return 'Not set'
   return formatDistribution(value)
@@ -122,7 +118,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <div class="inspector-actions">
         <button type="button" class="secondary-button" @click="emit('edit')"><Pencil :size="14" /> Details</button>
         <button
-          v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor' || node.payload.kind === 'metric'"
+          v-if="node.payload.kind === 'metric' || node.native_state"
           type="button"
           class="secondary-button"
           @click="emit('estimate')"
@@ -145,7 +141,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
               v-for="issue in readiness.issues"
               :key="issue.key"
               type="button"
-              @click="issue.key === 'current_state' ? emit('estimate') : emit('interventionEstimate', { kind: issue.key === 'duration' ? 'duration' : 'probability_of_success' })"
+              @click="issue.key === 'quantity_state' ? emit('quantity') : issue.key === 'current_state' ? emit('estimate') : emit('interventionEstimate', { kind: issue.key === 'duration' ? 'duration' : 'probability_of_success' })"
             >{{ issue.label }} <Pencil :size="11" /></button>
           </div>
         </div>
@@ -179,8 +175,8 @@ function replacement(edge: GraphEdge, observation: Observation) {
         <dl>
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
           <div v-if="quantityLabel(stateEstimate(node, 'current'))"><dt>Current quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'current')) }}</dd></div>
-          <div><dt>{{ node.native_state ? 'Forecast' : 'Desired' }}</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
-          <div v-if="quantityLabel(stateEstimate(node, 'desired'))"><dt>{{ node.native_state ? 'Forecast quantity' : 'Desired quantity' }}</dt><dd>{{ quantityLabel(stateEstimate(node, 'desired')) }}</dd></div>
+          <div><dt>Forecast</dt><dd>{{ distributionLabel(node, 'forecast') }}</dd></div>
+          <div v-if="quantityLabel(stateEstimate(node, 'forecast'))"><dt>Forecast quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'forecast')) }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
@@ -207,14 +203,14 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <section v-if="node.payload.kind === 'metric'" class="inspector-section">
         <h3>Native quantity</h3>
         <dl>
-          <div><dt>Unit</dt><dd>{{ node.payload.properties.unit }}</dd></div>
-          <div><dt>Aggregation</dt><dd>{{ node.payload.properties.aggregation ?? 'Not set' }}</dd></div>
-          <div><dt>Support</dt><dd>{{ node.payload.properties.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
-          <div v-if="node.payload.properties.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.support.lower }}–{{ node.payload.properties.support.upper }}</dd></div>
+          <div><dt>Unit</dt><dd>{{ node.payload.properties.quantity.unit }}</dd></div>
+          <div><dt>Aggregation</dt><dd>{{ node.payload.properties.quantity.aggregation ?? 'Not set' }}</dd></div>
+          <div><dt>Support</dt><dd>{{ node.payload.properties.quantity.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
+          <div v-if="node.payload.properties.quantity.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.quantity.support.lower }}–{{ node.payload.properties.quantity.support.upper }}</dd></div>
           <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
-          <div v-if="node.payload.properties.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.operational_definition }}</dd></div>
-          <div v-if="node.payload.properties.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.reference_time }}</dd></div>
-          <div v-if="node.payload.properties.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.resolution_source }}</dd></div>
+          <div v-if="node.payload.properties.quantity.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.quantity.operational_definition }}</dd></div>
+          <div v-if="node.payload.properties.quantity.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.quantity.reference_time }}</dd></div>
+          <div v-if="node.payload.properties.quantity.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.quantity.resolution_source }}</dd></div>
         </dl>
       </section>
 
@@ -225,7 +221,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
             <div>
               <strong>{{ edge.destination }}</strong>
               <span>{{ edge.payload.kind === 'measures' ? edge.payload.properties.polarity.replaceAll('_', ' ') : '' }}</span>
-              <small v-if="edge.payload.kind === 'measures' && edge.payload.properties.calibration">{{ calibrationLabel(edge.payload.properties.calibration, node.payload.kind === 'metric' ? node.payload.properties.unit : '') }}</small>
+              <small v-if="edge.payload.kind === 'measures' && edge.payload.properties.calibration">{{ calibrationLabel(edge.payload.properties.calibration, node.payload.properties.quantity.unit) }}</small>
             </div>
             <button type="button" class="icon-button" :aria-label="`Add observation for ${edge.destination}`" title="Add observation" @click="emit('observe', edge)"><Plus :size="15" /></button>
           </div>

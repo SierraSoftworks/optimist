@@ -14,7 +14,7 @@ const node: GraphNode = {
   metadata: {},
   payload: {
     kind: 'factor',
-    properties: { current: null, desired: null, controllable: true, evidence: [] },
+    properties: { controllable: true, evidence: [] },
   },
 }
 
@@ -49,12 +49,17 @@ describe('workbench state', () => {
     expect(store.matches(node)).toBe(true)
 
     const ready = structuredClone(node)
-    if (ready.payload.kind !== 'factor') throw new Error('expected factor fixture')
-    ready.payload.properties.current = {
-      id: 'A',
-      revision: 0,
-      distribution: { type: 'point', value: 0.5 },
-      source: { type: 'distribution' },
+    ready.native_state = {
+      quantity: { unit: 'state', dimension: {}, aggregation: null },
+      current: {
+        id: 'A', revision: 0, distribution: { type: 'point', value: 0.5 },
+        source: {
+          type: 'squiggle',
+          definition: { source: 'pointMass(0.5)', seed: 42, sample_count: 256, target_unit: {} },
+          assessment: {} as never,
+        },
+      },
+      forecast: null,
     }
     expect(store.matches(ready)).toBe(false)
   })

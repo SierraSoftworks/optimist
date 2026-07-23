@@ -1,22 +1,39 @@
 use optimist::domain::{
-    AnalysisLimits, AnalysisRevisionKey, CausalEffect, Distribution, Edge, EdgePayload, EntityId,
-    Estimate, EstimateId, Factor, Node, NodeKind, NodePayload, ProjectId, SignedInfluence,
-    StructuralAnalysis,
+    AnalysisLimits, AnalysisRevisionKey, CausalEffect, Edge, EdgePayload, EntityId, Estimate,
+    EstimateId, Factor, LinearResponse, Node, NodeKind, NodePayload, ProjectId, QuantityDefinition,
+    QuantityState, QuantitySupport, QuantityValue, SquiggleEstimateDefinition, StructuralAnalysis,
+    Unit,
 };
 
 fn factor(id: u64, name: &str, title: &str) -> Node {
-    Node::new(
+    let mut node = Node::new(
         EntityId::new(id),
         name,
         title,
         NodePayload::Factor(Factor {
-            current: None,
-            desired: None,
             controllable: false,
             evidence: vec![],
         }),
     )
-    .expect("example factors are valid")
+    .expect("example factors are valid");
+    node.native_state = Some(
+        QuantityState::new(
+            QuantityDefinition::with_dimension(
+                "score",
+                Some(Unit::base("score").expect("valid unit")),
+                None,
+                QuantitySupport::Bounded {
+                    lower: 0.0,
+                    upper: 1.0,
+                },
+            )
+            .expect("valid quantity"),
+            None,
+            None,
+        )
+        .expect("valid state"),
+    );
+    node
 }
 
 fn contributes(source: u64, destination: u64, estimate_id: u64) -> Edge {
@@ -25,17 +42,30 @@ fn contributes(source: u64, destination: u64, estimate_id: u64) -> Edge {
         NodeKind::Factor,
         EntityId::new(destination),
         NodeKind::Factor,
-        EdgePayload::Contributes(CausalEffect::normalized(
-            Estimate::<SignedInfluence>::new(
-                EstimateId::new(estimate_id),
-                Distribution::scaled_beta(8.0, 2.0, 0.0, 1.0)
-                    .expect("positive influence distribution is valid"),
+        EdgePayload::Contributes(
+            CausalEffect::linear(
+                LinearResponse {
+                    source_change: 1.0,
+                    source_unit: Unit::base("score").expect("valid unit"),
+                    destination_change: Estimate::<QuantityValue>::from_squiggle(
+                        EstimateId::new(estimate_id),
+                        SquiggleEstimateDefinition {
+                            source: "beta(8, 2)".to_owned(),
+                            seed: 42,
+                            sample_count: 256,
+                            target_unit: Unit::base("score").expect("valid unit"),
+                        },
+                        &Unit::base("score").expect("valid unit"),
+                    )
+                    .expect("valid response estimate"),
+                    destination_unit: Unit::base("score").expect("valid unit"),
+                },
+                None,
+                "Improvement reinforces the next delivery capability.".to_owned(),
+                vec!["Team retrospective".to_owned()],
             )
-            .expect("distribution fits signed influence support"),
-            None,
-            "Improvement reinforces the next delivery capability.".to_owned(),
-            vec!["Team retrospective".to_owned()],
-        )),
+            .expect("valid causal response"),
+        ),
     )
     .expect("factor-to-factor contribution is valid")
 }

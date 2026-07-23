@@ -5,8 +5,8 @@ use thiserror::Error;
 use unicode_normalization::UnicodeNormalization;
 
 use super::{
-    Duration, EntityId, Estimate, Money, NormalizedState, Probability, QuantityDefinition,
-    QuantityError, QuantityState, QuantitySupport, QuantityValue,
+    Duration, EntityId, Estimate, Money, Probability, QuantityDefinition, QuantityError,
+    QuantityState, QuantitySupport, QuantityValue,
 };
 
 /// The four structural concepts rendered as vertices in an Optimist graph.
@@ -57,16 +57,12 @@ pub enum OutcomeDirection {
 
 /// Outcome-specific data embedded in an [`NodePayload::Outcome`] vertex.
 ///
-/// Current and desired states are probability distributions rather than point
-/// claims, allowing rankings to expose uncertainty about both baseline and goal.
+/// Its uncertain current and forecast values live in the owning [`Node::native_state`].
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Outcome {
     /// Utility direction used when converting outcome movement into benefit.
     pub direction: OutcomeDirection,
-    /// Optional uncertain normalized baseline for the outcome.
-    pub current: Option<Estimate<NormalizedState>>,
-    /// Optional uncertain normalized target for the outcome.
-    pub desired: Option<Estimate<NormalizedState>>,
     /// Qualitative evidence and symptoms directly owned by this outcome.
     #[serde(default)]
     pub evidence: Vec<Evidence>,
@@ -79,7 +75,6 @@ pub struct Outcome {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Metric {
     /// Native-unit operational definition shared by estimates and observations.
-    #[serde(flatten)]
     pub quantity: QuantityDefinition,
     /// Optional uncertain current or forecast value in [`QuantityDefinition::unit`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,7 +82,7 @@ pub struct Metric {
 }
 
 impl Metric {
-    /// Creates a metric compatible with the legacy unit and aggregation fields.
+    /// Creates a metric with a minimal native quantity definition.
     pub fn new(
         unit: impl Into<String>,
         aggregation: Option<String>,
@@ -119,8 +114,8 @@ impl Metric {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MetricWire {
-    #[serde(flatten)]
     quantity: QuantityDefinition,
     #[serde(default)]
     current: Option<Estimate<QuantityValue>>,
@@ -138,11 +133,8 @@ impl<'de> Deserialize<'de> for Metric {
 
 /// Factor-specific state embedded in a causal graph vertex.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Factor {
-    /// Optional uncertain normalized baseline for the factor.
-    pub current: Option<Estimate<NormalizedState>>,
-    /// Optional uncertain normalized target state for the factor.
-    pub desired: Option<Estimate<NormalizedState>>,
     /// Whether a team can act on the factor directly, used to filter leverage points.
     pub controllable: bool,
     /// Qualitative evidence and symptoms directly owned by this factor.
@@ -186,14 +178,13 @@ pub struct Intervention {
 /// use optimist::domain::{Factor, NodePayload};
 ///
 /// let payload = NodePayload::Factor(Factor {
-///     current: None,
-///     desired: None,
 ///     controllable: true,
 ///     evidence: vec![],
 /// });
 /// ```
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "properties", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum NodePayload {
     /// Fields owned by an outcome vertex.
     Outcome(Outcome),
@@ -242,9 +233,6 @@ pub enum NodeError {
     /// Native quantity state is supported only by factors and outcomes.
     #[error("native quantity state is supported only by factor and outcome nodes")]
     NativeStateUnsupported,
-    /// Native and legacy standardized estimates cannot coexist on one node.
-    #[error("native quantity state cannot coexist with legacy standardized estimates")]
-    MixedStateStorage,
 }
 
 /// A structural causal graph vertex and its embedded aggregate data.
@@ -260,8 +248,6 @@ pub enum NodeError {
 ///     "github",
 ///     "GitHub",
 ///     NodePayload::Factor(Factor {
-///         current: None,
-///         desired: None,
 ///         controllable: false,
 ///         evidence: vec![],
 ///     }),
@@ -289,7 +275,7 @@ pub struct Node {
     /// Extensible non-structural JSON data not covered by the typed payload.
     #[serde(default)]
     pub metadata: BTreeMap<String, serde_json::Value>,
-    /// Optional native-unit state for a factor or outcome; absent means legacy standardized state.
+    /// Optional native-unit state for a factor or outcome.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_state: Option<QuantityState>,
     /// Strongly typed fields determined by this node's structural kind.
@@ -342,20 +328,7 @@ impl Node {
             return Ok(());
         };
         match &self.payload {
-            NodePayload::Factor(value) => {
-                if value.current.is_some() || value.desired.is_some() {
-                    Err(NodeError::MixedStateStorage)
-                } else {
-                    Ok(())
-                }
-            }
-            NodePayload::Outcome(value) => {
-                if value.current.is_some() || value.desired.is_some() {
-                    Err(NodeError::MixedStateStorage)
-                } else {
-                    Ok(())
-                }
-            }
+            NodePayload::Factor(_) | NodePayload::Outcome(_) => Ok(()),
             _ => Err(NodeError::NativeStateUnsupported),
         }
     }
@@ -401,8 +374,6 @@ mod tests {
             "delivery reliability",
             "Delivery reliability",
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: true,
                 evidence: Vec::new(),
             }),
@@ -413,17 +384,32 @@ mod tests {
     }
 
     #[test]
-    fn sample_state_estimate_is_constructible() {
-        let estimate = crate::domain::Estimate::<crate::domain::NormalizedState>::new(
-            EstimateId::new(1),
-            Distribution::beta(2.0, 3.0).expect("valid beta"),
+    fn rejects_payload_embedded_state_and_flattened_metric_quantities() {
+        assert!(
+            serde_json::from_value::<NodePayload>(serde_json::json!({
+                "kind": "factor",
+                "properties": {
+                    "current": null,
+                    "desired": null,
+                    "controllable": false,
+                    "evidence": []
+                }
+            }))
+            .is_err()
         );
-        assert!(estimate.is_ok());
+        assert!(
+            serde_json::from_value::<NodePayload>(serde_json::json!({
+                "kind": "metric",
+                "properties": { "unit": "days", "aggregation": null }
+            }))
+            .is_err()
+        );
     }
 
     #[test]
-    fn legacy_metrics_round_trip_without_new_default_fields() {
-        let json = r#"{"unit":"days","aggregation":"p95 weekly"}"#;
+    fn metric_quantity_round_trips_as_one_canonical_object() {
+        let json =
+            r#"{"quantity":{"unit":"days","dimension":{"days":1},"aggregation":"p95 weekly"}}"#;
         let metric = serde_json::from_str::<Metric>(json).unwrap();
 
         assert_eq!(metric.quantity.support, QuantitySupport::Real);
@@ -443,7 +429,7 @@ mod tests {
         .unwrap();
         let estimate = Estimate::<QuantityValue>::new(
             EstimateId::new(0),
-            Distribution::normal(5.0, 2.0).unwrap(),
+            Distribution::normal(5.0, 10.0).unwrap(),
         )
         .unwrap();
 
@@ -455,20 +441,18 @@ mod tests {
 
     #[test]
     fn native_state_is_optional_and_validates_owner_support() {
-        let legacy = Node::new(
+        let node = Node::new(
             EntityId::new(0),
             "flow",
             "Flow",
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
         )
         .unwrap();
         assert!(
-            !serde_json::to_string(&legacy)
+            !serde_json::to_string(&node)
                 .unwrap()
                 .contains("native_state")
         );

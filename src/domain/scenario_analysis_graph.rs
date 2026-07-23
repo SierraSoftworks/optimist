@@ -77,9 +77,13 @@ fn validate_references(
     nodes: &BTreeMap<EntityId, &Node>,
 ) -> Result<(), ScenarioAnalysisError> {
     for objective in &scenario.draft.objectives {
-        match nodes.get(&objective.outcome_id).map(|node| &node.payload) {
-            Some(NodePayload::Outcome(outcome)) if outcome.current.is_some() => {}
-            Some(NodePayload::Outcome(_)) => {
+        match nodes.get(&objective.outcome_id) {
+            Some(node)
+                if matches!(node.payload, NodePayload::Outcome(_))
+                    && node.native_state.as_ref().is_some_and(|state| {
+                        state.forecast.is_some() || state.current.is_some()
+                    }) => {}
+            Some(node) if matches!(node.payload, NodePayload::Outcome(_)) => {
                 return Err(ScenarioAnalysisError::MissingObjectiveBaseline(
                     objective.outcome_id,
                 ));

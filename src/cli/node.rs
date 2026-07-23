@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::domain::{EntityId, LegacyStateMapping, ProjectId, QuantityDefinition};
+use crate::domain::{EntityId, ProjectId, QuantityDefinition};
 
 use super::{client::ProjectClient, node_payload, output::OutputFormat};
 
@@ -62,18 +62,12 @@ enum NodeCommand {
         #[arg(long, default_value = "{}")]
         metadata: String,
     },
-    /// Replaces empty legacy standardized state with a native quantity definition.
+    /// Configures a native quantity definition for factor or outcome state.
     Quantity {
         id: EntityId,
         /// Complete QuantityDefinition JSON including canonical dimension and support.
         #[arg(long)]
         definition: String,
-        /// Native value represented by existing legacy state zero.
-        #[arg(long, requires = "legacy_state_one")]
-        legacy_state_zero: Option<f64>,
-        /// Native value represented by existing legacy state one.
-        #[arg(long, requires = "legacy_state_zero")]
-        legacy_state_one: Option<f64>,
     },
 }
 
@@ -116,33 +110,14 @@ pub(super) async fn run(
                 .update_node_metadata(project, id, title, description, parse_metadata(&metadata)?)
                 .await?,
         )?,
-        NodeCommand::Quantity {
-            id,
-            definition,
-            legacy_state_zero,
-            legacy_state_one,
-        } => output.node(
+        NodeCommand::Quantity { id, definition } => output.node(
             &client
-                .set_node_quantity_state(
-                    project,
-                    id,
-                    parse_quantity_definition(&definition)?,
-                    legacy_mapping(legacy_state_zero, legacy_state_one),
-                )
+                .set_node_quantity_state(project, id, parse_quantity_definition(&definition)?)
                 .await?,
         )?,
     };
     println!("{rendered}");
     Ok(())
-}
-
-fn legacy_mapping(state_zero: Option<f64>, state_one: Option<f64>) -> Option<LegacyStateMapping> {
-    state_zero
-        .zip(state_one)
-        .map(|(state_zero, state_one)| LegacyStateMapping {
-            state_zero,
-            state_one,
-        })
 }
 
 fn parse_quantity_definition(value: &str) -> Result<QuantityDefinition, human_errors::Error> {
@@ -226,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_populated_legacy_state_mapping() {
+    fn parses_native_quantity_configuration() {
         assert!(
             Cli::try_parse_from([
                 "optimist",
@@ -237,27 +212,8 @@ mod tests {
                 "B",
                 "--definition",
                 r#"{"unit":"days","dimension":{"day":1},"aggregation":null}"#,
-                "--legacy-state-zero",
-                "10",
-                "--legacy-state-one",
-                "30",
             ])
             .is_ok()
-        );
-        assert!(
-            Cli::try_parse_from([
-                "optimist",
-                "--project",
-                "A",
-                "node",
-                "quantity",
-                "B",
-                "--definition",
-                r#"{"unit":"days","dimension":{"day":1},"aggregation":null}"#,
-                "--legacy-state-zero",
-                "10",
-            ])
-            .is_err()
         );
     }
 }

@@ -4,6 +4,14 @@ import type { Project, ProjectArchive } from './types'
 
 const project: Project = { id: 'A', name: 'Delivery', revision: 7 }
 
+function pointSource(value: number, targetUnit: Record<string, number> = {}) {
+  return {
+    type: 'squiggle' as const,
+    definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: targetUnit },
+    assessment: {} as never,
+  }
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Optimist API client', () => {
@@ -216,7 +224,7 @@ describe('Optimist API client', () => {
       metadata: {},
       payload: {
         kind: 'factor' as const,
-        properties: { current: null, desired: null, controllable: true, evidence: [] },
+        properties: { controllable: true, evidence: [] },
       },
     }
     const fetch = vi.fn().mockResolvedValue(
@@ -364,7 +372,7 @@ describe('Optimist API client', () => {
       metadata: {},
       payload: {
         kind: 'factor' as const,
-        properties: { current: null, desired: null, controllable: true, evidence: [] },
+        properties: { controllable: true, evidence: [] },
       },
     }
     const updated = { ...node, revision: 4, title: 'Rapid feedback' }
@@ -409,7 +417,7 @@ describe('Optimist API client', () => {
       description: '', aliases: [], metadata: {},
       payload: {
         kind: 'factor' as const,
-        properties: { current: null, desired: null, controllable: true, evidence: [] },
+        properties: { controllable: true, evidence: [] },
       },
     }
     const quantity = {
@@ -435,7 +443,11 @@ describe('Optimist API client', () => {
     })
   })
 
-  it('allocates distinct current and desired state estimate addresses', async () => {
+  it('allocates distinct current and forecast state estimate addresses', async () => {
+    const current = {
+      id: 'A', revision: 0, distribution: { type: 'point' as const, value: 0.4 },
+      source: { type: 'squiggle' as const, definition: { source: 'pointMass(0.4)', seed: 42, sample_count: 256, target_unit: {} }, assessment: {} as never },
+    }
     const node = {
       id: 'A',
       revision: 0,
@@ -445,30 +457,27 @@ describe('Optimist API client', () => {
       description: '',
       aliases: [],
       metadata: {},
+      native_state: {
+        quantity: { unit: 'state', dimension: {}, aggregation: null, support: { type: 'bounded' as const, lower: 0, upper: 1 } },
+        current,
+        forecast: null,
+      },
       payload: {
         kind: 'factor' as const,
-        properties: {
-          current: {
-            id: 'A',
-            revision: 0,
-            distribution: { type: 'point' as const, value: 0.4 },
-          },
-          desired: null,
-          controllable: true,
-          evidence: [],
-        },
+        properties: { controllable: true, evidence: [] },
       },
     }
+    const definition = { source: 'beta(8, 2)', seed: 42, sample_count: 256, target_unit: {} }
     const fetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
           request_id: '00000000-0000-4000-8000-000000000000',
           project_revision: 8,
           outcome: {
-            type: 'estimate_set',
+            type: 'squiggle_estimate_set',
             value: {
               address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'B' },
-              slot: { kind: 'desired' },
+              slot: { kind: 'forecast' },
               revision: 0,
               distribution: { type: 'beta', alpha: 8, beta: 2 },
               provenance: ['planning'],
@@ -484,8 +493,8 @@ describe('Optimist API client', () => {
     })
 
     await api.setStateEstimate(project, node, {
-      slot: 'desired',
-      source: { type: 'distribution', distribution: { type: 'beta', alpha: 8, beta: 2 } },
+      slot: 'forecast',
+      source: { type: 'squiggle', definition },
       provenance: ['planning'],
       uncertainty: {
         epistemic: 'Limited evidence',
@@ -495,11 +504,11 @@ describe('Optimist API client', () => {
     })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
       command: {
-        type: 'set_estimate',
+        type: 'set_squiggle_estimate',
         payload: {
           address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'B' },
-          slot: { kind: 'desired' },
-          distribution: { type: 'beta', alpha: 8, beta: 2 },
+          slot: { kind: 'forecast' },
+          definition,
           provenance: ['planning'],
           uncertainty: {
             epistemic: 'Limited evidence',
@@ -511,51 +520,16 @@ describe('Optimist API client', () => {
     })
   })
 
-  it('persists Fermi state sources without accepting a client result distribution', async () => {
-    const node = {
-      id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
-      description: '', aliases: [], metadata: {},
-      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
-    }
-    const definition = {
-      language: 'optimist_squiggle_v1' as const,
-      equation: 'confidence',
-      variables: [{ name: 'confidence', estimate: 0.5, unit: '', uncertainty: { type: 'three_point' as const, low: 0.4, high: 0.6 } }],
-      formula: { type: 'literal' as const, distribution: { type: 'point' as const, value: 0.5 }, unit: {} },
-      monte_carlo: { seed: 42, minimum_samples: 100, maximum_samples: 1000, absolute_tolerance: 0.01, relative_tolerance: 0.01 },
-    }
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      request_id: 'request', project_revision: 8,
-      outcome: {
-        type: 'fermi_estimate_set',
-        value: {
-          address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
-          slot: { kind: 'current' }, revision: 0,
-          distribution: { type: 'point', value: 0.5 },
-          source: { type: 'fermi', definition, assessment: {} },
-          provenance: [],
-        },
-      },
-    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
-    vi.stubGlobal('fetch', fetch)
-    vi.stubGlobal('crypto', { randomUUID: () => 'request' })
-
-    await api.setStateEstimate(project, node, {
-      slot: 'current', source: { type: 'fermi', definition }, provenance: [],
-    })
-    const body = JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)
-    expect(body.command).toMatchObject({
-      type: 'set_fermi_estimate',
-      payload: { slot: { kind: 'current' }, definition },
-    })
-    expect(body.command.payload).not.toHaveProperty('distribution')
-  })
-
   it('previews and persists Squiggle state sources through backend evaluation', async () => {
     const node = {
       id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
+      native_state: {
+        quantity: { unit: 'state', dimension: {}, aggregation: null, support: { type: 'bounded' as const, lower: 0, upper: 1 } },
+        current: null,
+        forecast: null,
+      },
+      payload: { kind: 'factor' as const, properties: { controllable: false, evidence: [] } },
     }
     const definition = {
       source: 'beta(8, 2)', seed: 42, sample_count: 512, target_unit: {},
@@ -602,15 +576,15 @@ describe('Optimist API client', () => {
       payload: {
         kind: 'metric' as const,
         properties: {
-          unit: 'days', aggregation: null,
-          support: { type: 'non_negative' as const }, current: null,
+          quantity: { unit: 'days', dimension: { days: 1 }, aggregation: null, support: { type: 'non_negative' as const } },
+          current: null,
         },
       },
     }
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       request_id: 'request', project_revision: 2,
       outcome: {
-        type: 'estimate_set',
+        type: 'squiggle_estimate_set',
         value: {
           address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
           slot: { kind: 'current' }, revision: 0,
@@ -621,18 +595,19 @@ describe('Optimist API client', () => {
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => 'request' })
 
+    const definition = { source: 'lognormal(2, 0.3)', seed: 42, sample_count: 256, target_unit: { days: 1 } }
     await api.setStateEstimate(project, node, {
       slot: 'current',
-      source: { type: 'distribution', distribution: { type: 'log_normal', location: 2, scale: 0.3 } },
+      source: { type: 'squiggle', definition },
       provenance: [],
     })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
       command: {
-        type: 'set_estimate',
+        type: 'set_squiggle_estimate',
         payload: {
           address: { project: 'A', owner: { kind: 'node', id: 'A' }, estimate: 'A' },
           slot: { kind: 'current' },
-          distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+          definition,
         },
       },
     })
@@ -705,7 +680,7 @@ describe('Optimist API client', () => {
     const node = {
       id: 'A', revision: 2, name: 'flow', normalized_name: 'flow', title: 'Flow',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'factor' as const, properties: { current: null, desired: null, controllable: false, evidence: [] } },
+      payload: { kind: 'factor' as const, properties: { controllable: false, evidence: [] } },
     }
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
@@ -806,7 +781,7 @@ describe('Optimist API client', () => {
       payload: {
         kind: 'intervention' as const,
         properties: {
-          costs: [{ dimension: 'usd', value: { id: 'A', revision: 0, distribution: { type: 'point' as const, value: 100 } } }],
+          costs: [{ dimension: 'usd', value: { id: 'A', revision: 0, distribution: { type: 'point' as const, value: 100 }, source: pointSource(100, { usd: 1 }) } }],
           duration: null, probability_of_success: null, acceptance_criteria: [],
         },
       },
@@ -816,10 +791,11 @@ describe('Optimist API client', () => {
       slot: { kind: 'duration' }, revision: 0,
       distribution: { type: 'log_normal' as const, location: 2, scale: 0.3 }, provenance: ['planning'],
     }
+    const definition = { source: 'lognormal(2, 0.3)', seed: 42, sample_count: 256, target_unit: { duration: 1 } }
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
-        outcome: { type: 'estimate_set', value: primitive },
+        outcome: { type: 'squiggle_estimate_set', value: primitive },
       }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: '00000000-0000-4000-8000-000000000000', project_revision: 9,
@@ -829,14 +805,14 @@ describe('Optimist API client', () => {
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
     await api.setInterventionEstimate(project, node, {
       slot: { kind: 'duration' },
-      source: { type: 'distribution', distribution: { type: 'log_normal', location: 2, scale: 0.3 } },
+      source: { type: 'squiggle', definition },
       provenance: ['planning'],
     })
-    await api.removeInterventionEstimate(project, node, { id: 'B', revision: 0, distribution: primitive.distribution })
+    await api.removeInterventionEstimate(project, node, { id: 'B', revision: 0, distribution: primitive.distribution, source: pointSource(2, { duration: 1 }) })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
-      command: { type: 'set_estimate', payload: {
+      command: { type: 'set_squiggle_estimate', payload: {
         address: { project: 'A', owner: { kind: 'node', id: 'B' }, estimate: 'B' },
-        slot: { kind: 'duration' }, distribution: { type: 'log_normal', location: 2, scale: 0.3 },
+        slot: { kind: 'duration' }, definition,
       } },
     })
     expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
@@ -854,7 +830,7 @@ describe('Optimist API client', () => {
       description: '', aliases: [], metadata: {},
       payload: {
         kind: 'factor' as const,
-        properties: { current: null, desired: null, controllable: false, evidence: [evidence] },
+        properties: { controllable: false, evidence: [evidence] },
       },
     }
     const fetch = vi.fn()
@@ -893,22 +869,25 @@ describe('Optimist API client', () => {
   })
 
   it('replaces required and removes optional edge estimates', async () => {
-    const effect = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: 0.4 } }
-    const lag = { id: 'B', revision: 0, distribution: { type: 'point' as const, value: 2 } }
+    const response = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: 0.4 }, source: pointSource(0.4) }
+    const lag = { id: 'B', revision: 0, distribution: { type: 'point' as const, value: 2 }, source: pointSource(2, { duration: 1 }) }
     const edge = {
       source: 'A', source_kind: 'factor' as const, destination: 'B', destination_kind: 'outcome' as const,
       revision: 0, description: '', metadata: {},
-      payload: { kind: 'contributes' as const, properties: { effect, lag, mechanism: '', evidence: [] } },
+      payload: { kind: 'contributes' as const, properties: {
+        response: { source_change: 1, source_unit: {}, destination_change: response, destination_unit: {} },
+        lag, mechanism: '', evidence: [],
+      } },
     }
     const primitive = {
       address: { project: 'A', owner: { kind: 'edge', id: { source: 'A', kind: 'contributes', destination: 'B' } }, estimate: 'A' },
-      slot: { kind: 'effect' }, revision: 1,
+      slot: { kind: 'response' }, revision: 1,
       distribution: { type: 'scaled_beta' as const, alpha: 3, beta: 2, lower: -1, upper: 1 }, provenance: ['analysis'],
     }
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: '00000000-0000-4000-8000-000000000000', project_revision: 8,
-        outcome: { type: 'estimate_set', value: primitive },
+        outcome: { type: 'squiggle_estimate_set', value: primitive },
       }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         request_id: '00000000-0000-4000-8000-000000000000', project_revision: 9,
@@ -916,14 +895,15 @@ describe('Optimist API client', () => {
       }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+    const definition = { source: '2 * beta(3, 2) - 1', seed: 42, sample_count: 256, target_unit: {} }
     await api.setEdgeEstimate(project, edge, {
-      slot: { kind: 'effect' }, source: { type: 'distribution', distribution: primitive.distribution }, provenance: ['analysis'],
+      slot: { kind: 'response' }, source: { type: 'squiggle', definition }, provenance: ['analysis'],
     })
     await api.removeEdgeEstimate(project, edge, lag)
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
-      command: { type: 'set_estimate', payload: {
+      command: { type: 'set_squiggle_estimate', payload: {
         address: { project: 'A', owner: { kind: 'edge', id: { source: 'A', kind: 'contributes', destination: 'B' } }, estimate: 'A' },
-        slot: { kind: 'effect' }, distribution: { type: 'scaled_beta', lower: -1, upper: 1 },
+        slot: { kind: 'response' }, definition,
       } },
     })
     expect(JSON.parse((fetch.mock.calls[1]![1] as RequestInit).body as string)).toMatchObject({
@@ -934,7 +914,7 @@ describe('Optimist API client', () => {
   })
 
   it('replaces a native destination response estimate', async () => {
-    const destinationChange = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 } }
+    const destinationChange = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 }, source: pointSource(-2, { day: 1 }) }
     const edge = {
       source: 'A', source_kind: 'factor' as const, destination: 'B', destination_kind: 'metric' as const,
       revision: 0, description: '', metadata: {},
@@ -952,7 +932,7 @@ describe('Optimist API client', () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       request_id: 'request', project_revision: 8,
       outcome: {
-        type: 'estimate_set',
+        type: 'squiggle_estimate_set',
         value: {
           address: { project: 'A', owner: { kind: 'edge', id: { source: 'A', kind: 'contributes', destination: 'B' } }, estimate: 'A' },
           slot: { kind: 'response' }, revision: 1,
@@ -963,18 +943,19 @@ describe('Optimist API client', () => {
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => 'request' })
 
+    const definition = { source: 'normal(-2, 0.5)', seed: 42, sample_count: 256, target_unit: { day: 1 } }
     await api.setEdgeEstimate(project, edge, {
       slot: { kind: 'response' },
-      source: { type: 'distribution', distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 } },
+      source: { type: 'squiggle', definition },
       provenance: [],
     })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
       command: {
-        type: 'set_estimate',
+        type: 'set_squiggle_estimate',
         payload: {
           address: { estimate: 'A' },
           slot: { kind: 'response' },
-          distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 },
+          definition,
         },
       },
     })

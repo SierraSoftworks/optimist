@@ -15,8 +15,6 @@ const form = reactive({
   operationalDefinition: '',
   referenceTime: '',
   resolutionSource: '',
-  stateZero: 0,
-  stateOne: 1,
 })
 
 watch(
@@ -26,7 +24,6 @@ watch(
     Object.assign(form, {
       unit: '', aggregation: '', support: 'real', lower: 0, upper: 1,
       operationalDefinition: '', referenceTime: '', resolutionSource: '',
-      stateZero: 0, stateOne: 1,
     })
   },
 )
@@ -43,18 +40,7 @@ const boundsValid = computed(() =>
     Number.isFinite(form.lower) && Number.isFinite(form.upper) && form.lower < form.upper
   ),
 )
-const hasLegacyState = computed(() => {
-  if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return false
-  return Boolean(props.node.payload.properties.current || props.node.payload.properties.desired)
-})
-const mappingValid = computed(() =>
-  !hasLegacyState.value || (
-    Number.isFinite(form.stateZero) &&
-    Number.isFinite(form.stateOne) &&
-    form.stateZero < form.stateOne
-  ),
-)
-const valid = computed(() => Boolean(dimension.value && boundsValid.value && mappingValid.value))
+const valid = computed(() => Boolean(dimension.value && boundsValid.value))
 
 function quantitySupport(): QuantitySupport {
   return form.support === 'bounded'
@@ -74,9 +60,6 @@ function submit() {
       reference_time: form.referenceTime.trim() || null,
       resolution_source: form.resolutionSource.trim() || null,
     },
-    legacy_mapping: hasLegacyState.value
-      ? { state_zero: form.stateZero, state_one: form.stateOne }
-      : undefined,
   })
 }
 </script>
@@ -107,20 +90,12 @@ function submit() {
           <label>Lower bound<input v-model.number="form.lower" type="number" required /></label>
           <label>Upper bound<input v-model.number="form.upper" type="number" required /></label>
         </div>
-        <fieldset v-if="hasLegacyState" class="legacy-mapping">
-          <legend>Convert existing standardized state</legend>
-          <div class="field-grid">
-            <label>Native value at state 0<input v-model.number="form.stateZero" type="number" step="any" required /></label>
-            <label>Native value at state 1<input v-model.number="form.stateOne" type="number" step="any" required /></label>
-          </div>
-          <p v-if="!mappingValid" class="form-error">State 1 must be greater than state 0.</p>
-        </fieldset>
         <label>Operational definition<textarea v-model="form.operationalDefinition" rows="3" placeholder="Exactly what this state measures"></textarea></label>
         <div class="field-grid">
           <label>Reference time<input v-model="form.referenceTime" placeholder="2026-Q4 or current" /></label>
           <label>Resolution source<input v-model="form.resolutionSource" placeholder="Dashboard, query, or authority" /></label>
         </div>
-        <p class="muted">Native state requires unit-aware linear responses on causal relationships. This change is available before state estimates or normalized relationships are added.</p>
+        <p class="muted">Causal relationships use this quantity's canonical unit in their counterfactual responses.</p>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
           <button type="submit" class="primary-button" :disabled="pending || !valid">{{ pending ? 'Saving…' : 'Use native state' }}</button>
@@ -130,6 +105,3 @@ function submit() {
   </Teleport>
 </template>
 
-<style scoped>
-.legacy-mapping { margin-top: 20px !important; padding-top: 18px !important; border-top: 1px solid var(--line) !important; }
-</style>

@@ -98,8 +98,6 @@ function payload(): NodePayload {
         kind: 'outcome',
         properties: {
           direction: form.direction,
-          current: null,
-          desired: null,
           evidence: [],
         },
       }
@@ -107,13 +105,15 @@ function payload(): NodePayload {
       return {
         kind: 'metric',
         properties: {
-          unit: form.unit.trim(),
-          dimension: metricDimension.value ?? undefined,
-          aggregation: form.aggregation.trim() || null,
-          support: quantitySupport(),
-          operational_definition: form.operationalDefinition.trim(),
-          reference_time: form.referenceTime.trim() || null,
-          resolution_source: form.resolutionSource.trim() || null,
+          quantity: {
+            unit: form.unit.trim(),
+            dimension: metricDimension.value ?? undefined,
+            aggregation: form.aggregation.trim() || null,
+            support: quantitySupport(),
+            operational_definition: form.operationalDefinition.trim(),
+            reference_time: form.referenceTime.trim() || null,
+            resolution_source: form.resolutionSource.trim() || null,
+          },
           current: null,
         },
       }
@@ -131,8 +131,6 @@ function payload(): NodePayload {
       return {
         kind: 'factor',
         properties: {
-          current: null,
-          desired: null,
           controllable: form.controllable,
           evidence: [],
         },

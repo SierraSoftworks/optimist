@@ -37,12 +37,7 @@ const validKinds = computed(() => {
 })
 const causal = computed(() => form.kind === 'contributes' || form.kind === 'changes')
 const destination = computed(() => props.nodes.find((node) => node.id === form.destination))
-const nativeCausal = computed(() =>
-  causal.value && (
-    destination.value?.payload.kind === 'metric' ||
-    (form.kind === 'contributes' && source.value?.payload.kind === 'metric')
-  ),
-)
+const nativeCausal = causal
 const sourceUnit = computed(() => source.value ? nodeUnit(source.value) : null)
 const destinationUnit = computed(() => destination.value ? nodeUnit(destination.value) : null)
 const nativeUnitsReady = computed(() => !nativeCausal.value || (sourceUnit.value !== null && destinationUnit.value !== null))
@@ -67,8 +62,8 @@ watch([() => form.destination, nativeCausal], resetResponse)
 
 function submit() {
   if (!form.source || !form.destination) return
-  const destinationEstimate = nativeCausal.value ? assessedResponse() : undefined
-  if (nativeCausal.value && !destinationEstimate) return
+  const destinationEstimate = causal.value ? assessedResponse() : undefined
+  if (causal.value && !destinationEstimate) return
   emit('submit', {
     source: form.source,
     destination: form.destination,
@@ -125,7 +120,7 @@ function assessedResponse(): Estimate | undefined {
           <label>Source<select v-model="form.source" required :disabled="Boolean(initialSourceId)"><option value="" disabled>Select node</option><option v-for="node in validSources" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
           <label>Destination<select v-model="form.destination" required><option value="" disabled>Select node</option><option v-for="node in validDestinations" :key="node.id" :value="node.id">{{ node.title }} · {{ node.id }}</option></select></label>
         </div>
-        <label v-if="(causal && !nativeCausal) || form.kind === 'blocks'">{{ form.kind === 'blocks' ? 'Blocking degree' : 'Signed effect' }} on [-1, 1]<input v-model.number="form.effect" type="number" min="-1" max="1" step="0.05" required /></label>
+        <label v-if="form.kind === 'blocks'">Blocking degree on [0, 1]<input v-model.number="form.effect" type="number" min="0" max="1" step="0.05" required /></label>
         <section v-if="nativeCausal" class="native-response">
           <header><strong>Counterfactual response</strong><span>Model destination movement for one source movement. This is a local response assumption, not causation inferred from correlation.</span></header>
           <label>{{ form.kind === 'changes' ? 'Intervention activation' : 'Source change' }} ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>

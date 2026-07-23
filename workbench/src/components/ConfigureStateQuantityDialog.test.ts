@@ -8,7 +8,7 @@ const factor: GraphNode = {
   description: '', aliases: [], metadata: {},
   payload: {
     kind: 'factor',
-    properties: { current: null, desired: null, controllable: false, evidence: [] },
+    properties: { controllable: false, evidence: [] },
   },
 }
 
@@ -34,37 +34,6 @@ describe('ConfigureStateQuantityDialog', () => {
         support: { type: 'bounded', lower: 0, upper: 30 },
         operational_definition: 'Elapsed lead time',
       },
-    })
-  })
-
-  it('requires explicit zero and one anchors for populated legacy state', async () => {
-    const populated: GraphNode = {
-      ...factor,
-      payload: {
-        kind: 'factor',
-        properties: {
-          current: {
-            id: 'A', revision: 0,
-            distribution: { type: 'point', value: 0.5 },
-          },
-          desired: null,
-          controllable: false,
-          evidence: [],
-        },
-      },
-    }
-    const wrapper = mount(ConfigureStateQuantityDialog, {
-      props: { open: true, pending: false, node: populated },
-      global: { stubs: { Teleport: true } },
-    })
-    const fields = wrapper.findAll('input')
-    await fields[0]!.setValue('day')
-    await wrapper.get('input[type="number"]').setValue('10')
-    await wrapper.findAll('input[type="number"]')[1]!.setValue('30')
-    await wrapper.get('form').trigger('submit')
-
-    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
-      legacy_mapping: { state_zero: 10, state_one: 30 },
     })
   })
 })

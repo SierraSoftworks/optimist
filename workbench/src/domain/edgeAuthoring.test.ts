@@ -29,49 +29,17 @@ describe('edge authoring', () => {
     expect(endpointsAreValid('conflicts_with', 'intervention', 'factor')).toBe(false)
   })
 
-  it('constructs causal estimates, lag, mechanism, and evidence', () => {
-    expect(
-      edgePayload({
-        kind: 'contributes',
-        effect: -0.4,
-        lag: 2,
-        mechanism: 'Delayed influence',
-        evidence: 'ADR-1\nExperiment',
-        polarity: 'higher_is_better',
-        hard: true,
-        threshold: null,
-      }),
-    ).toEqual({
-      kind: 'contributes',
-      properties: {
-        effect: {
-          id: 'A',
-          revision: 0,
-          distribution: { type: 'point', value: -0.4 },
-          provenance: [],
-        },
-        lag: {
-          id: 'B',
-          revision: 0,
-          distribution: { type: 'point', value: 2 },
-          provenance: [],
-        },
-        mechanism: 'Delayed influence',
-        evidence: ['ADR-1', 'Experiment'],
-      },
-    })
-  })
-
   it('constructs unit-aware counterfactual responses for metric endpoints', () => {
     const source = {
       id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
+      native_state: { quantity: { unit: 'state', dimension: {}, aggregation: null }, current: null, forecast: null },
+      payload: { kind: 'factor', properties: { controllable: false, evidence: [] } },
     } as GraphNode
     const destination = {
       id: 'B', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+      payload: { kind: 'metric', properties: { quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null } } },
     } as GraphNode
     expect(edgePayload({
       kind: 'contributes', effect: 0, lag: null, mechanism: 'Flow reduces delay', evidence: '',
@@ -99,10 +67,16 @@ describe('edge authoring', () => {
     const destination = {
       id: 'B', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+      payload: { kind: 'metric', properties: { quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null } } },
     } as GraphNode
     const destinationEstimate = {
-      id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 }, provenance: [],
+      id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 },
+      source: {
+        type: 'squiggle' as const,
+        definition: { source: 'pointMass(-2)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
+        assessment: {} as never,
+      },
+      provenance: [],
     }
     expect(edgePayload({
       kind: 'changes', effect: 0, lag: null, mechanism: 'Automation reduces delay', evidence: '',

@@ -27,12 +27,7 @@ impl AppState {
             return Ok((result, changes));
         };
 
-        if matches!(
-            &request.command,
-            GraphCommand::SetEstimate(_)
-                | GraphCommand::SetFermiEstimate(_)
-                | GraphCommand::SetSquiggleEstimate(_)
-        ) {
+        if matches!(&request.command, GraphCommand::SetSquiggleEstimate(_)) {
             return self.execute_estimate_command(&mut catalog, store, project, request);
         }
 
@@ -127,10 +122,12 @@ mod tests {
     use std::fs;
 
     use crate::{
-        command::{CommandRequest, CreateNode, GraphCommand, SetEstimate},
+        command::{
+            CommandRequest, CreateNode, GraphCommand, SetNodeQuantityState, SetSquiggleEstimate,
+        },
         domain::{
-            Distribution, EntityId, EstimateAddress, EstimateId, EstimateOwner, EstimateSlot,
-            EstimateUncertainty, Factor, NodePayload,
+            EntityId, EstimateAddress, EstimateId, EstimateOwner, EstimateSlot,
+            EstimateUncertainty, Factor, NodePayload, QuantityDefinition, QuantitySupport, Unit,
         },
         project::{CatalogStore, ProjectCatalog},
     };
@@ -156,8 +153,6 @@ mod tests {
                         name: "flow".to_owned(),
                         title: "Flow".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: false,
                             evidence: vec![],
                         }),
@@ -175,10 +170,37 @@ mod tests {
                 &project.id,
                 CommandRequest::new(
                     1,
-                    GraphCommand::SetEstimate(SetEstimate {
+                    GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                        node: EntityId::new(0),
+                        expected_revision: 0,
+                        quantity: QuantityDefinition::with_dimension(
+                            "state",
+                            Some(Unit::dimensionless()),
+                            None,
+                            QuantitySupport::Bounded {
+                                lower: 0.0,
+                                upper: 1.0,
+                            },
+                        )
+                        .unwrap(),
+                    }),
+                ),
+            )
+            .unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                         address: address.clone(),
                         slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(2.0, 2.0).unwrap(),
+                        definition: crate::domain::SquiggleEstimateDefinition {
+                            source: "beta(2, 2)".to_owned(),
+                            seed: 42,
+                            sample_count: 256,
+                            target_unit: crate::domain::Unit::dimensionless(),
+                        },
                         provenance: vec![],
                         uncertainty: EstimateUncertainty::default(),
                     }),
@@ -187,11 +209,16 @@ mod tests {
             .unwrap();
         let state = AppState::persistent(catalog, CatalogStore::new(root.clone()));
         let request = CommandRequest::new(
-            2,
-            GraphCommand::SetEstimate(SetEstimate {
+            3,
+            GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                 address: address.clone(),
                 slot: EstimateSlot::Current,
-                distribution: Distribution::beta(8.0, 2.0).unwrap(),
+                definition: crate::domain::SquiggleEstimateDefinition {
+                    source: "beta(8, 2)".to_owned(),
+                    seed: 42,
+                    sample_count: 256,
+                    target_unit: crate::domain::Unit::dimensionless(),
+                },
                 provenance: vec![],
                 uncertainty: EstimateUncertainty::default(),
             }),
@@ -202,14 +229,10 @@ mod tests {
             Err(CatalogMutationError::Persistence(_))
         ));
         let mut restored = state.catalog.write().await;
-        assert_eq!(restored.get(&project.id).unwrap().revision, 2);
-        assert_eq!(
-            restored
-                .get_estimate(&project.id, &address)
-                .unwrap()
-                .distribution,
-            Distribution::beta(2.0, 2.0).unwrap()
-        );
+        assert_eq!(restored.get(&project.id).unwrap().revision, 3);
+        let estimate = restored.get_estimate(&project.id, &address).unwrap();
+        let crate::domain::EstimateSource::Squiggle { definition, .. } = estimate.source;
+        assert_eq!(definition.source, "beta(2, 2)");
         drop(restored);
         fs::remove_dir_all(root).unwrap();
     }

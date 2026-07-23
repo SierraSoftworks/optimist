@@ -5,22 +5,6 @@ use super::{
     QuantityValue, SignedInfluence, Unit,
 };
 
-/// Mathematical model used by a causal `contributes` or `changes` relationship.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(untagged)]
-pub enum CausalModel {
-    /// Legacy dimensionless response between normalized states.
-    Normalized {
-        /// Signed local strength on `[-1, 1]`.
-        effect: Estimate<SignedInfluence>,
-    },
-    /// Unit-aware linear response between source and destination quantities.
-    Linear {
-        /// Counterfactual anchor pair defining the uncertain local slope.
-        response: LinearResponse,
-    },
-}
-
 /// Unit-aware counterfactual anchor pair for one local linear response.
 ///
 /// If the source moves by `source_change`, the destination is expected to move by
@@ -41,9 +25,8 @@ pub struct LinearResponse {
 /// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CausalEffect {
-    /// Normalized legacy effect or a unit-aware counterfactual response.
-    #[serde(flatten)]
-    pub model: CausalModel,
+    /// Counterfactual anchor pair defining the uncertain local slope.
+    pub response: LinearResponse,
     /// Optional non-negative delay before the effect reaches its destination.
     pub lag: Option<Estimate<Duration>>,
     /// Markdown explanation of the causal mechanism, boundaries, and assumptions.
@@ -54,9 +37,9 @@ pub struct CausalEffect {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CausalEffectWire {
-    #[serde(flatten)]
-    model: CausalModel,
+    response: LinearResponse,
     lag: Option<Estimate<Duration>>,
     mechanism: String,
     #[serde(default)]
@@ -69,37 +52,12 @@ impl<'de> Deserialize<'de> for CausalEffect {
         D: Deserializer<'de>,
     {
         let value = CausalEffectWire::deserialize(deserializer)?;
-        match value.model {
-            CausalModel::Normalized { effect } => Ok(Self::normalized(
-                effect,
-                value.lag,
-                value.mechanism,
-                value.evidence,
-            )),
-            CausalModel::Linear { response } => {
-                Self::linear(response, value.lag, value.mechanism, value.evidence)
-                    .map_err(de::Error::custom)
-            }
-        }
+        Self::linear(value.response, value.lag, value.mechanism, value.evidence)
+            .map_err(de::Error::custom)
     }
 }
 
 impl CausalEffect {
-    /// Creates the existing normalized-state causal model.
-    pub fn normalized(
-        effect: Estimate<SignedInfluence>,
-        lag: Option<Estimate<Duration>>,
-        mechanism: String,
-        evidence: Vec<String>,
-    ) -> Self {
-        Self {
-            model: CausalModel::Normalized { effect },
-            lag,
-            mechanism,
-            evidence,
-        }
-    }
-
     /// Creates a unit-aware local linear response after validating its anchor.
     pub fn linear(
         response: LinearResponse,
@@ -111,43 +69,11 @@ impl CausalEffect {
             return Err(CausalResponseError::InvalidSourceChange);
         }
         Ok(Self {
-            model: CausalModel::Linear { response },
+            response,
             lag,
             mechanism,
             evidence,
         })
-    }
-
-    /// Returns the legacy signed effect when this is a normalized-state model.
-    pub fn normalized_effect(&self) -> Option<&Estimate<SignedInfluence>> {
-        match &self.model {
-            CausalModel::Normalized { effect } => Some(effect),
-            CausalModel::Linear { .. } => None,
-        }
-    }
-
-    /// Returns the mutable legacy signed effect when available.
-    pub fn normalized_effect_mut(&mut self) -> Option<&mut Estimate<SignedInfluence>> {
-        match &mut self.model {
-            CausalModel::Normalized { effect } => Some(effect),
-            CausalModel::Linear { .. } => None,
-        }
-    }
-
-    /// Returns the unit-aware linear response when this model defines one.
-    pub fn linear_response(&self) -> Option<&LinearResponse> {
-        match &self.model {
-            CausalModel::Linear { response } => Some(response),
-            CausalModel::Normalized { .. } => None,
-        }
-    }
-
-    /// Returns the mutable unit-aware linear response when available.
-    pub fn linear_response_mut(&mut self) -> Option<&mut LinearResponse> {
-        match &mut self.model {
-            CausalModel::Linear { response } => Some(response),
-            CausalModel::Normalized { .. } => None,
-        }
     }
 }
 
@@ -187,18 +113,20 @@ mod causal_response_tests {
     }
 
     #[test]
-    fn normalized_effect_keeps_its_legacy_json_shape() {
-        let value = CausalEffect::normalized(
-            Estimate::<SignedInfluence>::new(EstimateId::new(0), Distribution::point(0.5).unwrap())
-                .unwrap(),
-            None,
-            String::new(),
-            vec![],
+    fn rejects_normalized_effect_storage() {
+        assert!(
+            serde_json::from_value::<CausalEffect>(serde_json::json!({
+                "effect": {
+                    "id": "A",
+                    "revision": 0,
+                    "distribution": { "type": "point", "value": 0.5 }
+                },
+                "lag": null,
+                "mechanism": "",
+                "evidence": []
+            }))
+            .is_err()
         );
-        let json = serde_json::to_value(&value).unwrap();
-        assert!(json.get("effect").is_some());
-        assert!(json.get("response").is_none());
-        assert_eq!(serde_json::from_value::<CausalEffect>(json).unwrap(), value);
     }
 }
 

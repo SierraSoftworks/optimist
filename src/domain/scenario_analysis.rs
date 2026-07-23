@@ -9,11 +9,9 @@ impl ScenarioAnalysis {
     /// For state $i$, sampled baseline $b_i$, persistent intervention shift $u_i(t)$,
     /// local response $\beta_{ji}$, and integer delay $d_{ji}\geq1$, each period applies
     /// $x_i(t)=\operatorname{clamp}_i(b_i+u_i(t)+\sum_j
-    /// \beta_{ji}(x_j(t-d_{ji})-b_j))$. Legacy normalized effects use
-    /// $\beta=e\in[-1,1]$; native counterfactual responses sample
+    /// \beta_{ji}(x_j(t-d_{ji})-b_j))$, where counterfactual responses sample
     /// $\beta=\Delta y/\Delta x$ with destination-unit/source-unit dimension.
-    /// $\operatorname{clamp}_i$ uses `[0,1]` for normalized states, the declared
-    /// support for metrics, and no bounds for real metrics. The one-period minimum
+    /// $\operatorname{clamp}_i$ uses each quantity's declared support. The one-period minimum
     /// delay makes updates
     /// synchronous: a zero-lag edge consumes its source at $t-1$, while explicit
     /// duration and lag samples are interpreted as planning periods, rounded up,
@@ -65,14 +63,34 @@ mod tests {
     use super::*;
     use crate::domain::{
         CausalEffect, Distribution, EdgePayload, EntityId, Estimate, EstimateId, Factor,
-        Intervention, LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload,
-        NormalizedState, Outcome, OutcomeDirection, ProjectId, QuantityDefinition, QuantitySupport,
-        QuantityValue, ScenarioDraft, ScenarioId, ScenarioObjective, SignedInfluence, Unit,
-        UtilityDirection,
+        Intervention, LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome,
+        OutcomeDirection, ProjectId, QuantityDefinition, QuantityState, QuantitySupport,
+        QuantityValue, ScenarioDraft, ScenarioId, ScenarioObjective, Unit, UtilityDirection,
     };
 
     fn estimate<T: super::super::EstimateDimension>(id: u64, value: f64) -> Estimate<T> {
         Estimate::new(EstimateId::new(id), Distribution::point(value).unwrap()).unwrap()
+    }
+
+    fn with_state(mut node: Node, value: f64) -> Node {
+        node.native_state = Some(
+            QuantityState::new(
+                QuantityDefinition::with_dimension(
+                    "state",
+                    Some(Unit::dimensionless()),
+                    None,
+                    QuantitySupport::Bounded {
+                        lower: 0.0,
+                        upper: 1.0,
+                    },
+                )
+                .unwrap(),
+                Some(estimate::<QuantityValue>(0, value)),
+                None,
+            )
+            .unwrap(),
+        );
+        node
     }
 
     #[test]
@@ -89,41 +107,51 @@ mod tests {
             }),
         )
         .unwrap();
-        let factor = Node::new(
-            EntityId::new(1),
-            "feedback",
-            "Feedback",
-            NodePayload::Factor(Factor {
-                current: Some(estimate::<NormalizedState>(0, 0.5)),
-                desired: None,
-                controllable: true,
-                evidence: vec![],
-            }),
-        )
-        .unwrap();
-        let outcome = Node::new(
-            EntityId::new(2),
-            "delivery",
-            "Delivery",
-            NodePayload::Outcome(Outcome {
-                direction: OutcomeDirection::Maximize,
-                current: Some(estimate::<NormalizedState>(0, 0.5)),
-                desired: None,
-                evidence: vec![],
-            }),
-        )
-        .unwrap();
+        let factor = with_state(
+            Node::new(
+                EntityId::new(1),
+                "feedback",
+                "Feedback",
+                NodePayload::Factor(Factor {
+                    controllable: true,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.5,
+        );
+        let outcome = with_state(
+            Node::new(
+                EntityId::new(2),
+                "delivery",
+                "Delivery",
+                NodePayload::Outcome(Outcome {
+                    direction: OutcomeDirection::Maximize,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.5,
+        );
         let changes = Edge::new(
             intervention.id,
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(CausalEffect::normalized(
-                estimate::<SignedInfluence>(0, 0.3),
-                None,
-                String::new(),
-                vec![],
-            )),
+            EdgePayload::Changes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, 0.3),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
         )
         .unwrap();
         let contributes = Edge::new(
@@ -131,12 +159,20 @@ mod tests {
             NodeKind::Factor,
             outcome.id,
             NodeKind::Outcome,
-            EdgePayload::Contributes(CausalEffect::normalized(
-                estimate::<SignedInfluence>(0, 0.2),
-                None,
-                String::new(),
-                vec![],
-            )),
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, 0.2),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
         )
         .unwrap();
         let scenario = Scenario::new(
@@ -213,25 +249,24 @@ mod tests {
             "unrelated",
             "Unrelated",
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
         )
         .unwrap();
-        let unrelated_outcome = Node::new(
-            EntityId::new(4),
-            "unrelated-outcome",
-            "Unrelated outcome",
-            NodePayload::Outcome(Outcome {
-                direction: OutcomeDirection::Maximize,
-                current: Some(estimate::<NormalizedState>(0, 0.2)),
-                desired: None,
-                evidence: vec![],
-            }),
-        )
-        .unwrap();
+        let unrelated_outcome = with_state(
+            Node::new(
+                EntityId::new(4),
+                "unrelated-outcome",
+                "Unrelated outcome",
+                NodePayload::Outcome(Outcome {
+                    direction: OutcomeDirection::Maximize,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.2,
+        );
         scenario.draft.objectives.push(ScenarioObjective {
             outcome_id: unrelated_outcome.id,
             direction: UtilityDirection::Maximize,
@@ -248,10 +283,7 @@ mod tests {
             Some(0.0)
         );
 
-        let NodePayload::Factor(factor) = &mut nodes[1].payload else {
-            unreachable!()
-        };
-        factor.current = None;
+        nodes[1].native_state.as_mut().unwrap().current = None;
         assert_eq!(
             ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges),
             Err(ScenarioAnalysisError::MissingFactorBaseline(EntityId::new(
@@ -264,15 +296,12 @@ mod tests {
     fn stochastic_runs_are_reproducible_and_states_remain_bounded() {
         let (mut scenario, mut nodes, mut edges, revision) = point_fixture(2);
         scenario.draft.monte_carlo = MonteCarloConfig::new(91, 100, 100, 0.0001, 0.0).unwrap();
-        let NodePayload::Outcome(outcome) = &mut nodes[2].payload else {
-            unreachable!()
-        };
-        outcome.current =
+        nodes[2].native_state.as_mut().unwrap().current =
             Some(Estimate::new(EstimateId::new(0), Distribution::beta(8.0, 2.0).unwrap()).unwrap());
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        *effect.normalized_effect_mut().unwrap() = Estimate::new(
+        effect.response.destination_change = Estimate::new(
             EstimateId::new(0),
             Distribution::scaled_beta(2.0, 2.0, -1.0, 1.0).unwrap(),
         )
@@ -287,7 +316,7 @@ mod tests {
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        *effect.normalized_effect_mut().unwrap() = estimate(0, 1.0);
+        effect.response.destination_change = estimate(0, 1.0);
         let saturated =
             ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges).unwrap();
         assert!(saturated.candidates[0].clamped_state_updates > 0);
@@ -476,41 +505,51 @@ mod tests {
             }),
         )
         .unwrap();
-        let factor = Node::new(
-            EntityId::new(1),
-            "feedback",
-            "Feedback",
-            NodePayload::Factor(Factor {
-                current: Some(estimate::<NormalizedState>(0, 0.5)),
-                desired: None,
-                controllable: true,
-                evidence: vec![],
-            }),
-        )
-        .unwrap();
-        let outcome = Node::new(
-            EntityId::new(2),
-            "delivery",
-            "Delivery",
-            NodePayload::Outcome(Outcome {
-                direction: OutcomeDirection::Maximize,
-                current: Some(estimate::<NormalizedState>(0, 0.5)),
-                desired: None,
-                evidence: vec![],
-            }),
-        )
-        .unwrap();
+        let factor = with_state(
+            Node::new(
+                EntityId::new(1),
+                "feedback",
+                "Feedback",
+                NodePayload::Factor(Factor {
+                    controllable: true,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.5,
+        );
+        let outcome = with_state(
+            Node::new(
+                EntityId::new(2),
+                "delivery",
+                "Delivery",
+                NodePayload::Outcome(Outcome {
+                    direction: OutcomeDirection::Maximize,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.5,
+        );
         let changes = Edge::new(
             intervention.id,
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(CausalEffect::normalized(
-                estimate::<SignedInfluence>(0, 0.3),
-                None,
-                String::new(),
-                vec![],
-            )),
+            EdgePayload::Changes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, 0.3),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
         )
         .unwrap();
         let contributes = contributes(factor.id, outcome.id, 0.2);
@@ -554,12 +593,20 @@ mod tests {
             NodeKind::Factor,
             destination,
             NodeKind::Outcome,
-            EdgePayload::Contributes(CausalEffect::normalized(
-                estimate::<SignedInfluence>(0, effect),
-                None,
-                String::new(),
-                vec![],
-            )),
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, effect),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
         )
         .unwrap()
     }

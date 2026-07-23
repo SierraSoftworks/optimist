@@ -6,12 +6,11 @@ use super::{client::ProjectClient, output::OutputFormat};
 
 #[derive(Debug, Args)]
 #[command(after_long_help = r#"EXAMPLES:
-    optimist --project A estimate set A/node/B/estimate/A --slot '{"kind":"current"}' --distribution '{"type":"beta","alpha":2,"beta":3}'
-    optimist --project A estimate set A/node/C/estimate/B --slot '{"kind":"cost","value":"usd"}' --distribution '{"type":"log_normal","location":10,"scale":0.4}'
+    optimist --project A estimate set A/node/B/estimate/A --slot '{"kind":"current"}' --definition '{"source":"beta(2, 3)","seed":42,"sample_count":2048,"target_unit":{}}'
     optimist --project A estimate show A/node/B/estimate/A
     optimist --project A estimate remove A/node/B/estimate/A
 
-Slots are current, desired, cost, duration, probability_of_success, effect, lag, or degree. Distribution support must fit the slot's typed dimension."#)]
+Slots are current, forecast, cost, duration, probability_of_success, response, lag, or degree. Squiggle support must fit the slot's typed dimension."#)]
 pub(super) struct EstimateArgs {
     #[command(subcommand)]
     command: EstimateCommand,
@@ -25,9 +24,9 @@ enum EstimateCommand {
         /// Tagged EstimateSlot JSON.
         #[arg(long)]
         slot: String,
-        /// Validated Distribution JSON.
+        /// SquiggleEstimateDefinition JSON.
         #[arg(long)]
-        distribution: String,
+        definition: String,
         /// JSON array of evidence or elicitation strings.
         #[arg(long, default_value = "[]")]
         provenance: String,
@@ -58,16 +57,16 @@ pub(super) async fn run(
         EstimateCommand::Set {
             address,
             slot,
-            distribution,
+            definition,
             provenance,
             uncertainty,
         } => {
             client
-                .set_estimate(
+                .set_squiggle_estimate(
                     project,
                     address,
                     parse_json(&slot, "EstimateSlot")?,
-                    parse_json(&distribution, "Distribution")?,
+                    parse_json(&definition, "SquiggleEstimateDefinition")?,
                     parse_json(&provenance, "provenance string array")?,
                     parse_json(&uncertainty, "EstimateUncertainty")?,
                 )
@@ -88,7 +87,7 @@ fn parse_json<T: serde::de::DeserializeOwned>(
         human_errors::wrap_user(
             error,
             format!("The estimate input is not valid {expected} JSON."),
-            &["Run `optimist estimate --help` for typed slot and distribution examples."],
+            &["Run `optimist estimate --help` for typed slot and Squiggle examples."],
         )
     })
 }
@@ -111,8 +110,8 @@ mod tests {
                 "A/node/B/estimate/A",
                 "--slot",
                 r#"{"kind":"current"}"#,
-                "--distribution",
-                r#"{"type":"beta","alpha":2,"beta":3}"#,
+                "--definition",
+                r#"{"source":"beta(2, 3)","seed":42,"sample_count":2048,"target_unit":{}}"#,
             ],
             vec![
                 "optimist",

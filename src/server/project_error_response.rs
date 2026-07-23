@@ -107,32 +107,11 @@ pub(super) fn classify(
                 "Remove existing current and desired or forecast estimates before changing the state quantity.",
             ],
         ),
-        ProjectError::LegacyStateMappingRequired(_) => (
-            StatusCode::CONFLICT,
-            "legacy_state_mapping_required",
-            &[
-                "Provide the native values represented by legacy states zero and one, then review the converted current and forecast estimates.",
-            ],
-        ),
-        ProjectError::NativeStateNormalizedEdge(_) => (
-            StatusCode::CONFLICT,
-            "native_state_normalized_edge",
-            &[
-                "Replace incident normalized causal effects with unit-aware linear responses, then retry.",
-            ],
-        ),
         ProjectError::Quantity(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_quantity_state",
             &[
                 "Check the canonical unit terms, support bounds, and operational definition, then retry.",
-            ],
-        ),
-        ProjectError::NativeCausalResponseRequired(_) => (
-            StatusCode::BAD_REQUEST,
-            "native_causal_response_required",
-            &[
-                "Define a counterfactual source change and uncertain destination change for every contributes edge touching a metric.",
             ],
         ),
         ProjectError::CausalResponseUnitMismatch { .. } => (

@@ -138,8 +138,6 @@ mod tests {
                 "reliability".to_owned(),
                 "Reliability".to_owned(),
                 NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: true,
                     evidence: vec![],
                 }),

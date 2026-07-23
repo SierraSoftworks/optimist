@@ -6,7 +6,7 @@ import type {
   NodeKind,
 } from '../api/types'
 import type { WorkbenchMode } from '../stores/workbench'
-import { edgePayload, endpointsAreValid } from './edgeAuthoring'
+import { edgePayload, endpointsAreValid, nodeUnit } from './edgeAuthoring'
 import { normalizedEdgeKind, resolveCommandNode, tokenizeCommand } from './commandBarSyntax'
 import { parseUnitExpression } from './unitExpression'
 export { commandSuggestions, type CommandSuggestion } from './commandBarSuggestions'
@@ -51,10 +51,7 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
       payload: {
         kind,
         properties: {
-          unit: option,
-          dimension,
-          aggregation: null,
-          support: { type: 'real' },
+          quantity: { unit: option, dimension, aggregation: null, support: { type: 'real' } },
           current: null,
         },
       },
@@ -82,7 +79,7 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
     return {
       name,
       title,
-      payload: { kind, properties: { direction, current: null, desired: null, evidence: [] } },
+      payload: { kind, properties: { direction, evidence: [] } },
     }
   }
   return {
@@ -91,8 +88,6 @@ function nodeInput(kind: NodeKind, title: string, option?: string): CreateNodeIn
     payload: {
       kind,
       properties: {
-        current: null,
-        desired: null,
         controllable: option === 'controllable',
         evidence: [],
       },
@@ -126,21 +121,21 @@ export function parseCommand(input: string, nodes: GraphNode[], edges: GraphEdge
     if (edges.some((edge) =>
       edge.source === source.id && edge.destination === destination.id && edge.payload.kind === kind,
     )) return error('That relationship already exists.')
-    const nativeCausal = kind === 'contributes' && (
-      source.payload.kind === 'metric' || destination.payload.kind === 'metric'
-    )
-    const sourceChange = nativeCausal ? Number(args[3]) : undefined
-    const destinationChange = nativeCausal ? Number(args[4]) : undefined
-    if (nativeCausal && (args[3] === undefined || args[4] === undefined)) {
-      return hint('Provide source change and destination change for this native response.')
+    const causal = kind === 'contributes' || kind === 'changes'
+    const sourceChange = causal ? Number(args[3]) : undefined
+    const destinationChange = causal ? Number(args[4]) : undefined
+    if (causal && (args[3] === undefined || args[4] === undefined)) {
+      return hint('Provide source change and destination change for this response.')
     }
-    if (nativeCausal && (!Number.isFinite(sourceChange) || sourceChange === 0 || !Number.isFinite(destinationChange))) {
-      return error('Native response changes must be finite and source change cannot be zero.')
+    if (causal && (!Number.isFinite(sourceChange) || sourceChange === 0 || !Number.isFinite(destinationChange))) {
+      return error('Response changes must be finite and source change cannot be zero.')
     }
-    const effect = nativeCausal ? 0 : args[3] === undefined ? 0.5 : Number(args[3])
-    if (!Number.isFinite(effect)) return error('Effect or degree must be a finite number.')
-    if ((kind === 'blocks' && (effect < 0 || effect > 1)) || effect < -1 || effect > 1) {
-      return error(kind === 'blocks' ? 'Blocking degree must be between 0 and 1.' : 'Effect must be between -1 and 1.')
+    if (causal && (!nodeUnit(source) || !nodeUnit(destination))) {
+      return error('Both causal endpoints require canonical quantity dimensions.')
+    }
+    const effect = kind === 'blocks' ? (args[3] === undefined ? 0.5 : Number(args[3])) : 0
+    if (kind === 'blocks' && (!Number.isFinite(effect) || effect < 0 || effect > 1)) {
+      return error('Blocking degree must be between 0 and 1.')
     }
     return ready({
       type: 'create_edge',
@@ -179,10 +174,10 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
   if (command.type === 'create_node') {
     const payload = command.input.payload
     const setup = payload.kind === 'metric'
-      ? `Unit ${payload.properties.unit}`
+      ? `Unit ${payload.properties.quantity.unit}`
       : payload.kind === 'intervention'
         ? 'Duration + success need Squiggle estimates'
-        : 'Current state needs a Squiggle estimate'
+        : 'State quantity + current estimate required'
     return [['Action', 'Create node'], ['Kind', payload.kind], ['Title', command.input.title], ['Setup', setup]]
   }
   if (command.type === 'create_edge') {
@@ -193,13 +188,8 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
       ['Kind', payload.kind.replaceAll('_', ' ')],
     ]
     if (payload.kind === 'contributes' || payload.kind === 'changes') {
-      if (payload.properties.effect) {
-        preview.push(['Effect', String(payload.properties.effect.distribution.value)])
-      }
-      if (payload.properties.response) {
-        preview.push(['Source change', String(payload.properties.response.source_change)])
-        preview.push(['Destination change', String(payload.properties.response.destination_change.distribution.value)])
-      }
+      preview.push(['Source change', String(payload.properties.response.source_change)])
+      preview.push(['Destination change', String(payload.properties.response.destination_change.distribution.value)])
     }
     if (payload.kind === 'blocks') {
       preview.push(['Degree', String(payload.properties.degree.distribution.value)])

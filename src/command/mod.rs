@@ -38,8 +38,6 @@ pub use operations::*;
 ///         name: "github".to_owned(),
 ///         title: "GitHub".to_owned(),
 ///         payload: NodePayload::Factor(Factor {
-///             current: None,
-///             desired: None,
 ///             controllable: false,
 ///             evidence: vec![],
 ///         }),
@@ -100,10 +98,6 @@ pub enum GraphCommand {
     CorrectObservation(CorrectObservation),
     /// Replaces or removes one measurement relationship's reading-to-state calibration.
     SetMeasurementCalibration(SetMeasurementCalibration),
-    /// Creates or replaces one primitive estimate in a typed owner field.
-    SetEstimate(SetEstimate),
-    /// Creates or replaces one estimate from a persisted, server-assessed Fermi equation.
-    SetFermiEstimate(SetFermiEstimate),
     /// Creates or replaces one estimate from backend-evaluated Squiggle source.
     SetSquiggleEstimate(SetSquiggleEstimate),
     /// Removes one optional or named-cost estimate from its owner.
@@ -122,6 +116,45 @@ pub enum GraphCommand {
     SetProjectDependence(SetProjectDependence),
     /// Removes the project's Gaussian residual dependence document.
     RemoveProjectDependence(RemoveProjectDependence),
+}
+
+#[cfg(test)]
+mod storage_contract_tests {
+    use super::GraphCommand;
+
+    #[test]
+    fn rejects_removed_estimate_commands_and_quantity_migration_fields() {
+        assert!(
+            serde_json::from_value::<GraphCommand>(serde_json::json!({
+                "type": "set_estimate",
+                "payload": {}
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<GraphCommand>(serde_json::json!({
+                "type": "set_fermi_estimate",
+                "payload": {}
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<GraphCommand>(serde_json::json!({
+                "type": "set_node_quantity_state",
+                "payload": {
+                    "node": "A",
+                    "expected_revision": 0,
+                    "quantity": {
+                        "unit": "days",
+                        "dimension": { "days": 1 },
+                        "aggregation": null
+                    },
+                    "legacy_mapping": { "state_zero": 0, "state_one": 1 }
+                }
+            }))
+            .is_err()
+        );
+    }
 }
 
 /// Durable result of a committed command, returned identically on retries.
@@ -190,10 +223,6 @@ pub enum CommandOutcome {
     },
     /// Complete measurement edge after its calibration was replaced or removed.
     MeasurementCalibrationSet(Edge),
-    /// Primitive estimate created or revisioned by [`GraphCommand::SetEstimate`].
-    EstimateSet(PrimitiveEstimate),
-    /// Formula-derived estimate created or revisioned by [`GraphCommand::SetFermiEstimate`].
-    FermiEstimateSet(PrimitiveEstimate),
     /// Squiggle-authored estimate created or revisioned by [`GraphCommand::SetSquiggleEstimate`].
     SquiggleEstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].

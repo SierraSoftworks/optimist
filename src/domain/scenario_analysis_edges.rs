@@ -27,20 +27,12 @@ pub(super) fn propagation(
             indices.contains_key(&edge.source) && indices.contains_key(&edge.destination)
         })
         .filter_map(|edge| match &edge.payload {
-            EdgePayload::Contributes(effect) => {
-                if let Some(value) = effect.normalized_effect() {
-                    Some((edge, &value.distribution, 1.0, effect.lag.as_ref()))
-                } else {
-                    effect.linear_response().map(|response| {
-                        (
-                            edge,
-                            &response.destination_change.distribution,
-                            response.source_change,
-                            effect.lag.as_ref(),
-                        )
-                    })
-                }
-            }
+            EdgePayload::Contributes(effect) => Some((
+                edge,
+                &effect.response.destination_change.distribution,
+                effect.response.source_change,
+                effect.lag.as_ref(),
+            )),
             EdgePayload::Blocks(effect) if edge.destination_kind != NodeKind::Intervention => {
                 Some((edge, &effect.degree.distribution, 1.0, None))
             }
@@ -69,23 +61,12 @@ pub(super) fn intervention(
             EdgePayload::Changes(effect)
                 if edge.source == candidate && indices.contains_key(&edge.destination) =>
             {
-                effect
-                    .normalized_effect()
-                    .map(|value| (&value.distribution, 1.0))
-                    .or_else(|| {
-                        effect.linear_response().map(|response| {
-                            (
-                                &response.destination_change.distribution,
-                                response.source_change,
-                            )
-                        })
-                    })
-                    .map(|(distribution, source_change)| InterventionEdge {
-                        destination: indices[&edge.destination],
-                        effect: distribution.clone(),
-                        source_change,
-                        lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
-                    })
+                Some(InterventionEdge {
+                    destination: indices[&edge.destination],
+                    effect: effect.response.destination_change.distribution.clone(),
+                    source_change: effect.response.source_change,
+                    lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
+                })
             }
             _ => None,
         })

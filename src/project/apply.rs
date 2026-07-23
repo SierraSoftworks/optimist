@@ -97,8 +97,6 @@ pub(super) fn command(
             entry.repository.update_edge(edge.clone())?;
             Ok(CommandOutcome::MeasurementCalibrationSet(edge))
         }
-        GraphCommand::SetEstimate(command) => estimate::set(entry, command),
-        GraphCommand::SetFermiEstimate(command) => estimate::set_fermi(entry, command),
         GraphCommand::SetSquiggleEstimate(command) => estimate::set_squiggle(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::SetFormula(command) => formulas::set(entry, command),
@@ -120,17 +118,7 @@ fn validate_causal_units(
         EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
         _ => return Ok(()),
     };
-    let touches_native = matches!(source.payload, NodePayload::Metric(_))
-        || matches!(destination.payload, NodePayload::Metric(_))
-        || source.native_state.is_some()
-        || destination.native_state.is_some();
-    let response = effect.linear_response();
-    if touches_native && response.is_none() {
-        return Err(ProjectError::NativeCausalResponseRequired(edge.id()));
-    }
-    let Some(response) = response else {
-        return Ok(());
-    };
+    let response = &effect.response;
     let source_unit = if matches!(edge.payload, EdgePayload::Changes(_)) {
         crate::domain::Unit::dimensionless()
     } else {
@@ -164,7 +152,7 @@ fn state_unit(node: &Node) -> Result<crate::domain::Unit, ProjectError> {
             .clone()
             .ok_or(ProjectError::MissingQuantityDimension(node.id)),
         NodePayload::Factor(_) | NodePayload::Outcome(_) => {
-            Ok(crate::domain::Unit::dimensionless())
+            Err(ProjectError::MissingQuantityDimension(node.id))
         }
         NodePayload::Intervention(_) => Err(ProjectError::MissingQuantityDimension(node.id)),
     }

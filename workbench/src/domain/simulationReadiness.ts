@@ -16,7 +16,13 @@ export interface NodeReadiness {
 export function simulationReadiness(node: GraphNode): NodeReadiness {
   const issues: ReadinessIssue[] = []
   if (node.payload.kind === 'outcome' || node.payload.kind === 'factor') {
-    if (!(node.native_state?.current ?? node.payload.properties.current)) {
+    if (!node.native_state) {
+      issues.push({
+        key: 'quantity_state',
+        label: 'State quantity',
+        severity: 'required',
+      })
+    } else if (!node.native_state.current) {
       issues.push({
         key: 'current_state',
         label: 'Current state estimate',

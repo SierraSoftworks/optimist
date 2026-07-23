@@ -1,7 +1,8 @@
 use optimist::domain::{
-    BlockingEffect, CausalEffect, Distribution, Edge, EdgePayload, EntityId, Estimate, EstimateId,
-    Factor, Intervention, Measurement, MeasurementPolarity, Metric, Node, NodeKind, NodePayload,
-    NormalizedState, Observation, Outcome, OutcomeDirection, Requirement, SignedInfluence,
+    BlockingEffect, CausalEffect, Edge, EdgePayload, EntityId, Estimate, EstimateId, Factor,
+    Intervention, LinearResponse, Measurement, MeasurementPolarity, Metric, Node, NodeKind,
+    NodePayload, Observation, Outcome, OutcomeDirection, QuantityDefinition, QuantityState,
+    QuantitySupport, QuantityValue, Requirement, SignedInfluence, SquiggleEstimateDefinition, Unit,
 };
 use proptest::prelude::*;
 
@@ -52,16 +53,12 @@ pub(crate) fn node() -> impl Strategy<Value = Node> {
                     } else {
                         OutcomeDirection::Minimize
                     },
-                    current: Some(normalized_estimate(state)),
-                    desired: None,
                     evidence: Vec::new(),
                 }),
                 1 => NodePayload::Metric(
                     Metric::new("ratio", flag.then(|| "weekly".to_owned())).unwrap(),
                 ),
                 2 => NodePayload::Factor(Factor {
-                    current: Some(normalized_estimate(state)),
-                    desired: None,
                     controllable: flag,
                     evidence: Vec::new(),
                 }),
@@ -72,8 +69,18 @@ pub(crate) fn node() -> impl Strategy<Value = Node> {
                     acceptance_criteria: Vec::new(),
                 }),
             };
-            Node::new(id, name.clone(), format!("Title {name}"), payload)
-                .expect("generated node is valid")
+            let mut node = Node::new(id, name.clone(), format!("Title {name}"), payload)
+                .expect("generated node is valid");
+            if matches!(
+                node.payload,
+                NodePayload::Factor(_) | NodePayload::Outcome(_)
+            ) {
+                node.native_state = Some(
+                    QuantityState::new(quantity(), Some(quantity_estimate(state)), None)
+                        .expect("generated native state"),
+                );
+            }
+            node
         })
 }
 
@@ -91,7 +98,7 @@ pub(crate) fn valid_endpoints() -> impl Strategy<Value = EndpointTuple> {
                     NodeKind::Factor,
                     destination,
                     NodeKind::Outcome,
-                    EdgePayload::Contributes(causal_effect(effect)),
+                    EdgePayload::Contributes(causal_effect(effect, Unit::base("ratio").unwrap())),
                 ),
                 1 => (
                     source,
@@ -109,7 +116,7 @@ pub(crate) fn valid_endpoints() -> impl Strategy<Value = EndpointTuple> {
                     NodeKind::Intervention,
                     destination,
                     NodeKind::Factor,
-                    EdgePayload::Changes(causal_effect(effect)),
+                    EdgePayload::Changes(causal_effect(effect, Unit::dimensionless())),
                 ),
                 3 => (
                     source,
@@ -165,22 +172,58 @@ pub(crate) fn edge() -> impl Strategy<Value = Edge> {
     )
 }
 
-fn normalized_estimate(value: f64) -> Estimate<NormalizedState> {
-    Estimate::new(
-        EstimateId::new(0),
-        Distribution::point(value).expect("generated finite point distribution"),
+fn quantity() -> QuantityDefinition {
+    QuantityDefinition::with_dimension(
+        "ratio",
+        Some(Unit::base("ratio").unwrap()),
+        None,
+        QuantitySupport::Bounded {
+            lower: 0.0,
+            upper: 1.0,
+        },
     )
-    .expect("generated normalized estimate")
+    .expect("generated quantity")
+}
+
+fn quantity_estimate(value: f64) -> Estimate<QuantityValue> {
+    Estimate::from_squiggle(
+        EstimateId::new(0),
+        SquiggleEstimateDefinition {
+            source: format!("pointMass({value})"),
+            seed: 42,
+            sample_count: 256,
+            target_unit: Unit::base("ratio").unwrap(),
+        },
+        &Unit::base("ratio").unwrap(),
+    )
+    .expect("generated quantity estimate")
 }
 
 fn signed_estimate(value: f64) -> Estimate<SignedInfluence> {
-    Estimate::new(
+    Estimate::from_squiggle(
         EstimateId::new(0),
-        Distribution::point(value).expect("generated finite point distribution"),
+        SquiggleEstimateDefinition {
+            source: format!("pointMass({value})"),
+            seed: 42,
+            sample_count: 256,
+            target_unit: Unit::dimensionless(),
+        },
+        &Unit::dimensionless(),
     )
     .expect("generated signed estimate")
 }
 
-fn causal_effect(value: f64) -> CausalEffect {
-    CausalEffect::normalized(signed_estimate(value), None, String::new(), Vec::new())
+fn causal_effect(value: f64, source_unit: Unit) -> CausalEffect {
+    CausalEffect::linear(
+        LinearResponse {
+            source_change: 1.0,
+            source_unit,
+            destination_change: quantity_estimate(value),
+            destination_unit: Unit::base("ratio").unwrap(),
+        },
+        None,
+        String::new(),
+        Vec::new(),
+    )
+    .expect("generated causal response")
 }

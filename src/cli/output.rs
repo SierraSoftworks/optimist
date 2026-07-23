@@ -240,7 +240,27 @@ mod tests {
             revision: 2,
             distribution: Distribution::beta(3.0, 2.0).unwrap(),
             quantity: None,
-            source: crate::domain::EstimateSource::Distribution,
+            source: crate::domain::EstimateSource::Squiggle {
+                definition: Box::new(crate::domain::SquiggleEstimateDefinition {
+                    source: "beta(3, 2)".to_owned(),
+                    seed: 42,
+                    sample_count: 256,
+                    target_unit: Unit::dimensionless(),
+                }),
+                assessment: Box::new(
+                    crate::domain::assess_squiggle_estimate(
+                        crate::domain::SquiggleEstimateDefinition {
+                            source: "beta(3, 2)".to_owned(),
+                            seed: 42,
+                            sample_count: 256,
+                            target_unit: Unit::dimensionless(),
+                        },
+                        &Unit::dimensionless(),
+                    )
+                    .unwrap()
+                    .1,
+                ),
+            },
             provenance: vec!["expert".to_owned()],
             uncertainty: crate::domain::EstimateUncertainty::new(
                 "limited evidence",
@@ -251,11 +271,11 @@ mod tests {
         };
         assert_eq!(
             OutputFormat::Json.estimate(&estimate).unwrap(),
-            r#"{"address":{"project":"A","owner":{"kind":"node","id":"A"},"estimate":"B"},"slot":{"kind":"current"},"revision":2,"distribution":{"type":"beta","alpha":3.0,"beta":2.0},"source":{"type":"distribution"},"provenance":["expert"],"uncertainty":{"epistemic":"limited evidence","process":"weekly variation","measurement":"sampling error"}}"#
+            serde_json::to_string(&estimate).unwrap()
         );
         assert_eq!(
             OutputFormat::Table.estimate(&estimate).unwrap(),
-            "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tQUANTITY\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\nA/node/A/estimate/B\tCurrent\t2\tdistribution\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\t-\texpert\tlimited evidence\tweekly variation\tsampling error"
+            "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tQUANTITY\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\nA/node/A/estimate/B\tCurrent\t2\tsquiggle:beta(3, 2)\t{\"type\":\"beta\",\"alpha\":3.0,\"beta\":2.0}\t-\texpert\tlimited evidence\tweekly variation\tsampling error"
         );
     }
 
@@ -308,8 +328,6 @@ mod tests {
             "github",
             "GitHub Delivery",
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),

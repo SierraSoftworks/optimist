@@ -466,8 +466,7 @@ function setEdgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot['kind'], estima
   const updated = cloneEdge(edge)
   updated.revision += 1
   if (updated.payload.kind === 'contributes' || updated.payload.kind === 'changes') {
-    if (slot === 'effect' && updated.payload.properties.effect) updated.payload.properties.effect = estimate
-    if (slot === 'response' && updated.payload.properties.response) updated.payload.properties.response.destination_change = estimate
+    if (slot === 'response') updated.payload.properties.response.destination_change = estimate
     if (slot === 'lag') updated.payload.properties.lag = estimate
   }
   if (slot === 'degree' && updated.payload.kind === 'blocks') updated.payload.properties.degree = estimate

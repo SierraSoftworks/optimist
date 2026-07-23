@@ -1,31 +1,32 @@
 use crate::{
     command::{
-        CommandOutcome, CommandRequest, CommandResult, GraphCommand, RemoveEstimate, SetEstimate,
+        CommandOutcome, CommandRequest, CommandResult, GraphCommand, RemoveEstimate,
+        SetSquiggleEstimate,
     },
     domain::{
-        Distribution, EstimateAddress, EstimateSlot, EstimateUncertainty, PrimitiveEstimate,
-        ProjectId,
+        EstimateAddress, EstimateSlot, EstimateUncertainty, PrimitiveEstimate, ProjectId,
+        SquiggleEstimateDefinition,
     },
 };
 
 use super::client::{ProjectClient, decode};
 
 impl ProjectClient {
-    pub(super) async fn set_estimate(
+    pub(super) async fn set_squiggle_estimate(
         &self,
         project: &ProjectId,
         address: EstimateAddress,
         slot: EstimateSlot,
-        distribution: Distribution,
+        definition: SquiggleEstimateDefinition,
         provenance: Vec<String>,
         uncertainty: EstimateUncertainty,
     ) -> Result<PrimitiveEstimate, human_errors::Error> {
         self.estimate_command(
             project,
-            GraphCommand::SetEstimate(SetEstimate {
+            GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                 address,
                 slot,
-                distribution,
+                definition,
                 provenance,
                 uncertainty,
             }),
@@ -75,7 +76,7 @@ impl ProjectClient {
             .map_err(network_error)?;
         let result: CommandResult = decode(response).await?;
         match result.outcome {
-            CommandOutcome::EstimateSet(value) | CommandOutcome::EstimateRemoved(value) => {
+            CommandOutcome::SquiggleEstimateSet(value) | CommandOutcome::EstimateRemoved(value) => {
                 Ok(value)
             }
             _ => Err(human_errors::system(
@@ -100,8 +101,8 @@ mod tests {
 
     use crate::{
         domain::{
-            Distribution, EntityId, EstimateAddress, EstimateId, EstimateOwner, EstimateSlot,
-            Factor, NodePayload,
+            EntityId, EstimateAddress, EstimateId, EstimateOwner, EstimateSlot, Factor,
+            NodePayload, QuantityDefinition, QuantitySupport, Unit,
         },
         server,
     };
@@ -130,11 +131,26 @@ mod tests {
                 "flow".to_owned(),
                 "Flow".to_owned(),
                 NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: true,
                     evidence: vec![],
                 }),
+            )
+            .await
+            .unwrap();
+        client
+            .set_node_quantity_state(
+                &project.id,
+                EntityId::new(0),
+                QuantityDefinition::with_dimension(
+                    "state",
+                    Some(Unit::dimensionless()),
+                    None,
+                    QuantitySupport::Bounded {
+                        lower: 0.0,
+                        upper: 1.0,
+                    },
+                )
+                .unwrap(),
             )
             .await
             .unwrap();
@@ -144,11 +160,16 @@ mod tests {
             EstimateId::new(0),
         );
         let created = client
-            .set_estimate(
+            .set_squiggle_estimate(
                 &project.id,
                 address.clone(),
                 EstimateSlot::Current,
-                Distribution::beta(2.0, 3.0).unwrap(),
+                crate::domain::SquiggleEstimateDefinition {
+                    source: "beta(2, 3)".to_owned(),
+                    seed: 42,
+                    sample_count: 256,
+                    target_unit: crate::domain::Unit::dimensionless(),
+                },
                 vec!["elicitation".to_owned()],
                 crate::domain::EstimateUncertainty::default(),
             )

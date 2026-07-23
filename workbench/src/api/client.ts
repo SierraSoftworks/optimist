@@ -69,28 +69,10 @@ function estimateCommand(
   provenance: string[],
   uncertainty?: import('./types').EstimateUncertainty,
 ) {
-  if (source.type === 'distribution') {
-    return {
-        type: 'set_estimate',
-        payload: { address, slot, distribution: source.distribution, provenance, uncertainty },
-      }
-  }
-  if (source.type === 'fermi') {
-    return {
-        type: 'set_fermi_estimate',
-        payload: { address, slot, definition: source.definition, provenance, uncertainty },
-      }
-  }
   return {
     type: 'set_squiggle_estimate',
     payload: { address, slot, definition: source.definition, provenance, uncertainty },
   }
-}
-
-function expectedEstimateOutcome(source: EstimateSourceInput) {
-  if (source.type === 'distribution') return 'estimate_set'
-  if (source.type === 'fermi') return 'fermi_estimate_set'
-  return 'squiggle_estimate_set'
 }
 
 const estimateIdAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.'
@@ -139,8 +121,7 @@ function nextInterventionEstimateId(node: GraphNode) {
 
 function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    if (slot.kind === 'effect') return edge.payload.properties.effect
-    if (slot.kind === 'response') return edge.payload.properties.response?.destination_change ?? null
+    if (slot.kind === 'response') return edge.payload.properties.response.destination_change
     if (slot.kind === 'lag') return edge.payload.properties.lag
   }
   if (edge.payload.kind === 'blocks' && slot.kind === 'degree') {
@@ -152,10 +133,7 @@ function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
 function nextEdgeEstimateId(edge: GraphEdge) {
   const used = new Set<string>()
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    if (edge.payload.properties.effect) used.add(edge.payload.properties.effect.id)
-    if (edge.payload.properties.response) {
-      used.add(edge.payload.properties.response.destination_change.id)
-    }
+    used.add(edge.payload.properties.response.destination_change.id)
     if (edge.payload.properties.lag) used.add(edge.payload.properties.lag.id)
   } else if (edge.payload.kind === 'blocks') {
     used.add(edge.payload.properties.degree.id)
@@ -437,16 +415,19 @@ export const api = {
         ['Select a factor, outcome, or metric and retry.'],
       )
     }
-    const current = node.native_state
-      ? input.slot === 'current' ? node.native_state.current : node.native_state.forecast
-      : node.payload.kind === 'metric'
-        ? node.payload.properties.current
-        : node.payload.properties[input.slot]
-    const other = node.native_state
-      ? input.slot === 'current' ? node.native_state.forecast : node.native_state.current
-      : node.payload.kind === 'metric'
-        ? null
-        : node.payload.properties[input.slot === 'current' ? 'desired' : 'current']
+    if (node.payload.kind !== 'metric' && !node.native_state) {
+      throw new OptimistApiError(
+        'missing_quantity_state',
+        'Configure this node quantity before authoring state estimates.',
+        ['Set its unit, support, and operational definition, then retry.'],
+      )
+    }
+    const current = node.payload.kind === 'metric'
+      ? node.payload.properties.current
+      : input.slot === 'current' ? node.native_state!.current : node.native_state!.forecast
+    const other = node.payload.kind === 'metric'
+      ? null
+      : input.slot === 'current' ? node.native_state!.forecast : node.native_state!.current
     const estimate = current?.id ?? (other?.id === 'A' ? 'B' : 'A')
     const result = await request<CommandResult<PrimitiveEstimate>>(
       `/api/v1/projects/${project.id}/commands`,
@@ -467,7 +448,7 @@ export const api = {
         }),
       },
     )
-    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
+    if (result.outcome.type !== 'squiggle_estimate_set') {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for estimate editing.',
@@ -665,7 +646,7 @@ export const api = {
         }),
       },
     )
-    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
+    if (result.outcome.type !== 'squiggle_estimate_set') {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for intervention estimate editing.',
@@ -830,7 +811,7 @@ export const api = {
         }),
       },
     )
-    if (result.outcome.type !== expectedEstimateOutcome(input.source)) {
+    if (result.outcome.type !== 'squiggle_estimate_set') {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for relationship estimate editing.',

@@ -988,7 +988,7 @@ function retry() {
       :open="observationDialogOpen"
       :pending="appendObservation.isPending.value"
       :edge="selectedMeasurementEdge"
-      :unit="selectedNode?.payload.kind === 'metric' ? selectedNode.payload.properties.unit : ''"
+      :unit="selectedNode?.payload.kind === 'metric' ? selectedNode.payload.properties.quantity.unit : ''"
       @close="observationDialogOpen = false"
       @submit="submitObservation"
     />

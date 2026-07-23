@@ -333,8 +333,6 @@ mod tests {
                     "node",
                     "Node",
                     crate::domain::NodePayload::Factor(crate::domain::Factor {
-                        current: None,
-                        desired: None,
                         controllable: false,
                         evidence: vec![],
                     }),

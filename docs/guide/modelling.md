@@ -6,9 +6,9 @@ Optimist separates structural graph concepts from values which have one natural 
 
 | Kind | Meaning | Typical owned data |
 | --- | --- | --- |
-| Outcome | A result whose direction guides prioritisation. | Current/desired normalized state, evidence. |
+| Outcome | A result whose direction guides prioritisation. | Native quantity, current/forecast estimates, evidence. |
 | Metric | A directly measurable native-unit quantity. | Operational definition, support, current estimate, observations. |
-| Factor | A condition influencing another part of the system. | Current/desired state, controllability, evidence. |
+| Factor | A condition influencing another part of the system. | Native quantity, current/forecast estimates, controllability, evidence. |
 | Intervention | An investable action. | Costs, duration, probability of success, acceptance criteria. |
 
 Names and aliases are unique within a project after Unicode normalisation, lowercasing, and whitespace collapse. IDs are compact counters (`A`, `B`, ..., `BA`) scoped to their project.
@@ -23,15 +23,11 @@ Metric support is one of:
 - zero or greater,
 - an inclusive finite interval.
 
-The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a Squiggle LogNormal calculation in days rather than first translating it into an unexplained normalized score. New metrics retain canonical unit terms alongside the display unit; legacy metric documents containing only `unit` and `aggregation` deserialize as real-valued quantities and serialize unchanged.
+The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a Squiggle LogNormal calculation in days. Metric storage contains one nested quantity definition plus its optional estimate.
 
-Existing factor and outcome estimates remain on their original `[0,1]` scale. Optimist migrates them by attaching an explicit `standardized_state` quantity definition with dimensionless algebra, bounded support, and model-specific zero/one anchors. This labels the inherited convention without changing the distribution, its values, or downstream causal calculations. It does not claim that a standardized state is a calibrated native-unit measurement.
+Factors and outcomes use the same native quantity contract. Their state owns one quantity definition, an uncertain current estimate, and an optional pre-intervention forecast. Scenario analysis uses the forecast when present, otherwise current, and clamps simulated values only to the declared support. Configure the quantity before authoring either estimate or creating a causal relationship.
 
-A factor or outcome can opt into native state before or after standardized estimates are authored. Native state owns one quantity definition, an uncertain current estimate, and an optional pre-intervention forecast. Scenario analysis uses the forecast when present, otherwise current, and clamps simulated values only to the declared support. Every causal relationship touching native state must use a unit-aware counterfactual linear response; normalized signed effects are rejected.
-
-Populated standardized state requires explicit native values for legacy states zero and one. Optimist applies the exact affine mapping $y=y_0+(y_1-y_0)x$: direct distributions transform analytically, while retained Squiggle source is wrapped, assigned the native unit, and reevaluated. Current becomes native current and desired becomes the pre-intervention forecast. Fermi-authored estimates and formula-referenced estimates require explicit replacement first, because silently flattening or rewriting their decompositions would discard author intent.
-
-All new workbench estimates retain direct Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, retains deterministic empirical draws for distribution-valued results, and rejects effective draws outside the quantity support. A legacy metric without canonical unit terms must be upgraded before persisting a typed Squiggle source.
+Every persisted estimate retains Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, retains deterministic empirical draws for distribution-valued results, and rejects effective draws outside the quantity support.
 
 Every estimate can retain provenance plus separate descriptions of epistemic uncertainty (knowledge and model gaps), process uncertainty (variation between realizations), and measurement uncertainty (observation and resolution error). These descriptions are reviewable assumptions alongside the authoritative total distribution. Optimist does not assign numeric shares, add component variances, or assume that the categories are independent.
 
@@ -39,7 +35,7 @@ Every estimate can retain provenance plus separate descriptions of epistemic unc
 
 | Kind | Direction | Purpose |
 | --- | --- | --- |
-| `contributes` | Directed | A normalized signed effect or unit-aware counterfactual response. |
+| `contributes` | Directed | A unit-aware counterfactual response. |
 | `measures` | Directed | A metric measuring a factor or outcome. |
 | `changes` | Directed | An intervention changing a factor or native metric. |
 | `requires` | Directed | A hard or soft prerequisite. |
@@ -48,7 +44,7 @@ Every estimate can retain provenance plus separate descriptions of epistemic unc
 | `conflicts-with` | Symmetric | Incompatible interventions. |
 | `synergizes-with` | Symmetric | Mutually beneficial interventions. |
 
-Endpoint combinations are validated. `contributes` may connect any factor, metric, or outcome to another such state variable. Every `contributes` edge touching a metric must define a unit-aware counterfactual response whose source and destination units exactly match the endpoint quantity definitions. `changes` uses a normalized signed shift for factors and a unit-aware counterfactual response for metrics. In the native case, the source anchor is a dimensionless intervention activation and the destination change is a Squiggle estimate in the metric's declared unit. `measures` remains a metric-to-factor/outcome observation model.
+Endpoint combinations are validated. `contributes` may connect any configured factor, metric, or outcome to another such state variable. Every causal edge defines a counterfactual response whose source and destination units exactly match the endpoint quantity definitions. For `changes`, the source anchor is a dimensionless intervention activation and the destination change is a Squiggle estimate in the destination quantity's unit. `measures` remains a metric-to-factor/outcome observation model.
 
 Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
 
@@ -62,13 +58,13 @@ Optimist deliberately does not create graph vertices for:
 - evidence,
 - formula components.
 
-An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal effect belongs to one causal edge.
+An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal response belongs to one causal edge.
 
 This design avoids graph noise and makes deletion/reference checks explicit.
 
 ## Causal responses
 
-Normalized factor/outcome relationships retain their existing signed local effect on `[-1, 1]`. Native relationships instead answer a concrete counterfactual:
+Every causal relationship answers a concrete counterfactual:
 
 > If the source changes by $\Delta x$ in its declared unit, what uncertain change $\Delta y$ should we expect in the destination after the stated lag?
 
@@ -104,7 +100,7 @@ These commands preserve identity, names, aliases, endpoint kinds, typed payloads
 Some concepts span several graph aggregates and therefore live outside the graph:
 
 - **Scenarios** define objectives, horizon, budgets, candidates, and sampling controls.
-- **Formula documents** define project-scoped Fermi component DAGs.
+- **Formula documents** define project-scoped unit-checked component DAGs.
 - **Dependence documents** group residual marginals under Gaussian copulas.
 
 Each document has its own revision. Structural analysis keys include the graph, scenario, formula, and dependence revisions, making the input snapshot explicit.

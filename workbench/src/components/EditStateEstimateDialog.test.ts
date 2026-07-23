@@ -1,30 +1,19 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api/client'
-import type { GraphEdge, GraphNode } from '../api/types'
+import type { GraphNode } from '../api/types'
 import EditStateEstimateDialog from './EditStateEstimateDialog.vue'
 
 const node = {
   id: 'B', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
   description: '', aliases: [], metadata: {},
-  payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
-} as GraphNode
-const edge = {
-  source: 'A', source_kind: 'metric', destination: 'B', destination_kind: 'factor',
-  revision: 2, description: '', metadata: {},
-  payload: {
-    kind: 'measures',
-    properties: {
-      polarity: 'lower_is_better',
-      calibration: { type: 'linear', state_zero: 20, state_one: 5 },
-      observations: [
-        { id: 0, revision: 0, value: 16, unit: 'days', observed_at: '2026-07-01T00:00:00Z', source: 'dashboard', measurement_standard_deviation: null, supersedes: null },
-        { id: 1, revision: 0, value: 12.5, unit: 'days', observed_at: '2026-07-01T00:00:00Z', source: 'dashboard', measurement_standard_deviation: null, supersedes: 0 },
-      ],
-    },
+  native_state: {
+    quantity: { unit: 'state', dimension: {}, aggregation: null, support: { type: 'bounded', lower: 0, upper: 1 } },
+    current: null,
+    forecast: null,
   },
-} as GraphEdge
-
+  payload: { kind: 'factor', properties: { controllable: false, evidence: [] } },
+} as GraphNode
 describe('EditStateEstimateDialog', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -39,33 +28,21 @@ describe('EditStateEstimateDialog', () => {
     vi.restoreAllMocks()
   })
 
-  it('offers the corrected calibrated reading without secondary note fields', async () => {
-    const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node, projectId: 'A', edges: [edge] },
-      global: { stubs: { Teleport: true } },
-    })
-    expect(wrapper.text()).toContain('12.5 days → 0.500')
-    expect(wrapper.text()).not.toContain('16 days →')
-    await wrapper.get('.calibrated-evidence .secondary-button').trigger('click')
-    expect((wrapper.get('[aria-label="Squiggle source"]').element as HTMLTextAreaElement).value).toBe('pointMass(0.5)')
-    expect(wrapper.find('textarea[placeholder="One source or elicitation note per line"]').exists()).toBe(false)
-  })
-
   it('preserves existing metadata without displaying metadata controls', async () => {
     const existing = {
       ...node,
-      payload: {
-        kind: 'factor' as const,
-        properties: {
-          current: {
-            id: 'A', revision: 0,
-            distribution: { type: 'point' as const, value: 0.5 },
-            provenance: ['existing source'],
-            uncertainty: { epistemic: 'existing assumption' },
-          },
-          desired: null,
-          controllable: false,
-          evidence: [],
+      native_state: {
+        ...node.native_state!,
+        current: {
+          id: 'A', revision: 0,
+          distribution: { type: 'point' as const, value: 0.5 },
+          source: {
+            type: 'squiggle' as const,
+            definition: { source: 'pointMass(0.5)', seed: 42, sample_count: 256, target_unit: {} },
+            assessment: {} as never,
+            },
+          provenance: ['existing source'],
+          uncertainty: { epistemic: 'existing assumption' },
         },
       },
     } as GraphNode
@@ -89,8 +66,11 @@ describe('EditStateEstimateDialog', () => {
       payload: {
         kind: 'metric',
         properties: {
-          unit: 'days', dimension: { day: 1 }, aggregation: 'p95 weekly',
-          support: { type: 'bounded', lower: 0, upper: 30 }, current: null,
+          quantity: {
+            unit: 'days', dimension: { day: 1 }, aggregation: 'p95 weekly',
+            support: { type: 'bounded', lower: 0, upper: 30 },
+          },
+          current: null,
         },
       },
     } as GraphNode
@@ -119,8 +99,11 @@ describe('EditStateEstimateDialog', () => {
       payload: {
         kind: 'metric',
         properties: {
-          unit: 'days', dimension: { day: 1 }, aggregation: null,
-          support: { type: 'bounded', lower: 0, upper: 30 }, current: null,
+          quantity: {
+            unit: 'days', dimension: { day: 1 }, aggregation: null,
+            support: { type: 'bounded', lower: 0, upper: 30 },
+          },
+          current: null,
         },
       },
     } as GraphNode

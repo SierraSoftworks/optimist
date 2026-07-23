@@ -73,7 +73,7 @@ cargo run -- --project A node create \
 
 cargo run -- --project A estimate set A/node/A/estimate/A \
   --slot '{"kind":"current"}' \
-  --distribution '{"type":"beta","alpha":3,"beta":2}' \
+  --definition '{"source":"beta(3, 2)","seed":42,"sample_count":2048,"target_unit":{}}' \
   --provenance '["Weekly delivery review"]'
 ```
 
@@ -86,7 +86,7 @@ cargo run -- --project A analysis structure
 cargo run -- --project A scenario analyze A
 ```
 
-The filesystem is the catalog under `--data-dir`. Every `projects/<ID>/` directory contains a bounded `meta.json` for cheap discovery, a complete versioned `project.json`, and a project-local `journal.json` only while commands await compaction. Validated commands acknowledge after the small WAL is fsynced; after a short idle period, background compaction rewrites only the touched project's snapshot and removes the covered journal prefix. `/api/v1/health` reports `pending`, `idle`, or a visible degraded persistence error. Restart replays retained requests through UUID idempotency without duplicating graph state or `ChangeSet` history. Metadata-only tombstone directories preserve monotonic project allocation after deletion. Legacy schema-v1/v2 `catalog.json` and root journals migrate into project directories only after complete integrity validation.
+The filesystem is the catalog under `--data-dir`. Every `projects/<ID>/` directory contains a bounded `meta.json` for cheap discovery, a complete versioned `project.json`, and a project-local `journal.json` only while commands await compaction. Validated commands acknowledge after the small WAL is fsynced; after a short idle period, background compaction rewrites only the touched project's snapshot and removes the covered journal prefix. `/api/v1/health` reports `pending`, `idle`, or a visible degraded persistence error. Restart replays retained requests through UUID idempotency without duplicating graph state or `ChangeSet` history. Metadata-only tombstone directories preserve monotonic project allocation after deletion. Unknown or obsolete storage schemas are rejected rather than migrated.
 
 Create and restore immutable filesystem-catalog backups, or capture one project at an exact revision:
 

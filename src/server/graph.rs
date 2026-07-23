@@ -143,11 +143,12 @@ mod tests {
     use crate::{
         command::{
             CommandRequest, CreateEdge, CreateNode, CreateScenario, GraphCommand,
-            RemoveProjectDependence, SetProjectDependence,
+            RemoveProjectDependence, SetNodeQuantityState, SetProjectDependence,
         },
         domain::{
-            EdgePayload, EntityId, Factor, MonteCarloConfig, NodePayload, ProjectDependenceModel,
-            ScenarioDraft,
+            EdgePayload, EntityId, Factor, LinearResponse, MonteCarloConfig, NodePayload,
+            ProjectDependenceModel, QuantityDefinition, QuantitySupport, QuantityValue,
+            ScenarioDraft, Unit,
         },
         server::router,
     };
@@ -176,8 +177,6 @@ mod tests {
                 name: "github".to_owned(),
                 title: "GitHub".to_owned(),
                 payload: NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: false,
                     evidence: vec![],
                 }),
@@ -342,8 +341,6 @@ mod tests {
         create_project(&app).await;
         for (revision, payload) in [
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: true,
                 evidence: vec![crate::domain::Evidence {
                     id: 0,
@@ -354,8 +351,6 @@ mod tests {
             }),
             NodePayload::Outcome(crate::domain::Outcome {
                 direction: crate::domain::OutcomeDirection::Maximize,
-                current: None,
-                desired: None,
                 evidence: vec![],
             }),
         ]
@@ -382,27 +377,65 @@ mod tests {
                 .await
                 .unwrap();
         }
+        for (revision, node) in [(2, 0), (3, 1)] {
+            app.clone()
+                .oneshot(
+                    Request::post("/api/v1/projects/A/commands")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_vec(&CommandRequest::new(
+                                revision,
+                                GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                                    node: EntityId::new(node),
+                                    expected_revision: 0,
+                                    quantity: QuantityDefinition::with_dimension(
+                                        "state",
+                                        Some(Unit::dimensionless()),
+                                        None,
+                                        QuantitySupport::Bounded {
+                                            lower: 0.0,
+                                            upper: 1.0,
+                                        },
+                                    )
+                                    .unwrap(),
+                                }),
+                            ))
+                            .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
         app.clone()
             .oneshot(
                 Request::post("/api/v1/projects/A/commands")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         serde_json::to_vec(&CommandRequest::new(
-                            2,
+                            4,
                             GraphCommand::CreateEdge(CreateEdge {
                                 source: EntityId::new(0),
                                 destination: EntityId::new(1),
                                 payload: EdgePayload::Contributes(
-                                    crate::domain::CausalEffect::normalized(
-                                        crate::domain::Estimate::new(
-                                            crate::domain::EstimateId::new(0),
-                                            crate::domain::Distribution::point(0.5).unwrap(),
-                                        )
-                                        .unwrap(),
+                                    crate::domain::CausalEffect::linear(
+                                        LinearResponse {
+                                            source_change: 1.0,
+                                            source_unit: Unit::dimensionless(),
+                                            destination_change: crate::domain::Estimate::<
+                                                QuantityValue,
+                                            >::new(
+                                                crate::domain::EstimateId::new(0),
+                                                crate::domain::Distribution::point(0.5).unwrap(),
+                                            )
+                                            .unwrap(),
+                                            destination_unit: Unit::dimensionless(),
+                                        },
                                         None,
                                         String::new(),
                                         vec!["ADR-1".to_owned()],
-                                    ),
+                                    )
+                                    .unwrap(),
                                 ),
                             }),
                         ))
@@ -422,7 +455,7 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
-        assert_eq!(body["revision"]["graph_revision"], 3);
+        assert_eq!(body["revision"]["graph_revision"], 5);
         assert_eq!(body["topology_candidates"][0]["factor"], "A");
         assert_eq!(
             body["topology_candidates"][0]["reachable_outcomes"],

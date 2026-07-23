@@ -71,12 +71,13 @@ mod tests {
     use crate::{
         command::{
             CommandOutcome, CommandRequest, CreateNode, GraphCommand, RemoveProjectDependence,
-            SetProjectDependence,
+            SetNodeQuantityState, SetProjectDependence, SetSquiggleEstimate,
         },
         domain::{
-            CorrelationScale, Distribution, EntityId, Estimate, EstimateAddress, EstimateId,
-            EstimateOwner, Factor, GaussianCopulaCorrelation, NodePayload, NormalizedState,
-            ProjectDependenceModel, ProjectId, ResidualDependenceGroup,
+            CorrelationScale, EntityId, EstimateAddress, EstimateId, EstimateOwner, EstimateSlot,
+            Factor, GaussianCopulaCorrelation, NodePayload, ProjectDependenceModel, ProjectId,
+            QuantityDefinition, QuantitySupport, ResidualDependenceGroup,
+            SquiggleEstimateDefinition, Unit,
         },
         project::{ProjectCatalog, ProjectError},
     };
@@ -108,26 +109,63 @@ mod tests {
     fn catalog() -> (ProjectCatalog, ProjectId) {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Delivery".to_owned()).unwrap();
-        for revision in 0..2 {
-            let estimate = Estimate::<NormalizedState>::new(
-                EstimateId::new(0),
-                Distribution::beta(2.0, 2.0).unwrap(),
-            )
-            .unwrap();
+        let quantity = QuantityDefinition::with_dimension(
+            "state",
+            Some(Unit::dimensionless()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        for node in 0..2 {
+            let revision = node * 3;
             catalog
                 .execute(
                     &project.id,
                     CommandRequest::new(
                         revision,
                         GraphCommand::CreateNode(CreateNode {
-                            name: format!("factor-{revision}"),
-                            title: format!("Factor {revision}"),
+                            name: format!("factor-{node}"),
+                            title: format!("Factor {node}"),
                             payload: NodePayload::Factor(Factor {
-                                current: Some(estimate),
-                                desired: None,
                                 controllable: false,
                                 evidence: vec![],
                             }),
+                        }),
+                    ),
+                )
+                .unwrap();
+            catalog
+                .execute(
+                    &project.id,
+                    CommandRequest::new(
+                        revision + 1,
+                        GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                            node: EntityId::new(node),
+                            expected_revision: 0,
+                            quantity: quantity.clone(),
+                        }),
+                    ),
+                )
+                .unwrap();
+            catalog
+                .execute(
+                    &project.id,
+                    CommandRequest::new(
+                        revision + 2,
+                        GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
+                            address: address(project.id.clone(), node, 0),
+                            slot: EstimateSlot::Current,
+                            definition: SquiggleEstimateDefinition {
+                                source: "beta(2, 2)".to_owned(),
+                                seed: 42,
+                                sample_count: 256,
+                                target_unit: Unit::dimensionless(),
+                            },
+                            provenance: vec![],
+                            uncertainty: Default::default(),
                         }),
                     ),
                 )
@@ -140,7 +178,7 @@ mod tests {
     fn persists_replaces_and_removes_with_idempotent_project_commands() {
         let (mut catalog, project) = catalog();
         let request = CommandRequest::new(
-            2,
+            6,
             GraphCommand::SetProjectDependence(SetProjectDependence {
                 model: model(&project, 0),
             }),
@@ -159,7 +197,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    3,
+                    7,
                     GraphCommand::SetProjectDependence(SetProjectDependence { model: replacement }),
                 ),
             )
@@ -172,7 +210,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    8,
                     GraphCommand::RemoveProjectDependence(RemoveProjectDependence {
                         expected_revision: 0,
                     }),
@@ -184,7 +222,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    8,
                     GraphCommand::RemoveProjectDependence(RemoveProjectDependence {
                         expected_revision: 1,
                     }),
@@ -203,7 +241,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    6,
                     GraphCommand::SetProjectDependence(SetProjectDependence {
                         model: cross_project,
                     }),
@@ -215,7 +253,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    6,
                     GraphCommand::SetProjectDependence(SetProjectDependence {
                         model: model(&project, 9),
                     }),
@@ -223,6 +261,6 @@ mod tests {
             ),
             Err(ProjectError::MissingEstimateAddress(_))
         ));
-        assert_eq!(catalog.get(&project).unwrap().revision, 2);
+        assert_eq!(catalog.get(&project).unwrap().revision, 6);
     }
 }

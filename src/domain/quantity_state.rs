@@ -2,42 +2,10 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::{Estimate, QuantityDefinition, QuantityError, QuantityValue};
 
-/// Explicit affine mapping from legacy standardized state into a native quantity.
-///
-/// For legacy state $x \in \[0,1\]$, the converted value is
-/// $y = y_0 + (y_1-y_0)x$. The anchors must be finite and increasing so state
-/// orientation is preserved. This is an exact change of scale, not an inferred
-/// calibration.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-pub struct LegacyStateMapping {
-    /// Native value represented by legacy standardized state zero.
-    pub state_zero: f64,
-    /// Native value represented by legacy standardized state one.
-    pub state_one: f64,
-}
-
-impl LegacyStateMapping {
-    /// Validates two finite, increasing native anchors.
-    pub fn validated(self) -> Result<Self, QuantityError> {
-        if !self.state_zero.is_finite()
-            || !self.state_one.is_finite()
-            || self.state_zero >= self.state_one
-        {
-            return Err(QuantityError::InvalidLegacyStateMapping);
-        }
-        Ok(self)
-    }
-
-    pub(crate) fn scale(self) -> f64 {
-        self.state_one - self.state_zero
-    }
-}
-
 /// Native-unit current and forecast state owned by a factor or outcome node.
 ///
-/// Legacy nodes omit this record and continue to use their standardized payload
-/// estimates. Native state requires canonical unit terms and validates both
-/// estimates against the same quantity support.
+/// Native state requires canonical unit terms and validates both estimates
+/// against the same quantity support.
 ///
 /// ```
 /// use optimist::domain::{QuantityDefinition, QuantityState, QuantitySupport};
@@ -63,6 +31,7 @@ pub struct QuantityState {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct QuantityStateWire {
     quantity: QuantityDefinition,
     #[serde(default)]

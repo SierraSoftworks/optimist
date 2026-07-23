@@ -16,59 +16,18 @@ pub(super) fn set(
     metadata: EstimateMetadata,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let count = estimate_node_ids::count(node, address.estimate);
-    if node.native_state.is_some() && matches!(slot, EstimateSlot::Current | EstimateSlot::Desired)
+    if matches!(slot, EstimateSlot::Current | EstimateSlot::Forecast)
+        && matches!(
+            node.payload,
+            NodePayload::Factor(_) | NodePayload::Outcome(_)
+        )
     {
+        if node.native_state.is_none() {
+            return Err(estimate_support::invalid_slot(address, slot));
+        }
         return set_native(node, address, slot, count, distribution, metadata);
     }
     match (&mut node.payload, slot.clone()) {
-        (NodePayload::Outcome(value), EstimateSlot::Current) => estimate_support::replacement(
-            value.current.as_ref(),
-            address,
-            slot,
-            count,
-            distribution,
-            metadata,
-        )
-        .map(|(estimate, result)| {
-            value.current = Some(estimate);
-            result
-        }),
-        (NodePayload::Outcome(value), EstimateSlot::Desired) => estimate_support::replacement(
-            value.desired.as_ref(),
-            address,
-            slot,
-            count,
-            distribution,
-            metadata,
-        )
-        .map(|(estimate, result)| {
-            value.desired = Some(estimate);
-            result
-        }),
-        (NodePayload::Factor(value), EstimateSlot::Current) => estimate_support::replacement(
-            value.current.as_ref(),
-            address,
-            slot,
-            count,
-            distribution,
-            metadata,
-        )
-        .map(|(estimate, result)| {
-            value.current = Some(estimate);
-            result
-        }),
-        (NodePayload::Factor(value), EstimateSlot::Desired) => estimate_support::replacement(
-            value.desired.as_ref(),
-            address,
-            slot,
-            count,
-            distribution,
-            metadata,
-        )
-        .map(|(estimate, result)| {
-            value.desired = Some(estimate);
-            result
-        }),
         (NodePayload::Metric(value), EstimateSlot::Current) => estimate_support::replacement(
             value.current.as_ref(),
             address,
@@ -133,7 +92,7 @@ fn set_native(
     let state = node.native_state.as_mut().expect("native state checked");
     let current = match slot {
         EstimateSlot::Current => state.current.as_ref(),
-        EstimateSlot::Desired => state.forecast.as_ref(),
+        EstimateSlot::Forecast => state.forecast.as_ref(),
         _ => return Err(estimate_support::invalid_slot(address, slot)),
     };
     let result_slot = slot.clone();
@@ -146,7 +105,7 @@ fn set_native(
     let result = PrimitiveEstimate::from_typed(address.clone(), result_slot.clone(), &estimate);
     match result_slot {
         EstimateSlot::Current => state.current = Some(estimate),
-        EstimateSlot::Desired => state.forecast = Some(estimate),
+        EstimateSlot::Forecast => state.forecast = Some(estimate),
         _ => unreachable!("native slots checked"),
     }
     Ok(result)

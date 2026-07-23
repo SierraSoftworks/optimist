@@ -101,10 +101,6 @@ pub(super) fn scenarios(scenarios: &[Scenario]) -> String {
 
 pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_errors::Error> {
     let source = match &estimate.source {
-        crate::domain::EstimateSource::Distribution => "distribution".to_owned(),
-        crate::domain::EstimateSource::Fermi { definition, .. } => {
-            format!("fermi:{}", definition.equation.replace(['\t', '\n'], " "))
-        }
         crate::domain::EstimateSource::Squiggle { definition, .. } => {
             format!("squiggle:{}", definition.source.replace(['\t', '\n'], " "))
         }

@@ -31,7 +31,8 @@ describe('CreateNodeDialog', () => {
       payload: {
         kind: 'factor',
         properties: {
-          current: null,
+          controllable: false,
+          evidence: [],
         },
       },
     })
@@ -44,8 +45,8 @@ describe('CreateNodeDialog', () => {
       attachTo: document.body,
     })
     const intervention = document.body.querySelector<HTMLInputElement>('input[value="intervention"]')!
-    intervention.checked = true
-    intervention.dispatchEvent(new Event('change', { bubbles: true }))
+    intervention.click()
+    await nextTick()
     await setInput('input[placeholder="Fast feedback"]', 'Improve pipeline')
     await submit()
 
@@ -62,8 +63,8 @@ describe('CreateNodeDialog', () => {
       attachTo: document.body,
     })
     const metric = document.body.querySelector<HTMLInputElement>('input[value="metric"]')!
-    metric.checked = true
-    metric.dispatchEvent(new Event('change', { bubbles: true }))
+    metric.click()
+    await nextTick()
     await setInput('input[placeholder="Fast feedback"]', 'Lead time')
     await setInput('input[placeholder="minutes"]', 'days')
     const support = document.body.querySelector<HTMLSelectElement>('.node-setup select')!
@@ -81,9 +82,11 @@ describe('CreateNodeDialog', () => {
       payload: {
         kind: 'metric',
         properties: {
-          unit: 'days',
-          dimension: { day: 1 },
-          support: { type: 'bounded', lower: 0, upper: 30 },
+          quantity: {
+            unit: 'days',
+            dimension: { day: 1 },
+            support: { type: 'bounded', lower: 0, upper: 30 },
+          },
           current: null,
         },
       },

@@ -10,16 +10,12 @@ pub(super) fn remove(
     if let Some(state) = &mut node.native_state {
         match existing.slot {
             EstimateSlot::Current => state.current = None,
-            EstimateSlot::Desired => state.forecast = None,
+            EstimateSlot::Forecast => state.forecast = None,
             _ => return Err(estimate_support::invalid_slot(address, existing.slot)),
         }
         return Ok(existing);
     }
     match (&mut node.payload, &existing.slot) {
-        (NodePayload::Outcome(value), EstimateSlot::Current) => value.current = None,
-        (NodePayload::Outcome(value), EstimateSlot::Desired) => value.desired = None,
-        (NodePayload::Factor(value), EstimateSlot::Current) => value.current = None,
-        (NodePayload::Factor(value), EstimateSlot::Desired) => value.desired = None,
         (NodePayload::Metric(value), EstimateSlot::Current) => value.current = None,
         (NodePayload::Intervention(value), EstimateSlot::Cost(_)) => {
             value.costs.retain(|cost| cost.value.id != address.estimate);

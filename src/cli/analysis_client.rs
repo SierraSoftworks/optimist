@@ -82,8 +82,6 @@ mod tests {
                     name.to_owned(),
                     name.to_owned(),
                     NodePayload::Factor(Factor {
-                        current: None,
-                        desired: None,
                         controllable: false,
                         evidence: vec![],
                     }),

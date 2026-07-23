@@ -7,7 +7,7 @@ const nodes: GraphNode[] = [
   {
     id: 'A', revision: 0, name: 'reliability', normalized_name: 'reliability', title: 'Reliability',
     description: '', aliases: [], metadata: {},
-    payload: { kind: 'outcome', properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
+    payload: { kind: 'outcome', properties: { direction: 'maximize', evidence: [] } },
   },
   {
     id: 'B', revision: 0, name: 'automate', normalized_name: 'automate', title: 'Automate',

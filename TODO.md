@@ -34,18 +34,16 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Retain authored source, canonical target units, seeds, bounded sample counts, backend assessments, and deterministic effective draws.
   - [x] Report source-located syntax, reference, runtime, and unit diagnostics from one backend evaluator used by preview and save.
   - [x] Reevaluate persisted source during deserialization and reject assessment or effective-distribution integrity mismatches.
-  - [x] Keep legacy direct-distribution and Fermi sources readable while all new workbench saves use Squiggle.
+  - [x] Reject persisted estimates without authoritative Squiggle source and backend assessment metadata.
 - [x] Add an interactive probabilistic editor with debounced evaluation, distribution/range previews, and prior-predictive plausibility checks as source or inputs change.
   - [x] Provide one direct Squiggle editor with debounced Rust evaluation, family, mean, spread, median, central 90% interval, and empirical support validation.
   - [x] Evaluate in a bounded worker so malformed or expensive expressions cannot block the workbench.
   - [x] Show tail mass, invalid draws, and representative simulated outcomes before an estimate can be adopted.
-- [ ] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
-  - [x] Introduce validated native quantity definitions and state-bearing metric estimates while preserving legacy metric JSON as real-valued quantities.
+- [x] Replace normalized factor/outcome state storage with native-unit quantity definitions and uncertain current/forecast estimates.
+  - [x] Introduce validated native quantity definitions and state-bearing metric estimates under one canonical nested quantity schema.
   - [x] Assess real, non-negative, and arbitrary bounded metric Squiggle sources against owner-derived native units and support.
   - [x] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
-  - [x] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
-  - [x] Add opt-in native factor/outcome current and forecast storage with support-aware propagation and unit-aware edge guards.
-  - [x] Convert populated standardized state through explicit native zero/one anchors without flattening Squiggle source.
+  - [x] Store factor/outcome current and forecast estimates only in native quantity state with support-aware propagation and unit-aware edge guards.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
   - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
   - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.
@@ -71,7 +69,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Open one RocksDB database per project behind the `rocksdb` feature.
   - [x] Resolve the local `librocksdb-sys` bindgen target mismatch (`arm64-apple-darwin` vs `aarch64-apple-darwin`) so the feature can compile on this macOS toolchain.
 - [x] Implement idempotent write-ahead `ChangeSet` recovery for multi-item mutations.
-- [x] Add forward-only schema migrations and startup integrity checks.
+- [x] Add strict schema-version and startup integrity checks for the current format.
 - [ ] Add lazy project open/close handles and idle eviction.
 - [x] Add backup/restore hooks and immutable graph snapshots.
 - [ ] Run the repository contract suite against memory and temporary RocksDB.
@@ -161,7 +159,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Official Squiggle editor/chart islands for estimate authoring and persisted distribution review.
   - [x] Direct Squiggle authoring with backend diagnostics, typed units, support-aware starter calculations, and deterministic prior-predictive summaries.
   - [x] Persist and reopen Squiggle source with server-assessed empirical effective distributions for every estimate slot.
-  - [x] Translate legacy direct-distribution and Fermi estimates into Squiggle when they are next edited.
+  - [x] Use Squiggle as the only persisted estimate authoring source in every editor and command.
   - [x] Metric-to-state calibration with visible observation translation and explicit estimate adoption.
 - [x] Direct graph/property editing through typed commands.
 - [x] Deterministic command bar with autocomplete, diagnostics, preview, and apply.

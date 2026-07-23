@@ -137,8 +137,6 @@ mod tests {
                         name: "flow".to_owned(),
                         title: "Flow".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: false,
                             evidence: vec![],
                         }),
@@ -158,8 +156,6 @@ mod tests {
                         name: "later".to_owned(),
                         title: "Later".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: false,
                             evidence: vec![],
                         }),

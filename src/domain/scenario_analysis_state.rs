@@ -32,50 +32,26 @@ pub(super) fn project(
             let node = nodes
                 .get(id)
                 .ok_or(ScenarioAnalysisError::MissingCausalNode(*id))?;
-            if let Some(state) = &node.native_state {
-                let baseline = state
-                    .forecast
-                    .as_ref()
-                    .or(state.current.as_ref())
-                    .ok_or(match node.payload {
+            let (baseline, bounds) = match &node.payload {
+                NodePayload::Outcome(_) | NodePayload::Factor(_) => {
+                    let missing = match node.payload {
                         NodePayload::Outcome(_) => {
                             ScenarioAnalysisError::MissingObjectiveBaseline(node.id)
                         }
                         _ => ScenarioAnalysisError::MissingFactorBaseline(node.id),
-                    })?
-                    .distribution
-                    .clone();
-                return Ok(StateNode {
-                    id: node.id,
-                    baseline,
-                    bounds: quantity_bounds(state.quantity.support),
-                });
-            }
-            let (baseline, bounds) = match &node.payload {
-                NodePayload::Outcome(outcome) => (
-                    outcome
-                        .current
-                        .as_ref()
-                        .ok_or(ScenarioAnalysisError::MissingObjectiveBaseline(node.id))?
-                        .distribution
-                        .clone(),
-                    StateBounds {
-                        lower: Some(0.0),
-                        upper: Some(1.0),
-                    },
-                ),
-                NodePayload::Factor(factor) => (
-                    factor
-                        .current
-                        .as_ref()
-                        .ok_or(ScenarioAnalysisError::MissingFactorBaseline(node.id))?
-                        .distribution
-                        .clone(),
-                    StateBounds {
-                        lower: Some(0.0),
-                        upper: Some(1.0),
-                    },
-                ),
+                    };
+                    let state = node.native_state.as_ref().ok_or(missing.clone())?;
+                    (
+                        state
+                            .forecast
+                            .as_ref()
+                            .or(state.current.as_ref())
+                            .ok_or(missing)?
+                            .distribution
+                            .clone(),
+                        quantity_bounds(state.quantity.support),
+                    )
+                }
                 NodePayload::Metric(metric) => (
                     metric
                         .current
@@ -134,8 +110,6 @@ mod tests {
             "lead_time",
             "Lead time",
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
@@ -158,7 +132,7 @@ mod tests {
         let nodes = BTreeMap::from([(node.id, &node)]);
         let state = project(&nodes, &BTreeSet::from([node.id])).unwrap();
 
-        assert_eq!(state[0].baseline, Distribution::point(15.0).unwrap());
+        assert_eq!(state[0].baseline.mean(), 15.0);
         assert_eq!(state[0].bounds.clamp(12.0), 12.0);
         assert_eq!(state[0].bounds.clamp(-1.0), 0.0);
     }

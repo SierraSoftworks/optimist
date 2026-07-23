@@ -1,7 +1,7 @@
 use crate::{
-    command::{CommandOutcome, RemoveEstimate, SetEstimate, SetFermiEstimate, SetSquiggleEstimate},
+    command::{CommandOutcome, RemoveEstimate, SetSquiggleEstimate},
     domain::{
-        EstimateAddress, EstimateOwner, EstimateSource, PrimitiveEstimate, ProjectId, assess_fermi,
+        EstimateAddress, EstimateOwner, EstimateSource, PrimitiveEstimate, ProjectId,
         assess_squiggle_estimate,
     },
     store::{GraphRepository, RepositoryError},
@@ -11,64 +11,6 @@ use super::{
     EstimateCommandError, ProjectError, catalog::ProjectEntry, estimate_edge, estimate_node,
     estimate_node_find, estimate_node_remove, estimate_support,
 };
-
-pub(super) fn set(
-    entry: &mut ProjectEntry,
-    command: SetEstimate,
-) -> Result<CommandOutcome, ProjectError> {
-    set_value(
-        entry,
-        command.address,
-        command.slot,
-        command.distribution,
-        EstimateSource::Distribution,
-        command.provenance,
-        command.uncertainty,
-    )
-    .map(CommandOutcome::EstimateSet)
-}
-
-pub(super) fn set_fermi(
-    entry: &mut ProjectEntry,
-    command: SetFermiEstimate,
-) -> Result<CommandOutcome, ProjectError> {
-    validate_address(&entry.project.id, &command.address)?;
-    let slot = command
-        .slot
-        .validated()
-        .map_err(EstimateCommandError::from)?;
-    let (support, expected_unit) = fermi_target(entry, &command.address, &slot)?;
-    let definition = command
-        .definition
-        .validated()
-        .map_err(EstimateCommandError::from)?;
-    let assessment = assess_fermi(
-        &entry.project.id,
-        definition.formula.clone(),
-        support,
-        expected_unit,
-        definition.monte_carlo,
-    )
-    .map_err(EstimateCommandError::from)?;
-    let distribution = assessment
-        .recommended_distribution()
-        .cloned()
-        .ok_or(EstimateCommandError::UnavailableFermiRecommendation)?;
-    let source = EstimateSource::Fermi {
-        definition: Box::new(definition),
-        assessment: Box::new(assessment),
-    };
-    set_value(
-        entry,
-        command.address,
-        slot,
-        distribution,
-        source,
-        command.provenance,
-        command.uncertainty,
-    )
-    .map(CommandOutcome::FermiEstimateSet)
-}
 
 pub(super) fn set_squiggle(
     entry: &mut ProjectEntry,
@@ -112,13 +54,7 @@ fn fermi_target(
             .get_edge(id)?
             .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
         let response = match edge.payload {
-            crate::domain::EdgePayload::Contributes(value) => value
-                .linear_response()
-                .cloned()
-                .ok_or_else(|| EstimateCommandError::InvalidSlot {
-                    address: address.clone(),
-                    slot: slot.clone(),
-                })?,
+            crate::domain::EdgePayload::Contributes(value) => value.response,
             _ => {
                 return Err(EstimateCommandError::InvalidSlot {
                     address: address.clone(),
@@ -145,7 +81,7 @@ fn fermi_target(
     if let Some(state) = node.native_state {
         if !matches!(
             slot,
-            crate::domain::EstimateSlot::Current | crate::domain::EstimateSlot::Desired
+            crate::domain::EstimateSlot::Current | crate::domain::EstimateSlot::Forecast
         ) {
             return Err(EstimateCommandError::InvalidSlot {
                 address: address.clone(),
@@ -310,20 +246,43 @@ mod tests {
     use crate::{
         command::{
             CommandOutcome, CommandRequest, CreateEdge, CreateNode, GraphCommand, RemoveEstimate,
-            SetEstimate, SetFermiEstimate, SetSquiggleEstimate,
+            SetNodeQuantityState, SetSquiggleEstimate,
         },
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
             EstimateOwner, EstimateSlot, EstimateSource, EstimateUncertainty, Factor,
-            FermiEstimateDefinition, FermiExpressionLanguage, FermiVariable,
-            FermiVariableUncertainty, Formula, Metric, MonteCarloConfig, NodePayload, ProjectId,
-            QuantityDefinition, QuantitySupport, SignedInfluence, SquiggleEstimateDefinition, Unit,
+            LinearResponse, Metric, NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
+            QuantityValue, SquiggleEstimateDefinition, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
 
     fn address(project: &ProjectId, owner: EstimateOwner, id: u64) -> EstimateAddress {
         EstimateAddress::new(project.clone(), owner, EstimateId::new(id))
+    }
+
+    fn definition(source: &str, target_unit: Unit) -> SquiggleEstimateDefinition {
+        SquiggleEstimateDefinition {
+            source: source.to_owned(),
+            seed: 42,
+            sample_count: 256,
+            target_unit,
+        }
+    }
+
+    fn set_squiggle(
+        address: EstimateAddress,
+        slot: EstimateSlot,
+        source: &str,
+        target_unit: Unit,
+    ) -> GraphCommand {
+        GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
+            address,
+            slot,
+            definition: definition(source, target_unit),
+            provenance: vec![],
+            uncertainty: EstimateUncertainty::default(),
+        })
     }
 
     fn catalog() -> (ProjectCatalog, ProjectId) {
@@ -339,11 +298,34 @@ mod tests {
                             name: name.to_owned(),
                             title: name.to_owned(),
                             payload: crate::domain::NodePayload::Factor(Factor {
-                                current: None,
-                                desired: None,
                                 controllable: true,
                                 evidence: vec![],
                             }),
+                        }),
+                    ),
+                )
+                .unwrap();
+        }
+        let quantity = QuantityDefinition::with_dimension(
+            "state",
+            Some(Unit::dimensionless()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        for (revision, node) in [(2, 0), (3, 1)] {
+            catalog
+                .execute(
+                    &project.id,
+                    CommandRequest::new(
+                        revision,
+                        GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                            node: EntityId::new(node),
+                            expected_revision: 0,
+                            quantity: quantity.clone(),
                         }),
                     ),
                 )
@@ -380,11 +362,11 @@ mod tests {
         let (mut catalog, project) = catalog();
         let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         let request = CommandRequest::new(
-            2,
-            GraphCommand::SetEstimate(SetEstimate {
+            4,
+            GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                 address: address.clone(),
                 slot: EstimateSlot::Current,
-                distribution: Distribution::beta(2.0, 3.0).unwrap(),
+                definition: definition("beta(2, 3)", Unit::dimensionless()),
                 provenance: vec!["elicitation".to_owned()],
                 uncertainty: EstimateUncertainty::new(
                     "limited evidence",
@@ -396,7 +378,7 @@ mod tests {
         );
         let first = catalog.execute(&project, request.clone()).unwrap();
         assert_eq!(first, catalog.execute(&project, request).unwrap());
-        let CommandOutcome::EstimateSet(created) = first.outcome else {
+        let CommandOutcome::SquiggleEstimateSet(created) = first.outcome else {
             unreachable!()
         };
         assert_eq!(created.revision, 0);
@@ -405,7 +387,7 @@ mod tests {
                 .quantity
                 .as_ref()
                 .map(|quantity| quantity.unit.as_str()),
-            Some("standardized_state")
+            Some("state")
         );
         assert_eq!(created.uncertainty.process, "daily variation");
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
@@ -415,25 +397,25 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .revision,
-            1
+            2
         );
 
         let replaced = catalog
             .execute(
                 &project,
                 CommandRequest::new(
-                    3,
-                    GraphCommand::SetEstimate(SetEstimate {
+                    5,
+                    GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                         address: address.clone(),
                         slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(4.0, 2.0).unwrap(),
+                        definition: definition("beta(4, 2)", Unit::dimensionless()),
                         provenance: vec![],
                         uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
             .unwrap();
-        let CommandOutcome::EstimateSet(replaced) = replaced.outcome else {
+        let CommandOutcome::SquiggleEstimateSet(replaced) = replaced.outcome else {
             unreachable!()
         };
         assert_eq!(replaced.revision, 1);
@@ -441,7 +423,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    6,
                     GraphCommand::RemoveEstimate(RemoveEstimate {
                         address: address.clone(),
                     }),
@@ -465,7 +447,7 @@ mod tests {
         let (mut catalog, project) = catalog();
         let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         let request = CommandRequest::new(
-            2,
+            4,
             GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                 address: address.clone(),
                 slot: EstimateSlot::Current,
@@ -494,7 +476,7 @@ mod tests {
         let invalid = catalog.execute(
             &project,
             CommandRequest::new(
-                3,
+                5,
                 GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                     address,
                     slot: EstimateSlot::Current,
@@ -509,12 +491,7 @@ mod tests {
                 }),
             ),
         );
-        assert!(matches!(
-            invalid,
-            Err(ProjectError::EstimateCommand(
-                EstimateCommandError::Estimate(_)
-            ))
-        ));
+        assert!(invalid.is_err());
     }
 
     #[test]
@@ -526,17 +503,16 @@ mod tests {
                 &project,
                 CommandRequest::new(
                     1,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: address.clone(),
-                        slot: EstimateSlot::Current,
-                        distribution: Distribution::log_normal(2.0, 0.3).unwrap(),
-                        provenance: vec!["weekly telemetry".to_owned()],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
+                    set_squiggle(
+                        address.clone(),
+                        EstimateSlot::Current,
+                        "lognormal(2, 0.3)",
+                        Unit::base("days").unwrap(),
+                    ),
                 ),
             )
             .unwrap();
-        let CommandOutcome::EstimateSet(created) = created.outcome else {
+        let CommandOutcome::SquiggleEstimateSet(created) = created.outcome else {
             panic!("expected metric estimate")
         };
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
@@ -561,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_metric_distributions_outside_support_and_persists_native_fermi_sources() {
+    fn rejects_metric_distributions_outside_support_and_persists_native_squiggle_sources() {
         let (mut catalog, project) = metric_catalog(QuantitySupport::Bounded {
             lower: 0.0,
             upper: 30.0,
@@ -572,157 +548,38 @@ mod tests {
                 &project,
                 CommandRequest::new(
                     1,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: address.clone(),
-                        slot: EstimateSlot::Current,
-                        distribution: Distribution::normal(5.0, 1.0).unwrap(),
-                        provenance: vec![],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
+                    set_squiggle(
+                        address.clone(),
+                        EstimateSlot::Current,
+                        "normal(5, 100)",
+                        Unit::base("days").unwrap(),
+                    ),
                 ),
             ),
             Err(ProjectError::EstimateCommand(
-                EstimateCommandError::Quantity(_)
+                EstimateCommandError::Estimate(_) | EstimateCommandError::Quantity(_)
             ))
         ));
 
-        let definition = FermiEstimateDefinition {
-            language: FermiExpressionLanguage::OptimistSquiggleV1,
-            equation: "lead_time".to_owned(),
-            variables: vec![FermiVariable {
-                name: "lead_time".to_owned(),
-                estimate: 5.0,
-                unit: "days".to_owned(),
-                uncertainty: FermiVariableUncertainty::OrderOfMagnitude,
-            }],
-            formula: Formula::Bounded {
-                input: Box::new(Formula::Literal {
-                    distribution: Distribution::log_normal(5.0_f64.ln(), 0.3).unwrap(),
-                    unit: Unit::base("days").unwrap(),
-                }),
-                lower: 0.0,
-                upper: 30.0,
-            },
-            monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
-        };
         let result = catalog
             .execute(
                 &project,
                 CommandRequest::new(
                     1,
-                    GraphCommand::SetFermiEstimate(SetFermiEstimate {
-                        address: address.clone(),
-                        slot: EstimateSlot::Current,
-                        definition,
-                        provenance: vec![],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
+                    set_squiggle(
+                        address.clone(),
+                        EstimateSlot::Current,
+                        "30 * beta(2, 5)",
+                        Unit::base("days").unwrap(),
+                    ),
                 ),
             )
             .unwrap();
-        let CommandOutcome::FermiEstimateSet(created) = result.outcome else {
-            panic!("expected native Fermi estimate")
+        let CommandOutcome::SquiggleEstimateSet(created) = result.outcome else {
+            panic!("expected native Squiggle estimate")
         };
-        assert!(matches!(created.source, EstimateSource::Fermi { .. }));
-        assert!(matches!(
-            serde_json::to_value(&created.distribution).unwrap()["type"].as_str(),
-            Some("scaled_beta")
-        ));
+        assert!(matches!(created.source, EstimateSource::Squiggle { .. }));
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
-    }
-
-    #[test]
-    fn persists_fermi_sources_and_replaces_them_exclusively() {
-        let (mut catalog, project) = catalog();
-        let address = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
-        let formula = Formula::Product {
-            factors: vec![
-                Formula::Literal {
-                    distribution: Distribution::scaled_beta(3.0, 3.0, 0.5, 0.9).unwrap(),
-                    unit: Unit::dimensionless(),
-                },
-                Formula::Literal {
-                    distribution: Distribution::scaled_beta(4.0, 2.0, 0.6, 1.0).unwrap(),
-                    unit: Unit::dimensionless(),
-                },
-            ],
-        };
-        let definition = FermiEstimateDefinition {
-            language: FermiExpressionLanguage::OptimistSquiggleV1,
-            equation: "adoption * completion".to_owned(),
-            variables: vec![
-                FermiVariable {
-                    name: "adoption".to_owned(),
-                    estimate: 0.7,
-                    unit: String::new(),
-                    uncertainty: FermiVariableUncertainty::ThreePoint {
-                        low: 0.5,
-                        high: 0.9,
-                    },
-                },
-                FermiVariable {
-                    name: "completion".to_owned(),
-                    estimate: 0.85,
-                    unit: String::new(),
-                    uncertainty: FermiVariableUncertainty::ThreePoint {
-                        low: 0.6,
-                        high: 1.0,
-                    },
-                },
-            ],
-            formula,
-            monte_carlo: MonteCarloConfig::new(42, 1_000, 10_000, 0.001, 0.01).unwrap(),
-        };
-        let created = catalog
-            .execute(
-                &project,
-                CommandRequest::new(
-                    2,
-                    GraphCommand::SetFermiEstimate(SetFermiEstimate {
-                        address: address.clone(),
-                        slot: EstimateSlot::Current,
-                        definition,
-                        provenance: vec!["planning workshop".to_owned()],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
-                ),
-            )
-            .unwrap();
-        let CommandOutcome::FermiEstimateSet(created) = created.outcome else {
-            panic!("expected Fermi estimate result")
-        };
-        let EstimateSource::Fermi {
-            definition,
-            assessment,
-        } = &created.source
-        else {
-            panic!("expected persisted Fermi source")
-        };
-        assert_eq!(definition.equation, "adoption * completion");
-        assert!(assessment.recommended_distribution().is_some());
-        assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
-
-        let replaced = catalog
-            .execute(
-                &project,
-                CommandRequest::new(
-                    3,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: address.clone(),
-                        slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(8.0, 2.0).unwrap(),
-                        provenance: vec!["direct prior".to_owned()],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
-                ),
-            )
-            .unwrap();
-        let CommandOutcome::EstimateSet(replaced) = replaced.outcome else {
-            panic!("expected direct estimate result")
-        };
-        assert_eq!(replaced.revision, 1);
-        assert_eq!(replaced.source, EstimateSource::Distribution);
-        assert_eq!(replaced.provenance, vec!["direct prior"]);
     }
 
     #[test]
@@ -733,32 +590,27 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    2,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: current.clone(),
-                        slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(2.0, 2.0).unwrap(),
-                        provenance: vec![],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
+                    4,
+                    set_squiggle(
+                        current.clone(),
+                        EstimateSlot::Current,
+                        "beta(2, 2)",
+                        Unit::dimensionless(),
+                    ),
                 ),
             )
             .unwrap();
-        for (address, slot, distribution) in [
-            (
-                current.clone(),
-                EstimateSlot::Desired,
-                Distribution::beta(2.0, 2.0).unwrap(),
-            ),
+        for (address, slot, source) in [
+            (current.clone(), EstimateSlot::Forecast, "beta(2, 2)"),
             (
                 address(&project, EstimateOwner::Node(EntityId::new(0)), 1),
                 EstimateSlot::Current,
-                Distribution::beta(2.0, 2.0).unwrap(),
+                "beta(2, 2)",
             ),
             (
                 address(&project, EstimateOwner::Node(EntityId::new(1)), 0),
                 EstimateSlot::Current,
-                Distribution::normal(0.5, 0.1).unwrap(),
+                "normal(0.5, 10)",
             ),
         ] {
             assert!(
@@ -766,14 +618,8 @@ mod tests {
                     .execute(
                         &project,
                         CommandRequest::new(
-                            3,
-                            GraphCommand::SetEstimate(SetEstimate {
-                                address,
-                                slot,
-                                distribution,
-                                provenance: vec![],
-                                uncertainty: EstimateUncertainty::default(),
-                            })
+                            5,
+                            set_squiggle(address, slot, source, Unit::dimensionless())
                         )
                     )
                     .is_err()
@@ -788,14 +634,13 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    3,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: foreign,
-                        slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(2.0, 2.0).unwrap(),
-                        provenance: vec![],
-                        uncertainty: EstimateUncertainty::default(),
-                    })
+                    5,
+                    set_squiggle(
+                        foreign,
+                        EstimateSlot::Current,
+                        "beta(2, 2)",
+                        Unit::dimensionless(),
+                    )
                 )
             ),
             Err(ProjectError::EstimateCommand(
@@ -807,25 +652,33 @@ mod tests {
     #[test]
     fn removes_optional_lag_but_preserves_required_effect() {
         let (mut catalog, project) = catalog();
-        let effect = crate::domain::Estimate::<SignedInfluence>::new(
+        let response = crate::domain::Estimate::<QuantityValue>::new(
             EstimateId::new(0),
-            Distribution::scaled_beta(2.0, 2.0, -1.0, 1.0).unwrap(),
+            Distribution::point(0.5).unwrap(),
         )
         .unwrap();
         let edge = catalog
             .execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    4,
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(0),
                         destination: EntityId::new(1),
-                        payload: EdgePayload::Contributes(CausalEffect::normalized(
-                            effect,
-                            None,
-                            String::new(),
-                            vec![],
-                        )),
+                        payload: EdgePayload::Contributes(
+                            CausalEffect::linear(
+                                LinearResponse {
+                                    source_change: 1.0,
+                                    source_unit: Unit::dimensionless(),
+                                    destination_change: response,
+                                    destination_unit: Unit::dimensionless(),
+                                },
+                                None,
+                                String::new(),
+                                vec![],
+                            )
+                            .unwrap(),
+                        ),
                     }),
                 ),
             )
@@ -839,14 +692,13 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    3,
-                    GraphCommand::SetEstimate(SetEstimate {
-                        address: lag.clone(),
-                        slot: EstimateSlot::Lag,
-                        distribution: Distribution::log_normal(0.0, 0.5).unwrap(),
-                        provenance: vec![],
-                        uncertainty: EstimateUncertainty::default(),
-                    }),
+                    5,
+                    set_squiggle(
+                        lag.clone(),
+                        EstimateSlot::Lag,
+                        "lognormal(0, 0.5)",
+                        Unit::base("duration").unwrap(),
+                    ),
                 ),
             )
             .unwrap();
@@ -854,18 +706,18 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    6,
                     GraphCommand::RemoveEstimate(RemoveEstimate { address: lag }),
                 ),
             )
             .unwrap();
-        let effect = address(&project, owner, 0);
+        let response = address(&project, owner, 0);
         assert!(matches!(
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    5,
-                    GraphCommand::RemoveEstimate(RemoveEstimate { address: effect })
+                    7,
+                    GraphCommand::RemoveEstimate(RemoveEstimate { address: response })
                 )
             ),
             Err(ProjectError::EstimateCommand(
@@ -885,19 +737,18 @@ mod tests {
         let (mut catalog, project) = catalog();
         let left = address(&project, EstimateOwner::Node(EntityId::new(0)), 0);
         let right = address(&project, EstimateOwner::Node(EntityId::new(1)), 0);
-        for (revision, address) in [(2, left.clone()), (3, right.clone())] {
+        for (revision, address) in [(4, left.clone()), (5, right.clone())] {
             catalog
                 .execute(
                     &project,
                     CommandRequest::new(
                         revision,
-                        GraphCommand::SetEstimate(SetEstimate {
+                        set_squiggle(
                             address,
-                            slot: EstimateSlot::Current,
-                            distribution: Distribution::beta(2.0, 2.0).unwrap(),
-                            provenance: vec![],
-                            uncertainty: EstimateUncertainty::default(),
-                        }),
+                            EstimateSlot::Current,
+                            "beta(2, 2)",
+                            Unit::dimensionless(),
+                        ),
                     ),
                 )
                 .unwrap();
@@ -906,7 +757,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    6,
                     GraphCommand::SetProjectDependence(SetProjectDependence {
                         model: ProjectDependenceModel {
                             revision: 0,
@@ -926,7 +777,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    5,
+                    7,
                     GraphCommand::RemoveEstimate(RemoveEstimate { address: left }),
                 ),
             ),

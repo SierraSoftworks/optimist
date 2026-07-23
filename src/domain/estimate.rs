@@ -4,10 +4,9 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
 use super::{
-    EntityId, EstimateUncertainty, EstimateUncertaintyError, FermiAssessment,
-    FermiEstimateDefinition, FermiEstimateError, LegacyStateMapping, QuantityDefinition,
-    QuantityError, SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError,
-    Unit, assess_squiggle_estimate,
+    EntityId, EstimateUncertainty, EstimateUncertaintyError, QuantityDefinition,
+    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError, Unit,
+    assess_squiggle_estimate,
 };
 
 const MAX_EMPIRICAL_SAMPLES: usize = 4_096;
@@ -89,9 +88,6 @@ pub enum DistributionError {
     /// An empirical approximation must contain a bounded nonempty set of finite draws.
     #[error("an empirical distribution requires 1 to 4,096 finite samples")]
     InvalidSamples,
-    /// The requested affine transformation is not exactly representable by this family.
-    #[error("distribution family is not closed under the requested affine transformation")]
-    InvalidAffineFamily,
 }
 
 /// A validated primitive probability distribution used by an [`Estimate`].
@@ -112,50 +108,6 @@ pub enum DistributionError {
 pub struct Distribution(pub(super) DistributionKind);
 
 impl Distribution {
-    /// Applies the exact positive affine transformation $Y = a + bX$.
-    ///
-    /// Point, Normal, Beta, ScaledBeta, and empirical distributions are closed
-    /// under this transformation. A shifted LogNormal is not generally LogNormal
-    /// and is rejected rather than approximated. `scale` must be finite and positive.
-    /// Results are analytical apart from ordinary floating-point rounding; no
-    /// Monte Carlo approximation or independence assumption is introduced. See
-    /// NIST/SEMATECH e-Handbook of Statistical Methods, sections 1.3.6.6 and
-    /// 1.3.6.23, for the Normal and Beta parameterizations used here.
-    pub fn positive_affine(&self, offset: f64, scale: f64) -> Result<Self, DistributionError> {
-        if !offset.is_finite() || !scale.is_finite() || scale <= 0.0 {
-            return Err(DistributionError::InvalidScale);
-        }
-        match &self.0 {
-            DistributionKind::Point { value } => Self::point(offset + scale * value),
-            DistributionKind::Normal {
-                mean,
-                standard_deviation,
-            } => Self::normal(offset + scale * mean, scale * standard_deviation),
-            DistributionKind::Beta { alpha, beta } => {
-                Self::scaled_beta(*alpha, *beta, offset, offset + scale)
-            }
-            DistributionKind::ScaledBeta {
-                alpha,
-                beta,
-                lower,
-                upper,
-            } => Self::scaled_beta(
-                *alpha,
-                *beta,
-                offset + scale * lower,
-                offset + scale * upper,
-            ),
-            DistributionKind::Empirical { samples } => {
-                Self::empirical(samples.iter().map(|value| offset + scale * value).collect())
-            }
-            DistributionKind::LogNormal {
-                location,
-                scale: sigma,
-            } if offset == 0.0 => Self::log_normal(location + scale.ln(), *sigma),
-            DistributionKind::LogNormal { .. } => Err(DistributionError::InvalidAffineFamily),
-        }
-    }
-
     /// Creates a deterministic distribution concentrated at `value`.
     ///
     /// Point masses represent measured constants or assumptions with no modelled
@@ -423,23 +375,6 @@ dimension!(
     is_probability,
     "A probability whose complete support lies within `[0, 1]`, used for uncertain success or occurrence."
 );
-/// A legacy standardized factor or outcome state on `[0, 1]`.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NormalizedState;
-
-impl sealed::Sealed for NormalizedState {}
-
-impl EstimateDimension for NormalizedState {
-    const NAME: &'static str = "normalized_state";
-
-    fn accepts(distribution: &Distribution) -> bool {
-        distribution.is_probability()
-    }
-
-    fn quantity_definition() -> Option<QuantityDefinition> {
-        Some(QuantityDefinition::legacy_standardized_state())
-    }
-}
 dimension!(
     SignedInfluence,
     "signed_influence",
@@ -473,9 +408,6 @@ pub enum EstimateError {
     /// The distribution has support outside the estimate dimension's legal range.
     #[error("distribution support is invalid for estimate dimension {0}")]
     InvalidSupport(&'static str),
-    /// Persisted Fermi source metadata or assessment is inconsistent.
-    #[error(transparent)]
-    Fermi(#[from] FermiEstimateError),
     /// Persisted Squiggle source or assessment is invalid.
     #[error(transparent)]
     Squiggle(#[from] SquiggleEstimateError),
@@ -485,28 +417,12 @@ pub enum EstimateError {
     /// Persisted intrinsic quantity metadata conflicts with the estimate dimension.
     #[error("quantity definition is invalid for estimate dimension {0}")]
     InvalidQuantityDefinition(&'static str),
-    /// The owner-defined quantity is invalid for native estimate migration.
-    #[error(transparent)]
-    Quantity(#[from] QuantityError),
-    /// Legacy Fermi source requires explicit replacement instead of silent flattening.
-    #[error("legacy Fermi estimates require explicit replacement before native migration")]
-    FermiMigrationUnsupported,
 }
 
 /// Exclusive source used to produce an estimate's effective distribution.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EstimateSource {
-    /// The effective distribution was authored directly.
-    #[default]
-    Distribution,
-    /// A retained equation was assessed into the effective distribution.
-    Fermi {
-        /// Reviewable equation, variables, canonical formula, and sampling controls.
-        definition: Box<FermiEstimateDefinition>,
-        /// Server-generated result and diagnostics retained with the estimate revision.
-        assessment: Box<FermiAssessment>,
-    },
     /// A retained Squiggle calculation evaluated by the Rust backend.
     Squiggle {
         /// Reviewable authored source and deterministic evaluation controls.
@@ -523,11 +439,17 @@ pub enum EstimateSource {
 /// records the evidence or elicitation context behind the prior.
 ///
 /// ```
-/// use optimist::domain::{Distribution, Estimate, EstimateId, Probability};
+/// use optimist::domain::{Estimate, EstimateId, Probability, SquiggleEstimateDefinition, Unit};
 ///
-/// let estimate = Estimate::<Probability>::new(
+/// let estimate = Estimate::<Probability>::from_squiggle(
 ///     EstimateId::new(0),
-///     Distribution::beta(8.0, 2.0)?,
+///     SquiggleEstimateDefinition {
+///         source: "beta(8, 2)".to_owned(),
+///         seed: 42,
+///         sample_count: 256,
+///         target_unit: Unit::dimensionless(),
+///     },
+///     &Unit::dimensionless(),
 /// )?;
 /// assert_eq!(estimate.revision, 0);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -544,8 +466,7 @@ pub struct Estimate<T: EstimateDimension> {
     /// Explicit quantity metadata intrinsically owned by this estimate dimension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quantity: Option<QuantityDefinition>,
-    /// Active authoring source; Fermi sources supersede direct distribution editing.
-    #[serde(default)]
+    /// Authoritative Squiggle source and retained backend assessment.
     pub source: EstimateSource,
     /// Human-readable evidence, source, or elicitation records supporting the estimate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -558,11 +479,45 @@ pub struct Estimate<T: EstimateDimension> {
 }
 
 impl<T: EstimateDimension> Estimate<T> {
-    /// Constructs an estimate after checking the distribution against `T`.
-    ///
-    /// Use this constructor instead of struct literals so invalid dimensional
-    /// combinations are rejected before they reach storage or analysis.
-    pub fn new(id: EstimateId, distribution: Distribution) -> Result<Self, EstimateError> {
+    #[cfg(test)]
+    pub(crate) fn new(id: EstimateId, distribution: Distribution) -> Result<Self, EstimateError> {
+        let source = match &distribution.0 {
+            DistributionKind::Point { value } => format!("pointMass({value})"),
+            DistributionKind::Normal {
+                mean,
+                standard_deviation,
+            } => format!("normal({mean}, {standard_deviation})"),
+            DistributionKind::LogNormal { location, scale } => {
+                format!("lognormal({location}, {scale})")
+            }
+            DistributionKind::Beta { alpha, beta } => format!("beta({alpha}, {beta})"),
+            DistributionKind::ScaledBeta {
+                alpha,
+                beta,
+                lower,
+                upper,
+            } => format!("{lower} + ({upper} - {lower}) * beta({alpha}, {beta})"),
+            DistributionKind::Empirical { .. } => {
+                return Err(DistributionError::InvalidSamples.into());
+            }
+        };
+        Self::from_squiggle(
+            id,
+            SquiggleEstimateDefinition {
+                source,
+                seed: 42,
+                sample_count: 256,
+                target_unit: Unit::dimensionless(),
+            },
+            &Unit::dimensionless(),
+        )
+    }
+
+    pub(crate) fn from_evaluated_squiggle(
+        id: EstimateId,
+        distribution: Distribution,
+        source: EstimateSource,
+    ) -> Result<Self, EstimateError> {
         if !T::accepts(&distribution) {
             return Err(EstimateError::InvalidSupport(T::NAME));
         }
@@ -572,30 +527,11 @@ impl<T: EstimateDimension> Estimate<T> {
             revision: 0,
             distribution,
             quantity: T::quantity_definition(),
-            source: EstimateSource::Distribution,
+            source,
             provenance: Vec::new(),
             uncertainty: EstimateUncertainty::default(),
             marker: PhantomData,
         })
-    }
-
-    /// Constructs a Fermi-sourced estimate from one validated server assessment.
-    pub fn from_fermi(
-        id: EstimateId,
-        definition: FermiEstimateDefinition,
-        assessment: FermiAssessment,
-    ) -> Result<Self, EstimateError> {
-        let definition = definition.validated()?;
-        let distribution = assessment
-            .recommended_distribution()
-            .cloned()
-            .ok_or(FermiEstimateError::UnavailableRecommendation)?;
-        let mut estimate = Self::new(id, distribution)?;
-        estimate.source = EstimateSource::Fermi {
-            definition: Box::new(definition),
-            assessment: Box::new(assessment),
-        };
-        Ok(estimate)
     }
 
     /// Constructs a Squiggle-sourced estimate from deterministic backend evaluation.
@@ -606,75 +542,22 @@ impl<T: EstimateDimension> Estimate<T> {
     ) -> Result<Self, EstimateError> {
         let (definition, assessment, distribution) =
             assess_squiggle_estimate(definition, expected_unit)?;
-        let mut estimate = Self::new(id, distribution)?;
-        estimate.source = EstimateSource::Squiggle {
+        let source = EstimateSource::Squiggle {
             definition: Box::new(definition),
             assessment: Box::new(assessment),
         };
-        Ok(estimate)
-    }
-}
-
-impl Estimate<NormalizedState> {
-    /// Converts a legacy standardized estimate through an explicit native mapping.
-    ///
-    /// Direct distributions are transformed analytically. Squiggle source is wrapped
-    /// as `state_zero + (state_one-state_zero) * source`, assigned the native target
-    /// unit, and reevaluated by the authoritative runtime. Fermi source is rejected
-    /// because rewriting its typed formula and retained decomposition would otherwise
-    /// discard author intent.
-    pub fn into_native_quantity(
-        self,
-        quantity: &QuantityDefinition,
-        mapping: LegacyStateMapping,
-    ) -> Result<Estimate<QuantityValue>, EstimateError> {
-        let mapping = mapping.validated()?;
-        let (_, expected_unit) = quantity.fermi_target()?;
-        let id = self.id;
-        let revision = self.revision;
-        let provenance = self.provenance;
-        let uncertainty = self.uncertainty;
-        let mut converted = match self.source {
-            EstimateSource::Distribution => Estimate::<QuantityValue>::new(
-                id,
-                self.distribution
-                    .positive_affine(mapping.state_zero, mapping.scale())?,
-            )?,
-            EstimateSource::Squiggle { definition, .. } => {
-                let definition = SquiggleEstimateDefinition {
-                    source: format!(
-                        "({}) * {} + ({})",
-                        definition.source.trim(),
-                        mapping.scale(),
-                        mapping.state_zero
-                    ),
-                    seed: definition.seed,
-                    sample_count: definition.sample_count,
-                    target_unit: expected_unit.clone(),
-                };
-                Estimate::<QuantityValue>::from_squiggle(id, definition, &expected_unit)?
-            }
-            EstimateSource::Fermi { .. } => return Err(EstimateError::FermiMigrationUnsupported),
-        };
-        converted.revision = revision;
-        converted.quantity = Some(quantity.clone());
-        converted.provenance = provenance;
-        converted.uncertainty = uncertainty;
-        if !quantity.accepts(&converted.distribution) {
-            return Err(QuantityError::EstimateOutsideSupport.into());
-        }
-        Ok(converted)
+        Self::from_evaluated_squiggle(id, distribution, source)
     }
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawEstimate {
     id: EstimateId,
     revision: u64,
     distribution: Distribution,
     #[serde(default)]
     quantity: Option<QuantityDefinition>,
-    #[serde(default)]
     source: EstimateSource,
     #[serde(default)]
     provenance: Vec<String>,
@@ -689,20 +572,6 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
     {
         let raw = RawEstimate::deserialize(deserializer)?;
         let mut estimate = match raw.source {
-            EstimateSource::Distribution => {
-                Self::new(raw.id, raw.distribution).map_err(de::Error::custom)?
-            }
-            EstimateSource::Fermi {
-                definition,
-                assessment,
-            } => {
-                let estimate = Self::from_fermi(raw.id, *definition, *assessment)
-                    .map_err(de::Error::custom)?;
-                if estimate.distribution != raw.distribution {
-                    return Err(de::Error::custom(FermiEstimateError::ResultMismatch));
-                }
-                estimate
-            }
             EstimateSource::Squiggle {
                 definition,
                 assessment,
@@ -713,10 +582,7 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
                 let EstimateSource::Squiggle {
                     assessment: evaluated,
                     ..
-                } = &estimate.source
-                else {
-                    unreachable!()
-                };
+                } = &estimate.source;
                 if !squiggle_result_matches(
                     &estimate.distribution,
                     &raw.distribution,
@@ -802,15 +668,19 @@ fn float_matches(evaluated: f64, persisted: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Distribution, DistributionError, Estimate, EstimateError, EstimateId, EstimateSource,
-        Money, NormalizedState, Probability, SignedInfluence,
+        Distribution, DistributionError, Estimate, EstimateError, EstimateId, Money, Probability,
+        SignedInfluence,
     };
-    use crate::domain::{
-        EstimateUncertainty, FermiEstimateDefinition, FermiEstimateSupport,
-        FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula,
-        LegacyStateMapping, MonteCarloConfig, ProjectId, QuantityDefinition, QuantitySupport,
-        SquiggleEstimateDefinition, Unit, assess_fermi,
-    };
+    use crate::domain::{EstimateUncertainty, SquiggleEstimateDefinition, Unit};
+
+    fn definition(source: &str, unit: Unit) -> SquiggleEstimateDefinition {
+        SquiggleEstimateDefinition {
+            source: source.to_owned(),
+            seed: 42,
+            sample_count: 256,
+            target_unit: unit,
+        }
+    }
 
     #[test]
     fn rejects_invalid_distribution_parameters() {
@@ -826,29 +696,34 @@ mod tests {
 
     #[test]
     fn estimate_dimensions_reject_invalid_support() {
-        let normal = Distribution::normal(0.5, 0.1).expect("valid normal");
         assert_eq!(
-            Estimate::<Probability>::new(EstimateId::new(1), normal),
+            Estimate::<Probability>::from_squiggle(
+                EstimateId::new(1),
+                definition("normal(0.5, 10)", Unit::dimensionless()),
+                &Unit::dimensionless(),
+            ),
             Err(EstimateError::InvalidSupport("probability"))
         );
         assert!(
-            Estimate::<Money>::new(
+            Estimate::<Money>::from_squiggle(
                 EstimateId::new(2),
-                Distribution::log_normal(1.0, 0.2).expect("valid log-normal")
+                definition("lognormal(1, 0.2)", Unit::dimensionless()),
+                &Unit::dimensionless(),
             )
             .is_ok()
         );
         assert!(
-            Estimate::<SignedInfluence>::new(
+            Estimate::<SignedInfluence>::from_squiggle(
                 EstimateId::new(3),
-                Distribution::scaled_beta(2.0, 2.0, -1.0, 1.0).expect("valid scaled beta")
+                definition("2 * beta(2, 2) - 1", Unit::dimensionless()),
+                &Unit::dimensionless(),
             )
             .is_ok()
         );
     }
 
     #[test]
-    fn invalid_support_cannot_enter_through_json() {
+    fn missing_source_cannot_enter_through_json() {
         let json = r#"{
             "id":"B",
             "revision":0,
@@ -858,47 +733,13 @@ mod tests {
     }
 
     #[test]
-    fn legacy_estimates_default_to_distribution_sources() {
-        let json = r#"{
-            "id":"A",
-            "revision":0,
-            "distribution":{"type":"beta","alpha":2.0,"beta":3.0}
-        }"#;
-        let estimate = serde_json::from_str::<Estimate<Probability>>(json).unwrap();
-        assert_eq!(estimate.source, EstimateSource::Distribution);
-        assert_eq!(estimate.uncertainty, EstimateUncertainty::default());
-        assert!(
-            !serde_json::to_string(&estimate)
-                .unwrap()
-                .contains("uncertainty")
-        );
-    }
-
-    #[test]
-    fn legacy_normalized_states_gain_explicit_standardized_quantity_metadata() {
-        let json = r#"{
-            "id":"A",
-            "revision":0,
-            "distribution":{"type":"beta","alpha":2.0,"beta":3.0}
-        }"#;
-        let estimate = serde_json::from_str::<Estimate<NormalizedState>>(json).unwrap();
-        let serialized = serde_json::to_value(&estimate).unwrap();
-
-        assert_eq!(estimate.distribution, Distribution::beta(2.0, 3.0).unwrap());
-        assert_eq!(serialized["quantity"]["unit"], "standardized_state");
-        assert_eq!(serialized["quantity"]["support"]["lower"], 0.0);
-        assert_eq!(serialized["quantity"]["support"]["upper"], 1.0);
-
-        let mut conflicting = serialized;
-        conflicting["quantity"]["unit"] = serde_json::json!("probability");
-        assert!(serde_json::from_value::<Estimate<NormalizedState>>(conflicting).is_err());
-    }
-
-    #[test]
     fn uncertainty_sources_round_trip_without_changing_the_distribution() {
-        let mut estimate =
-            Estimate::<Probability>::new(EstimateId::new(0), Distribution::beta(2.0, 3.0).unwrap())
-                .unwrap();
+        let mut estimate = Estimate::<Probability>::from_squiggle(
+            EstimateId::new(0),
+            definition("beta(2, 3)", Unit::dimensionless()),
+            &Unit::dimensionless(),
+        )
+        .unwrap();
         estimate.uncertainty = EstimateUncertainty::new(
             "  Limited calibration data  ",
             "Week-to-week demand variation",
@@ -915,107 +756,8 @@ mod tests {
     }
 
     #[test]
-    fn explicit_anchors_convert_direct_and_squiggle_legacy_state() {
-        let quantity = QuantityDefinition::with_dimension(
-            "days",
-            Some(Unit::base("day").unwrap()),
-            None,
-            QuantitySupport::Bounded {
-                lower: 10.0,
-                upper: 30.0,
-            },
-        )
-        .unwrap();
-        let mapping = LegacyStateMapping {
-            state_zero: 10.0,
-            state_one: 30.0,
-        };
-        let direct = Estimate::<NormalizedState>::new(
-            EstimateId::new(0),
-            Distribution::beta(2.0, 2.0).unwrap(),
-        )
-        .unwrap()
-        .into_native_quantity(&quantity, mapping)
-        .unwrap();
-        assert_eq!(direct.distribution.mean(), 20.0);
-        assert_eq!(direct.quantity, Some(quantity.clone()));
-
-        let squiggle = Estimate::<NormalizedState>::from_squiggle(
-            EstimateId::new(1),
-            SquiggleEstimateDefinition {
-                source: "pointMass(0.25)".to_owned(),
-                seed: 42,
-                sample_count: 256,
-                target_unit: Unit::dimensionless(),
-            },
-            &Unit::dimensionless(),
-        )
-        .unwrap()
-        .into_native_quantity(&quantity, mapping)
-        .unwrap();
-        assert_eq!(squiggle.distribution.mean(), 15.0);
-        assert!(
-            squiggle
-                .distribution
-                .retained_draws()
-                .is_some_and(|draws| draws.len() == 256 && draws.iter().all(|value| *value == 15.0))
-        );
-        let EstimateSource::Squiggle { definition, .. } = squiggle.source else {
-            panic!("expected converted Squiggle source")
-        };
-        assert_eq!(definition.target_unit, Unit::base("day").unwrap());
-        assert!(definition.source.contains("pointMass(0.25)"));
-    }
-
-    #[test]
-    fn fermi_sources_round_trip_and_reject_tampered_results() {
-        let formula = Formula::Literal {
-            distribution: Distribution::point(0.5).unwrap(),
-            unit: Unit::dimensionless(),
-        };
-        let assessment = assess_fermi(
-            &ProjectId::new("A").unwrap(),
-            formula.clone(),
-            FermiEstimateSupport::Probability,
-            Unit::dimensionless(),
-            MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
-        )
-        .unwrap();
-        let definition = FermiEstimateDefinition {
-            language: FermiExpressionLanguage::OptimistSquiggleV1,
-            equation: "confidence".to_owned(),
-            variables: vec![FermiVariable {
-                name: "confidence".to_owned(),
-                estimate: 0.5,
-                unit: String::new(),
-                uncertainty: FermiVariableUncertainty::ThreePoint {
-                    low: 0.5,
-                    high: 0.5,
-                },
-            }],
-            formula,
-            monte_carlo: MonteCarloConfig::new(42, 100, 1_000, 0.01, 0.01).unwrap(),
-        };
-        let estimate =
-            Estimate::<Probability>::from_fermi(EstimateId::new(0), definition, assessment)
-                .unwrap();
-        let value = serde_json::to_value(&estimate).unwrap();
-        assert_eq!(
-            serde_json::from_value::<Estimate<Probability>>(value.clone()).unwrap(),
-            estimate
-        );
-
-        let mut tampered = value;
-        tampered["distribution"] = serde_json::json!({
-            "type": "point",
-            "value": 0.75
-        });
-        assert!(serde_json::from_value::<Estimate<Probability>>(tampered).is_err());
-    }
-
-    #[test]
     fn squiggle_sources_round_trip_and_reject_tampered_effective_samples() {
-        let estimate = Estimate::<NormalizedState>::from_squiggle(
+        let estimate = Estimate::<Probability>::from_squiggle(
             EstimateId::new(0),
             SquiggleEstimateDefinition {
                 source: "beta(2, 2)".to_owned(),
@@ -1028,16 +770,16 @@ mod tests {
         .unwrap();
         let value = serde_json::to_value(&estimate).unwrap();
         assert_eq!(
-            serde_json::from_value::<Estimate<NormalizedState>>(value.clone()).unwrap(),
+            serde_json::from_value::<Estimate<Probability>>(value.clone()).unwrap(),
             estimate
         );
         let mut rounded = value.clone();
         let sample = rounded["distribution"]["samples"][3].as_f64().unwrap();
         rounded["distribution"]["samples"][3] =
             serde_json::json!(f64::from_bits(sample.to_bits() + 1));
-        assert!(serde_json::from_value::<Estimate<NormalizedState>>(rounded).is_ok());
+        assert!(serde_json::from_value::<Estimate<Probability>>(rounded).is_ok());
         let mut tampered = value;
         tampered["distribution"]["samples"][0] = serde_json::json!(2.0);
-        assert!(serde_json::from_value::<Estimate<NormalizedState>>(tampered).is_err());
+        assert!(serde_json::from_value::<Estimate<Probability>>(tampered).is_err());
     }
 }

@@ -15,8 +15,6 @@ pub(super) fn build(
                 direction.ok_or_else(|| invalid("Outcome nodes require `--direction`."))?;
             Ok(NodePayload::Outcome(Outcome {
                 direction: direction.into(),
-                current: None,
-                desired: None,
                 evidence: vec![],
             }))
         }
@@ -28,8 +26,6 @@ pub(super) fn build(
         }
         NodeType::Factor if direction.is_none() && unit.is_none() && aggregation.is_none() => {
             Ok(NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable,
                 evidence: vec![],
             }))

@@ -27,12 +27,11 @@ const emit = defineEmits<{
 const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('signed', {}))
 const sourceValid = ref(true)
 const confirmRemove = ref(false)
-const signed = computed(() => props.slot?.kind === 'effect' || props.slot?.kind === 'degree')
+const signed = computed(() => props.slot?.kind === 'degree')
 const existing = computed(() => {
   if (!props.edge || !props.slot) return null
   if (props.edge.payload.kind === 'contributes' || props.edge.payload.kind === 'changes') {
-    if (props.slot.kind === 'effect') return props.edge.payload.properties.effect ?? null
-    if (props.slot.kind === 'response') return props.edge.payload.properties.response?.destination_change ?? null
+    if (props.slot.kind === 'response') return props.edge.payload.properties.response.destination_change
     if (props.slot.kind === 'lag') return props.edge.payload.properties.lag
   }
   if (props.edge.payload.kind === 'blocks' && props.slot.kind === 'degree') {
@@ -41,7 +40,6 @@ const existing = computed(() => {
   return null
 })
 const title = computed(() => {
-  if (props.slot?.kind === 'effect') return 'Causal effect'
   if (props.slot?.kind === 'response') return 'Destination response'
   if (props.slot?.kind === 'degree') return 'Blocking degree'
   return 'Causal lag'
@@ -50,8 +48,7 @@ const expectedUnit = computed<Unit>(() => {
   if (props.slot?.kind === 'lag') return { duration: 1 }
   if (
     props.slot?.kind === 'response' &&
-    props.edge?.payload.kind === 'contributes' &&
-    props.edge.payload.properties.response
+    (props.edge?.payload.kind === 'contributes' || props.edge?.payload.kind === 'changes')
   ) {
     return props.edge.payload.properties.response.destination_unit
   }
@@ -62,16 +59,12 @@ watch(
   () => [props.open, props.edge, props.slot] as const,
   ([open]) => {
     if (!open || !props.slot) return
-    source.value = existing.value?.source?.type === 'fermi'
-      ? { type: 'fermi', definition: existing.value.source.definition }
-      : existing.value?.source?.type === 'squiggle'
-        ? { type: 'squiggle', definition: existing.value.source.definition }
-        : existing.value
-          ? { type: 'distribution', distribution: existing.value.distribution }
-          : defaultSquiggleSourceInput(
-              signed.value ? 'signed' : props.slot.kind === 'response' ? 'real' : 'non_negative',
-              expectedUnit.value,
-            )
+    source.value = existing.value
+      ? { type: 'squiggle', definition: existing.value.source.definition }
+      : defaultSquiggleSourceInput(
+          signed.value ? 'signed' : props.slot.kind === 'response' ? 'real' : 'non_negative',
+          expectedUnit.value,
+        )
     sourceValid.value = true
     confirmRemove.value = false
   },

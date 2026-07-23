@@ -7,17 +7,17 @@ const nodes: GraphNode[] = [
   {
     id: 'A', revision: 0, name: 'wide_reach', normalized_name: 'wide_reach', title: 'Wide reach',
     description: '', aliases: [], metadata: {},
-    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: true, evidence: [] } },
+    payload: { kind: 'factor', properties: { controllable: true, evidence: [] } },
   },
   {
     id: 'B', revision: 0, name: 'documented', normalized_name: 'documented', title: 'Documented',
     description: '', aliases: [], metadata: {},
-    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
+    payload: { kind: 'factor', properties: { controllable: false, evidence: [] } },
   },
   ...['C', 'D'].map((id) => ({
     id, revision: 0, name: `outcome_${id}`, normalized_name: `outcome_${id}`, title: `Outcome ${id}`,
     description: '', aliases: [], metadata: {},
-    payload: { kind: 'outcome' as const, properties: { direction: 'maximize' as const, current: null, desired: null, evidence: [] } },
+    payload: { kind: 'outcome' as const, properties: { direction: 'maximize' as const, evidence: [] } },
   })),
 ]
 const edge = (source: string, destination: string) => ({ source, kind: 'contributes' as const, destination })

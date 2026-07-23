@@ -60,8 +60,6 @@ mod tests {
                 "flow".to_owned(),
                 "Flow".to_owned(),
                 NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: true,
                     evidence: vec![],
                 }),

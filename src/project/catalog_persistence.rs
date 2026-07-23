@@ -19,10 +19,8 @@ use indradb::MemoryDatastore;
 
 use super::{ProjectArchive, ProjectCatalog, ProjectError, catalog::ProjectEntry};
 
-const LEGACY_SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 const PROJECT_SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const PROJECT_METADATA_SCHEMA_VERSION: u32 = 1;
-const LEGACY_SNAPSHOT_FILE: &str = "catalog.json";
 const PROJECTS_DIRECTORY: &str = "projects";
 const PROJECT_METADATA_FILE: &str = "meta.json";
 const PROJECT_SNAPSHOT_FILE: &str = "project.json";
@@ -56,20 +54,12 @@ pub enum CatalogPersistenceError {
         #[source]
         source: serde_json::Error,
     },
-    /// The snapshot declares an unsupported forward or legacy schema version.
+    /// The snapshot declares an unsupported schema version.
     #[error("catalog snapshot schema {0} is unsupported")]
     UnsupportedSchema(u32),
     /// A pending command uses a journal schema this server cannot safely replay.
     #[error("command journal schema {0} is unsupported")]
     UnsupportedJournalSchema(u32),
-    /// A known older snapshot could not be transformed into the next schema.
-    #[error("could not migrate catalog snapshot schema {version}: {reason}")]
-    Migration {
-        /// Schema version being migrated.
-        version: u32,
-        /// Structural problem which made the migration unsafe.
-        reason: String,
-    },
     /// One embedded canonical project archive or allocator failed validation.
     #[error("catalog snapshot contains invalid project state")]
     Project(#[from] ProjectError),
@@ -91,15 +81,7 @@ impl CatalogStore {
     }
 
     pub(crate) fn load(&self) -> Result<ProjectCatalog, CatalogPersistenceError> {
-        let legacy = self.root.join(LEGACY_SNAPSHOT_FILE);
-        let mut catalog = if legacy.exists() {
-            let mut catalog = self.load_file(&legacy, false)?;
-            self.save(&mut catalog)?;
-            fs::remove_file(&legacy).map_err(|source| io_error(legacy, source))?;
-            catalog
-        } else {
-            self.load_project_directories()?
-        };
+        let mut catalog = self.load_project_directories()?;
         let _ = self.recover_pending_mutations(&mut catalog)?;
         Ok(catalog)
     }
@@ -143,41 +125,6 @@ impl CatalogStore {
         }
         projects.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(projects)
-    }
-
-    pub(super) fn load_file(
-        &self,
-        path: &Path,
-        rewrite_migration: bool,
-    ) -> Result<ProjectCatalog, CatalogPersistenceError> {
-        let path = path.to_path_buf();
-        let metadata = match fs::metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(ProjectCatalog::new());
-            }
-            Err(source) => return Err(io_error(path, source)),
-        };
-        if metadata.len() > MAX_SNAPSHOT_BYTES {
-            return Err(CatalogPersistenceError::TooLarge { path });
-        }
-        let bytes = fs::read(&path).map_err(|source| io_error(path.clone(), source))?;
-        let mut document: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|source| CatalogPersistenceError::Json {
-                path: path.clone(),
-                source,
-            })?;
-        migrate_legacy(&mut document)?;
-        let snapshot: LegacyCatalogSnapshot =
-            serde_json::from_value(document).map_err(|source| CatalogPersistenceError::Json {
-                path: path.clone(),
-                source,
-            })?;
-        let mut catalog = ProjectCatalog::from_legacy_snapshot(snapshot)?;
-        if rewrite_migration {
-            self.save(&mut catalog)?;
-        }
-        Ok(catalog)
     }
 
     pub(crate) fn save(&self, catalog: &mut ProjectCatalog) -> Result<(), CatalogPersistenceError> {
@@ -355,11 +302,8 @@ impl CatalogStore {
                 source,
             })?;
             if metadata.schema_version != PROJECT_METADATA_SCHEMA_VERSION {
-                return Err(CatalogPersistenceError::Project(
-                    ProjectError::InvalidArchivePath(format!(
-                        "invalid project metadata {}",
-                        metadata_path.display()
-                    )),
+                return Err(CatalogPersistenceError::UnsupportedSchema(
+                    metadata.schema_version,
                 ));
             }
             if metadata.deleted {
@@ -396,8 +340,12 @@ impl CatalogStore {
                     }
                 })?;
             let snapshot_project = &document.project.archive.project;
-            if document.schema_version != PROJECT_SNAPSHOT_SCHEMA_VERSION
-                || snapshot_project.id != metadata_project.id
+            if document.schema_version != PROJECT_SNAPSHOT_SCHEMA_VERSION {
+                return Err(CatalogPersistenceError::UnsupportedSchema(
+                    document.schema_version,
+                ));
+            }
+            if snapshot_project.id != metadata_project.id
                 || snapshot_project.name != metadata_project.name
             {
                 return Err(CatalogPersistenceError::Project(
@@ -443,13 +391,6 @@ struct ProjectMetadataDocument {
 struct ProjectSnapshotDocument {
     schema_version: u32,
     project: PersistedProject,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct LegacyCatalogSnapshot {
-    schema_version: u32,
-    next_project_id: Option<u64>,
-    projects: Vec<PersistedProject>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -532,8 +473,6 @@ impl ProjectCatalog {
         command: &GraphCommand,
     ) -> Result<EstimateTransactionSnapshot, ProjectError> {
         let address = match command {
-            GraphCommand::SetEstimate(command) => &command.address,
-            GraphCommand::SetFermiEstimate(command) => &command.address,
             GraphCommand::SetSquiggleEstimate(command) => &command.address,
             _ => unreachable!("estimate transaction requires an estimate-set command"),
         };
@@ -602,17 +541,6 @@ impl ProjectCatalog {
         })
     }
 
-    fn from_legacy_snapshot(
-        snapshot: LegacyCatalogSnapshot,
-    ) -> Result<Self, CatalogPersistenceError> {
-        if snapshot.schema_version != LEGACY_SNAPSHOT_SCHEMA_VERSION {
-            return Err(CatalogPersistenceError::UnsupportedSchema(
-                snapshot.schema_version,
-            ));
-        }
-        Self::from_persisted_projects(snapshot.next_project_id, snapshot.projects)
-    }
-
     fn from_persisted_projects(
         next_project_id: Option<u64>,
         projects: Vec<PersistedProject>,
@@ -677,14 +605,6 @@ fn clone_entry(entry: &ProjectEntry) -> Result<ProjectEntry, ProjectError> {
     })
 }
 
-fn schema_version(document: &serde_json::Value) -> Result<u32, CatalogPersistenceError> {
-    document
-        .get("schema_version")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-        .ok_or_else(|| migration_error(0, "schema_version must be a u32"))
-}
-
 fn read_bounded(path: &Path) -> Result<Vec<u8>, CatalogPersistenceError> {
     read_bounded_to(path, MAX_SNAPSHOT_BYTES)
 }
@@ -701,64 +621,6 @@ fn read_bounded_to(path: &Path, maximum: u64) -> Result<Vec<u8>, CatalogPersiste
 
 fn project_directory(directory: &Path, project: &crate::domain::ProjectId) -> PathBuf {
     directory.join(project.as_str())
-}
-
-fn migrate_legacy(document: &mut serde_json::Value) -> Result<(), CatalogPersistenceError> {
-    let version = schema_version(document)?;
-    match version {
-        LEGACY_SNAPSHOT_SCHEMA_VERSION => Ok(()),
-        1 => {
-            migrate_v1_to_v2(document)?;
-            Ok(())
-        }
-        unsupported => Err(CatalogPersistenceError::UnsupportedSchema(unsupported)),
-    }
-}
-
-fn migrate_v1_to_v2(document: &mut serde_json::Value) -> Result<(), CatalogPersistenceError> {
-    let projects = document
-        .get_mut("projects")
-        .and_then(serde_json::Value::as_array_mut)
-        .ok_or_else(|| migration_error(1, "projects must be an array"))?;
-    for project in projects {
-        let object = project
-            .as_object_mut()
-            .ok_or_else(|| migration_error(1, "each project must be an object"))?;
-        let project_revision = object
-            .get("archive")
-            .and_then(|archive| archive.get("project"))
-            .and_then(|project| project.get("revision"))
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| migration_error(1, "archive project revision must be a u64"))?;
-        let history_start_missing = object
-            .get("change_history_start")
-            .is_none_or(serde_json::Value::is_null);
-        let changes = object
-            .entry("changes")
-            .or_insert_with(|| serde_json::Value::Array(vec![]))
-            .as_array()
-            .ok_or_else(|| migration_error(1, "changes must be an array"))?;
-        if history_start_missing {
-            let history_start = changes
-                .first()
-                .and_then(|change| change.get("base_revision"))
-                .and_then(serde_json::Value::as_u64)
-                .unwrap_or(project_revision);
-            object.insert(
-                "change_history_start".to_owned(),
-                serde_json::Value::from(history_start),
-            );
-        }
-    }
-    document["schema_version"] = serde_json::Value::from(LEGACY_SNAPSHOT_SCHEMA_VERSION);
-    Ok(())
-}
-
-fn migration_error(version: u32, reason: &str) -> CatalogPersistenceError {
-    CatalogPersistenceError::Migration {
-        version,
-        reason: reason.to_owned(),
-    }
 }
 
 fn restore_changes(
@@ -901,8 +763,6 @@ mod tests {
             name: name.to_owned(),
             title: name.to_owned(),
             payload: NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
@@ -917,20 +777,10 @@ mod tests {
         }
     }
 
-    fn write_legacy_snapshot(root: &Path, catalog: &mut ProjectCatalog) -> PathBuf {
-        let ids = catalog.projects.keys().cloned().collect::<Vec<_>>();
-        let projects = ids
-            .iter()
-            .map(|project| catalog.persisted_project(project).unwrap())
-            .collect();
-        let snapshot = LegacyCatalogSnapshot {
-            schema_version: LEGACY_SNAPSHOT_SCHEMA_VERSION,
-            next_project_id: catalog.next_project_id,
-            projects,
-        };
-        let path = root.join(LEGACY_SNAPSHOT_FILE);
-        fs::write(&path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
-        path
+    fn snapshot_path(root: &Path, project: &crate::domain::ProjectId) -> PathBuf {
+        root.join(PROJECTS_DIRECTORY)
+            .join(project.as_str())
+            .join(PROJECT_SNAPSHOT_FILE)
     }
 
     fn scenario(name: &str) -> ScenarioDraft {
@@ -1074,24 +924,24 @@ mod tests {
     #[test]
     fn rejects_corrupt_and_unsupported_snapshots() {
         let fixture = Fixture::new();
-        let path = fixture.root.join(LEGACY_SNAPSHOT_FILE);
+        let store = CatalogStore::new(fixture.root.clone());
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        store.save(&mut catalog).unwrap();
+        let path = snapshot_path(&fixture.root, &project.id);
+        let valid = fs::read(&path).unwrap();
         fs::write(&path, b"not json").unwrap();
         assert!(matches!(
-            CatalogStore::new(fixture.root.clone()).load(),
+            store.load(),
             Err(CatalogPersistenceError::Json { .. })
         ));
-        fs::write(
-            &path,
-            serde_json::to_vec(&serde_json::json!({
-                "schema_version": 99,
-                "next_project_id": 0,
-                "projects": []
-            }))
-            .unwrap(),
-        )
-        .unwrap();
+        fs::write(&path, valid).unwrap();
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document["schema_version"] = serde_json::Value::from(99);
+        fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
         assert!(matches!(
-            CatalogStore::new(fixture.root.clone()).load(),
+            store.load(),
             Err(CatalogPersistenceError::UnsupportedSchema(99))
         ));
     }
@@ -1113,10 +963,11 @@ mod tests {
                 None,
             )
             .unwrap();
-        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
+        store.save(&mut catalog).unwrap();
+        let path = snapshot_path(&fixture.root, &project.id);
         let mut value: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        value["projects"][0]["changes"][0]["request_id"] =
+        value["project"]["changes"][0]["request_id"] =
             serde_json::Value::String(Uuid::nil().to_string());
         let corrupted = serde_json::to_vec(&value).unwrap();
         fs::write(&path, &corrupted).unwrap();
@@ -1126,134 +977,6 @@ mod tests {
             Err(CatalogPersistenceError::Project(_))
         ));
         assert_eq!(fs::read(path).unwrap(), corrupted);
-    }
-
-    #[test]
-    fn migrates_v1_replay_and_idempotency_then_rewrites_v2() {
-        let fixture = Fixture::new();
-        let store = CatalogStore::new(fixture.root.clone());
-        let mut catalog = ProjectCatalog::new();
-        let project = catalog.create("Delivery".to_owned()).unwrap();
-        let request = CommandRequest {
-            request_id: Uuid::nil(),
-            expected_revision: 0,
-            command: GraphCommand::CreateNode(factor("flow")),
-        };
-        let first = catalog.execute(&project.id, request.clone()).unwrap();
-        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        value["schema_version"] = serde_json::Value::from(1);
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-
-        let mut migrated = store.load().unwrap();
-        assert_eq!(
-            migrated
-                .replay_changes(&project.id, 0)
-                .unwrap()
-                .changes
-                .len(),
-            1
-        );
-        assert_eq!(migrated.execute(&project.id, request).unwrap(), first);
-        assert!(!path.exists());
-        let rewritten: ProjectSnapshotDocument = serde_json::from_slice(
-            &fs::read(
-                fixture
-                    .root
-                    .join(PROJECTS_DIRECTORY)
-                    .join(project.id.as_str())
-                    .join(PROJECT_SNAPSHOT_FILE),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(rewritten.schema_version, PROJECT_SNAPSHOT_SCHEMA_VERSION);
-        assert_eq!(rewritten.project.change_history_start, 0);
-        assert_eq!(rewritten.project.changes.len(), 1);
-    }
-
-    #[test]
-    fn migrates_pre_replay_v1_to_a_safe_history_floor() {
-        let fixture = Fixture::new();
-        let store = CatalogStore::new(fixture.root.clone());
-        let mut catalog = ProjectCatalog::new();
-        let project = catalog.create("Delivery".to_owned()).unwrap();
-        catalog
-            .execute(
-                &project.id,
-                CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
-            )
-            .unwrap();
-        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        value["schema_version"] = serde_json::Value::from(1);
-        value["projects"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("change_history_start");
-        value["projects"][0]
-            .as_object_mut()
-            .unwrap()
-            .remove("changes");
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-
-        let mut migrated = store.load().unwrap();
-        assert!(matches!(
-            migrated.replay_changes(&project.id, 0),
-            Err(ProjectError::ChangeHistoryGap {
-                available_after: 1,
-                ..
-            })
-        ));
-        assert!(
-            migrated
-                .replay_changes_with_snapshot(&project.id, 0)
-                .unwrap()
-                .snapshot
-                .is_some()
-        );
-        assert!(!path.exists());
-        let rewritten: ProjectSnapshotDocument = serde_json::from_slice(
-            &fs::read(
-                fixture
-                    .root
-                    .join(PROJECTS_DIRECTORY)
-                    .join(project.id.as_str())
-                    .join(PROJECT_SNAPSHOT_FILE),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(rewritten.project.change_history_start, 1);
-        assert!(rewritten.project.changes.is_empty());
-    }
-
-    #[test]
-    fn failed_v1_integrity_validation_does_not_rewrite_snapshot() {
-        let fixture = Fixture::new();
-        let store = CatalogStore::new(fixture.root.clone());
-        let mut catalog = ProjectCatalog::new();
-        let project = catalog.create("Delivery".to_owned()).unwrap();
-        catalog
-            .execute(
-                &project.id,
-                CommandRequest::new(0, GraphCommand::CreateNode(factor("flow"))),
-            )
-            .unwrap();
-        let path = write_legacy_snapshot(&fixture.root, &mut catalog);
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        value["schema_version"] = serde_json::Value::from(1);
-        value["projects"][0]["change_history_start"] = serde_json::Value::from(0);
-        value["projects"][0]["changes"] = serde_json::json!([]);
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-
-        assert!(store.load().is_err());
-        let unchanged: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(unchanged["schema_version"], 1);
     }
 
     #[test]

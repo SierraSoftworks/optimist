@@ -14,50 +14,47 @@ const factor: GraphNode = {
   metadata: {},
   payload: {
     kind: 'factor',
-    properties: { current: null, desired: null, controllable: false, evidence: [] },
+    properties: { controllable: false, evidence: [] },
   },
 }
 
 describe('NodeInspector readiness', () => {
-  it('routes a missing current baseline to the estimate editor', async () => {
+  it('routes a missing quantity to native state setup', async () => {
     const wrapper = mount(NodeInspector, { props: { node: factor, edges: [] } })
     expect(wrapper.text()).toContain('Simulation blocked')
     await wrapper.get('.readiness-actions button').trigger('click')
-    expect(wrapper.emitted('estimate')).toHaveLength(1)
-  })
-
-  it('offers native state configuration before legacy state is authored', async () => {
-    const wrapper = mount(NodeInspector, { props: { node: factor, edges: [] } })
-    await wrapper.get('button:nth-child(3)').trigger('click')
     expect(wrapper.emitted('quantity')).toHaveLength(1)
   })
 
-  it('labels legacy normalized estimates as standardized quantities', () => {
+  it('offers native state configuration before estimates are authored', async () => {
+    const wrapper = mount(NodeInspector, { props: { node: factor, edges: [] } })
+    const button = wrapper.findAll('.inspector-actions button').find((item) => item.text().includes('Native state'))!
+    await button.trigger('click')
+    expect(wrapper.emitted('quantity')).toHaveLength(1)
+  })
+
+  it('labels native state estimates with their quantity', () => {
+    const quantity = {
+      unit: 'days', dimension: { day: 1 }, aggregation: null,
+      support: { type: 'bounded' as const, lower: 0, upper: 30 },
+    }
     const node: GraphNode = {
       ...factor,
-      payload: {
-        kind: 'factor',
-        properties: {
-          current: {
-            id: 'A',
-            revision: 0,
-            distribution: { type: 'beta', alpha: 2, beta: 3 },
-            quantity: {
-              unit: 'standardized_state',
-              dimension: {},
-              aggregation: null,
-              support: { type: 'bounded', lower: 0, upper: 1 },
-              operational_definition: 'Legacy standardized factor or outcome state where 0 and 1 are model-specific anchors.',
+      native_state: {
+        quantity,
+        current: {
+          id: 'A', revision: 0, distribution: { type: 'point', value: 12 }, quantity,
+          source: {
+            type: 'squiggle',
+            definition: { source: 'pointMass(12)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
+            assessment: {} as never,
             },
-          },
-          desired: null,
-          controllable: false,
-          evidence: [],
         },
+        forecast: null,
       },
     }
 
     const wrapper = mount(NodeInspector, { props: { node, edges: [] } })
-    expect(wrapper.text()).toContain('standardized_state · [0, 1]')
+    expect(wrapper.text()).toContain('days · [0, 30]')
   })
 })

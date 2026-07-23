@@ -1,4 +1,4 @@
-import type { EditableEdgePayload, EdgeKind, Estimate, GraphNode, NodeKind } from '../api/types'
+import type { EditableEdgePayload, EdgeKind, Estimate, GraphNode, NodeKind, Unit } from '../api/types'
 
 export const edgeKinds: Array<{ kind: EdgeKind; label: string }> = [
   { kind: 'contributes', label: 'Contributes' },
@@ -73,10 +73,22 @@ interface PayloadInput {
 }
 
 function estimate(id: string, value: number) {
+  return pointEstimate(id, value, {})
+}
+
+function pointEstimate(id: string, value: number, targetUnit: Unit): Estimate {
   return {
     id,
     revision: 0,
     distribution: { type: 'point' as const, value },
+    source: {
+      type: 'squiggle',
+      definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: targetUnit },
+      assessment: {
+        family: 'PointMass', mean: value, variance: 0, p05: value, p50: value, p95: value,
+        seed: 42, sample_count: 256,
+      },
+    },
     provenance: [],
   }
 }
@@ -84,13 +96,9 @@ function estimate(id: string, value: number) {
 export function edgePayload(input: PayloadInput): EditableEdgePayload {
   switch (input.kind) {
     case 'contributes':
-      if (input.source?.payload.kind === 'metric' || input.destination?.payload.kind === 'metric') {
-        return nativeCausal(input, 'contributes')
-      }
-      return normalizedCausal(input, 'contributes')
+      return causal(input, 'contributes')
     case 'changes':
-      if (input.destination?.payload.kind === 'metric') return nativeCausal(input, 'changes')
-      return normalizedCausal(input, 'changes')
+      return causal(input, 'changes')
     case 'measures':
       return { kind: 'measures', properties: { polarity: input.polarity, observations: [] } }
     case 'requires':
@@ -109,7 +117,7 @@ export function edgePayload(input: PayloadInput): EditableEdgePayload {
   }
 }
 
-function nativeCausal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableEdgePayload {
+function causal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableEdgePayload {
   if (!input.source || !input.destination || !input.sourceChange) {
     throw new Error('Native causal responses require a nonzero source change.')
   }
@@ -131,19 +139,7 @@ function nativeCausal(input: PayloadInput, kind: 'contributes' | 'changes'): Edi
         destination_change: destinationChange,
         destination_unit: destinationUnit,
       },
-      lag: input.lag === null ? null : estimate('B', input.lag),
-      mechanism: input.mechanism,
-      evidence: evidence(input.evidence),
-    },
-  }
-}
-
-function normalizedCausal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableEdgePayload {
-  return {
-    kind,
-    properties: {
-      effect: estimate('A', input.effect),
-      lag: input.lag === null ? null : estimate('B', input.lag),
+      lag: input.lag === null ? null : pointEstimate('B', input.lag, { duration: 1 }),
       mechanism: input.mechanism,
       evidence: evidence(input.evidence),
     },
@@ -155,5 +151,7 @@ function evidence(value: string) {
 }
 
 export function nodeUnit(node: GraphNode) {
-  return node.payload.kind === 'metric' ? node.payload.properties.dimension ?? null : {}
+  if (node.payload.kind === 'intervention') return {}
+  if (node.payload.kind === 'metric') return node.payload.properties.quantity.dimension ?? null
+  return node.native_state?.quantity.dimension ?? null
 }

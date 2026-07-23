@@ -20,20 +20,7 @@ pub(crate) fn from_node(
         return Ok(formulas);
     }
     match &node.payload {
-        NodePayload::Outcome(value) => states(
-            project,
-            &owner,
-            &value.current,
-            &value.desired,
-            &mut formulas,
-        ),
-        NodePayload::Factor(value) => states(
-            project,
-            &owner,
-            &value.current,
-            &value.desired,
-            &mut formulas,
-        ),
+        NodePayload::Outcome(_) | NodePayload::Factor(_) => {}
         NodePayload::Intervention(value) => {
             for cost in &value.costs {
                 push(
@@ -79,24 +66,13 @@ pub(crate) fn from_edge(project: &ProjectId, edge: &Edge) -> Vec<(EstimateAddres
     let mut formulas = Vec::new();
     match &edge.payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            if let Some(effect) = value.normalized_effect() {
-                push(
-                    project,
-                    &owner,
-                    effect,
-                    Unit::dimensionless(),
-                    &mut formulas,
-                );
-            }
-            if let Some(response) = value.linear_response() {
-                push(
-                    project,
-                    &owner,
-                    &response.destination_change,
-                    response.destination_unit.clone(),
-                    &mut formulas,
-                );
-            }
+            push(
+                project,
+                &owner,
+                &value.response.destination_change,
+                value.response.destination_unit.clone(),
+                &mut formulas,
+            );
             optional(
                 project,
                 &owner,
@@ -117,17 +93,6 @@ pub(crate) fn from_edge(project: &ProjectId, edge: &Edge) -> Vec<(EstimateAddres
         _ => {}
     }
     formulas
-}
-
-fn states(
-    project: &ProjectId,
-    owner: &EstimateOwner,
-    current: &Option<Estimate<crate::domain::NormalizedState>>,
-    desired: &Option<Estimate<crate::domain::NormalizedState>>,
-    formulas: &mut Vec<(EstimateAddress, Formula)>,
-) {
-    optional(project, owner, current, Unit::dimensionless(), formulas);
-    optional(project, owner, desired, Unit::dimensionless(), formulas);
 }
 
 fn optional<T: EstimateDimension>(

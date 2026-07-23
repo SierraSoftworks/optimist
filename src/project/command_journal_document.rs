@@ -17,11 +17,6 @@ struct CommandJournal {
     mutations: Vec<PendingMutation>,
 }
 
-#[derive(Deserialize)]
-struct LegacyCommandJournalV2 {
-    mutation: PendingMutation,
-}
-
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum PendingMutation {
@@ -34,12 +29,6 @@ pub(super) enum PendingMutation {
         request: CommandBatchRequest,
         compensates: Option<uuid::Uuid>,
     },
-}
-
-#[derive(Deserialize)]
-struct LegacyPendingCommand {
-    project: ProjectId,
-    request: CommandRequest,
 }
 
 pub(super) fn encode(mutations: Vec<PendingMutation>) -> Vec<u8> {
@@ -59,37 +48,15 @@ pub(super) fn decode(
             path: path.to_path_buf(),
             source,
         })?;
-    let version = document
-        .get("schema_version")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|version| u32::try_from(version).ok())
-        .unwrap_or_default();
-    match version {
-        1 => {
-            let legacy: LegacyPendingCommand =
-                serde_json::from_value(document).map_err(|source| {
-                    CatalogPersistenceError::Json {
-                        path: path.to_path_buf(),
-                        source,
-                    }
-                })?;
-            Ok(vec![PendingMutation::Command {
-                project: legacy.project,
-                request: Box::new(legacy.request),
-            }])
-        }
-        2 => serde_json::from_value::<LegacyCommandJournalV2>(document)
-            .map(|journal| vec![journal.mutation])
-            .map_err(|source| CatalogPersistenceError::Json {
-                path: path.to_path_buf(),
-                source,
-            }),
-        JOURNAL_SCHEMA_VERSION => serde_json::from_value::<CommandJournal>(document)
-            .map(|journal| journal.mutations)
-            .map_err(|source| CatalogPersistenceError::Json {
-                path: path.to_path_buf(),
-                source,
-            }),
-        version => Err(CatalogPersistenceError::UnsupportedJournalSchema(version)),
+    let journal: CommandJournal =
+        serde_json::from_value(document).map_err(|source| CatalogPersistenceError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if journal.schema_version != JOURNAL_SCHEMA_VERSION {
+        return Err(CatalogPersistenceError::UnsupportedJournalSchema(
+            journal.schema_version,
+        ));
     }
+    Ok(journal.mutations)
 }

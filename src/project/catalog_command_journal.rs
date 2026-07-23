@@ -15,7 +15,6 @@ use super::{
     command_journal_document::{PendingMutation, decode, encode},
 };
 
-const LEGACY_JOURNAL_FILE: &str = "command-journal.json";
 const PROJECTS_DIRECTORY: &str = "projects";
 const JOURNAL_FILE: &str = "journal.json";
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
@@ -160,7 +159,7 @@ impl CatalogStore {
         for project in self.read_project_journals_unlocked()?.keys() {
             self.remove_journal_unlocked(&self.project_journal_path(project))?;
         }
-        self.remove_journal_unlocked(&self.root.join(LEGACY_JOURNAL_FILE))
+        Ok(())
     }
 
     fn remove_journal_unlocked(&self, path: &Path) -> Result<(), CatalogPersistenceError> {
@@ -182,7 +181,7 @@ impl CatalogStore {
     fn read_pending_mutations_unlocked(
         &self,
     ) -> Result<Vec<PendingMutation>, CatalogPersistenceError> {
-        let mut mutations = self.read_journal_unlocked(&self.root.join(LEGACY_JOURNAL_FILE))?;
+        let mut mutations = Vec::new();
         for (_, project_mutations) in self.read_project_journals_unlocked()? {
             mutations.extend(project_mutations);
         }
@@ -265,7 +264,7 @@ mod tests {
         project::{CatalogPersistenceError, CatalogStore, ProjectCatalog},
     };
 
-    use super::{JOURNAL_FILE, LEGACY_JOURNAL_FILE, PROJECTS_DIRECTORY};
+    use super::{JOURNAL_FILE, PROJECTS_DIRECTORY};
 
     fn fixture() -> (std::path::PathBuf, CatalogStore, ProjectCatalog, ProjectId) {
         let root =
@@ -285,8 +284,6 @@ mod tests {
                 name: "flow".to_owned(),
                 title: "Flow".to_owned(),
                 payload: NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: false,
                     evidence: vec![],
                 }),
@@ -304,8 +301,6 @@ mod tests {
                     name: "quality".to_owned(),
                     title: "Quality".to_owned(),
                     payload: NodePayload::Factor(Factor {
-                        current: None,
-                        desired: None,
                         controllable: false,
                         evidence: vec![],
                     }),
@@ -424,35 +419,12 @@ mod tests {
     }
 
     #[test]
-    fn startup_recovers_legacy_v1_command_journals() {
-        let (root, store, _catalog, project) = fixture();
-        let path = root.join(LEGACY_JOURNAL_FILE);
-        fs::write(
-            &path,
-            serde_json::to_vec(&serde_json::json!({
-                "schema_version": 1,
-                "project": project,
-                "request": request(),
-            }))
-            .unwrap(),
-        )
-        .unwrap();
-
-        let mut restored = store.load().unwrap();
-        assert_eq!(restored.get(&project).unwrap().revision, 1);
-        assert_eq!(restored.list_nodes(&project).unwrap().len(), 1);
-        assert!(!path.exists());
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn unsupported_journal_schema_stops_startup_without_rewriting_it() {
         let (root, store, _catalog, project) = fixture();
-        let path = root.join(LEGACY_JOURNAL_FILE);
+        let path = project_journal(&root, &project);
         let bytes = serde_json::to_vec(&serde_json::json!({
             "schema_version": 4,
-            "project": project,
-            "request": request(),
+            "mutations": [],
         }))
         .unwrap();
         fs::write(&path, &bytes).unwrap();

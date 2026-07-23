@@ -14,7 +14,6 @@ mod estimate_address;
 mod estimate_slot;
 mod estimate_uncertainty;
 mod fermi_assessment;
-mod fermi_estimate;
 mod formula;
 mod formula_dependence;
 mod formula_document;
@@ -64,13 +63,12 @@ mod unit_ops;
 pub use edge::{Edge, EdgeError};
 pub use edge_id::{EdgeId, EdgeIdError, EdgeKind};
 pub use edge_payload::{
-    BlockingEffect, CausalEffect, CausalModel, CausalResponseError, EdgePayload, LinearResponse,
-    Measurement, MeasurementPolarity, Observation, Requirement,
+    BlockingEffect, CausalEffect, CausalResponseError, EdgePayload, LinearResponse, Measurement,
+    MeasurementPolarity, Observation, Requirement,
 };
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
-    EstimateId, EstimateSource, Money, NormalizedState, Probability, QuantityValue,
-    SignedInfluence,
+    EstimateId, EstimateSource, Money, Probability, QuantityValue, SignedInfluence,
 };
 pub use estimate_address::{
     EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
@@ -80,10 +78,6 @@ pub use estimate_uncertainty::{EstimateUncertainty, EstimateUncertaintyError};
 pub use fermi_assessment::{
     FermiAssessment, FermiAssessmentError, FermiEstimateSupport, FermiInterval,
     FermiRecommendation, assess_fermi,
-};
-pub use fermi_estimate::{
-    FermiEstimateDefinition, FermiEstimateError, FermiExpressionLanguage, FermiVariable,
-    FermiVariableUncertainty,
 };
 pub use formula::{CompiledFormula, Formula, FormulaError, FormulaSet};
 pub use formula_document::{FormulaCatalog, FormulaDefinition, FormulaDocument};
@@ -108,7 +102,7 @@ pub use project_dependence::{
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use quantity::{QuantityDefinition, QuantityError, QuantitySupport};
-pub use quantity_state::{LegacyStateMapping, QuantityState};
+pub use quantity_state::QuantityState;
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };

@@ -4,7 +4,10 @@ import { commandPreview, commandSuggestions, parseCommand } from './commandBar'
 
 const nodes = [
   { id: 'A', name: 'automation', title: 'Automation', payload: { kind: 'intervention' } },
-  { id: 'B', name: 'flow', title: 'Review flow', payload: { kind: 'factor' } },
+  {
+    id: 'B', name: 'flow', title: 'Review flow', payload: { kind: 'factor' },
+    native_state: { quantity: { unit: 'state', dimension: {}, aggregation: null }, current: null, forecast: null },
+  },
 ] as GraphNode[]
 
 describe('command bar grammar', () => {
@@ -14,21 +17,21 @@ describe('command bar grammar', () => {
       type: 'create_node',
       input: {
         name: 'fast_feedback',
-        payload: { kind: 'factor', properties: { controllable: true, current: null } },
+        payload: { kind: 'factor', properties: { controllable: true } },
       },
     })
-    expect(commandPreview(result.command!)).toContainEqual(['Setup', 'Current state needs a Squiggle estimate'])
+    expect(commandPreview(result.command!)).toContainEqual(['Setup', 'State quantity + current estimate required'])
   })
 
   it('validates relationship endpoints, values, and duplicates', () => {
-    expect(parseCommand('connect A changes B 0.4', nodes, []).command).toMatchObject({
+    expect(parseCommand('connect A changes B 1 0.4', nodes, []).command).toMatchObject({
       type: 'create_edge',
       input: { source: 'A', destination: 'B', payload: { kind: 'changes' } },
     })
-    expect(commandPreview(parseCommand('connect A changes B 0.4', nodes, []).command!))
-      .toContainEqual(['Effect', '0.4'])
-    expect(parseCommand('connect B changes A 0.4', nodes, []).diagnostic.severity).toBe('error')
-    expect(parseCommand('connect A changes B 2', nodes, []).diagnostic.message).toContain('-1 and 1')
+    expect(commandPreview(parseCommand('connect A changes B 1 0.4', nodes, []).command!))
+      .toContainEqual(['Destination change', '0.4'])
+    expect(parseCommand('connect B changes A 1 0.4', nodes, []).diagnostic.severity).toBe('error')
+    expect(parseCommand('connect A changes B 0 2', nodes, []).diagnostic.message).toContain('cannot be zero')
     expect(parseCommand('connect A changes B', nodes, [{ source: 'A', destination: 'B', payload: { kind: 'changes' } } as GraphEdge]).diagnostic.message).toContain('already exists')
   })
 
@@ -36,7 +39,7 @@ describe('command bar grammar', () => {
     const metric = {
       id: 'C', revision: 0, name: 'cycle_time', normalized_name: 'cycle_time', title: 'Cycle time',
       description: '', aliases: [], metadata: {},
-      payload: { kind: 'metric', properties: { unit: 'days', dimension: { day: 1 }, aggregation: null } },
+      payload: { kind: 'metric', properties: { quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null } } },
     } as GraphNode
     const graph = [...nodes, metric]
     expect(parseCommand('connect B contributes C', graph, []).diagnostic.message).toContain('source change')
@@ -85,7 +88,7 @@ describe('command bar grammar', () => {
       input: {
         payload: {
           kind: 'metric',
-          properties: { unit: 'days', dimension: { day: 1 } },
+          properties: { quantity: { unit: 'days', dimension: { day: 1 } } },
         },
       },
     })

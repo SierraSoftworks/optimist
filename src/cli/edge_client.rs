@@ -165,8 +165,6 @@ mod tests {
 
     fn factor() -> NodePayload {
         NodePayload::Factor(Factor {
-            current: None,
-            desired: None,
             controllable: false,
             evidence: vec![],
         })

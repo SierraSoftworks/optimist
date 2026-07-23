@@ -72,21 +72,19 @@ Analyze every candidate in a stored scenario independently:
 cargo run -- --project A scenario analyze A
 ```
 
-Every factor and objective on a candidate-to-objective causal path needs a `current` normalized-state estimate. Candidate interventions use their optional completion duration and probability of success. `changes`, `contributes`, and factor-to-state `blocks` effects provide sampled signed local effects.
+Every factor and objective on a candidate-to-objective causal path needs a native quantity and `current` estimate. Candidate interventions use their optional completion duration and probability of success. `changes` and `contributes` provide sampled unit-aware local responses.
 
-For sampled baseline $b_i$, state $x_i(t)$, persistent intervention shift $u_i(t)$, edge effect $e_{ji}$, and delay $d_{ji}$, Optimist applies the synchronous recurrence
+For sampled baseline $b_i$, state $x_i(t)$, persistent intervention shift $u_i(t)$, local response $\beta_{ji}$, and delay $d_{ji}$, Optimist applies the synchronous recurrence
 
 $$
-x_i(t) = \operatorname{clamp}\left(
-  b_i + u_i(t) + \sum_j e_{ji}\left(x_j(t-d_{ji})-b_j\right),
-  0,
-  1
+x_i(t) = \operatorname{clamp}_i\left(
+  b_i + u_i(t) + \sum_j \beta_{ji}\left(x_j(t-d_{ji})-b_j\right)
 \right).
 $$
 
-An effect with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. Intervention changes persist after their sampled completion and lag. The recurrence uses deviations from sampled baselines so an unchanged source contributes zero movement. Horizons are bounded to 10,000 periods.
+A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. Intervention changes persist after their sampled completion and lag. The recurrence uses deviations from sampled baselines so an unchanged source contributes zero movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. Horizons are bounded to 10,000 periods.
 
-Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, success, duration, lags, and edge effects are sampled once per joint draw. Reports include baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, candidate-to-objective reachability, clamped state-update counts, Monte Carlo standard errors, valid/attempted counts, invalid-draw counts, and convergence status. An unreachable objective retains its sampled baseline and zero movement, explicitly marked `reachable: false`. A nonzero clamp count indicates saturation or potentially unstable feedback and deserves model review.
+Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, success, duration, lags, and destination responses are sampled once per joint draw. Reports include baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, candidate-to-objective reachability, clamped state-update counts, Monte Carlo standard errors, valid/attempted counts, invalid-draw counts, and convergence status. An unreachable objective retains its sampled baseline and zero movement, explicitly marked `reachable: false`. A nonzero clamp count indicates saturation or potentially unstable feedback and deserves model review.
 
 Repeating the same immutable revision and seed is bit-reproducible for the current algorithm and pinned dependency versions. Adding or reordering sampled model inputs changes the random stream and therefore the exact sample sequence.
 

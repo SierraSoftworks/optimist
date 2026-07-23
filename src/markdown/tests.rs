@@ -20,8 +20,6 @@ fn node(id: u64, name: &str) -> Node {
         name,
         name,
         NodePayload::Factor(Factor {
-            current: None,
-            desired: None,
             controllable: true,
             evidence: vec![],
         }),
@@ -70,7 +68,7 @@ fn entity_render_is_deterministic_and_semantically_stable() {
 }
 
 #[test]
-fn native_state_round_trips_and_rejects_mixed_legacy_storage() {
+fn native_state_round_trips() {
     let mut document = entity_document(node(0, "lead-time"), 1).document;
     let quantity = crate::domain::QuantityDefinition::with_dimension(
         "days",
@@ -84,21 +82,6 @@ fn native_state_round_trips_and_rejects_mixed_legacy_storage() {
     let rendered = render_entity(&document).unwrap();
     let parsed = parse_entity("entities/A.md", &rendered).unwrap();
     assert_eq!(parsed.node.native_state, document.node.native_state);
-
-    let NodePayload::Factor(factor) = &mut document.node.payload else {
-        unreachable!()
-    };
-    factor.current = Some(
-        crate::domain::Estimate::new(
-            EstimateId::new(0),
-            crate::domain::Distribution::beta(2.0, 2.0).unwrap(),
-        )
-        .unwrap(),
-    );
-    assert!(matches!(
-        render_entity(&document),
-        Err(MarkdownError::InvalidNode { .. })
-    ));
 }
 
 #[test]
@@ -285,8 +268,6 @@ fn validates_complete_snapshot_references_in_a_second_pass() {
         "Reliability",
         NodePayload::Outcome(Outcome {
             direction: OutcomeDirection::Maximize,
-            current: None,
-            desired: None,
             evidence: vec![],
         }),
     )
@@ -569,13 +550,26 @@ fn project_formulas_round_trip_and_validate_against_imported_primitives() {
         .clone()
         .with_component(crate::domain::EstimateComponentId::new("baseline").unwrap());
     let mut factor = node(0, "delivery");
-    let NodePayload::Factor(value) = &mut factor.payload else {
-        unreachable!()
-    };
-    value.current = Some(
-        crate::domain::Estimate::new(
-            EstimateId::new(0),
-            crate::domain::Distribution::beta(2.0, 2.0).unwrap(),
+    factor.native_state = Some(
+        crate::domain::QuantityState::new(
+            crate::domain::QuantityDefinition::with_dimension(
+                "state",
+                Some(crate::domain::Unit::dimensionless()),
+                None,
+                crate::domain::QuantitySupport::Bounded {
+                    lower: 0.0,
+                    upper: 1.0,
+                },
+            )
+            .unwrap(),
+            Some(
+                crate::domain::Estimate::<crate::domain::QuantityValue>::new(
+                    EstimateId::new(0),
+                    crate::domain::Distribution::beta(2.0, 2.0).unwrap(),
+                )
+                .unwrap(),
+            ),
+            None,
         )
         .unwrap(),
     );

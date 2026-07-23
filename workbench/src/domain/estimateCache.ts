@@ -28,24 +28,6 @@ export function setStateEstimate(
       },
     }
   }
-  if (node.payload.kind === 'factor') {
-    return {
-      ...node,
-      payload: {
-        ...node.payload,
-        properties: { ...node.payload.properties, [slot]: estimate },
-      },
-    }
-  }
-  if (node.payload.kind === 'outcome') {
-    return {
-      ...node,
-      payload: {
-        ...node.payload,
-        properties: { ...node.payload.properties, [slot]: estimate },
-      },
-    }
-  }
   return node
 }
 

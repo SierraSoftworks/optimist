@@ -145,8 +145,6 @@ mod tests {
             title: "Reliability".to_owned(),
             payload: NodePayload::Outcome(Outcome {
                 direction: OutcomeDirection::Maximize,
-                current: None,
-                desired: None,
                 evidence: vec![],
             }),
         };

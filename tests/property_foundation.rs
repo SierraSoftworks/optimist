@@ -131,8 +131,6 @@ fn generated_create_request(
             name: format!("node_{seed}_{index}"),
             title: format!("Node {index}"),
             payload: optimist::domain::NodePayload::Factor(optimist::domain::Factor {
-                current: None,
-                desired: None,
                 controllable: index.is_multiple_of(2),
                 evidence: Vec::new(),
             }),

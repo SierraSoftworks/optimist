@@ -6,8 +6,7 @@ pub(super) fn count(node: &Node, id: EstimateId) -> usize {
     });
     native
         + match &node.payload {
-            NodePayload::Outcome(value) => state(&value.current, &value.desired, id),
-            NodePayload::Factor(value) => state(&value.current, &value.desired, id),
+            NodePayload::Outcome(_) | NodePayload::Factor(_) => 0,
             NodePayload::Intervention(value) => {
                 value
                     .costs
@@ -34,18 +33,6 @@ fn quantity_state(
     id: EstimateId,
 ) -> usize {
     [current.as_ref(), forecast.as_ref()]
-        .into_iter()
-        .flatten()
-        .filter(|item| item.id == id)
-        .count()
-}
-
-fn state(
-    current: &Option<crate::domain::Estimate<crate::domain::NormalizedState>>,
-    desired: &Option<crate::domain::Estimate<crate::domain::NormalizedState>>,
-    id: EstimateId,
-) -> usize {
-    [current.as_ref(), desired.as_ref()]
         .into_iter()
         .flatten()
         .filter(|item| item.id == id)

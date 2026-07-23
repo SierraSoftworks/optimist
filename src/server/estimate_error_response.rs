@@ -59,15 +59,6 @@ pub(super) fn classify(
             "invalid_estimate_distribution",
             &["Use a distribution whose complete support fits the selected slot's dimension."],
         ),
-        EstimateCommandError::Fermi(_)
-        | EstimateCommandError::FermiAssessment(_)
-        | EstimateCommandError::UnavailableFermiRecommendation => (
-            StatusCode::BAD_REQUEST,
-            "invalid_fermi_estimate",
-            &[
-                "Check the equation variables, canonical formula, target unit, sampling controls, and recommendation diagnostics.",
-            ],
-        ),
         EstimateCommandError::Squiggle(_) => (
             StatusCode::BAD_REQUEST,
             "invalid_squiggle_estimate",

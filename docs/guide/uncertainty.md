@@ -11,7 +11,7 @@ Estimate records distinguish epistemic, process, and measurement uncertainty as 
 | Point | One finite value | A known constant or explicit no-uncertainty assumption. |
 | Normal | $(-\infty,\infty)$ | Additive, unbounded uncertainty. |
 | LogNormal | $(0,\infty)$ | Positive multiplicative quantities such as time or cost. |
-| Beta | $[0,1]$ | Probabilities and normalized states. |
+| Beta | $[0,1]$ | Probabilities and bounded proportions. |
 | Scaled Beta | $[l,u]$ | Bounded quantities such as signed influence. |
 | Empirical | Retained finite draws | Arbitrary Squiggle results used by downstream simulation. |
 
@@ -19,7 +19,7 @@ Typed estimate dimensions reject incompatible support. Primitive distributions c
 
 ## Squiggle estimates
 
-An estimate may retain direct [Squiggle](https://www.squiggle-language.com/) source whose final expression is a finite number or sampleable distribution. The same source form covers primitive families, transformed distributions, mixtures, decomposition, and simulation-based constructions:
+An estimate retains [Squiggle](https://www.squiggle-language.com/) source whose final expression is a finite number or sampleable distribution. The same source form covers primitive families, transformed distributions, mixtures, decomposition, and simulation-based constructions:
 
 ```squiggle
 base = lognormal({p5: 4, p95: 10})
@@ -48,7 +48,7 @@ For a numeric result, Optimist persists a point distribution. For a distribution
 
 Probability, signed, non-negative, and bounded slots validate the effective draws before persistence. Before adoption, the editor reports attempted, valid, and invalid draw counts, empirical mass outside the requested support, and deterministic 10th/50th/90th percentile outcomes. A source which cannot produce finite valid draws fails closed rather than presenting a partial recommendation; successful assessments therefore report zero invalid draws. Nonzero support-tail mass remains visible and disables Save. These finite checks cannot prove that an unbounded symbolic tail has zero mass outside the target support, so authors should use bounded families or explicit truncation when support is part of the quantity definition.
 
-One estimate has one active authoring source. New workbench saves use Squiggle. Legacy direct-distribution and Fermi sources remain deserializable for replay and archives; opening them translates their effective distribution into editable Squiggle, and the next save replaces the legacy source. Existing public Fermi and primitive commands remain compatibility APIs rather than parallel workbench editors.
+One estimate has one authoritative Squiggle authoring source. Records without that source, its deterministic controls, and the backend assessment are rejected during deserialization.
 
 ### Decomposition
 
@@ -58,7 +58,7 @@ $$
 T_{month} = N_{deployments} \times T_{per\ deployment}
 $$
 
-The legacy [Fermi example](../examples/#fermi-delivery-time-estimate) demonstrates the same statistical idea using the typed Rust `Formula` API. Formula references are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
+The [typed formula example](../examples/#fermi-delivery-time-estimate) demonstrates the same statistical idea using the Rust `Formula` API. Formula references are memoized once per Monte Carlo draw, so repeated use of one uncertain address does not accidentally assume independent copies.
 
 ```sh
 cargo run --example fermi_delivery_time

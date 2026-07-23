@@ -122,12 +122,13 @@ fn is_descendant(candidate: &EstimateAddress, parent: &EstimateAddress) -> bool 
 mod tests {
     use crate::{
         command::{
-            CommandOutcome, CommandRequest, CreateNode, GraphCommand, RemoveFormula, SetEstimate,
-            SetFormula,
+            CommandOutcome, CommandRequest, CreateNode, GraphCommand, RemoveFormula, SetFormula,
+            SetNodeQuantityState, SetSquiggleEstimate,
         },
         domain::{
             Distribution, EntityId, EstimateAddress, EstimateComponentId, EstimateId,
-            EstimateOwner, EstimateSlot, Factor, Formula, NodePayload, Unit,
+            EstimateOwner, EstimateSlot, Factor, Formula, NodePayload, QuantityDefinition,
+            QuantitySupport, SquiggleEstimateDefinition, Unit,
         },
         project::{FormulaCommandError, ProjectCatalog, ProjectError},
     };
@@ -144,8 +145,6 @@ mod tests {
                         name: "flow".to_owned(),
                         title: "Flow".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: true,
                             evidence: vec![],
                         }),
@@ -163,10 +162,37 @@ mod tests {
                 &project.id,
                 CommandRequest::new(
                     1,
-                    GraphCommand::SetEstimate(SetEstimate {
+                    GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                        node: EntityId::new(0),
+                        expected_revision: 0,
+                        quantity: QuantityDefinition::with_dimension(
+                            "state",
+                            Some(Unit::dimensionless()),
+                            None,
+                            QuantitySupport::Bounded {
+                                lower: 0.0,
+                                upper: 1.0,
+                            },
+                        )
+                        .unwrap(),
+                    }),
+                ),
+            )
+            .unwrap();
+        catalog
+            .execute(
+                &project.id,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
                         address: root.clone(),
                         slot: EstimateSlot::Current,
-                        distribution: Distribution::beta(2.0, 2.0).unwrap(),
+                        definition: SquiggleEstimateDefinition {
+                            source: "beta(2, 2)".to_owned(),
+                            seed: 42,
+                            sample_count: 256,
+                            target_unit: Unit::dimensionless(),
+                        },
                         provenance: vec![],
                         uncertainty: Default::default(),
                     }),
@@ -193,7 +219,7 @@ mod tests {
         let (mut catalog, project, root) = setup();
         let address = component(&root, "baseline");
         let request = CommandRequest::new(
-            2,
+            3,
             GraphCommand::SetFormula(SetFormula {
                 address: address.clone(),
                 formula: Formula::Reference { address: root },
@@ -214,7 +240,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    3,
+                    4,
                     GraphCommand::SetFormula(SetFormula {
                         address: address.clone(),
                         formula: literal(0.5),
@@ -229,7 +255,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    5,
                     GraphCommand::RemoveFormula(RemoveFormula {
                         address,
                         expected_revision: 2,
@@ -257,7 +283,7 @@ mod tests {
                 .execute(
                     &project,
                     CommandRequest::new(
-                        2,
+                        3,
                         GraphCommand::SetFormula(SetFormula {
                             address: missing,
                             formula: literal(1.0),
@@ -275,7 +301,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    3,
                     GraphCommand::SetFormula(SetFormula {
                         address: nested,
                         formula: literal(1.0),
@@ -292,7 +318,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    3,
                     GraphCommand::SetFormula(SetFormula {
                         address: address.clone(),
                         formula: literal(1.0),
@@ -306,7 +332,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    3,
+                    4,
                     GraphCommand::SetFormula(SetFormula {
                         address,
                         formula: literal(2.0),
@@ -329,7 +355,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    3,
                     GraphCommand::SetFormula(SetFormula {
                         address: cyclic.clone(),
                         formula: Formula::Reference { address: cyclic },
@@ -357,7 +383,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    3,
                     GraphCommand::SetFormula(SetFormula {
                         address: mismatch,
                         formula,
@@ -380,7 +406,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    2,
+                    3,
                     GraphCommand::SetFormula(SetFormula {
                         address: parent.clone(),
                         formula: literal(1.0),
@@ -397,7 +423,7 @@ mod tests {
             .execute(
                 &project,
                 CommandRequest::new(
-                    3,
+                    4,
                     GraphCommand::SetFormula(SetFormula {
                         address: child,
                         formula: Formula::Reference {
@@ -413,7 +439,7 @@ mod tests {
             catalog.execute(
                 &project,
                 CommandRequest::new(
-                    4,
+                    5,
                     GraphCommand::RemoveFormula(RemoveFormula {
                         address: parent,
                         expected_revision: 2,

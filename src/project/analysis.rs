@@ -144,8 +144,6 @@ mod tests {
                         name: "flow".to_owned(),
                         title: "Flow".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: true,
                             evidence: vec![],
                         }),

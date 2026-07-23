@@ -14,8 +14,8 @@ function node(id: string, title: string, kind: 'factor' | 'outcome' = 'factor'):
     aliases: [],
     metadata: {},
     payload: kind === 'factor'
-      ? { kind, properties: { current: null, desired: null, controllable: false, evidence: [] } }
-      : { kind, properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
+      ? { kind, properties: { controllable: false, evidence: [] } }
+      : { kind, properties: { direction: 'maximize', evidence: [] } },
   }
 }
 

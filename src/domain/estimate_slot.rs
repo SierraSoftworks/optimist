@@ -14,18 +14,16 @@ use super::{
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum EstimateSlot {
-    /// Current normalized state of an outcome/factor or native value of a metric.
+    /// Current native value of a factor, outcome, or metric.
     Current,
-    /// Desired normalized state of an outcome or factor.
-    Desired,
+    /// Forecast native value of an outcome or factor before interventions.
+    Forecast,
     /// One named non-negative intervention cost dimension.
     Cost(String),
     /// Non-negative intervention completion duration.
     Duration,
     /// Probability that an intervention succeeds.
     ProbabilityOfSuccess,
-    /// Signed causal effect of a contributes or changes edge.
-    Effect,
     /// Native-unit destination change in a unit-aware linear response.
     Response,
     /// Non-negative lag of a contributes or changes edge.
@@ -53,10 +51,10 @@ impl EstimateSlot {
     /// Returns the primitive support required by this semantic slot.
     pub fn fermi_support(&self) -> FermiEstimateSupport {
         match self {
-            Self::Current | Self::Desired | Self::ProbabilityOfSuccess => {
+            Self::Current | Self::Forecast | Self::ProbabilityOfSuccess => {
                 FermiEstimateSupport::Probability
             }
-            Self::Effect | Self::Degree => FermiEstimateSupport::Signed,
+            Self::Degree => FermiEstimateSupport::Signed,
             Self::Response => FermiEstimateSupport::Real,
             Self::Cost(_) | Self::Duration | Self::Lag => FermiEstimateSupport::NonNegative,
         }
@@ -70,9 +68,8 @@ impl EstimateSlot {
             }
             Self::Duration | Self::Lag => Ok(Unit::base("duration").expect("valid unit")),
             Self::Current
-            | Self::Desired
+            | Self::Forecast
             | Self::ProbabilityOfSuccess
-            | Self::Effect
             | Self::Response
             | Self::Degree => Ok(Unit::dimensionless()),
         }

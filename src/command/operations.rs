@@ -1,10 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot,
-    FermiEstimateDefinition, Formula, LegacyStateMapping, MeasurementCalibration, NewObservation,
-    NodePayload, ProjectDependenceModel, QuantityDefinition, ScenarioDraft, ScenarioId,
-    SquiggleEstimateDefinition,
+    EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, Formula, MeasurementCalibration,
+    NewObservation, NodePayload, ProjectDependenceModel, QuantityDefinition, ScenarioDraft,
+    ScenarioId, SquiggleEstimateDefinition,
 };
 
 /// Data required to construct a new structural node.
@@ -25,18 +24,16 @@ pub struct DeleteNode {
     pub id: EntityId,
 }
 
-/// Revision-checked opt-in from legacy standardized state to native quantity state.
+/// Revision-checked configuration of native factor or outcome state.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetNodeQuantityState {
-    /// Factor or outcome node whose empty standardized state is being replaced.
+    /// Factor or outcome node whose state quantity is being configured.
     pub node: EntityId,
     /// Node revision observed before preparing the quantity definition.
     pub expected_revision: u64,
     /// Canonical native unit, support, and operational definition.
     pub quantity: QuantityDefinition,
-    /// Explicit zero/one anchors when converting existing standardized estimates.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub legacy_mapping: Option<LegacyStateMapping>,
 }
 
 /// Data required to append qualitative evidence to a factor or outcome.
@@ -125,42 +122,9 @@ pub struct SetMeasurementCalibration {
     pub calibration: Option<MeasurementCalibration>,
 }
 
-/// Data required to create or replace a primitive embedded estimate.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SetEstimate {
-    /// Stable project/owner/estimate identity; nested components are unsupported.
-    pub address: EstimateAddress,
-    /// Semantic owner field whose type validates distribution support.
-    pub slot: EstimateSlot,
-    /// Primitive distribution to validate against the selected slot dimension.
-    pub distribution: Distribution,
-    /// Evidence or elicitation records supporting this estimate revision.
-    #[serde(default)]
-    pub provenance: Vec<String>,
-    /// Distinct epistemic, process, and measurement uncertainty assumptions.
-    #[serde(default)]
-    pub uncertainty: crate::domain::EstimateUncertainty,
-}
-
-/// Data required to create or replace an estimate from a persisted Fermi equation.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct SetFermiEstimate {
-    /// Stable project/owner/estimate identity; nested components are unsupported.
-    pub address: EstimateAddress,
-    /// Semantic owner field whose support and unit are enforced server-side.
-    pub slot: EstimateSlot,
-    /// Reviewable equation, variables, canonical formula, and sampling controls.
-    pub definition: FermiEstimateDefinition,
-    /// Evidence or elicitation records supporting this estimate revision.
-    #[serde(default)]
-    pub provenance: Vec<String>,
-    /// Distinct epistemic, process, and measurement uncertainty assumptions.
-    #[serde(default)]
-    pub uncertainty: crate::domain::EstimateUncertainty,
-}
-
 /// Data required to create or replace an estimate from backend-evaluated Squiggle source.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SetSquiggleEstimate {
     /// Stable project/owner/estimate identity; nested components are unsupported.
     pub address: EstimateAddress,

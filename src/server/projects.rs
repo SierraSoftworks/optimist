@@ -200,8 +200,6 @@ mod tests {
                                     "payload": {
                                         "kind": "factor",
                                         "properties": {
-                                            "current": null,
-                                            "desired": null,
                                             "controllable": false,
                                             "evidence": []
                                         }

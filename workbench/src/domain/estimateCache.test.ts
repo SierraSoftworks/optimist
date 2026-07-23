@@ -5,7 +5,11 @@ import { setInterventionEstimate, setStateEstimate } from './estimateCache'
 const estimate: Estimate = {
   id: 'A', revision: 0,
   distribution: { type: 'point', value: 12 },
-  source: { type: 'distribution' },
+  source: {
+    type: 'squiggle',
+    definition: { source: 'pointMass(12)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
+    assessment: {} as never,
+  },
   provenance: [],
 }
 
@@ -15,16 +19,13 @@ function factor(): GraphNode {
     description: '', aliases: [], metadata: {},
     payload: {
       kind: 'factor',
-      properties: { current: null, desired: null, controllable: false, evidence: [] },
+      properties: { controllable: false, evidence: [] },
     },
   }
 }
 
 describe('estimate cache updates', () => {
-  it('updates legacy and native state without a node refetch', () => {
-    const legacy = setStateEstimate(factor(), 'current', estimate)
-    expect(legacy.payload.kind === 'factor' && legacy.payload.properties.current).toEqual(estimate)
-
+  it('updates native state without a node refetch', () => {
     const native = setStateEstimate({
       ...factor(),
       native_state: {
@@ -32,7 +33,7 @@ describe('estimate cache updates', () => {
         current: null,
         forecast: null,
       },
-    }, 'desired', estimate)
+    }, 'forecast', estimate)
     expect(native.native_state?.forecast).toEqual(estimate)
   })
 

@@ -184,8 +184,8 @@ const fn is_causal(kind: EdgeKind) -> bool {
 mod tests {
     use super::*;
     use crate::domain::{
-        CausalEffect, Distribution, Estimate, EstimateId, Factor, NodeKind, Outcome,
-        OutcomeDirection, ProjectId, SignedInfluence,
+        CausalEffect, Distribution, Estimate, EstimateId, Factor, LinearResponse, NodeKind,
+        Outcome, OutcomeDirection, ProjectId, QuantityValue, Unit,
     };
 
     fn revision() -> AnalysisRevisionKey {
@@ -204,8 +204,6 @@ mod tests {
             format!("factor-{id}"),
             format!("Factor {id}"),
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: id.is_multiple_of(2),
                 evidence: (0..evidence)
                     .map(|record| super::super::Evidence {
@@ -227,8 +225,6 @@ mod tests {
             format!("Outcome {id}"),
             NodePayload::Outcome(Outcome {
                 direction: OutcomeDirection::Maximize,
-                current: None,
-                desired: None,
                 evidence: vec![],
             }),
         )
@@ -245,16 +241,24 @@ mod tests {
             } else {
                 NodeKind::Factor
             },
-            EdgePayload::Contributes(CausalEffect::normalized(
-                Estimate::<SignedInfluence>::new(
-                    EstimateId::new(0),
-                    Distribution::point(0.5).unwrap(),
+            EdgePayload::Contributes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: Estimate::<QuantityValue>::new(
+                            EstimateId::new(0),
+                            Distribution::point(0.5).unwrap(),
+                        )
+                        .unwrap(),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    evidence.iter().map(|value| (*value).to_owned()).collect(),
                 )
                 .unwrap(),
-                None,
-                String::new(),
-                evidence.iter().map(|value| (*value).to_owned()).collect(),
-            )),
+            ),
         )
         .unwrap()
     }

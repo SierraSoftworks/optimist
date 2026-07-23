@@ -103,14 +103,15 @@ mod tests {
     use crate::{
         command::{
             CommandRequest, CreateEdge, CreateNode, CreateScenario, GraphCommand, SetFormula,
-            SetProjectDependence,
+            SetNodeQuantityState, SetProjectDependence, SetSquiggleEstimate,
         },
         domain::{
-            CorrelationScale, Distribution, EdgePayload, EntityId, Estimate, EstimateAddress,
-            EstimateComponentId, EstimateId, EstimateOwner, Factor, Formula,
-            GaussianCopulaCorrelation, Intervention, MonteCarloConfig, NodePayload,
-            NormalizedState, Outcome, OutcomeDirection, ProjectDependenceModel, Requirement,
-            ResidualDependenceGroup, ScenarioDraft, ScenarioObjective, Unit, UtilityDirection,
+            CorrelationScale, Distribution, EdgePayload, EntityId, EstimateAddress,
+            EstimateComponentId, EstimateId, EstimateOwner, EstimateSlot, EstimateUncertainty,
+            Factor, Formula, GaussianCopulaCorrelation, Intervention, MonteCarloConfig,
+            NodePayload, Outcome, OutcomeDirection, ProjectDependenceModel, QuantityDefinition,
+            QuantitySupport, Requirement, ResidualDependenceGroup, ScenarioDraft,
+            ScenarioObjective, Unit, UtilityDirection,
         },
     };
 
@@ -130,8 +131,6 @@ mod tests {
                             name: name.to_owned(),
                             title: name.to_owned(),
                             payload: NodePayload::Factor(Factor {
-                                current: None,
-                                desired: None,
                                 controllable: true,
                                 evidence: vec![],
                             }),
@@ -227,8 +226,6 @@ mod tests {
                         name: "throughput".to_owned(),
                         title: "Throughput".to_owned(),
                         payload: NodePayload::Factor(Factor {
-                            current: None,
-                            desired: None,
                             controllable: false,
                             evidence: vec![],
                         }),
@@ -246,18 +243,9 @@ mod tests {
     fn restores_scenarios_formulas_and_dependence_documents() {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Complete".to_owned()).unwrap();
-        let estimate = || {
-            Estimate::<NormalizedState>::new(
-                EstimateId::new(0),
-                Distribution::beta(2.0, 2.0).unwrap(),
-            )
-            .unwrap()
-        };
         let payloads = [
             NodePayload::Outcome(Outcome {
                 direction: OutcomeDirection::Maximize,
-                current: Some(estimate()),
-                desired: None,
                 evidence: vec![],
             }),
             NodePayload::Intervention(Intervention {
@@ -267,14 +255,10 @@ mod tests {
                 acceptance_criteria: vec![],
             }),
             NodePayload::Factor(Factor {
-                current: Some(estimate()),
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
             NodePayload::Factor(Factor {
-                current: Some(estimate()),
-                desired: None,
                 controllable: false,
                 evidence: vec![],
             }),
@@ -294,11 +278,63 @@ mod tests {
                 )
                 .unwrap();
         }
+        let quantity = QuantityDefinition::with_dimension(
+            "state",
+            Some(Unit::dimensionless()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 1.0,
+            },
+        )
+        .unwrap();
+        let mut revision = 4;
+        for node in [0, 2, 3] {
+            catalog
+                .execute(
+                    &project.id,
+                    CommandRequest::new(
+                        revision,
+                        GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                            node: EntityId::new(node),
+                            expected_revision: 0,
+                            quantity: quantity.clone(),
+                        }),
+                    ),
+                )
+                .unwrap();
+            revision += 1;
+            catalog
+                .execute(
+                    &project.id,
+                    CommandRequest::new(
+                        revision,
+                        GraphCommand::SetSquiggleEstimate(SetSquiggleEstimate {
+                            address: EstimateAddress::new(
+                                project.id.clone(),
+                                EstimateOwner::Node(EntityId::new(node)),
+                                EstimateId::new(0),
+                            ),
+                            slot: EstimateSlot::Current,
+                            definition: crate::domain::SquiggleEstimateDefinition {
+                                source: "beta(2, 2)".to_owned(),
+                                seed: 42,
+                                sample_count: 256,
+                                target_unit: Unit::dimensionless(),
+                            },
+                            provenance: vec![],
+                            uncertainty: EstimateUncertainty::default(),
+                        }),
+                    ),
+                )
+                .unwrap();
+            revision += 1;
+        }
         catalog
             .execute(
                 &project.id,
                 CommandRequest::new(
-                    4,
+                    revision,
                     GraphCommand::CreateScenario(CreateScenario {
                         scenario: ScenarioDraft {
                             name: "plan".to_owned(),
@@ -331,7 +367,7 @@ mod tests {
             .execute(
                 &project.id,
                 CommandRequest::new(
-                    5,
+                    revision + 1,
                     GraphCommand::SetFormula(SetFormula {
                         address: formula,
                         formula: Formula::Literal {
@@ -355,7 +391,7 @@ mod tests {
             .execute(
                 &project.id,
                 CommandRequest::new(
-                    6,
+                    revision + 2,
                     GraphCommand::SetProjectDependence(SetProjectDependence {
                         model: ProjectDependenceModel {
                             revision: 0,

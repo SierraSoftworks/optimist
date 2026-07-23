@@ -40,9 +40,9 @@ pub(super) fn replacement<T: EstimateDimension>(
         None => 0,
     };
     let mut estimate =
-        Estimate::<T>::new(address.estimate, distribution).map_err(EstimateCommandError::from)?;
+        Estimate::<T>::from_evaluated_squiggle(address.estimate, distribution, metadata.source)
+            .map_err(EstimateCommandError::from)?;
     estimate.revision = revision;
-    estimate.source = metadata.source;
     estimate.provenance = metadata.provenance;
     estimate.uncertainty = metadata
         .uncertainty

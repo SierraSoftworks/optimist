@@ -4,12 +4,12 @@ import { clusteredPositions, defaultGraphLayout, graphDetailForZoom } from './gr
 
 function node(id: string, kind: NodeKind): GraphNode {
   const properties = kind === 'metric'
-    ? { unit: 'count', aggregation: null }
+    ? { quantity: { unit: 'count', dimension: { count: 1 }, aggregation: null } }
     : kind === 'intervention'
       ? { costs: [], duration: null, probability_of_success: null, acceptance_criteria: [] }
       : kind === 'outcome'
-        ? { direction: 'maximize' as const, current: null, desired: null, evidence: [] }
-        : { current: null, desired: null, controllable: false, evidence: [] }
+        ? { direction: 'maximize' as const, evidence: [] }
+        : { controllable: false, evidence: [] }
   return {
     id,
     revision: 0,

@@ -64,15 +64,10 @@ watch(
   () => [props.open, props.node, props.slot] as const,
   ([open]) => {
     if (!open || !props.slot) return
-    const currentDistribution = existing.value?.distribution
     form.dimension = props.slot.kind === 'cost' ? props.slot.value : ''
-    source.value = existing.value?.source?.type === 'fermi'
-      ? { type: 'fermi', definition: existing.value.source.definition }
-      : existing.value?.source?.type === 'squiggle'
-        ? { type: 'squiggle', definition: existing.value.source.definition }
-        : currentDistribution
-          ? { type: 'distribution', distribution: currentDistribution }
-          : defaultSquiggleSourceInput(probability.value ? 'probability' : 'non_negative', expectedUnit.value)
+    source.value = existing.value
+      ? { type: 'squiggle', definition: existing.value.source.definition }
+      : defaultSquiggleSourceInput(probability.value ? 'probability' : 'non_negative', expectedUnit.value)
     sourceValid.value = true
     confirmRemove.value = false
   },

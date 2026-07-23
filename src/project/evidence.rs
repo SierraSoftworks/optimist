@@ -177,8 +177,6 @@ mod tests {
     #[test]
     fn creates_updates_and_deletes_evidence_with_independent_revisions() {
         let (mut catalog, project) = catalog(NodePayload::Factor(Factor {
-            current: None,
-            desired: None,
             controllable: false,
             evidence: vec![],
         }));

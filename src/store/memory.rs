@@ -156,8 +156,6 @@ mod tests {
             name,
             name,
             NodePayload::Factor(Factor {
-                current: None,
-                desired: None,
                 controllable: true,
                 evidence: Vec::new(),
             }),

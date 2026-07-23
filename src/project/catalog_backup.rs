@@ -108,7 +108,7 @@ pub enum BackupError {
         #[source]
         source: serde_json::Error,
     },
-    /// Catalog snapshot loading, migration, or integrity validation failed.
+    /// Catalog snapshot loading or integrity validation failed.
     #[error(transparent)]
     Catalog(#[from] CatalogPersistenceError),
     /// Canonical project export or validation failed.

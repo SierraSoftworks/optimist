@@ -110,8 +110,8 @@ mod tests {
 
     use crate::{
         domain::{
-            Distribution, EntityId, EstimateAddress, EstimateComponentId, EstimateId,
-            EstimateOwner, EstimateSlot, Factor, Formula, NodePayload,
+            EntityId, EstimateAddress, EstimateComponentId, EstimateId, EstimateOwner,
+            EstimateSlot, Factor, Formula, NodePayload, QuantityDefinition, QuantitySupport, Unit,
         },
         server,
     };
@@ -140,11 +140,26 @@ mod tests {
                 "flow".to_owned(),
                 "Flow".to_owned(),
                 NodePayload::Factor(Factor {
-                    current: None,
-                    desired: None,
                     controllable: true,
                     evidence: vec![],
                 }),
+            )
+            .await
+            .unwrap();
+        client
+            .set_node_quantity_state(
+                &project.id,
+                EntityId::new(0),
+                QuantityDefinition::with_dimension(
+                    "state",
+                    Some(Unit::dimensionless()),
+                    None,
+                    QuantitySupport::Bounded {
+                        lower: 0.0,
+                        upper: 1.0,
+                    },
+                )
+                .unwrap(),
             )
             .await
             .unwrap();
@@ -154,11 +169,16 @@ mod tests {
             EstimateId::new(0),
         );
         client
-            .set_estimate(
+            .set_squiggle_estimate(
                 &project.id,
                 root.clone(),
                 EstimateSlot::Current,
-                Distribution::beta(2.0, 3.0).unwrap(),
+                crate::domain::SquiggleEstimateDefinition {
+                    source: "beta(2, 3)".to_owned(),
+                    seed: 42,
+                    sample_count: 256,
+                    target_unit: crate::domain::Unit::dimensionless(),
+                },
                 vec![],
                 crate::domain::EstimateUncertainty::default(),
             )
