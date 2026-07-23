@@ -6,6 +6,27 @@ use crate::{
 use super::{ProjectCatalog, ProjectError, apply};
 
 impl ProjectCatalog {
+    pub(crate) fn command_preflight(
+        &self,
+        project_id: &ProjectId,
+        request: &CommandRequest,
+    ) -> Result<Option<CommandResult>, ProjectError> {
+        let entry = self
+            .projects
+            .get(project_id)
+            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
+        if let Some(result) = entry.results.get(&request.request_id) {
+            return Ok(Some(result.clone()));
+        }
+        if request.expected_revision != entry.project.revision {
+            return Err(ProjectError::RevisionConflict {
+                expected: request.expected_revision,
+                current: entry.project.revision,
+            });
+        }
+        Ok(None)
+    }
+
     /// Applies a typed graph command under project revision and idempotency checks.
     ///
     /// A duplicate request ID returns its original result before comparing revisions.
@@ -16,19 +37,13 @@ impl ProjectCatalog {
         project_id: &ProjectId,
         request: CommandRequest,
     ) -> Result<CommandResult, ProjectError> {
+        if let Some(result) = self.command_preflight(project_id, &request)? {
+            return Ok(result);
+        }
         let entry = self
             .projects
             .get_mut(project_id)
-            .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        if let Some(result) = entry.results.get(&request.request_id) {
-            return Ok(result.clone());
-        }
-        if request.expected_revision != entry.project.revision {
-            return Err(ProjectError::RevisionConflict {
-                expected: request.expected_revision,
-                current: entry.project.revision,
-            });
-        }
+            .expect("command preflight checked project existence");
 
         let next_revision = entry
             .project

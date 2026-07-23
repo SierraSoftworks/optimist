@@ -12,8 +12,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::command::{ChangeSet, CommandResult};
-use crate::store::{GraphRepository, IndraDbRepository};
+use crate::command::{ChangeSet, CommandResult, GraphCommand};
+use crate::domain::{Edge, EstimateOwner, Node};
+use crate::store::{GraphRepository, IndraDbRepository, RepositoryError};
 use indradb::MemoryDatastore;
 
 use super::{ProjectArchive, ProjectCatalog, ProjectError, catalog::ProjectEntry};
@@ -461,6 +462,17 @@ struct PersistedProject {
     changes: Vec<ChangeSet>,
 }
 
+pub(crate) struct EstimateTransactionSnapshot {
+    project_revision: u64,
+    graph_revision: u64,
+    aggregate: EstimateAggregate,
+}
+
+enum EstimateAggregate {
+    Node(Box<Node>),
+    Edge(Box<Edge>),
+}
+
 impl ProjectCatalog {
     pub(crate) fn transaction_clone(&mut self) -> Result<Self, CatalogPersistenceError> {
         let mut candidate = Self::new();
@@ -511,6 +523,63 @@ impl ProjectCatalog {
             .remove(project)
             .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
         self.publish_import(entry)?;
+        Ok(())
+    }
+
+    pub(crate) fn estimate_transaction_snapshot(
+        &mut self,
+        project: &crate::domain::ProjectId,
+        command: &GraphCommand,
+    ) -> Result<EstimateTransactionSnapshot, ProjectError> {
+        let address = match command {
+            GraphCommand::SetEstimate(command) => &command.address,
+            GraphCommand::SetFermiEstimate(command) => &command.address,
+            GraphCommand::SetSquiggleEstimate(command) => &command.address,
+            _ => unreachable!("estimate transaction requires an estimate-set command"),
+        };
+        let entry = self
+            .projects
+            .get_mut(project)
+            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
+        let aggregate = match &address.owner {
+            EstimateOwner::Node(id) => EstimateAggregate::Node(Box::new(
+                entry
+                    .repository
+                    .get_node(*id)?
+                    .ok_or(RepositoryError::MissingEntity(*id))?,
+            )),
+            EstimateOwner::Edge(id) => EstimateAggregate::Edge(Box::new(
+                entry
+                    .repository
+                    .get_edge(id)?
+                    .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?,
+            )),
+        };
+        Ok(EstimateTransactionSnapshot {
+            project_revision: entry.project.revision,
+            graph_revision: entry.graph_revision,
+            aggregate,
+        })
+    }
+
+    pub(crate) fn rollback_estimate_transaction(
+        &mut self,
+        project: &crate::domain::ProjectId,
+        snapshot: EstimateTransactionSnapshot,
+        result: &CommandResult,
+    ) -> Result<(), ProjectError> {
+        let entry = self
+            .projects
+            .get_mut(project)
+            .ok_or_else(|| ProjectError::NotFound(project.clone()))?;
+        match snapshot.aggregate {
+            EstimateAggregate::Node(node) => entry.repository.update_node(*node)?,
+            EstimateAggregate::Edge(edge) => entry.repository.update_edge(*edge)?,
+        }
+        entry.project.revision = snapshot.project_revision;
+        entry.graph_revision = snapshot.graph_revision;
+        entry.changes.remove(&result.project_revision);
+        entry.results.remove(&result.request_id);
         Ok(())
     }
 
