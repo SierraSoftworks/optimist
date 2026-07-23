@@ -204,5 +204,20 @@ mod tests {
             let sample = scaled.sample_seeded(seed);
             prop_assert!((lower..=lower + width).contains(&sample));
         }
+
+        #[test]
+        fn positive_affine_obeys_moment_and_seeded_sample_laws(
+            alpha in 0.1_f64..20.0,
+            beta in 0.1_f64..20.0,
+            offset in -100.0_f64..100.0,
+            scale in 0.01_f64..100.0,
+            seed in any::<u64>(),
+        ) {
+            let source = Distribution::beta(alpha, beta).unwrap();
+            let converted = source.positive_affine(offset, scale).unwrap();
+            prop_assert!((converted.mean() - (offset + scale * source.mean())).abs() <= 1e-10 * scale.max(1.0));
+            prop_assert!((converted.variance() - scale.powi(2) * source.variance()).abs() <= 1e-10 * scale.powi(2).max(1.0));
+            prop_assert!((converted.sample_seeded(seed) - (offset + scale * source.sample_seeded(seed))).abs() <= 1e-12 * scale.max(1.0));
+        }
     }
 }

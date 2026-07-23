@@ -424,7 +424,7 @@ describe('Optimist API client', () => {
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
 
-    await api.setNodeQuantityState(project, node, quantity)
+    await api.setNodeQuantityState(project, node, { quantity })
 
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
       expected_revision: 7,

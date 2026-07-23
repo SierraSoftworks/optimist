@@ -259,6 +259,9 @@ pub enum QuantityError {
     /// Estimate metadata disagrees with its owner-defined quantity.
     #[error("estimate quantity metadata does not match its owning definition")]
     EstimateDefinitionMismatch,
+    /// Legacy state conversion requires two finite anchors with state zero below state one.
+    #[error("legacy state mapping requires finite state_zero < state_one anchors")]
+    InvalidLegacyStateMapping,
     /// Legacy or externally authored quantity text has no canonical unit terms.
     #[error("quantity requires a canonical dimension before it can use typed formulas")]
     MissingDimension,

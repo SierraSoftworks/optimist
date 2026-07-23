@@ -5,8 +5,9 @@ use thiserror::Error;
 
 use super::{
     EntityId, EstimateUncertainty, EstimateUncertaintyError, FermiAssessment,
-    FermiEstimateDefinition, FermiEstimateError, QuantityDefinition, SquiggleEstimateAssessment,
-    SquiggleEstimateDefinition, SquiggleEstimateError, Unit, assess_squiggle_estimate,
+    FermiEstimateDefinition, FermiEstimateError, LegacyStateMapping, QuantityDefinition,
+    QuantityError, SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError,
+    Unit, assess_squiggle_estimate,
 };
 
 const MAX_EMPIRICAL_SAMPLES: usize = 4_096;
@@ -88,6 +89,9 @@ pub enum DistributionError {
     /// An empirical approximation must contain a bounded nonempty set of finite draws.
     #[error("an empirical distribution requires 1 to 4,096 finite samples")]
     InvalidSamples,
+    /// The requested affine transformation is not exactly representable by this family.
+    #[error("distribution family is not closed under the requested affine transformation")]
+    InvalidAffineFamily,
 }
 
 /// A validated primitive probability distribution used by an [`Estimate`].
@@ -108,6 +112,50 @@ pub enum DistributionError {
 pub struct Distribution(pub(super) DistributionKind);
 
 impl Distribution {
+    /// Applies the exact positive affine transformation $Y = a + bX$.
+    ///
+    /// Point, Normal, Beta, ScaledBeta, and empirical distributions are closed
+    /// under this transformation. A shifted LogNormal is not generally LogNormal
+    /// and is rejected rather than approximated. `scale` must be finite and positive.
+    /// Results are analytical apart from ordinary floating-point rounding; no
+    /// Monte Carlo approximation or independence assumption is introduced. See
+    /// NIST/SEMATECH e-Handbook of Statistical Methods, sections 1.3.6.6 and
+    /// 1.3.6.23, for the Normal and Beta parameterizations used here.
+    pub fn positive_affine(&self, offset: f64, scale: f64) -> Result<Self, DistributionError> {
+        if !offset.is_finite() || !scale.is_finite() || scale <= 0.0 {
+            return Err(DistributionError::InvalidScale);
+        }
+        match &self.0 {
+            DistributionKind::Point { value } => Self::point(offset + scale * value),
+            DistributionKind::Normal {
+                mean,
+                standard_deviation,
+            } => Self::normal(offset + scale * mean, scale * standard_deviation),
+            DistributionKind::Beta { alpha, beta } => {
+                Self::scaled_beta(*alpha, *beta, offset, offset + scale)
+            }
+            DistributionKind::ScaledBeta {
+                alpha,
+                beta,
+                lower,
+                upper,
+            } => Self::scaled_beta(
+                *alpha,
+                *beta,
+                offset + scale * lower,
+                offset + scale * upper,
+            ),
+            DistributionKind::Empirical { samples } => {
+                Self::empirical(samples.iter().map(|value| offset + scale * value).collect())
+            }
+            DistributionKind::LogNormal {
+                location,
+                scale: sigma,
+            } if offset == 0.0 => Self::log_normal(location + scale.ln(), *sigma),
+            DistributionKind::LogNormal { .. } => Err(DistributionError::InvalidAffineFamily),
+        }
+    }
+
     /// Creates a deterministic distribution concentrated at `value`.
     ///
     /// Point masses represent measured constants or assumptions with no modelled
@@ -437,6 +485,12 @@ pub enum EstimateError {
     /// Persisted intrinsic quantity metadata conflicts with the estimate dimension.
     #[error("quantity definition is invalid for estimate dimension {0}")]
     InvalidQuantityDefinition(&'static str),
+    /// The owner-defined quantity is invalid for native estimate migration.
+    #[error(transparent)]
+    Quantity(#[from] QuantityError),
+    /// Legacy Fermi source requires explicit replacement instead of silent flattening.
+    #[error("legacy Fermi estimates require explicit replacement before native migration")]
+    FermiMigrationUnsupported,
 }
 
 /// Exclusive source used to produce an estimate's effective distribution.
@@ -558,6 +612,58 @@ impl<T: EstimateDimension> Estimate<T> {
             assessment: Box::new(assessment),
         };
         Ok(estimate)
+    }
+}
+
+impl Estimate<NormalizedState> {
+    /// Converts a legacy standardized estimate through an explicit native mapping.
+    ///
+    /// Direct distributions are transformed analytically. Squiggle source is wrapped
+    /// as `state_zero + (state_one-state_zero) * source`, assigned the native target
+    /// unit, and reevaluated by the authoritative runtime. Fermi source is rejected
+    /// because rewriting its typed formula and retained decomposition would otherwise
+    /// discard author intent.
+    pub fn into_native_quantity(
+        self,
+        quantity: &QuantityDefinition,
+        mapping: LegacyStateMapping,
+    ) -> Result<Estimate<QuantityValue>, EstimateError> {
+        let mapping = mapping.validated()?;
+        let (_, expected_unit) = quantity.fermi_target()?;
+        let id = self.id;
+        let revision = self.revision;
+        let provenance = self.provenance;
+        let uncertainty = self.uncertainty;
+        let mut converted = match self.source {
+            EstimateSource::Distribution => Estimate::<QuantityValue>::new(
+                id,
+                self.distribution
+                    .positive_affine(mapping.state_zero, mapping.scale())?,
+            )?,
+            EstimateSource::Squiggle { definition, .. } => {
+                let definition = SquiggleEstimateDefinition {
+                    source: format!(
+                        "({}) * {} + ({})",
+                        definition.source.trim(),
+                        mapping.scale(),
+                        mapping.state_zero
+                    ),
+                    seed: definition.seed,
+                    sample_count: definition.sample_count,
+                    target_unit: expected_unit.clone(),
+                };
+                Estimate::<QuantityValue>::from_squiggle(id, definition, &expected_unit)?
+            }
+            EstimateSource::Fermi { .. } => return Err(EstimateError::FermiMigrationUnsupported),
+        };
+        converted.revision = revision;
+        converted.quantity = Some(quantity.clone());
+        converted.provenance = provenance;
+        converted.uncertainty = uncertainty;
+        if !quantity.accepts(&converted.distribution) {
+            return Err(QuantityError::EstimateOutsideSupport.into());
+        }
+        Ok(converted)
     }
 }
 
@@ -702,7 +808,8 @@ mod tests {
     use crate::domain::{
         EstimateUncertainty, FermiEstimateDefinition, FermiEstimateSupport,
         FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula,
-        MonteCarloConfig, ProjectId, SquiggleEstimateDefinition, Unit, assess_fermi,
+        LegacyStateMapping, MonteCarloConfig, ProjectId, QuantityDefinition, QuantitySupport,
+        SquiggleEstimateDefinition, Unit, assess_fermi,
     };
 
     #[test]
@@ -805,6 +912,59 @@ mod tests {
         assert_eq!(restored.distribution, estimate.distribution);
         assert_eq!(restored.uncertainty, estimate.uncertainty);
         assert_eq!(restored.uncertainty.epistemic, "Limited calibration data");
+    }
+
+    #[test]
+    fn explicit_anchors_convert_direct_and_squiggle_legacy_state() {
+        let quantity = QuantityDefinition::with_dimension(
+            "days",
+            Some(Unit::base("day").unwrap()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 10.0,
+                upper: 30.0,
+            },
+        )
+        .unwrap();
+        let mapping = LegacyStateMapping {
+            state_zero: 10.0,
+            state_one: 30.0,
+        };
+        let direct = Estimate::<NormalizedState>::new(
+            EstimateId::new(0),
+            Distribution::beta(2.0, 2.0).unwrap(),
+        )
+        .unwrap()
+        .into_native_quantity(&quantity, mapping)
+        .unwrap();
+        assert_eq!(direct.distribution.mean(), 20.0);
+        assert_eq!(direct.quantity, Some(quantity.clone()));
+
+        let squiggle = Estimate::<NormalizedState>::from_squiggle(
+            EstimateId::new(1),
+            SquiggleEstimateDefinition {
+                source: "pointMass(0.25)".to_owned(),
+                seed: 42,
+                sample_count: 256,
+                target_unit: Unit::dimensionless(),
+            },
+            &Unit::dimensionless(),
+        )
+        .unwrap()
+        .into_native_quantity(&quantity, mapping)
+        .unwrap();
+        assert_eq!(squiggle.distribution.mean(), 15.0);
+        assert!(
+            squiggle
+                .distribution
+                .retained_draws()
+                .is_some_and(|draws| draws.len() == 256 && draws.iter().all(|value| *value == 15.0))
+        );
+        let EstimateSource::Squiggle { definition, .. } = squiggle.source else {
+            panic!("expected converted Squiggle source")
+        };
+        assert_eq!(definition.target_unit, Unit::base("day").unwrap());
+        assert!(definition.source.contains("pointMass(0.25)"));
     }
 
     #[test]

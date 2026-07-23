@@ -108,7 +108,7 @@ pub use project_dependence::{
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use quantity::{QuantityDefinition, QuantityError, QuantitySupport};
-pub use quantity_state::QuantityState;
+pub use quantity_state::{LegacyStateMapping, QuantityState};
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };

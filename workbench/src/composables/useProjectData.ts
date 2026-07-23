@@ -242,8 +242,8 @@ export function useSetNodeQuantityState(
 ) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (quantity: import('../api/types').QuantityDefinition) =>
-      api.setNodeQuantityState(project.value!, node.value!, quantity),
+    mutationFn: (input: import('../api/types').SetNodeQuantityStateInput) =>
+      api.setNodeQuantityState(project.value!, node.value!, input),
     onSuccess: (updated) => {
       const current = project.value!
       advanceProject(queryClient, current)

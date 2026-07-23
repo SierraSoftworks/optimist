@@ -393,7 +393,7 @@ export const api = {
   async setNodeQuantityState(
     project: Project,
     node: GraphNode,
-    quantity: import('./types').QuantityDefinition,
+    input: import('./types').SetNodeQuantityStateInput,
   ): Promise<GraphNode> {
     const result = await request<CommandResult<GraphNode>>(
       `/api/v1/projects/${project.id}/commands`,
@@ -404,7 +404,7 @@ export const api = {
           expected_revision: project.revision,
           command: {
             type: 'set_node_quantity_state',
-            payload: { node: node.id, expected_revision: node.revision, quantity },
+            payload: { node: node.id, expected_revision: node.revision, ...input },
           },
         }),
       },

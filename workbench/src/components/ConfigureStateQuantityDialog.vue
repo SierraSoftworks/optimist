@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { GraphNode, QuantityDefinition, QuantitySupport } from '../api/types'
+import type { GraphNode, QuantitySupport, SetNodeQuantityStateInput } from '../api/types'
 import { parseUnitExpression } from '../domain/unitExpression'
 
 const props = defineProps<{ open: boolean; pending: boolean; node: GraphNode | null }>()
-const emit = defineEmits<{ close: []; submit: [quantity: QuantityDefinition] }>()
+const emit = defineEmits<{ close: []; submit: [input: SetNodeQuantityStateInput] }>()
 const form = reactive({
   unit: '',
   aggregation: '',
@@ -15,6 +15,8 @@ const form = reactive({
   operationalDefinition: '',
   referenceTime: '',
   resolutionSource: '',
+  stateZero: 0,
+  stateOne: 1,
 })
 
 watch(
@@ -24,6 +26,7 @@ watch(
     Object.assign(form, {
       unit: '', aggregation: '', support: 'real', lower: 0, upper: 1,
       operationalDefinition: '', referenceTime: '', resolutionSource: '',
+      stateZero: 0, stateOne: 1,
     })
   },
 )
@@ -40,7 +43,18 @@ const boundsValid = computed(() =>
     Number.isFinite(form.lower) && Number.isFinite(form.upper) && form.lower < form.upper
   ),
 )
-const valid = computed(() => Boolean(dimension.value && boundsValid.value))
+const hasLegacyState = computed(() => {
+  if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return false
+  return Boolean(props.node.payload.properties.current || props.node.payload.properties.desired)
+})
+const mappingValid = computed(() =>
+  !hasLegacyState.value || (
+    Number.isFinite(form.stateZero) &&
+    Number.isFinite(form.stateOne) &&
+    form.stateZero < form.stateOne
+  ),
+)
+const valid = computed(() => Boolean(dimension.value && boundsValid.value && mappingValid.value))
 
 function quantitySupport(): QuantitySupport {
   return form.support === 'bounded'
@@ -51,13 +65,18 @@ function quantitySupport(): QuantitySupport {
 function submit() {
   if (!valid.value || !dimension.value) return
   emit('submit', {
-    unit: form.unit.trim(),
-    dimension: dimension.value,
-    aggregation: form.aggregation.trim() || null,
-    support: quantitySupport(),
-    operational_definition: form.operationalDefinition.trim(),
-    reference_time: form.referenceTime.trim() || null,
-    resolution_source: form.resolutionSource.trim() || null,
+    quantity: {
+      unit: form.unit.trim(),
+      dimension: dimension.value,
+      aggregation: form.aggregation.trim() || null,
+      support: quantitySupport(),
+      operational_definition: form.operationalDefinition.trim(),
+      reference_time: form.referenceTime.trim() || null,
+      resolution_source: form.resolutionSource.trim() || null,
+    },
+    legacy_mapping: hasLegacyState.value
+      ? { state_zero: form.stateZero, state_one: form.stateOne }
+      : undefined,
   })
 }
 </script>
@@ -88,6 +107,14 @@ function submit() {
           <label>Lower bound<input v-model.number="form.lower" type="number" required /></label>
           <label>Upper bound<input v-model.number="form.upper" type="number" required /></label>
         </div>
+        <fieldset v-if="hasLegacyState" class="legacy-mapping">
+          <legend>Convert existing standardized state</legend>
+          <div class="field-grid">
+            <label>Native value at state 0<input v-model.number="form.stateZero" type="number" step="any" required /></label>
+            <label>Native value at state 1<input v-model.number="form.stateOne" type="number" step="any" required /></label>
+          </div>
+          <p v-if="!mappingValid" class="form-error">State 1 must be greater than state 0.</p>
+        </fieldset>
         <label>Operational definition<textarea v-model="form.operationalDefinition" rows="3" placeholder="Exactly what this state measures"></textarea></label>
         <div class="field-grid">
           <label>Reference time<input v-model="form.referenceTime" placeholder="2026-Q4 or current" /></label>
@@ -102,3 +129,7 @@ function submit() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.legacy-mapping { margin-top: 20px !important; padding-top: 18px !important; border-top: 1px solid var(--line) !important; }
+</style>

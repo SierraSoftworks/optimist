@@ -107,6 +107,13 @@ pub(super) fn classify(
                 "Remove existing current and desired or forecast estimates before changing the state quantity.",
             ],
         ),
+        ProjectError::LegacyStateMappingRequired(_) => (
+            StatusCode::CONFLICT,
+            "legacy_state_mapping_required",
+            &[
+                "Provide the native values represented by legacy states zero and one, then review the converted current and forecast estimates.",
+            ],
+        ),
         ProjectError::NativeStateNormalizedEdge(_) => (
             StatusCode::CONFLICT,
             "native_state_normalized_edge",

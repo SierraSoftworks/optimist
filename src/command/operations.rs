@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot,
-    FermiEstimateDefinition, Formula, MeasurementCalibration, NewObservation, NodePayload,
-    ProjectDependenceModel, QuantityDefinition, ScenarioDraft, ScenarioId,
+    FermiEstimateDefinition, Formula, LegacyStateMapping, MeasurementCalibration, NewObservation,
+    NodePayload, ProjectDependenceModel, QuantityDefinition, ScenarioDraft, ScenarioId,
     SquiggleEstimateDefinition,
 };
 
@@ -34,6 +34,9 @@ pub struct SetNodeQuantityState {
     pub expected_revision: u64,
     /// Canonical native unit, support, and operational definition.
     pub quantity: QuantityDefinition,
+    /// Explicit zero/one anchors when converting existing standardized estimates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legacy_mapping: Option<LegacyStateMapping>,
 }
 
 /// Data required to append qualitative evidence to a factor or outcome.

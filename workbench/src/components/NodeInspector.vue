@@ -35,7 +35,6 @@ const incidentEdges = computed(() =>
 const canConfigureNativeState = computed(() => {
   const node = props.node
   if (!node || node.native_state || (node.payload.kind !== 'factor' && node.payload.kind !== 'outcome')) return false
-  if (node.payload.properties.current || node.payload.properties.desired) return false
   return !incidentEdges.value.some((edge) =>
     (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') && 'effect' in edge.payload.properties,
   )

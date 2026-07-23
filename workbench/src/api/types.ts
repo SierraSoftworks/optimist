@@ -70,6 +70,11 @@ export interface QuantityState {
   forecast?: Estimate | null
 }
 
+export interface SetNodeQuantityStateInput {
+  quantity: QuantityDefinition
+  legacy_mapping?: { state_zero: number; state_one: number }
+}
+
 export type EstimateSource =
   | { type: 'distribution' }
   | { type: 'fermi'; definition: FermiEstimateDefinition; assessment: FermiAssessment }

@@ -95,6 +95,9 @@ pub enum ProjectError {
     /// Existing state estimates must be removed before changing their quantity.
     #[error("node {0} already has state estimates")]
     StateEstimatesAlreadyExist(EntityId),
+    /// Populated standardized state requires explicit native zero/one anchors.
+    #[error("node {0} requires an explicit legacy state mapping")]
+    LegacyStateMappingRequired(EntityId),
     /// An existing normalized edge must be replaced before native state can be configured.
     #[error("edge {0} uses normalized state and blocks native quantity configuration")]
     NativeStateNormalizedEdge(EdgeId),

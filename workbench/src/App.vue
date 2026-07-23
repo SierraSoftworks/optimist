@@ -60,7 +60,7 @@ import type {
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
-  QuantityDefinition,
+  SetNodeQuantityStateInput,
   ScenarioDraft,
   UpdateNodeInput,
 } from './api/types'
@@ -531,10 +531,10 @@ async function submitStateEstimate(input: SetStateEstimateInput) {
   }
 }
 
-async function submitStateQuantity(quantity: QuantityDefinition) {
+async function submitStateQuantity(input: SetNodeQuantityStateInput) {
   mutationError.value = null
   try {
-    await setNodeQuantityState.mutateAsync(quantity)
+    await setNodeQuantityState.mutateAsync(input)
     stateQuantityDialogOpen.value = false
   } catch (error) {
     mutationError.value = error as Error

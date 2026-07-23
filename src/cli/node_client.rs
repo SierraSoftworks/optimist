@@ -3,7 +3,7 @@ use crate::{
         CommandOutcome, CommandRequest, CommandResult, CreateNode, DeleteNode, GraphCommand,
         SetNodeQuantityState,
     },
-    domain::{EntityId, Node, NodePayload, ProjectId, QuantityDefinition},
+    domain::{EntityId, LegacyStateMapping, Node, NodePayload, ProjectId, QuantityDefinition},
 };
 
 use super::client::{ProjectClient, decode};
@@ -14,6 +14,7 @@ impl ProjectClient {
         project: &ProjectId,
         node: EntityId,
         quantity: QuantityDefinition,
+        legacy_mapping: Option<LegacyStateMapping>,
     ) -> Result<Node, human_errors::Error> {
         let expected_revision = self.show_node(project, node).await?.revision;
         let revision = self.show(project).await?.revision;
@@ -23,6 +24,7 @@ impl ProjectClient {
                 node,
                 expected_revision,
                 quantity,
+                legacy_mapping,
             }),
         );
         let response = self
