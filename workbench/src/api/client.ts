@@ -389,6 +389,34 @@ export const api = {
     }
     return result.outcome.value
   },
+  async setNodeQuantityState(
+    project: Project,
+    node: GraphNode,
+    quantity: import('./types').QuantityDefinition,
+  ): Promise<GraphNode> {
+    const result = await request<CommandResult<GraphNode>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_node_quantity_state',
+            payload: { node: node.id, expected_revision: node.revision, quantity },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'node_quantity_state_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for native state configuration.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
   async setStateEstimate(
     project: Project,
     node: GraphNode,

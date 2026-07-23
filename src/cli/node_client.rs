@@ -1,13 +1,47 @@
 use crate::{
     command::{
         CommandOutcome, CommandRequest, CommandResult, CreateNode, DeleteNode, GraphCommand,
+        SetNodeQuantityState,
     },
-    domain::{EntityId, Node, NodePayload, ProjectId},
+    domain::{EntityId, Node, NodePayload, ProjectId, QuantityDefinition},
 };
 
 use super::client::{ProjectClient, decode};
 
 impl ProjectClient {
+    pub(super) async fn set_node_quantity_state(
+        &self,
+        project: &ProjectId,
+        node: EntityId,
+        quantity: QuantityDefinition,
+    ) -> Result<Node, human_errors::Error> {
+        let expected_revision = self.show_node(project, node).await?.revision;
+        let revision = self.show(project).await?.revision;
+        let request = CommandRequest::new(
+            revision,
+            GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                node,
+                expected_revision,
+                quantity,
+            }),
+        );
+        let response = self
+            .client
+            .post(self.endpoint(&format!("api/v1/projects/{project}/commands"))?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(node_network_error)?;
+        let result: CommandResult = decode(response).await?;
+        match result.outcome {
+            CommandOutcome::NodeQuantityStateSet(node) => Ok(node),
+            _ => Err(human_errors::system(
+                "The Optimist server returned an unexpected native-state result.",
+                &["Confirm the CLI and server versions match, then inspect the server logs."],
+            )),
+        }
+    }
+
     pub(super) async fn create_node(
         &self,
         project: &ProjectId,

@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
     ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, evidence,
-    formulas, scenarios,
+    formulas, node_state, scenarios,
 };
 
 pub(super) fn command(
@@ -25,6 +25,7 @@ pub(super) fn command(
             Ok(CommandOutcome::NodeDeleted(node))
         }
         GraphCommand::UpdateNodeMetadata(command) => aggregate_updates::node(entry, command),
+        GraphCommand::SetNodeQuantityState(command) => node_state::set(entry, command),
         GraphCommand::CreateEvidence(command) => evidence::create(entry, command),
         GraphCommand::UpdateEvidence(command) => evidence::update(entry, command),
         GraphCommand::DeleteEvidence(command) => evidence::delete(entry, command),
@@ -119,10 +120,12 @@ fn validate_causal_units(
         EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
         _ => return Ok(()),
     };
-    let touches_metric = matches!(source.payload, NodePayload::Metric(_))
-        || matches!(destination.payload, NodePayload::Metric(_));
+    let touches_native = matches!(source.payload, NodePayload::Metric(_))
+        || matches!(destination.payload, NodePayload::Metric(_))
+        || source.native_state.is_some()
+        || destination.native_state.is_some();
     let response = effect.linear_response();
-    if touches_metric && response.is_none() {
+    if touches_native && response.is_none() {
         return Err(ProjectError::NativeCausalResponseRequired(edge.id()));
     }
     let Some(response) = response else {
@@ -147,6 +150,13 @@ fn validate_causal_units(
 }
 
 fn state_unit(node: &Node) -> Result<crate::domain::Unit, ProjectError> {
+    if let Some(state) = &node.native_state {
+        return state
+            .quantity
+            .dimension
+            .clone()
+            .ok_or(ProjectError::MissingQuantityDimension(node.id));
+    }
     match &node.payload {
         NodePayload::Metric(metric) => metric
             .quantity

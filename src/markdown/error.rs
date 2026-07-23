@@ -57,6 +57,16 @@ pub enum MarkdownError {
         /// Affected project-local node ID.
         node: EntityId,
     },
+    /// A node combines incompatible state storage or uses native state on the wrong kind.
+    #[error("{path}: invalid node {node}: {message}")]
+    InvalidNode {
+        /// Source path.
+        path: String,
+        /// Affected project-local node ID.
+        node: EntityId,
+        /// Domain validation diagnostic.
+        message: String,
+    },
     /// An edge in an entity file names a different source node.
     #[error("{path}: outgoing edge {edge} does not start at node {node}")]
     ForeignOutgoingEdge {

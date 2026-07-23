@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{
     Distribution, EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot,
     FermiEstimateDefinition, Formula, MeasurementCalibration, NewObservation, NodePayload,
-    ProjectDependenceModel, ScenarioDraft, ScenarioId, SquiggleEstimateDefinition,
+    ProjectDependenceModel, QuantityDefinition, ScenarioDraft, ScenarioId,
+    SquiggleEstimateDefinition,
 };
 
 /// Data required to construct a new structural node.
@@ -22,6 +23,17 @@ pub struct CreateNode {
 pub struct DeleteNode {
     /// Project-local ID of the node, which must have no incident edges.
     pub id: EntityId,
+}
+
+/// Revision-checked opt-in from legacy standardized state to native quantity state.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SetNodeQuantityState {
+    /// Factor or outcome node whose empty standardized state is being replaced.
+    pub node: EntityId,
+    /// Node revision observed before preparing the quantity definition.
+    pub expected_revision: u64,
+    /// Canonical native unit, support, and operational definition.
+    pub quantity: QuantityDefinition,
 }
 
 /// Data required to append qualitative evidence to a factor or outcome.

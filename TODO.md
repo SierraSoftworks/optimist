@@ -44,6 +44,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Assess real, non-negative, and arbitrary bounded metric Squiggle sources against owner-derived native units and support.
   - [x] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
   - [x] Migrate existing `[0, 1]` estimates as explicit legacy standardized quantities without silently changing their meaning.
+  - [x] Add opt-in native factor/outcome current and forecast storage with support-aware propagation and unit-aware edge guards.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
   - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
   - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.

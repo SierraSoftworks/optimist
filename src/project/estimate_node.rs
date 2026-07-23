@@ -15,7 +15,11 @@ pub(super) fn set(
     distribution: Distribution,
     metadata: EstimateMetadata,
 ) -> Result<PrimitiveEstimate, ProjectError> {
-    let count = estimate_node_ids::count(&node.payload, address.estimate);
+    let count = estimate_node_ids::count(node, address.estimate);
+    if node.native_state.is_some() && matches!(slot, EstimateSlot::Current | EstimateSlot::Desired)
+    {
+        return set_native(node, address, slot, count, distribution, metadata);
+    }
     match (&mut node.payload, slot.clone()) {
         (NodePayload::Outcome(value), EstimateSlot::Current) => estimate_support::replacement(
             value.current.as_ref(),
@@ -116,6 +120,36 @@ pub(super) fn set(
         }
         _ => Err(estimate_support::invalid_slot(address, slot)),
     }
+}
+
+fn set_native(
+    node: &mut Node,
+    address: &EstimateAddress,
+    slot: EstimateSlot,
+    count: usize,
+    distribution: Distribution,
+    metadata: EstimateMetadata,
+) -> Result<PrimitiveEstimate, ProjectError> {
+    let state = node.native_state.as_mut().expect("native state checked");
+    let current = match slot {
+        EstimateSlot::Current => state.current.as_ref(),
+        EstimateSlot::Desired => state.forecast.as_ref(),
+        _ => return Err(estimate_support::invalid_slot(address, slot)),
+    };
+    let result_slot = slot.clone();
+    let (mut estimate, _) =
+        estimate_support::replacement(current, address, slot, count, distribution, metadata)?;
+    if !state.quantity.accepts(&estimate.distribution) {
+        return Err(crate::domain::QuantityError::EstimateOutsideSupport.into());
+    }
+    estimate.quantity = Some(state.quantity.clone());
+    let result = PrimitiveEstimate::from_typed(address.clone(), result_slot.clone(), &estimate);
+    match result_slot {
+        EstimateSlot::Current => state.current = Some(estimate),
+        EstimateSlot::Desired => state.forecast = Some(estimate),
+        _ => unreachable!("native slots checked"),
+    }
+    Ok(result)
 }
 
 fn set_cost(

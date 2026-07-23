@@ -38,6 +38,7 @@ mod project_dependence_matrix;
 mod propagation;
 mod quantile_fit;
 mod quantity;
+mod quantity_state;
 pub use analysis::{
     AnalysisError, AnalysisLimits, AnalysisRevisionKey, ElementaryCycle,
     StronglyConnectedComponent, StructuralAnalysis,
@@ -107,6 +108,7 @@ pub use project_dependence::{
 pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use quantity::{QuantityDefinition, QuantityError, QuantitySupport};
+pub use quantity_state::QuantityState;
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };

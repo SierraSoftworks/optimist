@@ -256,6 +256,9 @@ pub enum QuantityError {
     /// The current estimate assigns probability outside the quantity's legal support.
     #[error("quantity estimate support is incompatible with its definition")]
     EstimateOutsideSupport,
+    /// Estimate metadata disagrees with its owner-defined quantity.
+    #[error("estimate quantity metadata does not match its owning definition")]
+    EstimateDefinitionMismatch,
     /// Legacy or externally authored quantity text has no canonical unit terms.
     #[error("quantity requires a canonical dimension before it can use typed formulas")]
     MissingDimension,

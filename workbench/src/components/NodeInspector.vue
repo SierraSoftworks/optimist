@@ -18,6 +18,7 @@ const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
   edit: []
   estimate: []
+  quantity: []
   relationship: [edge: GraphEdge]
   observe: [edge: GraphEdge]
   correct: [edge: GraphEdge, observation: Observation]
@@ -32,7 +33,10 @@ const distributionCharts = computed(() => {
   if (!node) return []
   const estimates: Array<[string, import('../api/types').Estimate | null | undefined]> = []
   if (node.payload.kind === 'factor' || node.payload.kind === 'outcome') {
-    estimates.push(['Current state', node.payload.properties.current], ['Desired state', node.payload.properties.desired])
+    estimates.push(
+      ['Current state', node.native_state?.current ?? node.payload.properties.current],
+      [node.native_state ? 'Forecast state' : 'Desired state', node.native_state?.forecast ?? node.payload.properties.desired],
+    )
   } else if (node.payload.kind === 'metric') {
     estimates.push(['Current quantity', node.payload.properties.current])
   } else {
@@ -54,6 +58,14 @@ const incidentEdges = computed(() =>
       )
     : [],
 )
+const canConfigureNativeState = computed(() => {
+  const node = props.node
+  if (!node || node.native_state || (node.payload.kind !== 'factor' && node.payload.kind !== 'outcome')) return false
+  if (node.payload.properties.current || node.payload.properties.desired) return false
+  return !incidentEdges.value.some((edge) =>
+    (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') && 'effect' in edge.payload.properties,
+  )
+})
 const measurementEdges = computed(() =>
   props.node?.payload.kind === 'metric'
     ? props.edges.filter(
@@ -77,9 +89,16 @@ const Icon = computed(() => {
   }
 })
 
-function distribution(node: GraphNode, slot: 'current' | 'desired') {
+function stateEstimate(node: GraphNode, slot: 'current' | 'desired') {
   if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return null
-  return node.payload.properties[slot]?.distribution ?? null
+  if (node.native_state) {
+    return slot === 'current' ? node.native_state.current ?? null : node.native_state.forecast ?? null
+  }
+  return node.payload.properties[slot]
+}
+
+function distribution(node: GraphNode, slot: 'current' | 'desired') {
+  return stateEstimate(node, slot)?.distribution ?? null
 }
 
 function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
@@ -89,8 +108,7 @@ function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
 }
 
 function sourceLabel(node: GraphNode, slot: 'current' | 'desired') {
-  if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return null
-  const estimate = node.payload.properties[slot]
+  const estimate = stateEstimate(node, slot)
   if (estimate?.source?.type === 'squiggle') {
     return `${estimate.source.definition.source} · ${estimate.source.assessment.family} · ${estimate.source.assessment.sample_count.toLocaleString()} samples`
   }
@@ -138,8 +156,7 @@ function quantityLabel(estimate: import('../api/types').Estimate | null | undefi
 }
 
 function provenance(node: GraphNode, slot: 'current' | 'desired') {
-  if (node.payload.kind !== 'outcome' && node.payload.kind !== 'factor') return []
-  return node.payload.properties[slot]?.provenance ?? []
+  return stateEstimate(node, slot)?.provenance ?? []
 }
 
 function replacement(edge: GraphEdge, observation: Observation) {
@@ -169,6 +186,12 @@ function replacement(edge: GraphEdge, observation: Observation) {
           class="secondary-button"
           @click="emit('estimate')"
         ><Sigma :size="14" /> Estimate</button>
+        <button
+          v-if="canConfigureNativeState"
+          type="button"
+          class="secondary-button"
+          @click="emit('quantity')"
+        ><Gauge :size="14" /> Native state</button>
       </div>
 
       <section class="readiness-panel" :data-level="readiness?.level">
@@ -216,15 +239,28 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
           <div v-if="sourceLabel(node, 'current')"><dt>Current model</dt><dd>{{ sourceLabel(node, 'current') }}</dd></div>
           <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
-          <div v-if="quantityLabel(node.payload.properties.current)"><dt>Current quantity</dt><dd>{{ quantityLabel(node.payload.properties.current) }}</dd></div>
-          <div v-if="uncertaintyLabel(node.payload.properties.current)"><dt>Current uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.current) }}</dd></div>
-          <div><dt>Desired</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
-          <div v-if="sourceLabel(node, 'desired')"><dt>Desired model</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
-          <div v-if="provenance(node, 'desired').length"><dt>Desired source</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
-          <div v-if="quantityLabel(node.payload.properties.desired)"><dt>Desired quantity</dt><dd>{{ quantityLabel(node.payload.properties.desired) }}</dd></div>
-          <div v-if="uncertaintyLabel(node.payload.properties.desired)"><dt>Desired uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.desired) }}</dd></div>
+          <div v-if="quantityLabel(stateEstimate(node, 'current'))"><dt>Current quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'current')) }}</dd></div>
+          <div v-if="uncertaintyLabel(stateEstimate(node, 'current'))"><dt>Current uncertainty</dt><dd>{{ uncertaintyLabel(stateEstimate(node, 'current')) }}</dd></div>
+          <div><dt>{{ node.native_state ? 'Forecast' : 'Desired' }}</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
+          <div v-if="sourceLabel(node, 'desired')"><dt>{{ node.native_state ? 'Forecast model' : 'Desired model' }}</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
+          <div v-if="provenance(node, 'desired').length"><dt>{{ node.native_state ? 'Forecast source' : 'Desired source' }}</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
+          <div v-if="quantityLabel(stateEstimate(node, 'desired'))"><dt>{{ node.native_state ? 'Forecast quantity' : 'Desired quantity' }}</dt><dd>{{ quantityLabel(stateEstimate(node, 'desired')) }}</dd></div>
+          <div v-if="uncertaintyLabel(stateEstimate(node, 'desired'))"><dt>{{ node.native_state ? 'Forecast uncertainty' : 'Desired uncertainty' }}</dt><dd>{{ uncertaintyLabel(stateEstimate(node, 'desired')) }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
+        </dl>
+      </section>
+
+      <section v-if="node.native_state" class="inspector-section">
+        <h3>Native state</h3>
+        <dl>
+          <div><dt>Unit</dt><dd>{{ node.native_state.quantity.unit }}</dd></div>
+          <div><dt>Aggregation</dt><dd>{{ node.native_state.quantity.aggregation ?? 'Not set' }}</dd></div>
+          <div><dt>Support</dt><dd>{{ node.native_state.quantity.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
+          <div v-if="node.native_state.quantity.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.native_state.quantity.support.lower }}–{{ node.native_state.quantity.support.upper }}</dd></div>
+          <div v-if="node.native_state.quantity.operational_definition"><dt>Definition</dt><dd>{{ node.native_state.quantity.operational_definition }}</dd></div>
+          <div v-if="node.native_state.quantity.reference_time"><dt>Reference time</dt><dd>{{ node.native_state.quantity.reference_time }}</dd></div>
+          <div v-if="node.native_state.quantity.resolution_source"><dt>Resolution source</dt><dd>{{ node.native_state.quantity.resolution_source }}</dd></div>
         </dl>
       </section>
 

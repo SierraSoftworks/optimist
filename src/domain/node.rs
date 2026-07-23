@@ -6,7 +6,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{
     Duration, EntityId, Estimate, Money, NormalizedState, Probability, QuantityDefinition,
-    QuantityError, QuantitySupport, QuantityValue,
+    QuantityError, QuantityState, QuantitySupport, QuantityValue,
 };
 
 /// The four structural concepts rendered as vertices in an Optimist graph.
@@ -239,6 +239,12 @@ pub enum NodeError {
     /// A state-bearing metric has an invalid quantity definition or estimate.
     #[error(transparent)]
     Quantity(#[from] QuantityError),
+    /// Native quantity state is supported only by factors and outcomes.
+    #[error("native quantity state is supported only by factor and outcome nodes")]
+    NativeStateUnsupported,
+    /// Native and legacy standardized estimates cannot coexist on one node.
+    #[error("native quantity state cannot coexist with legacy standardized estimates")]
+    MixedStateStorage,
 }
 
 /// A structural causal graph vertex and its embedded aggregate data.
@@ -283,6 +289,9 @@ pub struct Node {
     /// Extensible non-structural JSON data not covered by the typed payload.
     #[serde(default)]
     pub metadata: BTreeMap<String, serde_json::Value>,
+    /// Optional native-unit state for a factor or outcome; absent means legacy standardized state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_state: Option<QuantityState>,
     /// Strongly typed fields determined by this node's structural kind.
     pub payload: NodePayload,
 }
@@ -318,6 +327,7 @@ impl Node {
             description: String::new(),
             aliases: Vec::new(),
             metadata: BTreeMap::new(),
+            native_state: None,
             payload: payload.validated()?,
         })
     }
@@ -325,6 +335,29 @@ impl Node {
     /// Returns the structural kind implied by this node's typed payload.
     pub const fn kind(&self) -> NodeKind {
         self.payload.kind()
+    }
+
+    pub(crate) fn validate_native_state(&self) -> Result<(), NodeError> {
+        let Some(_) = &self.native_state else {
+            return Ok(());
+        };
+        match &self.payload {
+            NodePayload::Factor(value) => {
+                if value.current.is_some() || value.desired.is_some() {
+                    Err(NodeError::MixedStateStorage)
+                } else {
+                    Ok(())
+                }
+            }
+            NodePayload::Outcome(value) => {
+                if value.current.is_some() || value.desired.is_some() {
+                    Err(NodeError::MixedStateStorage)
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(NodeError::NativeStateUnsupported),
+        }
     }
 }
 
@@ -352,7 +385,7 @@ mod tests {
     use super::{Factor, Metric, Node, NodeKind, NodePayload, normalize_name};
     use crate::domain::{
         Distribution, EntityId, Estimate, EstimateId, QuantityDefinition, QuantityError,
-        QuantitySupport, QuantityValue,
+        QuantityState, QuantitySupport, QuantityValue, Unit,
     };
 
     #[test]
@@ -416,6 +449,45 @@ mod tests {
 
         assert_eq!(
             Metric::with_quantity(quantity, Some(estimate)),
+            Err(QuantityError::EstimateOutsideSupport)
+        );
+    }
+
+    #[test]
+    fn native_state_is_optional_and_validates_owner_support() {
+        let legacy = Node::new(
+            EntityId::new(0),
+            "flow",
+            "Flow",
+            NodePayload::Factor(Factor {
+                current: None,
+                desired: None,
+                controllable: false,
+                evidence: vec![],
+            }),
+        )
+        .unwrap();
+        assert!(
+            !serde_json::to_string(&legacy)
+                .unwrap()
+                .contains("native_state")
+        );
+
+        let quantity = QuantityDefinition::with_dimension(
+            "days",
+            Some(Unit::base("day").unwrap()),
+            None,
+            QuantitySupport::Bounded {
+                lower: 0.0,
+                upper: 10.0,
+            },
+        )
+        .unwrap();
+        let estimate =
+            Estimate::<QuantityValue>::new(EstimateId::new(0), Distribution::point(12.0).unwrap())
+                .unwrap();
+        assert_eq!(
+            QuantityState::new(quantity, Some(estimate), None),
             Err(QuantityError::EstimateOutsideSupport)
         );
     }

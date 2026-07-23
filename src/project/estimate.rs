@@ -142,6 +142,23 @@ fn fermi_target(
         .repository
         .get_node(*id)?
         .ok_or(RepositoryError::MissingEntity(*id))?;
+    if let Some(state) = node.native_state {
+        if !matches!(
+            slot,
+            crate::domain::EstimateSlot::Current | crate::domain::EstimateSlot::Desired
+        ) {
+            return Err(EstimateCommandError::InvalidSlot {
+                address: address.clone(),
+                slot: slot.clone(),
+            }
+            .into());
+        }
+        return state
+            .quantity
+            .fermi_target()
+            .map_err(EstimateCommandError::from)
+            .map_err(ProjectError::from);
+    }
     if let crate::domain::NodePayload::Metric(metric) = node.payload {
         if !matches!(slot, crate::domain::EstimateSlot::Current) {
             return Err(EstimateCommandError::InvalidSlot {

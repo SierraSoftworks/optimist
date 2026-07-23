@@ -80,6 +80,8 @@ pub enum GraphCommand {
     DeleteNode(DeleteNode),
     /// Replaces one node's title, Markdown description, and metadata map.
     UpdateNodeMetadata(UpdateNodeMetadata),
+    /// Configures empty factor or outcome state in a native quantity.
+    SetNodeQuantityState(SetNodeQuantityState),
     /// Appends qualitative evidence to a factor or outcome.
     CreateEvidence(CreateEvidence),
     /// Replaces one evidence record under its aggregate-local revision guard.
@@ -143,6 +145,8 @@ pub enum CommandOutcome {
     NodeDeleted(Node),
     /// Complete node aggregate updated by [`GraphCommand::UpdateNodeMetadata`].
     NodeMetadataUpdated(Node),
+    /// Complete factor or outcome after native quantity state was configured.
+    NodeQuantityStateSet(Node),
     /// New evidence record and complete updated owning node.
     EvidenceCreated {
         /// Complete updated factor or outcome after persistence.

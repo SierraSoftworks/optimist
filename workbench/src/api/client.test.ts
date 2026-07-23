@@ -403,6 +403,38 @@ describe('Optimist API client', () => {
     })
   })
 
+  it('sends revision-checked native state configuration', async () => {
+    const node = {
+      id: 'A', revision: 3, name: 'feedback', normalized_name: 'feedback', title: 'Feedback',
+      description: '', aliases: [], metadata: {},
+      payload: {
+        kind: 'factor' as const,
+        properties: { current: null, desired: null, controllable: true, evidence: [] },
+      },
+    }
+    const quantity = {
+      unit: 'day', dimension: { day: 1 }, aggregation: null,
+      support: { type: 'non_negative' as const }, operational_definition: 'Elapsed time',
+    }
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      request_id: '00000000-0000-4000-8000-000000000000',
+      project_revision: 8,
+      outcome: { type: 'node_quantity_state_set', value: { ...node, native_state: { quantity } } },
+    }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('crypto', { randomUUID: () => '00000000-0000-4000-8000-000000000000' })
+
+    await api.setNodeQuantityState(project, node, quantity)
+
+    expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
+      expected_revision: 7,
+      command: {
+        type: 'set_node_quantity_state',
+        payload: { node: 'A', expected_revision: 3, quantity },
+      },
+    })
+  })
+
   it('allocates distinct current and desired state estimate addresses', async () => {
     const node = {
       id: 'A',

@@ -7,6 +7,7 @@ impl GraphCommand {
             Self::CreateNode(_)
                 | Self::DeleteNode(_)
                 | Self::UpdateNodeMetadata(_)
+                | Self::SetNodeQuantityState(_)
                 | Self::CreateEvidence(_)
                 | Self::UpdateEvidence(_)
                 | Self::DeleteEvidence(_)

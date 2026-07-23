@@ -8,8 +8,13 @@ pub(super) fn find(
     node: &Node,
     address: &EstimateAddress,
 ) -> Result<PrimitiveEstimate, ProjectError> {
-    if estimate_node_ids::count(&node.payload, address.estimate) != 1 {
+    if estimate_node_ids::count(node, address.estimate) != 1 {
         return Err(EstimateCommandError::NotFound(address.clone()).into());
+    }
+    if let Some(state) = &node.native_state
+        && let Some(estimate) = quantity_state(address, &state.current, &state.forecast)
+    {
+        return Ok(estimate);
     }
     match &node.payload {
         NodePayload::Outcome(value) => state(address, &value.current, &value.desired),
@@ -24,6 +29,25 @@ pub(super) fn find(
             }),
     }
     .ok_or_else(|| EstimateCommandError::NotFound(address.clone()).into())
+}
+
+fn quantity_state(
+    address: &EstimateAddress,
+    current: &Option<crate::domain::Estimate<crate::domain::QuantityValue>>,
+    forecast: &Option<crate::domain::Estimate<crate::domain::QuantityValue>>,
+) -> Option<PrimitiveEstimate> {
+    current
+        .as_ref()
+        .filter(|value| value.id == address.estimate)
+        .map(|value| PrimitiveEstimate::from_typed(address.clone(), EstimateSlot::Current, value))
+        .or_else(|| {
+            forecast
+                .as_ref()
+                .filter(|value| value.id == address.estimate)
+                .map(|value| {
+                    PrimitiveEstimate::from_typed(address.clone(), EstimateSlot::Desired, value)
+                })
+        })
 }
 
 fn state(

@@ -26,6 +26,12 @@ describe('NodeInspector readiness', () => {
     expect(wrapper.emitted('estimate')).toHaveLength(1)
   })
 
+  it('offers native state configuration before legacy state is authored', async () => {
+    const wrapper = mount(NodeInspector, { props: { node: factor, edges: [] } })
+    await wrapper.get('button:nth-child(3)').trigger('click')
+    expect(wrapper.emitted('quantity')).toHaveLength(1)
+  })
+
   it('labels legacy normalized estimates as standardized quantities', () => {
     const node: GraphNode = {
       ...factor,

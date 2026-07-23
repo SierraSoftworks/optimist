@@ -70,6 +70,38 @@ fn entity_render_is_deterministic_and_semantically_stable() {
 }
 
 #[test]
+fn native_state_round_trips_and_rejects_mixed_legacy_storage() {
+    let mut document = entity_document(node(0, "lead-time"), 1).document;
+    let quantity = crate::domain::QuantityDefinition::with_dimension(
+        "days",
+        Some(crate::domain::Unit::base("day").unwrap()),
+        None,
+        crate::domain::QuantitySupport::NonNegative,
+    )
+    .unwrap();
+    document.node.native_state =
+        Some(crate::domain::QuantityState::new(quantity, None, None).unwrap());
+    let rendered = render_entity(&document).unwrap();
+    let parsed = parse_entity("entities/A.md", &rendered).unwrap();
+    assert_eq!(parsed.node.native_state, document.node.native_state);
+
+    let NodePayload::Factor(factor) = &mut document.node.payload else {
+        unreachable!()
+    };
+    factor.current = Some(
+        crate::domain::Estimate::new(
+            EstimateId::new(0),
+            crate::domain::Distribution::beta(2.0, 2.0).unwrap(),
+        )
+        .unwrap(),
+    );
+    assert!(matches!(
+        render_entity(&document),
+        Err(MarkdownError::InvalidNode { .. })
+    ));
+}
+
+#[test]
 fn project_body_is_separate_from_frontmatter() {
     let project_id = crate::domain::ProjectId::new("A").unwrap();
     let document = ProjectDocument {

@@ -119,4 +119,28 @@ describe('EditStateEstimateDialog', () => {
     expect(wrapper.find('[aria-label="Squiggle source"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('day')
   })
+
+  it('authors native factor forecasts with owner support and units', () => {
+    const native = {
+      ...node,
+      native_state: {
+        quantity: {
+          unit: 'days', dimension: { day: 1 }, aggregation: null,
+          support: { type: 'bounded' as const, lower: 0, upper: 30 },
+          operational_definition: 'Elapsed lead time',
+        },
+        current: null,
+        forecast: null,
+      },
+    } as GraphNode
+    const wrapper = mount(EditStateEstimateDialog, {
+      props: { open: true, pending: false, node: native, projectId: 'A', edges: [] },
+      global: { stubs: { Teleport: true } },
+    })
+
+    expect(wrapper.text()).toContain('Forecast')
+    expect((wrapper.get('[aria-label="Squiggle source"]').element as HTMLTextAreaElement).value)
+      .toBe('beta(2, 2) * 30 + 0')
+    expect(wrapper.text()).toContain('day')
+  })
 })

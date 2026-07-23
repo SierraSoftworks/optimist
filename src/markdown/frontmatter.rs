@@ -105,6 +105,8 @@ pub(super) struct NodeHeader {
     pub(super) aliases: Vec<String>,
     #[serde(default)]
     pub(super) metadata: BTreeMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) native_state: Option<crate::domain::QuantityState>,
     pub(super) payload: NodePayload,
 }
 
@@ -118,6 +120,7 @@ impl NodeHeader {
             title: node.title.clone(),
             aliases: node.aliases.clone(),
             metadata: node.metadata.clone(),
+            native_state: node.native_state.clone(),
             payload: node.payload.clone(),
         }
     }
@@ -132,6 +135,7 @@ impl NodeHeader {
             description,
             aliases: self.aliases,
             metadata: self.metadata,
+            native_state: self.native_state,
             payload: self.payload,
         }
     }

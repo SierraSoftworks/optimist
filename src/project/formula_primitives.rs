@@ -11,6 +11,14 @@ pub(crate) fn from_node(
 ) -> Result<Vec<(EstimateAddress, Formula)>, FormulaCommandError> {
     let owner = EstimateOwner::Node(node.id);
     let mut formulas = Vec::new();
+    if let Some(state) = &node.native_state {
+        let unit = state.quantity.dimension.clone().ok_or_else(|| {
+            FormulaCommandError::InvalidPrimitiveUnit(state.quantity.unit.clone())
+        })?;
+        optional(project, &owner, &state.current, unit.clone(), &mut formulas);
+        optional(project, &owner, &state.forecast, unit, &mut formulas);
+        return Ok(formulas);
+    }
     match &node.payload {
         NodePayload::Outcome(value) => states(
             project,

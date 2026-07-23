@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::domain::{EntityId, ProjectId};
+use crate::domain::{EntityId, ProjectId, QuantityDefinition};
 
 use super::{client::ProjectClient, node_payload, output::OutputFormat};
 
@@ -62,6 +62,13 @@ enum NodeCommand {
         #[arg(long, default_value = "{}")]
         metadata: String,
     },
+    /// Replaces empty legacy standardized state with a native quantity definition.
+    Quantity {
+        id: EntityId,
+        /// Complete QuantityDefinition JSON including canonical dimension and support.
+        #[arg(long)]
+        definition: String,
+    },
 }
 
 pub(super) async fn run(
@@ -103,9 +110,24 @@ pub(super) async fn run(
                 .update_node_metadata(project, id, title, description, parse_metadata(&metadata)?)
                 .await?,
         )?,
+        NodeCommand::Quantity { id, definition } => output.node(
+            &client
+                .set_node_quantity_state(project, id, parse_quantity_definition(&definition)?)
+                .await?,
+        )?,
     };
     println!("{rendered}");
     Ok(())
+}
+
+fn parse_quantity_definition(value: &str) -> Result<QuantityDefinition, human_errors::Error> {
+    serde_json::from_str(value).map_err(|error| {
+        human_errors::wrap_user(
+            error,
+            "The quantity definition is not valid QuantityDefinition JSON.",
+            &["Include `unit`, canonical `dimension`, `aggregation`, and `support` fields."],
+        )
+    })
 }
 
 fn parse_metadata(

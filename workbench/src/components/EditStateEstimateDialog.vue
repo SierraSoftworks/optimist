@@ -23,30 +23,41 @@ const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('probability'
 const uncertainty = ref<EstimateUncertainty>({})
 const sourceValid = ref(true)
 const existing = computed(() => {
+  if (props.node?.native_state) {
+    return form.slot === 'current'
+      ? props.node.native_state.current ?? null
+      : props.node.native_state.forecast ?? null
+  }
   if (props.node?.payload.kind === 'metric') return props.node.payload.properties.current ?? null
   if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return null
   return props.node.payload.properties[form.slot]
 })
 const metricSupport = computed<QuantitySupport>(() =>
-  props.node?.payload.kind === 'metric'
+  props.node?.native_state
+    ? props.node.native_state.quantity.support ?? { type: 'real' }
+    : props.node?.payload.kind === 'metric'
     ? props.node.payload.properties.support ?? { type: 'real' }
     : { type: 'bounded', lower: 0, upper: 1 },
 )
 const estimateSupport = computed<EstimateSupport>(() => {
-  if (props.node?.payload.kind !== 'metric') return 'probability'
+  if (!props.node?.native_state && props.node?.payload.kind !== 'metric') return 'probability'
   if (metricSupport.value.type === 'bounded') {
     return { bounded: { lower: metricSupport.value.lower, upper: metricSupport.value.upper } }
   }
   return metricSupport.value.type
 })
 const expectedUnit = computed<Unit>(() =>
-  props.node?.payload.kind === 'metric' ? props.node.payload.properties.dimension ?? {} : {},
+  props.node?.native_state
+    ? props.node.native_state.quantity.dimension ?? {}
+    : props.node?.payload.kind === 'metric' ? props.node.payload.properties.dimension ?? {} : {},
 )
 const canAuthor = computed(() =>
-  props.node?.payload.kind !== 'metric' || props.node.payload.properties.dimension !== undefined,
+  props.node?.native_state
+    ? props.node.native_state.quantity.dimension !== undefined
+    : props.node?.payload.kind !== 'metric' || props.node.payload.properties.dimension !== undefined,
 )
 const calibratedReadings = computed(() => {
-  if (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome') return []
+  if (props.node?.native_state || (props.node?.payload.kind !== 'factor' && props.node?.payload.kind !== 'outcome')) return []
   return props.edges.flatMap((edge) => {
     if (edge.destination !== props.node?.id || edge.payload.kind !== 'measures') return []
     const calibration = edge.payload.properties.calibration
@@ -116,7 +127,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
           State
           <select v-model="form.slot">
             <option value="current">Current</option>
-            <option value="desired">Desired</option>
+            <option value="desired">{{ node.native_state ? 'Forecast' : 'Desired' }}</option>
           </select>
         </label>
         <EstimateSourceEditor

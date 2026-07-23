@@ -311,6 +311,11 @@ pub trait EstimateDimension: sealed::Sealed {
     fn quantity_definition() -> Option<QuantityDefinition> {
         None
     }
+
+    /// Reports whether an owner may persist an explicit quantity definition.
+    fn accepts_explicit_quantity() -> bool {
+        false
+    }
 }
 
 macro_rules! dimension {
@@ -372,12 +377,23 @@ dimension!(
     is_signed_influence,
     "A bounded causal effect on `[-1, 1]`, where sign gives direction and magnitude gives local strength."
 );
-dimension!(
-    QuantityValue,
-    "quantity_value",
-    is_quantity_value,
-    "A scalar value whose legal support and native unit are supplied by its owning quantity definition."
-);
+/// A scalar value whose support and unit are supplied by its owning quantity definition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QuantityValue;
+
+impl sealed::Sealed for QuantityValue {}
+
+impl EstimateDimension for QuantityValue {
+    const NAME: &'static str = "quantity_value";
+
+    fn accepts(distribution: &Distribution) -> bool {
+        distribution.is_quantity_value()
+    }
+
+    fn accepts_explicit_quantity() -> bool {
+        true
+    }
+}
 
 /// Errors returned when a primitive distribution cannot form a typed estimate.
 #[derive(Clone, Debug, Error, PartialEq)]
@@ -590,6 +606,7 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
         estimate.quantity = match (expected_quantity, raw.quantity) {
             (Some(expected), None) => Some(expected),
             (Some(expected), Some(persisted)) if expected == persisted => Some(expected),
+            (None, persisted) if T::accepts_explicit_quantity() => persisted,
             (None, None) => None,
             _ => {
                 return Err(de::Error::custom(EstimateError::InvalidQuantityDefinition(

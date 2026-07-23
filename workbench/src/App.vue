@@ -27,6 +27,7 @@ import DeleteSelectionDialog from './components/DeleteSelectionDialog.vue'
 import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
+import ConfigureStateQuantityDialog from './components/ConfigureStateQuantityDialog.vue'
 import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
@@ -62,6 +63,7 @@ import type {
   SetInterventionEstimateInput,
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
+  QuantityDefinition,
   ScenarioDraft,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -76,6 +78,7 @@ import {
   useProject,
   useProjects,
   useSetStateEstimate,
+  useSetNodeQuantityState,
   useUpdateNode,
   useUpdateEdge,
   useDeleteEdge,
@@ -123,6 +126,7 @@ const relationshipMenu = ref<{ sourceId: string; x: number; y: number } | null>(
 const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
+const stateQuantityDialogOpen = ref(false)
 const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
@@ -191,6 +195,7 @@ const relationshipMenuSource = computed<GraphNode | null>(() =>
 )
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
+const setNodeQuantityState = useSetNodeQuantityState(projectQuery.data, selectedNode)
 const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
 const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
@@ -536,6 +541,16 @@ async function submitStateEstimate(input: SetStateEstimateInput) {
   try {
     await setStateEstimate.mutateAsync(input)
     estimateDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitStateQuantity(quantity: QuantityDefinition) {
+  mutationError.value = null
+  try {
+    await setNodeQuantityState.mutateAsync(quantity)
+    stateQuantityDialogOpen.value = false
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -920,6 +935,7 @@ function retry() {
         :edges="edges"
         @edit="editNodeDialogOpen = true"
         @estimate="estimateDialogOpen = true"
+        @quantity="stateQuantityDialogOpen = true"
         @relationship="editRelationship"
         @observe="observe"
         @correct="correct"
@@ -1005,6 +1021,13 @@ function retry() {
       :edges="edges"
       @close="estimateDialogOpen = false"
       @submit="submitStateEstimate"
+    />
+    <ConfigureStateQuantityDialog
+      :open="stateQuantityDialogOpen"
+      :pending="setNodeQuantityState.isPending.value"
+      :node="selectedNode"
+      @close="stateQuantityDialogOpen = false"
+      @submit="submitStateQuantity"
     />
     <EditEdgeDialog
       :open="edgeEditDialogOpen"

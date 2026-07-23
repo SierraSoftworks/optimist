@@ -5,6 +5,14 @@ use crate::domain::{Edge, normalize_name};
 use super::{EntityDocument, MarkdownError};
 
 pub(super) fn entity(path: &str, document: &mut EntityDocument) -> Result<(), MarkdownError> {
+    document
+        .node
+        .validate_native_state()
+        .map_err(|error| MarkdownError::InvalidNode {
+            path: path.to_owned(),
+            node: document.node.id,
+            message: error.to_string(),
+        })?;
     if document.node.normalized_name != normalize_name(&document.node.name) {
         return Err(MarkdownError::InvalidNodeName {
             path: path.to_owned(),

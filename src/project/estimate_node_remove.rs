@@ -7,6 +7,14 @@ pub(super) fn remove(
     address: &EstimateAddress,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let existing = estimate_node_find::find(node, address)?;
+    if let Some(state) = &mut node.native_state {
+        match existing.slot {
+            EstimateSlot::Current => state.current = None,
+            EstimateSlot::Desired => state.forecast = None,
+            _ => return Err(estimate_support::invalid_slot(address, existing.slot)),
+        }
+        return Ok(existing);
+    }
     match (&mut node.payload, &existing.slot) {
         (NodePayload::Outcome(value), EstimateSlot::Current) => value.current = None,
         (NodePayload::Outcome(value), EstimateSlot::Desired) => value.desired = None,

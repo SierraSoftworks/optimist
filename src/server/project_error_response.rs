@@ -95,6 +95,32 @@ pub(super) fn classify(
             "observation_unit_mismatch",
             &["Use the unit defined by the measurement edge's source metric."],
         ),
+        ProjectError::NativeStateUnsupported(_) => (
+            StatusCode::BAD_REQUEST,
+            "native_state_unsupported",
+            &["Choose a factor or outcome node before configuring native state."],
+        ),
+        ProjectError::StateEstimatesAlreadyExist(_) => (
+            StatusCode::CONFLICT,
+            "state_estimates_already_exist",
+            &[
+                "Remove existing current and desired or forecast estimates before changing the state quantity.",
+            ],
+        ),
+        ProjectError::NativeStateNormalizedEdge(_) => (
+            StatusCode::CONFLICT,
+            "native_state_normalized_edge",
+            &[
+                "Replace incident normalized causal effects with unit-aware linear responses, then retry.",
+            ],
+        ),
+        ProjectError::Quantity(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_quantity_state",
+            &[
+                "Check the canonical unit terms, support bounds, and operational definition, then retry.",
+            ],
+        ),
         ProjectError::NativeCausalResponseRequired(_) => (
             StatusCode::BAD_REQUEST,
             "native_causal_response_required",

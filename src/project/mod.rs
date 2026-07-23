@@ -33,6 +33,7 @@ pub(crate) mod formula_primitives;
 pub(crate) mod formula_projection;
 mod formulas;
 mod model;
+mod node_state;
 mod project_archive;
 mod project_archive_export;
 mod project_archive_import;

@@ -64,6 +64,12 @@ export interface QuantityDefinition {
   resolution_source?: string | null
 }
 
+export interface QuantityState {
+  quantity: QuantityDefinition
+  current?: Estimate | null
+  forecast?: Estimate | null
+}
+
 export type EstimateSource =
   | { type: 'distribution' }
   | { type: 'fermi'; definition: FermiEstimateDefinition; assessment: FermiAssessment }
@@ -176,6 +182,7 @@ export interface GraphNode {
   description: string
   aliases: string[]
   metadata: Record<string, unknown>
+  native_state?: QuantityState | null
   payload: NodePayload
 }
 

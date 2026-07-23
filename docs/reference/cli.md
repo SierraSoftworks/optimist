@@ -137,6 +137,15 @@ Uncertainty JSON accepts optional `epistemic`, `process`, and `measurement` stri
 
 Estimate output includes intrinsic quantity metadata when present. Legacy factor and outcome states are reported as dimensionless `standardized_state` quantities bounded to `[0,1]`; their stored distributions and model-specific anchors are unchanged.
 
+Configure an empty factor or outcome for native current and forecast estimates before adding causal edges:
+
+```sh
+optimist --project A node quantity <NODE> \
+  --definition '{"unit":"days","dimension":{"day":1},"aggregation":null,"support":{"type":"non_negative"},"operational_definition":"Elapsed lead time"}'
+```
+
+The existing `current` estimate slot stores native current state. The compatibility slot spelling `desired` stores the native pre-intervention forecast and is labelled **Forecast** in the workbench.
+
 ### Formulas
 
 ```sh
