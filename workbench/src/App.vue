@@ -41,6 +41,7 @@ import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
 import ImpedimentAnalysisPanel from './components/ImpedimentAnalysisPanel.vue'
 import NodeRelationshipMenu from './components/NodeRelationshipMenu.vue'
 import CommandBar from './components/CommandBar.vue'
+import PersistenceStatus from './components/PersistenceStatus.vue'
 import { OptimistApiError } from './api/client'
 import { api } from './api/client'
 import type {
@@ -90,19 +91,19 @@ import {
   useUpdateScenario,
   useImpedimentAnalysis,
   useSetMeasurementCalibration,
-  useServerHealth,
 } from './composables/useProjectData'
 import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 import { simulationReadiness } from './domain/simulationReadiness'
 import type { WorkbenchCommand } from './domain/commandBar'
 import { commandShortcutLabel } from './domain/platformShortcut'
+import { readRelationshipDraft, writeRelationshipDraft } from './domain/relationshipDraft'
 
+const restoredRelationshipDraft = readRelationshipDraft(sessionStorage)
 const store = useWorkbenchStore()
 const commandShortcutHint = commandShortcutLabel()
 const { mode, search, selectedNodeId, selectedProjectId, setupOnly, visibleKinds } = storeToRefs(store)
 const projectsQuery = useProjects()
-const healthQuery = useServerHealth()
 const projectQuery = useProject(selectedProjectId)
 const graph = useGraph(selectedProjectId)
 const createProject = useCreateProject()
@@ -111,9 +112,12 @@ const createEdge = useCreateEdge(projectQuery.data)
 const importProject = useImportProject()
 const projectDialogOpen = ref(false)
 const nodeDialogOpen = ref(false)
-const edgeDialogOpen = ref(false)
-const edgeDialogSourceId = ref<string | null>(null)
-const edgeDialogKind = ref<EdgeKind | null>(null)
+const edgeDialogOpen = ref(Boolean(restoredRelationshipDraft))
+const edgeDialogProjectId = ref(restoredRelationshipDraft?.projectId ?? '')
+const edgeDialogSourceId = ref(restoredRelationshipDraft?.sourceId ?? '')
+const edgeDialogDestinationId = ref(restoredRelationshipDraft?.destinationId ?? '')
+const edgeDialogKind = ref<EdgeKind>(restoredRelationshipDraft?.kind ?? 'contributes')
+const edgeDialogSourceLocked = ref(restoredRelationshipDraft?.sourceLocked ?? false)
 const relationshipMenu = ref<{ sourceId: string; x: number; y: number } | null>(null)
 const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
@@ -286,6 +290,24 @@ watch(
 watch([mode, selectedProjectId, selectedScenarioId], () => clearOptimizeSelection())
 watch([mode, selectedProjectId], () => clearImpedimentSelection())
 watch(selectedProjectId, () => { commandBarOpen.value = false })
+watch(
+  [
+    edgeDialogOpen, edgeDialogProjectId, edgeDialogSourceId,
+    edgeDialogDestinationId, edgeDialogKind, edgeDialogSourceLocked,
+  ],
+  ([open, projectId, sourceId, destinationId, kind, sourceLocked]) => {
+    writeRelationshipDraft(sessionStorage, open && projectId
+      ? { projectId, sourceId, destinationId, kind, sourceLocked }
+      : null)
+  },
+  { flush: 'sync' },
+)
+watch(selectedProjectId, (projectId) => {
+  if (
+    edgeDialogOpen.value && projectId && edgeDialogProjectId.value &&
+    projectId !== edgeDialogProjectId.value
+  ) closeRelationshipDialog()
+})
 
 function commandShortcut(event: KeyboardEvent) {
   if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'k') return
@@ -328,8 +350,11 @@ function selectProject(event: Event) {
 }
 
 function openRelationshipDialog() {
-  edgeDialogSourceId.value = null
-  edgeDialogKind.value = null
+  edgeDialogProjectId.value = selectedProjectId.value ?? ''
+  edgeDialogSourceId.value = ''
+  edgeDialogDestinationId.value = ''
+  edgeDialogKind.value = 'contributes'
+  edgeDialogSourceLocked.value = false
   edgeDialogOpen.value = true
 }
 
@@ -339,10 +364,27 @@ function openNodeRelationshipMenu(event: { nodeId: string; x: number; y: number 
 }
 
 function createRelationshipFromNode(kind: EdgeKind) {
-  edgeDialogSourceId.value = relationshipMenu.value?.sourceId ?? null
+  edgeDialogProjectId.value = selectedProjectId.value ?? ''
+  edgeDialogSourceId.value = relationshipMenu.value?.sourceId ?? ''
+  edgeDialogDestinationId.value = ''
   edgeDialogKind.value = kind
+  edgeDialogSourceLocked.value = true
   relationshipMenu.value = null
   edgeDialogOpen.value = true
+}
+
+function closeRelationshipDialog() {
+  edgeDialogOpen.value = false
+}
+
+function updateRelationshipDraft(draft: {
+  sourceId: string
+  destinationId: string
+  kind: EdgeKind
+}) {
+  edgeDialogSourceId.value = draft.sourceId
+  edgeDialogDestinationId.value = draft.destinationId
+  edgeDialogKind.value = draft.kind
 }
 
 function edgeElementId(edge: import('./api/types').EdgeIdentity) {
@@ -474,7 +516,7 @@ async function submitEdge(input: CreateEdgeInput) {
   mutationError.value = null
   try {
     await createEdge.mutateAsync(input)
-    edgeDialogOpen.value = false
+    closeRelationshipDialog()
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -736,17 +778,7 @@ function retry() {
       </nav>
 
       <div class="header-actions">
-        <span
-          v-if="healthQuery.data.value?.persistence.state !== 'idle'"
-          class="persistence-state"
-          :data-state="healthQuery.data.value?.persistence.state"
-          :title="healthQuery.data.value?.persistence.error ?? 'Compacting durable model snapshot'"
-          aria-live="polite"
-        >
-          <RefreshCw v-if="healthQuery.data.value?.persistence.state === 'pending'" class="spin" :size="13" />
-          <AlertTriangle v-else :size="13" />
-          {{ healthQuery.data.value?.persistence.state === 'pending' ? 'Saving model' : 'Persistence degraded' }}
-        </span>
+        <PersistenceStatus />
         <button type="button" class="command-bar-trigger header-icon" :title="`Command bar (${commandShortcutHint})`" :aria-label="`Open command bar (${commandShortcutHint})`" :disabled="!selectedProjectId" @click="commandBarOpen = true">
           <SquareTerminal :size="16" />
           <kbd>{{ commandShortcutHint }}</kbd>
@@ -942,9 +974,12 @@ function retry() {
       :pending="createEdge.isPending.value"
       :project-id="selectedProjectId"
       :nodes="nodes"
-      :initial-source-id="edgeDialogSourceId"
-      :initial-kind="edgeDialogKind"
-      @close="edgeDialogOpen = false"
+      :source-id="edgeDialogSourceId"
+      :destination-id="edgeDialogDestinationId"
+      :kind="edgeDialogKind"
+      :source-locked="edgeDialogSourceLocked"
+      @draft-change="updateRelationshipDraft"
+      @close="closeRelationshipDialog"
       @submit="submitEdge"
     />
     <NodeRelationshipMenu
@@ -1054,8 +1089,6 @@ function retry() {
 .project-switcher select { appearance: none; width: 100%; height: 100%; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-weight: 600; }
 .project-switcher > svg { position: absolute; right: 48px; pointer-events: none; color: var(--muted); }
 .revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: 11px 'IBM Plex Mono', monospace; color: var(--muted); }
-.persistence-state { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 700; white-space: nowrap; }
-.persistence-state[data-state='error'] { color: #9a3e31; }
 .mode-tabs { display: flex; align-items: center; height: 100%; }
 .mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 11px; font-size: 12px; font-weight: 600; }
 .mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
