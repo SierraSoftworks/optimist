@@ -50,6 +50,25 @@ describe('EditStateEstimateDialog', () => {
     expect((wrapper.get('textarea[placeholder="One source or elicitation note per line"]').element as HTMLTextAreaElement).value).toContain('Calibrated observation #1')
   })
 
+  it('captures distinct uncertainty sources without combining them', async () => {
+    const wrapper = mount(EditStateEstimateDialog, {
+      props: { open: true, pending: false, node, projectId: 'A', edges: [] },
+      global: { stubs: { Teleport: true } },
+    })
+    await wrapper.findAll('.uncertainty-editor textarea')[0]!.setValue('Limited calibration evidence')
+    await wrapper.findAll('.uncertainty-editor textarea')[1]!.setValue('Daily process variation')
+    await wrapper.findAll('.uncertainty-editor textarea')[2]!.setValue('Survey sampling error')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+      uncertainty: {
+        epistemic: 'Limited calibration evidence',
+        process: 'Daily process variation',
+        measurement: 'Survey sampling error',
+      },
+    })
+  })
+
   it('edits a bounded metric directly in its native unit without offering Fermi', async () => {
     const metric = {
       id: 'A', revision: 0, name: 'lead_time', normalized_name: 'lead_time', title: 'Lead time',

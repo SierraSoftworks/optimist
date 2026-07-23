@@ -111,10 +111,21 @@ function formatDistribution(value: Distribution) {
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
-function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
+function estimateSourceLabel(estimate: import('../api/types').Estimate | null | undefined) {
   if (estimate?.source?.type === 'squiggle') return `Squiggle · ${estimate.source.definition.source}`
   if (estimate?.source?.type === 'fermi') return `Legacy Fermi · ${estimate.source.definition.equation}`
   return null
+}
+
+function uncertaintyLabel(estimate: import('../api/types').Estimate | null | undefined) {
+  const uncertainty = estimate?.uncertainty
+  if (!uncertainty) return null
+  const parts = [
+    uncertainty.epistemic ? `Epistemic: ${uncertainty.epistemic}` : null,
+    uncertainty.process ? `Process: ${uncertainty.process}` : null,
+    uncertainty.measurement ? `Measurement: ${uncertainty.measurement}` : null,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
 }
 
 function provenance(node: GraphNode, slot: 'current' | 'desired') {
@@ -196,9 +207,11 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
           <div v-if="sourceLabel(node, 'current')"><dt>Current model</dt><dd>{{ sourceLabel(node, 'current') }}</dd></div>
           <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
+          <div v-if="uncertaintyLabel(node.payload.properties.current)"><dt>Current uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.current) }}</dd></div>
           <div><dt>Desired</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
           <div v-if="sourceLabel(node, 'desired')"><dt>Desired model</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
           <div v-if="provenance(node, 'desired').length"><dt>Desired source</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
+          <div v-if="uncertaintyLabel(node.payload.properties.desired)"><dt>Desired uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.desired) }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
@@ -228,6 +241,9 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Support</dt><dd>{{ node.payload.properties.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
           <div v-if="node.payload.properties.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.support.lower }}–{{ node.payload.properties.support.upper }}</dd></div>
           <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
+          <div v-if="estimateSourceLabel(node.payload.properties.current)"><dt>Current model</dt><dd>{{ estimateSourceLabel(node.payload.properties.current) }}</dd></div>
+          <div v-if="node.payload.properties.current?.provenance?.length"><dt>Provenance</dt><dd>{{ node.payload.properties.current.provenance.join('; ') }}</dd></div>
+          <div v-if="uncertaintyLabel(node.payload.properties.current)"><dt>Uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.current) }}</dd></div>
           <div v-if="node.payload.properties.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.operational_definition }}</dd></div>
           <div v-if="node.payload.properties.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.reference_time }}</dd></div>
           <div v-if="node.payload.properties.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.resolution_source }}</dd></div>
@@ -264,15 +280,15 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">
         <h3>Investment <button type="button" class="icon-button section-action" title="Add cost dimension" aria-label="Add cost dimension" @click="emit('interventionEstimate', { kind: 'cost', value: '' })"><Plus :size="14" /></button></h3>
         <div class="estimate-row">
-          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.duration)">{{ estimateSourceLabel(node.payload.properties.duration) }}</small></div>
+          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.duration)">{{ estimateSourceLabel(node.payload.properties.duration) }}</small><small v-if="uncertaintyLabel(node.payload.properties.duration)">{{ uncertaintyLabel(node.payload.properties.duration) }}</small></div>
           <button type="button" class="icon-button" aria-label="Edit duration estimate" @click="emit('interventionEstimate', { kind: 'duration' })"><Pencil :size="13" /></button>
         </div>
         <div class="estimate-row">
-          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.probability_of_success)">{{ estimateSourceLabel(node.payload.properties.probability_of_success) }}</small></div>
+          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.probability_of_success)">{{ estimateSourceLabel(node.payload.properties.probability_of_success) }}</small><small v-if="uncertaintyLabel(node.payload.properties.probability_of_success)">{{ uncertaintyLabel(node.payload.properties.probability_of_success) }}</small></div>
           <button type="button" class="icon-button" aria-label="Edit success probability estimate" @click="emit('interventionEstimate', { kind: 'probability_of_success' })"><Pencil :size="13" /></button>
         </div>
         <div v-for="cost in node.payload.properties.costs" :key="cost.dimension" class="estimate-row">
-          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong><small v-if="estimateSourceLabel(cost.value)">{{ estimateSourceLabel(cost.value) }}</small></div>
+          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong><small v-if="estimateSourceLabel(cost.value)">{{ estimateSourceLabel(cost.value) }}</small><small v-if="uncertaintyLabel(cost.value)">{{ uncertaintyLabel(cost.value) }}</small></div>
           <button type="button" class="icon-button" :aria-label="`Edit ${cost.dimension} cost estimate`" @click="emit('interventionEstimate', { kind: 'cost', value: cost.dimension })"><Pencil :size="13" /></button>
         </div>
         <p v-if="!node.payload.properties.costs.length" class="muted">No cost dimensions configured.</p>

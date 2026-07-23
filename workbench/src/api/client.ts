@@ -56,6 +56,7 @@ interface PrimitiveEstimate {
   distribution: import('./types').Distribution
   source: EstimateSource
   provenance: string[]
+  uncertainty?: import('./types').EstimateUncertainty
 }
 
 function estimateCommand(
@@ -63,22 +64,23 @@ function estimateCommand(
   slot: PrimitiveEstimate['slot'],
   source: EstimateSourceInput,
   provenance: string[],
+  uncertainty?: import('./types').EstimateUncertainty,
 ) {
   if (source.type === 'distribution') {
     return {
         type: 'set_estimate',
-        payload: { address, slot, distribution: source.distribution, provenance },
+        payload: { address, slot, distribution: source.distribution, provenance, uncertainty },
       }
   }
   if (source.type === 'fermi') {
     return {
         type: 'set_fermi_estimate',
-        payload: { address, slot, definition: source.definition, provenance },
+        payload: { address, slot, definition: source.definition, provenance, uncertainty },
       }
   }
   return {
     type: 'set_squiggle_estimate',
-    payload: { address, slot, definition: source.definition, provenance },
+    payload: { address, slot, definition: source.definition, provenance, uncertainty },
   }
 }
 
@@ -423,6 +425,7 @@ export const api = {
               { kind: input.slot },
               input.source,
               input.provenance,
+              input.uncertainty,
             ),
           },
         }),
@@ -621,6 +624,7 @@ export const api = {
             input.slot,
             input.source,
             input.provenance,
+            input.uncertainty,
           ),
         }),
       },
@@ -785,6 +789,7 @@ export const api = {
             input.slot,
             input.source,
             input.provenance,
+            input.uncertainty,
           ),
         }),
       },

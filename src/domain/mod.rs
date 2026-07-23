@@ -12,6 +12,7 @@ mod edge_payload;
 mod estimate;
 mod estimate_address;
 mod estimate_slot;
+mod estimate_uncertainty;
 mod fermi_assessment;
 mod fermi_estimate;
 mod formula;
@@ -74,6 +75,7 @@ pub use estimate_address::{
     EstimateAddress, EstimateAddressError, EstimateComponentId, EstimateOwner,
 };
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};
+pub use estimate_uncertainty::{EstimateUncertainty, EstimateUncertaintyError};
 pub use fermi_assessment::{
     FermiAssessment, FermiAssessmentError, FermiEstimateSupport, FermiInterval,
     FermiRecommendation, assess_fermi,

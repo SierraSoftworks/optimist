@@ -4,9 +4,9 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
 use super::{
-    EntityId, FermiAssessment, FermiEstimateDefinition, FermiEstimateError,
-    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError, Unit,
-    assess_squiggle_estimate,
+    EntityId, EstimateUncertainty, EstimateUncertaintyError, FermiAssessment,
+    FermiEstimateDefinition, FermiEstimateError, SquiggleEstimateAssessment,
+    SquiggleEstimateDefinition, SquiggleEstimateError, Unit, assess_squiggle_estimate,
 };
 
 const MAX_EMPIRICAL_SAMPLES: usize = 4_096;
@@ -378,6 +378,9 @@ pub enum EstimateError {
     /// Persisted Squiggle source or assessment is invalid.
     #[error(transparent)]
     Squiggle(#[from] SquiggleEstimateError),
+    /// Descriptive uncertainty metadata exceeded its transport bound.
+    #[error(transparent)]
+    Uncertainty(#[from] EstimateUncertaintyError),
 }
 
 /// Exclusive source used to produce an estimate's effective distribution.
@@ -434,6 +437,9 @@ pub struct Estimate<T: EstimateDimension> {
     /// Human-readable evidence, source, or elicitation records supporting the estimate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<String>,
+    /// Distinct uncertainty sources retained without assuming independence.
+    #[serde(default, skip_serializing_if = "EstimateUncertainty::is_empty")]
+    pub uncertainty: EstimateUncertainty,
     #[serde(skip)]
     marker: PhantomData<T>,
 }
@@ -454,6 +460,7 @@ impl<T: EstimateDimension> Estimate<T> {
             distribution,
             source: EstimateSource::Distribution,
             provenance: Vec::new(),
+            uncertainty: EstimateUncertainty::default(),
             marker: PhantomData,
         })
     }
@@ -503,6 +510,8 @@ struct RawEstimate {
     source: EstimateSource,
     #[serde(default)]
     provenance: Vec<String>,
+    #[serde(default)]
+    uncertainty: EstimateUncertainty,
 }
 
 impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
@@ -553,6 +562,7 @@ impl<'de, T: EstimateDimension> Deserialize<'de> for Estimate<T> {
         };
         estimate.revision = raw.revision;
         estimate.provenance = raw.provenance;
+        estimate.uncertainty = raw.uncertainty;
         Ok(estimate)
     }
 }
@@ -616,9 +626,9 @@ mod tests {
         Money, NormalizedState, Probability, SignedInfluence,
     };
     use crate::domain::{
-        FermiEstimateDefinition, FermiEstimateSupport, FermiExpressionLanguage, FermiVariable,
-        FermiVariableUncertainty, Formula, MonteCarloConfig, ProjectId, SquiggleEstimateDefinition,
-        Unit, assess_fermi,
+        EstimateUncertainty, FermiEstimateDefinition, FermiEstimateSupport,
+        FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula,
+        MonteCarloConfig, ProjectId, SquiggleEstimateDefinition, Unit, assess_fermi,
     };
 
     #[test]
@@ -675,6 +685,32 @@ mod tests {
         }"#;
         let estimate = serde_json::from_str::<Estimate<Probability>>(json).unwrap();
         assert_eq!(estimate.source, EstimateSource::Distribution);
+        assert_eq!(estimate.uncertainty, EstimateUncertainty::default());
+        assert!(
+            !serde_json::to_string(&estimate)
+                .unwrap()
+                .contains("uncertainty")
+        );
+    }
+
+    #[test]
+    fn uncertainty_sources_round_trip_without_changing_the_distribution() {
+        let mut estimate =
+            Estimate::<Probability>::new(EstimateId::new(0), Distribution::beta(2.0, 3.0).unwrap())
+                .unwrap();
+        estimate.uncertainty = EstimateUncertainty::new(
+            "  Limited calibration data  ",
+            "Week-to-week demand variation",
+            "Sampling error",
+        )
+        .unwrap();
+
+        let restored: Estimate<Probability> =
+            serde_json::from_str(&serde_json::to_string(&estimate).unwrap()).unwrap();
+
+        assert_eq!(restored.distribution, estimate.distribution);
+        assert_eq!(restored.uncertainty, estimate.uncertainty);
+        assert_eq!(restored.uncertainty.epistemic, "Limited calibration data");
     }
 
     #[test]

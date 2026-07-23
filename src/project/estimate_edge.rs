@@ -1,17 +1,18 @@
 use crate::domain::{
-    Distribution, Edge, EdgePayload, EstimateAddress, EstimateId, EstimateSlot, EstimateSource,
-    PrimitiveEstimate,
+    Distribution, Edge, EdgePayload, EstimateAddress, EstimateId, EstimateSlot, PrimitiveEstimate,
 };
 
-use super::{EstimateCommandError, ProjectError, estimate_support};
+use super::{
+    EstimateCommandError, ProjectError,
+    estimate_support::{self, EstimateMetadata},
+};
 
 pub(super) fn set(
     edge: &mut Edge,
     address: &EstimateAddress,
     slot: EstimateSlot,
     distribution: Distribution,
-    source: EstimateSource,
-    provenance: Vec<String>,
+    metadata: EstimateMetadata,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     let count = count_id(&edge.payload, address.estimate);
     match (&mut edge.payload, slot.clone()) {
@@ -25,8 +26,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
-                source,
-                provenance,
+                metadata,
             )
             .map(|(estimate, result)| {
                 *value.normalized_effect_mut().expect("model checked") = estimate;
@@ -43,8 +43,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
-                source,
-                provenance,
+                metadata,
             )
             .map(|(estimate, result)| {
                 value
@@ -61,8 +60,7 @@ pub(super) fn set(
                 slot,
                 count,
                 distribution,
-                source,
-                provenance,
+                metadata,
             )
             .map(|(estimate, result)| {
                 value.lag = Some(estimate);
@@ -75,8 +73,7 @@ pub(super) fn set(
             slot,
             count,
             distribution,
-            source,
-            provenance,
+            metadata,
         )
         .map(|(estimate, result)| {
             value.degree = estimate;

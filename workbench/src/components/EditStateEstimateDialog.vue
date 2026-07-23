@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import type { EstimateSourceInput, EstimateSupport, EstimateUncertainty, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
 import { defaultSquiggleSourceInput, squiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
+import EstimateUncertaintyEditor from './EstimateUncertaintyEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
 const props = defineProps<{
@@ -19,6 +20,7 @@ const form = reactive({
   provenance: '',
 })
 const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('probability', {}))
+const uncertainty = ref<EstimateUncertainty>({})
 const sourceValid = ref(true)
 const existing = computed(() => {
   if (props.node?.payload.kind === 'metric') return props.node.payload.properties.current ?? null
@@ -62,6 +64,7 @@ watch(
     if (props.node?.payload.kind === 'metric') form.slot = 'current'
     const currentDistribution = existing.value?.distribution
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
+    uncertainty.value = { ...existing.value?.uncertainty }
     if (currentDistribution) {
       source.value = existing.value?.source?.type === 'fermi'
         ? { type: 'fermi', definition: existing.value.source.definition }
@@ -84,6 +87,7 @@ function submit() {
       .split('\n')
       .map((value) => value.trim())
       .filter(Boolean),
+    uncertainty: uncertainty.value,
   })
 }
 
@@ -136,6 +140,7 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
             <button type="button" class="secondary-button" @click="useReading(reading)">Use reading</button>
           </article>
         </section>
+        <EstimateUncertaintyEditor v-model="uncertainty" />
         <label>
           Provenance
           <textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea>

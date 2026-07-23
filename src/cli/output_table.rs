@@ -110,13 +110,16 @@ pub(super) fn estimate(estimate: &PrimitiveEstimate) -> Result<String, human_err
         }
     };
     Ok(format!(
-        "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\n{}\t{:?}\t{}\t{}\t{}\t{}",
+        "ADDRESS\tSLOT\tREVISION\tSOURCE\tDISTRIBUTION\tPROVENANCE\tEPISTEMIC\tPROCESS\tMEASUREMENT\n{}\t{:?}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
         estimate.address,
         estimate.slot,
         estimate.revision,
         source,
         super::output_json::serialize(&estimate.distribution)?,
-        estimate.provenance.join("; ")
+        estimate.provenance.join("; "),
+        estimate.uncertainty.epistemic.replace(['\t', '\n'], " "),
+        estimate.uncertainty.process.replace(['\t', '\n'], " "),
+        estimate.uncertainty.measurement.replace(['\t', '\n'], " ")
     ))
 }
 

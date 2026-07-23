@@ -5,12 +5,14 @@ import type {
   EdgeEstimateSlot,
   Estimate,
   EstimateSourceInput,
+  EstimateUncertainty,
   GraphEdge,
   SetEdgeEstimateInput,
   Unit,
 } from '../api/types'
 import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
+import EstimateUncertaintyEditor from './EstimateUncertaintyEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -28,6 +30,7 @@ const form = reactive({
   provenance: '',
 })
 const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('signed', {}))
+const uncertainty = ref<EstimateUncertainty>({})
 const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const signed = computed(() => props.slot?.kind === 'effect' || props.slot?.kind === 'degree')
@@ -77,6 +80,7 @@ watch(
             )
     sourceValid.value = true
     form.provenance = existing.value?.provenance?.join('\n') ?? ''
+    uncertainty.value = { ...existing.value?.uncertainty }
     confirmRemove.value = false
   },
 )
@@ -90,6 +94,7 @@ function submit() {
       .split('\n')
       .map((value) => value.trim())
       .filter(Boolean),
+    uncertainty: uncertainty.value,
   })
 }
 
@@ -114,6 +119,7 @@ function submit() {
           :expected-unit="expectedUnit"
           @validity="sourceValid = $event"
         />
+        <EstimateUncertaintyEditor v-model="uncertainty" />
         <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
           <Trash2 :size="18" />

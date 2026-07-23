@@ -2,6 +2,8 @@
 
 Optimist treats uncertainty as a modelled quantity, not a generic confidence percentage. Distribution support, units, shared references, dependence, random seeds, and convergence diagnostics are explicit.
 
+Estimate records distinguish epistemic, process, and measurement uncertainty as descriptive sources. The effective distribution remains the complete quantitative prior or forecast; the three descriptions explain why it is uncertain without implying independence or an additive variance decomposition.
+
 ## Primitive distributions
 
 | Distribution | Support | Typical use |

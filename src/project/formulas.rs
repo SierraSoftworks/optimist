@@ -168,6 +168,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::beta(2.0, 2.0).unwrap(),
                         provenance: vec![],
+                        uncertainty: Default::default(),
                     }),
                 ),
             )

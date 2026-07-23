@@ -35,6 +35,13 @@ export interface Estimate {
   distribution: Distribution
   source?: EstimateSource
   provenance?: string[]
+  uncertainty?: EstimateUncertainty
+}
+
+export interface EstimateUncertainty {
+  epistemic?: string
+  process?: string
+  measurement?: string
 }
 
 export type EstimateSource =
@@ -444,6 +451,7 @@ export interface SetStateEstimateInput {
   slot: StateEstimateSlot
   source: EstimateSourceInput
   provenance: string[]
+  uncertainty?: EstimateUncertainty
 }
 
 export type InterventionEstimateSlot =
@@ -455,6 +463,7 @@ export interface SetInterventionEstimateInput {
   slot: InterventionEstimateSlot
   source: EstimateSourceInput
   provenance: string[]
+  uncertainty?: EstimateUncertainty
 }
 
 export type EdgeEstimateSlot = { kind: 'effect' | 'response' | 'lag' | 'degree' }
@@ -463,6 +472,7 @@ export interface SetEdgeEstimateInput {
   slot: EdgeEstimateSlot
   source: EstimateSourceInput
   provenance: string[]
+  uncertainty?: EstimateUncertainty
 }
 
 export interface UpdateEdgeInput {

@@ -160,6 +160,7 @@ mod tests {
                 EstimateSlot::Current,
                 Distribution::beta(2.0, 3.0).unwrap(),
                 vec![],
+                crate::domain::EstimateUncertainty::default(),
             )
             .await
             .unwrap();

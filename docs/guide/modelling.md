@@ -27,6 +27,8 @@ The metric's optional current estimate is expressed directly in that native unit
 
 All new workbench estimates retain direct Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, retains deterministic empirical draws for distribution-valued results, and rejects effective draws outside the quantity support. A legacy metric without canonical unit terms must be upgraded before persisting a typed Squiggle source.
 
+Every estimate can retain provenance plus separate descriptions of epistemic uncertainty (knowledge and model gaps), process uncertainty (variation between realizations), and measurement uncertainty (observation and resolution error). These descriptions are reviewable assumptions alongside the authoritative total distribution. Optimist does not assign numeric shares, add component variances, or assume that the categories are independent.
+
 ## Edge kinds
 
 | Kind | Direction | Purpose |

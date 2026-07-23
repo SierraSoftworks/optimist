@@ -111,6 +111,17 @@ function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
   if (estimate?.source?.type === 'fermi') return `Legacy Fermi · ${estimate.source.definition.equation}`
   return null
 }
+
+function uncertaintyLabel(estimate: import('../api/types').Estimate | null) {
+  const uncertainty = estimate?.uncertainty
+  if (!uncertainty) return null
+  const parts = [
+    uncertainty.epistemic ? `Epistemic: ${uncertainty.epistemic}` : null,
+    uncertainty.process ? `Process: ${uncertainty.process}` : null,
+    uncertainty.measurement ? `Measurement: ${uncertainty.measurement}` : null,
+  ].filter(Boolean)
+  return parts.length ? parts.join(' · ') : null
+}
 </script>
 
 <template>
@@ -126,15 +137,15 @@ function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
           <div v-if="edge.payload.properties.effect" class="estimate-row">
-            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.effect)">{{ estimateSourceLabel(edge.payload.properties.effect) }}</small></div>
+            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.effect)">{{ estimateSourceLabel(edge.payload.properties.effect) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.effect)">{{ uncertaintyLabel(edge.payload.properties.effect) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit relationship effect estimate" @click="emit('estimate', { kind: 'effect' })"><Pencil :size="13" /></button>
           </div>
           <div v-if="edge.payload.properties.response" class="estimate-row">
-            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.response.destination_change)">{{ estimateSourceLabel(edge.payload.properties.response.destination_change) }}</small></div>
+            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.response.destination_change)">{{ estimateSourceLabel(edge.payload.properties.response.destination_change) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.response.destination_change)">{{ uncertaintyLabel(edge.payload.properties.response.destination_change) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit destination response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
-            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.lag)">{{ estimateSourceLabel(edge.payload.properties.lag) }}</small></div>
+            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.lag)">{{ estimateSourceLabel(edge.payload.properties.lag) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.lag)">{{ uncertaintyLabel(edge.payload.properties.lag) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
           <dl class="relationship-context">
@@ -144,7 +155,7 @@ function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
         </section>
         <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.degree)">{{ estimateSourceLabel(edge.payload.properties.degree) }}</small></div>
+            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.degree)">{{ estimateSourceLabel(edge.payload.properties.degree) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.degree)">{{ uncertaintyLabel(edge.payload.properties.degree) }}</small></div>
             <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
           </div>
         </section>

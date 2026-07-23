@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use super::{
     Distribution, Estimate, EstimateAddress, EstimateDimension, EstimateSource,
-    FermiEstimateSupport, Unit,
+    EstimateUncertainty, FermiEstimateSupport, Unit,
 };
 
 /// Semantic field within a node or edge payload where an estimate is embedded.
@@ -98,6 +98,9 @@ pub struct PrimitiveEstimate {
     pub source: EstimateSource,
     /// Evidence or elicitation records supporting the estimate.
     pub provenance: Vec<String>,
+    /// Distinct uncertainty sources retained without assuming independence.
+    #[serde(default, skip_serializing_if = "EstimateUncertainty::is_empty")]
+    pub uncertainty: EstimateUncertainty,
 }
 
 impl PrimitiveEstimate {
@@ -114,6 +117,7 @@ impl PrimitiveEstimate {
             distribution: estimate.distribution.clone(),
             source: estimate.source.clone(),
             provenance: estimate.provenance.clone(),
+            uncertainty: estimate.uncertainty.clone(),
         }
     }
 }

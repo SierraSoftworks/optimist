@@ -455,6 +455,11 @@ describe('Optimist API client', () => {
       slot: 'desired',
       source: { type: 'distribution', distribution: { type: 'beta', alpha: 8, beta: 2 } },
       provenance: ['planning'],
+      uncertainty: {
+        epistemic: 'Limited evidence',
+        process: 'Weekly variation',
+        measurement: 'Sampling error',
+      },
     })
     expect(JSON.parse((fetch.mock.calls[0]![1] as RequestInit).body as string)).toMatchObject({
       command: {
@@ -464,6 +469,11 @@ describe('Optimist API client', () => {
           slot: { kind: 'desired' },
           distribution: { type: 'beta', alpha: 8, beta: 2 },
           provenance: ['planning'],
+          uncertainty: {
+            epistemic: 'Limited evidence',
+            process: 'Weekly variation',
+            measurement: 'Sampling error',
+          },
         },
       },
     })

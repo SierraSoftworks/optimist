@@ -118,7 +118,8 @@ Corrections append an immutable observation whose `supersedes` field points to t
 optimist --project A estimate set <ADDRESS> \
   --slot <ESTIMATE_SLOT_JSON> \
   --distribution <DISTRIBUTION_JSON> \
-  [--provenance <JSON_STRING_ARRAY>]
+  [--provenance <JSON_STRING_ARRAY>] \
+  [--uncertainty <ESTIMATE_UNCERTAINTY_JSON>]
 
 optimist --project A estimate show <ADDRESS>
 optimist --project A estimate remove <ADDRESS>
@@ -131,6 +132,8 @@ Canonical root address:
 ```
 
 Slots: `current`, `desired`, `cost`, `duration`, `probability_of_success`, `effect`, `lag`, and `degree`.
+
+Uncertainty JSON accepts optional `epistemic`, `process`, and `measurement` strings. They retain distinct assumptions and do not alter or decompose the effective distribution.
 
 ### Formulas
 

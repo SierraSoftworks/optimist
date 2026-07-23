@@ -31,6 +31,9 @@ enum EstimateCommand {
         /// JSON array of evidence or elicitation strings.
         #[arg(long, default_value = "[]")]
         provenance: String,
+        /// EstimateUncertainty JSON with epistemic, process, and measurement fields.
+        #[arg(long, default_value = "{}")]
+        uncertainty: String,
     },
     /// Show one primitive estimate by canonical address.
     Show { address: EstimateAddress },
@@ -57,6 +60,7 @@ pub(super) async fn run(
             slot,
             distribution,
             provenance,
+            uncertainty,
         } => {
             client
                 .set_estimate(
@@ -65,6 +69,7 @@ pub(super) async fn run(
                     parse_json(&slot, "EstimateSlot")?,
                     parse_json(&distribution, "Distribution")?,
                     parse_json(&provenance, "provenance string array")?,
+                    parse_json(&uncertainty, "EstimateUncertainty")?,
                 )
                 .await?
         }

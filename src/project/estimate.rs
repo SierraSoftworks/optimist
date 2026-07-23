@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     EstimateCommandError, ProjectError, catalog::ProjectEntry, estimate_edge, estimate_node,
-    estimate_node_find, estimate_node_remove,
+    estimate_node_find, estimate_node_remove, estimate_support,
 };
 
 pub(super) fn set(
@@ -23,6 +23,7 @@ pub(super) fn set(
         command.distribution,
         EstimateSource::Distribution,
         command.provenance,
+        command.uncertainty,
     )
     .map(CommandOutcome::EstimateSet)
 }
@@ -64,6 +65,7 @@ pub(super) fn set_fermi(
         distribution,
         source,
         command.provenance,
+        command.uncertainty,
     )
     .map(CommandOutcome::FermiEstimateSet)
 }
@@ -92,6 +94,7 @@ pub(super) fn set_squiggle(
         distribution,
         source,
         command.provenance,
+        command.uncertainty,
     )
     .map(CommandOutcome::SquiggleEstimateSet)
 }
@@ -166,17 +169,22 @@ fn set_value(
     distribution: crate::domain::Distribution,
     source: EstimateSource,
     provenance: Vec<String>,
+    uncertainty: crate::domain::EstimateUncertainty,
 ) -> Result<PrimitiveEstimate, ProjectError> {
     validate_address(&entry.project.id, &address)?;
     let slot = slot.validated().map_err(EstimateCommandError::from)?;
+    let metadata = estimate_support::EstimateMetadata {
+        source,
+        provenance,
+        uncertainty,
+    };
     let value = match &address.owner {
         EstimateOwner::Node(id) => {
             let mut node = entry
                 .repository
                 .get_node(*id)?
                 .ok_or(RepositoryError::MissingEntity(*id))?;
-            let value =
-                estimate_node::set(&mut node, &address, slot, distribution, source, provenance)?;
+            let value = estimate_node::set(&mut node, &address, slot, distribution, metadata)?;
             node.revision = next_owner_revision(node.revision, &address)?;
             entry.repository.update_node(node)?;
             value
@@ -186,8 +194,7 @@ fn set_value(
                 .repository
                 .get_edge(id)?
                 .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
-            let value =
-                estimate_edge::set(&mut edge, &address, slot, distribution, source, provenance)?;
+            let value = estimate_edge::set(&mut edge, &address, slot, distribution, metadata)?;
             edge.revision = next_owner_revision(edge.revision, &address)?;
             entry.repository.update_edge(edge)?;
             value
@@ -290,10 +297,10 @@ mod tests {
         },
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
-            EstimateOwner, EstimateSlot, EstimateSource, Factor, FermiEstimateDefinition,
-            FermiExpressionLanguage, FermiVariable, FermiVariableUncertainty, Formula, Metric,
-            MonteCarloConfig, NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
-            SignedInfluence, SquiggleEstimateDefinition, Unit,
+            EstimateOwner, EstimateSlot, EstimateSource, EstimateUncertainty, Factor,
+            FermiEstimateDefinition, FermiExpressionLanguage, FermiVariable,
+            FermiVariableUncertainty, Formula, Metric, MonteCarloConfig, NodePayload, ProjectId,
+            QuantityDefinition, QuantitySupport, SignedInfluence, SquiggleEstimateDefinition, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -362,6 +369,12 @@ mod tests {
                 slot: EstimateSlot::Current,
                 distribution: Distribution::beta(2.0, 3.0).unwrap(),
                 provenance: vec!["elicitation".to_owned()],
+                uncertainty: EstimateUncertainty::new(
+                    "limited evidence",
+                    "daily variation",
+                    "survey sampling error",
+                )
+                .unwrap(),
             }),
         );
         let first = catalog.execute(&project, request.clone()).unwrap();
@@ -370,6 +383,7 @@ mod tests {
             unreachable!()
         };
         assert_eq!(created.revision, 0);
+        assert_eq!(created.uncertainty.process, "daily variation");
         assert_eq!(catalog.get_estimate(&project, &address).unwrap(), created);
         assert_eq!(
             catalog
@@ -390,6 +404,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::beta(4.0, 2.0).unwrap(),
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -437,6 +452,7 @@ mod tests {
                     target_unit: Unit::dimensionless(),
                 },
                 provenance: vec!["direct Squiggle model".to_owned()],
+                uncertainty: EstimateUncertainty::default(),
             }),
         );
         let first = catalog.execute(&project, request.clone()).unwrap();
@@ -465,6 +481,7 @@ mod tests {
                         target_unit: Unit::dimensionless(),
                     },
                     provenance: vec![],
+                    uncertainty: EstimateUncertainty::default(),
                 }),
             ),
         );
@@ -490,6 +507,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::log_normal(2.0, 0.3).unwrap(),
                         provenance: vec!["weekly telemetry".to_owned()],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -535,6 +553,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::normal(5.0, 1.0).unwrap(),
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             ),
@@ -572,6 +591,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         definition,
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -639,6 +659,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         definition,
                         provenance: vec!["planning workshop".to_owned()],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -667,6 +688,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::beta(8.0, 2.0).unwrap(),
                         provenance: vec!["direct prior".to_owned()],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -693,6 +715,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::beta(2.0, 2.0).unwrap(),
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -725,6 +748,7 @@ mod tests {
                                 slot,
                                 distribution,
                                 provenance: vec![],
+                                uncertainty: EstimateUncertainty::default(),
                             })
                         )
                     )
@@ -746,6 +770,7 @@ mod tests {
                         slot: EstimateSlot::Current,
                         distribution: Distribution::beta(2.0, 2.0).unwrap(),
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     })
                 )
             ),
@@ -796,6 +821,7 @@ mod tests {
                         slot: EstimateSlot::Lag,
                         distribution: Distribution::log_normal(0.0, 0.5).unwrap(),
                         provenance: vec![],
+                        uncertainty: EstimateUncertainty::default(),
                     }),
                 ),
             )
@@ -846,6 +872,7 @@ mod tests {
                             slot: EstimateSlot::Current,
                             distribution: Distribution::beta(2.0, 2.0).unwrap(),
                             provenance: vec![],
+                            uncertainty: EstimateUncertainty::default(),
                         }),
                     ),
                 )

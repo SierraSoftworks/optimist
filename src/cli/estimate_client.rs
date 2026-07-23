@@ -2,7 +2,10 @@ use crate::{
     command::{
         CommandOutcome, CommandRequest, CommandResult, GraphCommand, RemoveEstimate, SetEstimate,
     },
-    domain::{Distribution, EstimateAddress, EstimateSlot, PrimitiveEstimate, ProjectId},
+    domain::{
+        Distribution, EstimateAddress, EstimateSlot, EstimateUncertainty, PrimitiveEstimate,
+        ProjectId,
+    },
 };
 
 use super::client::{ProjectClient, decode};
@@ -15,6 +18,7 @@ impl ProjectClient {
         slot: EstimateSlot,
         distribution: Distribution,
         provenance: Vec<String>,
+        uncertainty: EstimateUncertainty,
     ) -> Result<PrimitiveEstimate, human_errors::Error> {
         self.estimate_command(
             project,
@@ -23,6 +27,7 @@ impl ProjectClient {
                 slot,
                 distribution,
                 provenance,
+                uncertainty,
             }),
         )
         .await
@@ -145,6 +150,7 @@ mod tests {
                 EstimateSlot::Current,
                 Distribution::beta(2.0, 3.0).unwrap(),
                 vec!["elicitation".to_owned()],
+                crate::domain::EstimateUncertainty::default(),
             )
             .await
             .unwrap();

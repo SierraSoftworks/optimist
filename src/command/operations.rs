@@ -122,6 +122,9 @@ pub struct SetEstimate {
     /// Evidence or elicitation records supporting this estimate revision.
     #[serde(default)]
     pub provenance: Vec<String>,
+    /// Distinct epistemic, process, and measurement uncertainty assumptions.
+    #[serde(default)]
+    pub uncertainty: crate::domain::EstimateUncertainty,
 }
 
 /// Data required to create or replace an estimate from a persisted Fermi equation.
@@ -136,6 +139,9 @@ pub struct SetFermiEstimate {
     /// Evidence or elicitation records supporting this estimate revision.
     #[serde(default)]
     pub provenance: Vec<String>,
+    /// Distinct epistemic, process, and measurement uncertainty assumptions.
+    #[serde(default)]
+    pub uncertainty: crate::domain::EstimateUncertainty,
 }
 
 /// Data required to create or replace an estimate from backend-evaluated Squiggle source.
@@ -150,6 +156,9 @@ pub struct SetSquiggleEstimate {
     /// Evidence or elicitation records supporting this estimate revision.
     #[serde(default)]
     pub provenance: Vec<String>,
+    /// Distinct epistemic, process, and measurement uncertainty assumptions.
+    #[serde(default)]
+    pub uncertainty: crate::domain::EstimateUncertainty,
 }
 
 /// Identity of an optional or named-cost primitive estimate to remove.
