@@ -42,13 +42,14 @@ optimist project backup restore <BACKUP_ID> --yes
 optimist project snapshot <PROJECT> create
 optimist project snapshot <PROJECT> list
 optimist project snapshot <PROJECT> show <REVISION>
+optimist project snapshot <PROJECT> export <REVISION> <DIRECTORY>
 ```
 
 Export downloads one immutable canonical Markdown snapshot and publishes it through a staged directory replacement. Import validates every document and reference before restoring the archive. Restoring over an existing project requires both `--replace` and `--yes`; replacement clears process-local command/replay history.
 
 `project changes` normally renders retained events after the requested revision. If that cursor predates retained history, the server returns a canonical snapshot fallback. Table output identifies the snapshot revision/counts, JSON includes the complete archive, and JSON Lines emits one tagged snapshot object.
 
-Catalog backups retain complete project archives, replay history, retry results, and allocator state. Restore validates the selected backup before changing live state, requires `--yes`, and creates an immutable safety backup of the catalog being replaced. Project snapshots retain one canonical archive at an exact revision; repeated creation is idempotent, and `show` returns that archive without changing the live project.
+Catalog backups retain complete project archives, replay history, retry results, and allocator state. Restore validates the selected backup before changing live state, requires `--yes`, and creates an immutable safety backup of the catalog being replaced. Project snapshots retain one canonical archive at an exact revision; repeated creation is idempotent, `show` returns that archive, and `export` atomically publishes its deterministic Markdown directory without reading mutable current state.
 
 ### Command batches
 

@@ -4,7 +4,7 @@ use clap::{Args, Subcommand};
 
 use crate::{
     domain::ProjectId,
-    markdown::{RenderedSnapshot, read_directory, write_directory},
+    markdown::{RenderedSnapshot, read_directory},
     project::ProjectArchive,
 };
 
@@ -115,27 +115,7 @@ pub(super) async fn run(
         }
         ProjectCommand::Export { project, directory } => {
             let archive = client.export_archive(&project).await?;
-            let import = archive.validated_import().map_err(|error| {
-                human_errors::wrap_system(
-                    error,
-                    "The Optimist server returned an invalid project archive.",
-                    &["Confirm the CLI and server versions match, then inspect the server logs."],
-                )
-            })?;
-            let snapshot = RenderedSnapshot::from_import(&import).map_err(|error| {
-                human_errors::wrap_system(
-                    error,
-                    "Optimist could not render the exported project archive.",
-                    &["Confirm the CLI and server versions match, then retry the export."],
-                )
-            })?;
-            write_directory(&directory, &snapshot).map_err(|error| {
-                human_errors::wrap_system(
-                    error,
-                    "Optimist could not publish the Markdown export directory.",
-                    &["Check directory permissions and retry with a writable destination."],
-                )
-            })?;
+            super::project_backup::publish_archive(&archive, &directory)?;
             output.project(&client.show(&project).await?)?
         }
         ProjectCommand::Backup { command } => {
@@ -184,6 +164,22 @@ mod tests {
     #[test]
     fn parses_project_export_with_explicit_project() {
         assert!(Cli::try_parse_from(["optimist", "project", "export", "A", "./model"]).is_ok());
+    }
+
+    #[test]
+    fn parses_immutable_snapshot_directory_export() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "project",
+                "snapshot",
+                "A",
+                "export",
+                "7",
+                "./model-r7",
+            ])
+            .is_ok()
+        );
     }
 
     #[test]

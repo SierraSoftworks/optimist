@@ -107,7 +107,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Two-pass reference and project-constraint validation.
 - [x] Safe merge import plan with create/update/unchanged/conflict reporting.
 - [x] Explicit `--replace --yes` destructive restore semantics.
-- [ ] Deterministic atomic directory export from one immutable revision.
+- [x] Deterministic atomic directory export from one immutable revision.
   - [x] Deterministic rendered snapshots with bounded directory loading and staged rollback-aware publication.
 - [x] Export-import-export semantic and byte-stability tests.
 - [x] Implement `optimist project import|export` as HTTP clients.

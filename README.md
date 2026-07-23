@@ -98,9 +98,10 @@ cargo run -- project backup restore <BACKUP_ID> --yes
 cargo run -- project snapshot A create
 cargo run -- project snapshot A list
 cargo run -- --output json project snapshot A show <REVISION>
+cargo run -- project snapshot A export <REVISION> ./retained-model
 ```
 
-Full backups copy validated project directories and bounded backup metadata. Restore validates those directories before acquiring them as live state and automatically creates a safety backup of the projects being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content.
+Full backups copy validated project directories and bounded backup metadata. Restore validates those directories before acquiring them as live state and automatically creates a safety backup of the projects being replaced. Project snapshots reuse the canonical project archive format; creating the same revision twice is idempotent and never overwrites different content. Snapshot export atomically publishes the selected retained revision as a deterministic Markdown directory, independently of later live changes.
 
 Apply up to 100 typed commands atomically, or submit a reviewed compensation plan for one committed batch:
 
