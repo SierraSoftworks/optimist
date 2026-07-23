@@ -51,7 +51,9 @@ describe('edge authoring', () => {
         response: {
           source_change: 0.1,
           source_unit: {},
-          destination_change: { distribution: { type: 'point', value: -2 } },
+          destination_change: {
+            source: { definition: { source: 'pointMass(-2)', target_unit: { day: 1 } } },
+          },
           destination_unit: { day: 1 },
         },
       },
@@ -87,7 +89,10 @@ describe('edge authoring', () => {
         response: {
           source_change: 1,
           source_unit: {},
-          destination_change: destinationEstimate,
+          destination_change: {
+            id: 'A',
+            source: destinationEstimate.source,
+          },
           destination_unit: { day: 1 },
         },
       },
@@ -112,7 +117,7 @@ describe('edge authoring', () => {
       properties: { hard: false, satisfaction_threshold: 0.75 },
     })
     expect(edgePayload({ kind: 'blocks', ...input })).toMatchObject({
-      properties: { degree: { distribution: { value: -0.8 } } },
+      properties: { degree: { source: { definition: { source: 'pointMass(-0.8)' } } } },
     })
     expect(edgePayload({ kind: 'conflicts_with', ...input })).toEqual({ kind: 'conflicts_with' })
     expect(edgePayload({ kind: 'synergizes_with', ...input })).toEqual({ kind: 'synergizes_with' })

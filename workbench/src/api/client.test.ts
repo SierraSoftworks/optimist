@@ -247,6 +247,28 @@ describe('Optimist API client', () => {
     })
   })
 
+  it('surfaces plain-text request rejections with field-specific advice', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          'Failed to deserialize the JSON body into the target type: command.payload.payload.properties.response.destination_change.distribution: unknown field `distribution`, expected one of `id`, `revision`, `quantity`, `source`, `provenance`, `uncertainty` at line 1 column 320',
+          { status: 422, headers: { 'Content-Type': 'text/plain' } },
+        ),
+      ),
+    )
+
+    const error = await api.project('A').catch((value: unknown) => value)
+    expect(error).toMatchObject({
+      code: 'invalid_request_payload',
+      message: 'The server rejected the “distribution” field in the submitted relationship estimate. The workbench and server data formats may be out of sync.',
+      advice: [
+        'Refresh the page before retrying so the workbench matches the running server.',
+        expect.stringContaining('destination_change.distribution'),
+      ],
+    })
+  })
+
   it('sends typed structural relationship commands', async () => {
     const edge = {
       source: 'A',

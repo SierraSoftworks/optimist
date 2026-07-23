@@ -24,11 +24,19 @@ export async function addNode(
   if (kind !== 'factor') await page.getByLabel(kind).check()
   await page.getByLabel('Title').fill(title)
   if (kind === 'metric') await page.getByLabel('Unit').fill(unit ?? 'count')
-  await page.getByRole('form', { name: 'Add node' }).getByRole('button', { name: 'Continue' }).click()
-  await page.getByRole('button', { name: 'Add node' }).last().click()
-  await expect(page.getByRole('form', { name: /setup$/i })).toBeHidden()
+  const form = page.getByRole('form', { name: 'Add node' })
+  await form.getByRole('button', { name: 'Add node' }).click()
+  await expect(form).toBeHidden()
   await expect(page.getByRole('heading', { name: title })).toBeVisible()
   if (kind === 'factor' || kind === 'outcome') {
+    await page.getByRole('button', { name: 'Native state' }).click()
+    const quantity = page.getByRole('form', { name: 'Configure native state' })
+    await quantity.getByLabel('Unit').fill('state')
+    await quantity.getByLabel('Support').selectOption('bounded')
+    await quantity.getByLabel('Lower bound').fill('0')
+    await quantity.getByLabel('Upper bound').fill('1')
+    await quantity.getByRole('button', { name: 'Use native state' }).click()
+    await expect(quantity).toBeHidden()
     await page.getByRole('button', { name: 'Estimate', exact: true }).click()
     await saveSquiggleEstimate(page, 'beta(2, 2)', 'Set estimate')
   }
@@ -57,13 +65,15 @@ export async function addRelationship(
   await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   const form = page.getByRole('form', { name: 'Add relationship' })
   await form.getByRole('combobox').first().selectOption(kind)
-  await page.getByLabel('Source').selectOption(source)
-  await page.getByLabel('Destination').selectOption(destination)
-  if (kind === 'contributes' || kind === 'changes' || kind === 'blocks') {
-    await page.getByRole('spinbutton', { name: /effect|degree/i }).fill(String(options.effect ?? 0.5))
+  await form.locator(`input[name="relationship-source"][value="${source}"]`).locator('..').click()
+  await form.locator(`input[name="relationship-destination"][value="${destination}"]`).locator('..').click()
+  if (kind === 'contributes' || kind === 'changes') {
+    await form.getByLabel(/Source change|Intervention activation/).fill('1')
+    await form.getByLabel('Squiggle source').fill(`pointMass(${options.effect ?? 0.5})`)
+    await expect(form.getByText(/Validated/)).toBeVisible()
+  } else if (kind === 'blocks') {
+    await form.getByLabel(/Blocking degree/).fill(String(options.effect ?? 0.5))
   }
-  if (options.mechanism !== undefined) await page.getByLabel('Mechanism').fill(options.mechanism)
-  if (options.evidence !== undefined) await page.getByLabel('Evidence references').fill(options.evidence)
   await form.getByRole('button', { name: 'Add relationship' }).click()
   await expect(form).toBeHidden()
 }

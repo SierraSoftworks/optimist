@@ -192,15 +192,50 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (response.ok) return response.json() as Promise<T>
 
-  const body = (await response.json().catch(() => null)) as ErrorEnvelope | null
+  const rawBody = await response.text().catch(() => '')
+  const body = parseErrorEnvelope(rawBody)
   if (body?.error) {
     throw new OptimistApiError(body.error.code, body.error.message, body.error.advice)
   }
+  const rejection = deserializeRejection(rawBody)
+  if (rejection) {
+    throw new OptimistApiError(
+      'invalid_request_payload',
+      `The server rejected the “${rejection.field}” field in the submitted ${rejection.subject}. The workbench and server data formats may be out of sync.`,
+      [
+        'Refresh the page before retrying so the workbench matches the running server.',
+        `If this continues, report the rejected field path: ${rejection.path}.`,
+      ],
+    )
+  }
   throw new OptimistApiError(
     `http_${response.status}`,
-    `Optimist returned HTTP ${response.status}.`,
-    ['Check that the Optimist server is running and retry.'],
+    rawBody.trim()
+      ? `Optimist returned HTTP ${response.status}: ${rawBody.trim()}`
+      : `Optimist returned HTTP ${response.status}.`,
+    ['Check that the Optimist server is running, refresh the page, and retry.'],
   )
+}
+
+function parseErrorEnvelope(value: string): ErrorEnvelope | null {
+  try {
+    return JSON.parse(value) as ErrorEnvelope
+  } catch {
+    return null
+  }
+}
+
+function deserializeRejection(value: string) {
+  const match = value.match(/Failed to deserialize the JSON body[^:]*:\s+(.+?): unknown field `([^`]+)`/)
+  if (!match) return null
+  const path = match[1]!
+  return {
+    path,
+    field: match[2]!,
+    subject: path.includes('response.destination_change')
+      ? 'relationship estimate'
+      : 'change',
+  }
 }
 
 export const api = {

@@ -53,7 +53,9 @@ describe('command bar grammar', () => {
             response: {
               source_change: 0.1,
               source_unit: {},
-              destination_change: { distribution: { value: -2 } },
+              destination_change: {
+                source: { definition: { source: 'pointMass(-2)', target_unit: { day: 1 } } },
+              },
               destination_unit: { day: 1 },
             },
           },

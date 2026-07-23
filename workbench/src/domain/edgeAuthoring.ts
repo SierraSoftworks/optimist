@@ -80,7 +80,6 @@ function pointEstimate(id: string, value: number, targetUnit: Unit): Estimate {
   return {
     id,
     revision: 0,
-    distribution: { type: 'point' as const, value },
     source: {
       type: 'squiggle',
       definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: targetUnit },
@@ -116,15 +115,17 @@ function causal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableE
   if (!input.source || !input.destination || !input.sourceChange) {
     throw new Error('Native causal responses require a nonzero source change.')
   }
-  const destinationChange = input.destinationEstimate ?? (
-    input.destinationChange === undefined ? null : estimate('A', input.destinationChange)
-  )
-  if (!destinationChange) throw new Error('Native causal responses require a destination estimate.')
   const sourceUnit = nodeUnit(input.source)
   const destinationUnit = nodeUnit(input.destination)
   if (!sourceUnit || !destinationUnit) {
     throw new Error('Native causal response endpoints require canonical unit terms.')
   }
+  const destinationChange = input.destinationEstimate ? sourceOnly(input.destinationEstimate) : (
+    input.destinationChange === undefined
+      ? null
+      : pointEstimate('A', input.destinationChange, destinationUnit)
+  )
+  if (!destinationChange) throw new Error('Native causal responses require a destination estimate.')
   return {
     kind,
     properties: {
@@ -139,6 +140,11 @@ function causal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableE
       evidence: evidence(input.evidence),
     },
   }
+}
+
+function sourceOnly(estimate: Estimate): Estimate {
+  const { distribution: _distribution, ...source } = estimate
+  return source
 }
 
 function evidence(value: string) {

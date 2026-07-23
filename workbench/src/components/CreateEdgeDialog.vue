@@ -96,7 +96,6 @@ function assessedResponse(): Estimate | undefined {
   return {
     id: 'A',
     revision: 0,
-    distribution: responseAssessment.value.effective_distribution,
     source: {
       type: 'squiggle',
       definition: responseDefinition.value,

@@ -684,6 +684,10 @@ function errorMessage(value: Error | null) {
   return value instanceof OptimistApiError ? value.message : value?.message
 }
 
+function errorAdvice(value: Error | null) {
+  return value instanceof OptimistApiError ? value.advice : []
+}
+
 function retry() {
   void projectsQuery.refetch()
   void projectQuery.refetch()
@@ -894,7 +898,13 @@ function retry() {
 
     <div v-if="mutationError" class="toast" role="alert">
       <AlertTriangle :size="17" />
-      <div><strong>Could not save change</strong><span>{{ errorMessage(mutationError) }}</span></div>
+      <div>
+        <strong>Could not save change</strong>
+        <span>{{ errorMessage(mutationError) }}</span>
+        <ul v-if="errorAdvice(mutationError).length">
+          <li v-for="advice in errorAdvice(mutationError)" :key="advice">{{ advice }}</li>
+        </ul>
+      </div>
       <button type="button" class="icon-button" aria-label="Dismiss error" @click="mutationError = null">×</button>
     </div>
 
@@ -1083,6 +1093,7 @@ function retry() {
 .toast div { display: grid; gap: 3px; }
 .toast strong { font-size: 11px; }
 .toast span { color: #654b46; font-size: 10px; line-height: 1.45; }
+.toast ul { display: grid; gap: 2px; margin: 3px 0 0; padding-left: 14px; color: #654b46; font-size: 10px; line-height: 1.45; }
 
 @media (max-width: 1000px) {
   .app-header { grid-template-columns: 190px 1fr auto; }
