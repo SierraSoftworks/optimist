@@ -39,7 +39,7 @@ describe('EditStateEstimateDialog', () => {
     vi.restoreAllMocks()
   })
 
-  it('offers the corrected calibrated reading and records adoption provenance', async () => {
+  it('offers the corrected calibrated reading without secondary note fields', async () => {
     const wrapper = mount(EditStateEstimateDialog, {
       props: { open: true, pending: false, node, projectId: 'A', edges: [edge] },
       global: { stubs: { Teleport: true } },
@@ -48,26 +48,38 @@ describe('EditStateEstimateDialog', () => {
     expect(wrapper.text()).not.toContain('16 days →')
     await wrapper.get('.calibrated-evidence .secondary-button').trigger('click')
     expect((wrapper.get('[aria-label="Squiggle source"]').element as HTMLTextAreaElement).value).toBe('pointMass(0.5)')
-    expect((wrapper.get('textarea[placeholder="One source or elicitation note per line"]').element as HTMLTextAreaElement).value).toContain('Calibrated observation #1')
+    expect(wrapper.find('textarea[placeholder="One source or elicitation note per line"]').exists()).toBe(false)
   })
 
-  it('captures distinct uncertainty sources without combining them', async () => {
+  it('preserves existing metadata without displaying metadata controls', async () => {
+    const existing = {
+      ...node,
+      payload: {
+        kind: 'factor' as const,
+        properties: {
+          current: {
+            id: 'A', revision: 0,
+            distribution: { type: 'point' as const, value: 0.5 },
+            provenance: ['existing source'],
+            uncertainty: { epistemic: 'existing assumption' },
+          },
+          desired: null,
+          controllable: false,
+          evidence: [],
+        },
+      },
+    } as GraphNode
     const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node, projectId: 'A', edges: [] },
+      props: { open: true, pending: false, node: existing, projectId: 'A', edges: [] },
       global: { stubs: { Teleport: true } },
     })
-    await wrapper.findAll('.uncertainty-editor textarea')[0]!.setValue('Limited calibration evidence')
-    await wrapper.findAll('.uncertainty-editor textarea')[1]!.setValue('Daily process variation')
-    await wrapper.findAll('.uncertainty-editor textarea')[2]!.setValue('Survey sampling error')
     await wrapper.get('form').trigger('submit')
 
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
-      uncertainty: {
-        epistemic: 'Limited calibration evidence',
-        process: 'Daily process variation',
-        measurement: 'Survey sampling error',
-      },
+      provenance: ['existing source'],
+      uncertainty: { epistemic: 'existing assumption' },
     })
+    expect(wrapper.find('.uncertainty-editor').exists()).toBe(false)
   })
 
   it('edits a bounded metric directly in its native unit without offering Fermi', async () => {

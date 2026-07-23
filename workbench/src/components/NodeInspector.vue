@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import { Activity, AlertTriangle, CheckCircle2, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type {
   Distribution,
-  Evidence,
   GraphEdge,
   GraphNode,
   InterventionEstimateSlot,
@@ -12,7 +11,6 @@ import type {
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
 import { edgeMetadataLabel } from '../domain/edgePresentation'
-import SquiggleChartIsland from './SquiggleChartIsland.vue'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -23,34 +21,10 @@ const emit = defineEmits<{
   observe: [edge: GraphEdge]
   correct: [edge: GraphEdge, observation: Observation]
   interventionEstimate: [slot: InterventionEstimateSlot]
-  evidence: [evidence: Evidence | null]
   delete: []
 }>()
 const confirmDelete = ref(false)
 const readiness = computed(() => props.node ? simulationReadiness(props.node) : null)
-const distributionCharts = computed(() => {
-  const node = props.node
-  if (!node) return []
-  const estimates: Array<[string, import('../api/types').Estimate | null | undefined]> = []
-  if (node.payload.kind === 'factor' || node.payload.kind === 'outcome') {
-    estimates.push(
-      ['Current state', node.native_state?.current ?? node.payload.properties.current],
-      [node.native_state ? 'Forecast state' : 'Desired state', node.native_state?.forecast ?? node.payload.properties.desired],
-    )
-  } else if (node.payload.kind === 'metric') {
-    estimates.push(['Current quantity', node.payload.properties.current])
-  } else {
-    estimates.push(
-      ['Duration', node.payload.properties.duration],
-      ['Success probability', node.payload.properties.probability_of_success],
-      ...node.payload.properties.costs.map((cost): [string, import('../api/types').Estimate] => [`${cost.dimension} cost`, cost.value]),
-    )
-  }
-  return estimates.flatMap(([label, estimate]) => estimate?.source?.type === 'squiggle'
-    ? [{ label, source: estimate.source.definition.source }]
-    : [])
-})
-
 const incidentEdges = computed(() =>
   props.node
     ? props.edges.filter(
@@ -107,17 +81,6 @@ function distributionLabel(node: GraphNode, slot: 'current' | 'desired') {
   return formatDistribution(value)
 }
 
-function sourceLabel(node: GraphNode, slot: 'current' | 'desired') {
-  const estimate = stateEstimate(node, slot)
-  if (estimate?.source?.type === 'squiggle') {
-    return `${estimate.source.definition.source} · ${estimate.source.assessment.family} · ${estimate.source.assessment.sample_count.toLocaleString()} samples`
-  }
-  if (estimate?.source?.type === 'fermi') {
-    return `Legacy Fermi · ${estimate.source.definition.equation}`
-  }
-  return null
-}
-
 function formatDistribution(value: Distribution) {
   if (value.type === 'point') return `Point · ${value.value}`
   if (value.type === 'beta') return `Beta · α ${value.alpha}, β ${value.beta}`
@@ -129,23 +92,6 @@ function formatDistribution(value: Distribution) {
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
-function estimateSourceLabel(estimate: import('../api/types').Estimate | null | undefined) {
-  if (estimate?.source?.type === 'squiggle') return `Squiggle · ${estimate.source.definition.source}`
-  if (estimate?.source?.type === 'fermi') return `Legacy Fermi · ${estimate.source.definition.equation}`
-  return null
-}
-
-function uncertaintyLabel(estimate: import('../api/types').Estimate | null | undefined) {
-  const uncertainty = estimate?.uncertainty
-  if (!uncertainty) return null
-  const parts = [
-    uncertainty.epistemic ? `Epistemic: ${uncertainty.epistemic}` : null,
-    uncertainty.process ? `Process: ${uncertainty.process}` : null,
-    uncertainty.measurement ? `Measurement: ${uncertainty.measurement}` : null,
-  ].filter(Boolean)
-  return parts.length ? parts.join(' · ') : null
-}
-
 function quantityLabel(estimate: import('../api/types').Estimate | null | undefined) {
   const quantity = estimate?.quantity
   if (!quantity) return null
@@ -153,10 +99,6 @@ function quantityLabel(estimate: import('../api/types').Estimate | null | undefi
     ? `[${quantity.support.lower}, ${quantity.support.upper}]`
     : quantity.support?.type.replaceAll('_', ' ') ?? 'real'
   return `${quantity.unit} · ${support}`
-}
-
-function provenance(node: GraphNode, slot: 'current' | 'desired') {
-  return stateEstimate(node, slot)?.provenance ?? []
 }
 
 function replacement(edge: GraphEdge, observation: Observation) {
@@ -237,15 +179,9 @@ function replacement(edge: GraphEdge, observation: Observation) {
         <h3>State estimates</h3>
         <dl>
           <div><dt>Current</dt><dd>{{ distributionLabel(node, 'current') }}</dd></div>
-          <div v-if="sourceLabel(node, 'current')"><dt>Current model</dt><dd>{{ sourceLabel(node, 'current') }}</dd></div>
-          <div v-if="provenance(node, 'current').length"><dt>Current source</dt><dd>{{ provenance(node, 'current').join('; ') }}</dd></div>
           <div v-if="quantityLabel(stateEstimate(node, 'current'))"><dt>Current quantity</dt><dd>{{ quantityLabel(stateEstimate(node, 'current')) }}</dd></div>
-          <div v-if="uncertaintyLabel(stateEstimate(node, 'current'))"><dt>Current uncertainty</dt><dd>{{ uncertaintyLabel(stateEstimate(node, 'current')) }}</dd></div>
           <div><dt>{{ node.native_state ? 'Forecast' : 'Desired' }}</dt><dd>{{ distributionLabel(node, 'desired') }}</dd></div>
-          <div v-if="sourceLabel(node, 'desired')"><dt>{{ node.native_state ? 'Forecast model' : 'Desired model' }}</dt><dd>{{ sourceLabel(node, 'desired') }}</dd></div>
-          <div v-if="provenance(node, 'desired').length"><dt>{{ node.native_state ? 'Forecast source' : 'Desired source' }}</dt><dd>{{ provenance(node, 'desired').join('; ') }}</dd></div>
           <div v-if="quantityLabel(stateEstimate(node, 'desired'))"><dt>{{ node.native_state ? 'Forecast quantity' : 'Desired quantity' }}</dt><dd>{{ quantityLabel(stateEstimate(node, 'desired')) }}</dd></div>
-          <div v-if="uncertaintyLabel(stateEstimate(node, 'desired'))"><dt>{{ node.native_state ? 'Forecast uncertainty' : 'Desired uncertainty' }}</dt><dd>{{ uncertaintyLabel(stateEstimate(node, 'desired')) }}</dd></div>
           <div v-if="node.payload.kind === 'factor'"><dt>Controllable</dt><dd>{{ node.payload.properties.controllable ? 'Yes' : 'No' }}</dd></div>
           <div v-if="node.payload.kind === 'outcome'"><dt>Direction</dt><dd>{{ node.payload.properties.direction }}</dd></div>
         </dl>
@@ -264,17 +200,6 @@ function replacement(edge: GraphEdge, observation: Observation) {
         </dl>
       </section>
 
-      <section v-if="node.payload.kind === 'outcome' || node.payload.kind === 'factor'" class="inspector-section">
-        <h3>Evidence <button type="button" class="icon-button section-action" title="Add evidence" aria-label="Add evidence" @click="emit('evidence', null)"><Plus :size="14" /></button></h3>
-        <div v-for="item in node.payload.properties.evidence" :key="item.id" class="evidence-row">
-          <button type="button" :aria-label="`Edit evidence ${item.id}`" @click="emit('evidence', item)">
-            <strong>{{ item.summary }}</strong>
-            <span>{{ item.source ?? 'No source' }} · r{{ item.revision }}</span>
-          </button>
-        </div>
-        <p v-if="!node.payload.properties.evidence.length" class="muted">No qualitative evidence recorded.</p>
-      </section>
-
       <section v-if="Object.keys(node.metadata).length" class="inspector-section">
         <h3>Metadata</h3>
         <pre class="metadata-view">{{ JSON.stringify(node.metadata, null, 2) }}</pre>
@@ -288,9 +213,6 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Support</dt><dd>{{ node.payload.properties.support?.type.replaceAll('_', ' ') ?? 'real' }}</dd></div>
           <div v-if="node.payload.properties.support?.type === 'bounded'"><dt>Bounds</dt><dd>{{ node.payload.properties.support.lower }}–{{ node.payload.properties.support.upper }}</dd></div>
           <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
-          <div v-if="estimateSourceLabel(node.payload.properties.current)"><dt>Current model</dt><dd>{{ estimateSourceLabel(node.payload.properties.current) }}</dd></div>
-          <div v-if="node.payload.properties.current?.provenance?.length"><dt>Provenance</dt><dd>{{ node.payload.properties.current.provenance.join('; ') }}</dd></div>
-          <div v-if="uncertaintyLabel(node.payload.properties.current)"><dt>Uncertainty</dt><dd>{{ uncertaintyLabel(node.payload.properties.current) }}</dd></div>
           <div v-if="node.payload.properties.operational_definition"><dt>Definition</dt><dd>{{ node.payload.properties.operational_definition }}</dd></div>
           <div v-if="node.payload.properties.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.reference_time }}</dd></div>
           <div v-if="node.payload.properties.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.resolution_source }}</dd></div>
@@ -327,31 +249,21 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">
         <h3>Investment <button type="button" class="icon-button section-action" title="Add cost dimension" aria-label="Add cost dimension" @click="emit('interventionEstimate', { kind: 'cost', value: '' })"><Plus :size="14" /></button></h3>
         <div class="estimate-row">
-          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.duration)">{{ estimateSourceLabel(node.payload.properties.duration) }}</small><small v-if="uncertaintyLabel(node.payload.properties.duration)">{{ uncertaintyLabel(node.payload.properties.duration) }}</small></div>
+          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong></div>
           <button type="button" class="icon-button" aria-label="Edit duration estimate" @click="emit('interventionEstimate', { kind: 'duration' })"><Pencil :size="13" /></button>
         </div>
         <div class="estimate-row">
-          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(node.payload.properties.probability_of_success)">{{ estimateSourceLabel(node.payload.properties.probability_of_success) }}</small><small v-if="uncertaintyLabel(node.payload.properties.probability_of_success)">{{ uncertaintyLabel(node.payload.properties.probability_of_success) }}</small></div>
+          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong></div>
           <button type="button" class="icon-button" aria-label="Edit success probability estimate" @click="emit('interventionEstimate', { kind: 'probability_of_success' })"><Pencil :size="13" /></button>
         </div>
         <div v-for="cost in node.payload.properties.costs" :key="cost.dimension" class="estimate-row">
-          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong><small v-if="estimateSourceLabel(cost.value)">{{ estimateSourceLabel(cost.value) }}</small><small v-if="uncertaintyLabel(cost.value)">{{ uncertaintyLabel(cost.value) }}</small></div>
+          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong></div>
           <button type="button" class="icon-button" :aria-label="`Edit ${cost.dimension} cost estimate`" @click="emit('interventionEstimate', { kind: 'cost', value: cost.dimension })"><Pencil :size="13" /></button>
         </div>
         <p v-if="!node.payload.properties.costs.length" class="muted">No cost dimensions configured.</p>
         <div v-if="node.payload.properties.acceptance_criteria.length" class="acceptance-criteria">
           <span>Acceptance criteria</span>
           <ul><li v-for="criterion in node.payload.properties.acceptance_criteria" :key="criterion">{{ criterion }}</li></ul>
-        </div>
-      </section>
-
-      <section v-if="distributionCharts.length" class="inspector-section">
-        <h3>Distribution models <span>{{ distributionCharts.length }}</span></h3>
-        <div class="distribution-charts">
-          <div v-for="chart in distributionCharts" :key="chart.label">
-            <strong>{{ chart.label }}</strong>
-            <SquiggleChartIsland :code="chart.source" :label="`${chart.label} distribution`" :height="150" />
-          </div>
         </div>
       </section>
 
@@ -379,7 +291,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
 </template>
 
 <style scoped>
-.inspector { min-height: 0; padding: 18px; overflow: auto; border-left: 1px solid var(--line); background: var(--surface); }
+.inspector { min-height: 0; padding: 24px; overflow: auto; border-left: 1px solid var(--line); background: var(--surface); }
 .inspector-header { display: flex; align-items: flex-start; gap: 10px; }
 .inspector-actions { display: flex; gap: 6px; margin-top: 14px; }
 .inspector-actions .secondary-button { min-height: 30px; padding: 0 9px; }
@@ -391,19 +303,19 @@ function replacement(edge: GraphEdge, observation: Observation) {
 .readiness-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .readiness-actions button { min-height: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border: 1px solid currentColor; border-radius: 4px; background: rgba(255,255,255,.72); color: inherit; font-size: 8px; font-weight: 700; }
 .kind-icon { width: 34px; height: 34px; flex: 0 0 auto; }
-.inspector h2 { margin: 3px 0 0; color: var(--ink); font-size: 16px; line-height: 1.25; }
-.description { margin: 16px 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
-.inspector-section { margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--line); }
-.inspector-section h3 { display: flex; justify-content: space-between; margin: 0 0 9px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.inspector h2 { margin: 4px 0 0; color: var(--ink); font-size: 19px; line-height: 1.25; }
+.description { margin: 18px 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.inspector-section { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.inspector-section h3 { display: flex; justify-content: space-between; margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .inspector-section h3 span { color: var(--muted); }
-.relationship-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.relationship-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .relationship-list li { background: white; border: 1px solid var(--line); border-radius: 5px; }
-.relationship-list button { width: 100%; display: grid; grid-template-columns: minmax(34px, .6fr) minmax(92px, 1.4fr) minmax(34px, .6fr); gap: 6px; align-items: center; padding: 7px; border: 0; background: transparent; font: 9px 'IBM Plex Mono', monospace; color: var(--ink); }
+.relationship-list button { width: 100%; display: grid; grid-template-columns: minmax(42px, .6fr) minmax(110px, 1.4fr) minmax(42px, .6fr); gap: 8px; align-items: center; padding: 10px; border: 0; background: transparent; font: 11px 'IBM Plex Mono', monospace; color: var(--ink); }
 .relationship-list button:hover { background: var(--green-soft); }
 .relationship-list button span:last-child { text-align: right; }
-.relationship-list strong { color: var(--green); font-size: 8px; font-weight: 500; }
+.relationship-list strong { color: var(--green); font-size: 10px; font-weight: 600; }
 .relationship-summary { min-width: 0; display: grid; gap: 2px; text-align: center; }
-.relationship-summary small { overflow: hidden; color: var(--muted); font: 7px 'Manrope', sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.relationship-summary small { overflow: hidden; color: var(--muted); font: 10px 'Manrope', sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .metadata-view { margin: 0; padding: 9px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; background: white; font: 9px/1.5 'IBM Plex Mono', monospace; color: #46504a; }
 .observation-series { margin-top: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .observation-series-header { display: flex; align-items: center; justify-content: space-between; }
@@ -421,14 +333,6 @@ function replacement(edge: GraphEdge, observation: Observation) {
 .section-action { width: 24px; height: 24px; margin: -6px 0; }
 .acceptance-criteria { margin-top: 12px; color: var(--muted); font-size: 9px; }
 .acceptance-criteria ul { margin: 5px 0 0; padding-left: 17px; color: var(--ink); line-height: 1.55; }
-.distribution-charts { display: grid; gap: 10px; }
-.distribution-charts > div { display: grid; gap: 5px; }
-.distribution-charts > div > strong { font-size: 9px; }
-.evidence-row { margin-top: 6px; border: 1px solid var(--line); border-radius: 5px; background: white; }
-.evidence-row button { width: 100%; display: grid; gap: 3px; padding: 8px; border: 0; background: transparent; text-align: left; }
-.evidence-row button:hover { background: var(--green-soft); }
-.evidence-row strong { font-size: 10px; line-height: 1.45; }
-.evidence-row span { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
 .empty-inspector { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }
 .empty-inspector h2 { margin-top: 12px; }
 .empty-inspector p { max-width: 210px; margin-top: 7px; font-size: 11px; line-height: 1.5; }

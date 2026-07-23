@@ -10,7 +10,6 @@ test('confirms Delete-key removal for graph nodes and relationships', async ({ p
   for (const title of ['Fast feedback', 'Learning rate']) {
     await page.getByRole('button', { name: 'Add node' }).last().click()
     await page.getByLabel('Title').fill(title)
-    await page.getByRole('button', { name: 'Continue' }).click()
     await page.getByRole('button', { name: 'Add node' }).last().click()
   }
   await page.getByRole('button', { name: 'Relationship', exact: true }).click()

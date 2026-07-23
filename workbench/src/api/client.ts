@@ -437,12 +437,16 @@ export const api = {
         ['Select a factor, outcome, or metric and retry.'],
       )
     }
-    const current = node.payload.kind === 'metric'
-      ? node.payload.properties.current
-      : node.payload.properties[input.slot]
-    const other = node.payload.kind === 'metric'
-      ? null
-      : node.payload.properties[input.slot === 'current' ? 'desired' : 'current']
+    const current = node.native_state
+      ? input.slot === 'current' ? node.native_state.current : node.native_state.forecast
+      : node.payload.kind === 'metric'
+        ? node.payload.properties.current
+        : node.payload.properties[input.slot]
+    const other = node.native_state
+      ? input.slot === 'current' ? node.native_state.forecast : node.native_state.current
+      : node.payload.kind === 'metric'
+        ? null
+        : node.payload.properties[input.slot === 'current' ? 'desired' : 'current']
     const estimate = current?.id ?? (other?.id === 'A' ? 'B' : 'A')
     const result = await request<CommandResult<PrimitiveEstimate>>(
       `/api/v1/projects/${project.id}/commands`,

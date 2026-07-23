@@ -4,14 +4,12 @@ import { Trash2, X } from '@lucide/vue'
 import type {
   Estimate,
   EstimateSourceInput,
-  EstimateUncertainty,
   GraphNode,
   InterventionEstimateSlot,
   SetInterventionEstimateInput,
 } from '../api/types'
 import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
-import EstimateUncertaintyEditor from './EstimateUncertaintyEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -27,10 +25,8 @@ const emit = defineEmits<{
 }>()
 const form = reactive({
   dimension: '',
-  provenance: '',
 })
 const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('non_negative', {}))
-const uncertainty = ref<EstimateUncertainty>({})
 const sourceValid = ref(true)
 const confirmRemove = ref(false)
 const probability = computed(() => props.slot?.kind === 'probability_of_success')
@@ -78,8 +74,6 @@ watch(
           ? { type: 'distribution', distribution: currentDistribution }
           : defaultSquiggleSourceInput(probability.value ? 'probability' : 'non_negative', expectedUnit.value)
     sourceValid.value = true
-    form.provenance = existing.value?.provenance?.join('\n') ?? ''
-    uncertainty.value = { ...existing.value?.uncertainty }
     confirmRemove.value = false
   },
 )
@@ -93,11 +87,8 @@ function submit() {
   emit('submit', {
     slot,
     source: source.value,
-    provenance: form.provenance
-      .split('\n')
-      .map((value) => value.trim())
-      .filter(Boolean),
-    uncertainty: uncertainty.value,
+    provenance: existing.value?.provenance ?? [],
+    uncertainty: existing.value?.uncertainty,
   })
 }
 
@@ -124,8 +115,6 @@ function submit() {
           :expected-unit="expectedUnit"
           @validity="sourceValid = $event"
         />
-        <EstimateUncertaintyEditor v-model="uncertainty" />
-        <label>Provenance<textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea></label>
         <div v-if="confirmRemove" class="replace-warning">
           <Trash2 :size="18" />
           <div><strong>Remove this estimate?</strong><span>The slot will return to its unset state.</span></div>

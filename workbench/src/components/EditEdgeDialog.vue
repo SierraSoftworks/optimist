@@ -7,7 +7,6 @@ import type {
   GraphEdge,
   MeasurementCalibration,
   SetMeasurementCalibrationInput,
-  UpdateEdgeInput,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { formatUnitExpression } from '../domain/unitExpression'
@@ -15,12 +14,10 @@ import { formatUnitExpression } from '../domain/unitExpression'
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
 const emit = defineEmits<{
   close: []
-  submit: [input: UpdateEdgeInput]
   delete: []
   estimate: [slot: EdgeEstimateSlot]
   calibration: [input: SetMeasurementCalibrationInput]
 }>()
-const form = reactive({ description: '', metadata: '{}' })
 const calibration = reactive({
   enabled: false,
   stateZero: 0,
@@ -30,15 +27,12 @@ const calibration = reactive({
   idealUpper: 0.6,
   outerUpper: 1,
 })
-const error = ref<string | null>(null)
 const confirmDelete = ref(false)
 
 watch(
   () => [props.open, props.edge] as const,
   ([open, edge]) => {
     if (!open || !edge) return
-    form.description = edge.description
-    form.metadata = JSON.stringify(edge.metadata, null, 2)
     if (edge.payload.kind === 'measures') {
       const current = edge.payload.properties.calibration
       calibration.enabled = Boolean(current)
@@ -52,25 +46,9 @@ watch(
         calibration.outerUpper = current.outer_upper
       }
     }
-    error.value = null
     confirmDelete.value = false
   },
 )
-
-function submit() {
-  try {
-    const metadata = JSON.parse(form.metadata) as unknown
-    if (!metadata || Array.isArray(metadata) || typeof metadata !== 'object') {
-      throw new Error('Metadata must be a JSON object.')
-    }
-    emit('submit', {
-      description: form.description,
-      metadata: metadata as Record<string, unknown>,
-    })
-  } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : 'Metadata is invalid JSON.'
-  }
-}
 
 function calibrationValue(): MeasurementCalibration | null {
   if (!calibration.enabled || props.edge?.payload.kind !== 'measures') return null
@@ -106,28 +84,12 @@ function distributionLabel(value: Distribution) {
   return `LogNormal · μ ${value.location}, σ ${value.scale}`
 }
 
-function estimateSourceLabel(estimate: import('../api/types').Estimate | null) {
-  if (estimate?.source?.type === 'squiggle') return `Squiggle · ${estimate.source.definition.source}`
-  if (estimate?.source?.type === 'fermi') return `Legacy Fermi · ${estimate.source.definition.equation}`
-  return null
-}
-
-function uncertaintyLabel(estimate: import('../api/types').Estimate | null) {
-  const uncertainty = estimate?.uncertainty
-  if (!uncertainty) return null
-  const parts = [
-    uncertainty.epistemic ? `Epistemic: ${uncertainty.epistemic}` : null,
-    uncertainty.process ? `Process: ${uncertainty.process}` : null,
-    uncertainty.measurement ? `Measurement: ${uncertainty.measurement}` : null,
-  ].filter(Boolean)
-  return parts.length ? parts.join(' · ') : null
-}
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open && edge" class="dialog-backdrop" @click.self="emit('close')">
-      <form class="dialog edge-edit-dialog" aria-labelledby="edit-edge-title" @submit.prevent="submit">
+      <section class="dialog edge-edit-dialog" role="dialog" aria-labelledby="edit-edge-title">
         <header>
           <div>
             <span class="eyebrow">{{ edge.source }} · {{ edge.payload.kind.replaceAll('_', ' ') }} · {{ edge.destination }}</span>
@@ -137,25 +99,21 @@ function uncertaintyLabel(estimate: import('../api/types').Estimate | null) {
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
           <div v-if="edge.payload.properties.effect" class="estimate-row">
-            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.effect)">{{ estimateSourceLabel(edge.payload.properties.effect) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.effect)">{{ uncertaintyLabel(edge.payload.properties.effect) }}</small></div>
+            <div><span>Effect</span><strong>{{ distributionLabel(edge.payload.properties.effect.distribution) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit relationship effect estimate" @click="emit('estimate', { kind: 'effect' })"><Pencil :size="13" /></button>
           </div>
           <div v-if="edge.payload.properties.response" class="estimate-row">
-            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.response.destination_change)">{{ estimateSourceLabel(edge.payload.properties.response.destination_change) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.response.destination_change)">{{ uncertaintyLabel(edge.payload.properties.response.destination_change) }}</small></div>
+            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ distributionLabel(edge.payload.properties.response.destination_change.distribution) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit destination response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
-            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.lag)">{{ estimateSourceLabel(edge.payload.properties.lag) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.lag)">{{ uncertaintyLabel(edge.payload.properties.lag) }}</small></div>
+            <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? distributionLabel(edge.payload.properties.lag.distribution) : 'Not set' }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
-          <dl class="relationship-context">
-            <div><dt>Mechanism</dt><dd>{{ edge.payload.properties.mechanism || 'Not documented' }}</dd></div>
-            <div><dt>Evidence</dt><dd>{{ edge.payload.properties.evidence.join('; ') || 'None' }}</dd></div>
-          </dl>
         </section>
         <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong><small v-if="estimateSourceLabel(edge.payload.properties.degree)">{{ estimateSourceLabel(edge.payload.properties.degree) }}</small><small v-if="uncertaintyLabel(edge.payload.properties.degree)">{{ uncertaintyLabel(edge.payload.properties.degree) }}</small></div>
+            <div><span>Blocking degree</span><strong>{{ distributionLabel(edge.payload.properties.degree.distribution) }}</strong></div>
             <button type="button" class="icon-button" aria-label="Edit blocking degree estimate" @click="emit('estimate', { kind: 'degree' })"><Pencil :size="13" /></button>
           </div>
         </section>
@@ -189,15 +147,6 @@ function uncertaintyLabel(estimate: import('../api/types').Estimate | null) {
           <p v-else class="muted">Polarity describes direction only. Add anchors to translate readings into normalized state estimates.</p>
           <button type="button" class="secondary-button" :disabled="pending" @click="saveCalibration">{{ calibration.enabled ? 'Save calibration' : 'Remove calibration' }}</button>
         </section>
-        <label>
-          Description
-          <textarea v-model="form.description" rows="6" placeholder="Markdown mechanism or relationship context"></textarea>
-        </label>
-        <label>
-          Metadata
-          <textarea v-model="form.metadata" class="code-input" rows="6" spellcheck="false"></textarea>
-        </label>
-        <p v-if="error" class="form-error">{{ error }}</p>
         <div v-if="confirmDelete" class="replace-warning">
           <Trash2 :size="18" />
           <div><strong>Delete this relationship?</strong><span>The endpoint nodes will remain in the project.</span></div>
@@ -210,19 +159,15 @@ function uncertaintyLabel(estimate: import('../api/types').Estimate | null) {
             @click="confirmDelete ? emit('delete') : (confirmDelete = true)"
           ><Trash2 :size="14" /> {{ confirmDelete ? 'Confirm delete' : 'Delete' }}</button>
           <span class="footer-spacer"></span>
-          <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
-          <button type="submit" class="primary-button" :disabled="pending">
-            {{ pending ? 'Saving…' : 'Save relationship' }}
-          </button>
+          <button type="button" class="primary-button" @click="emit('close')">Done</button>
         </footer>
-      </form>
+      </section>
     </div>
   </Teleport>
 </template>
 
 <style scoped>
 .dialog-section { margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
-.relationship-context { margin-top: 10px; }
 .calibration-editor { display: grid; gap: 10px; }
 .calibration-editor .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .calibration-editor .section-header > div { display: grid; gap: 2px; }

@@ -10,12 +10,7 @@ async function setInput(selector: string, value: string) {
   await nextTick()
 }
 
-async function continueWizard() {
-  document.body.querySelector<HTMLButtonElement>('.node-dialog .primary-button')!.click()
-  await nextTick()
-}
-
-async function submitWizard() {
+async function submit() {
   document.body.querySelector<HTMLFormElement>('.node-dialog')!
     .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
   await nextTick()
@@ -28,9 +23,7 @@ describe('CreateNodeDialog', () => {
       attachTo: document.body,
     })
     await setInput('input[placeholder="Fast feedback"]', 'Fast feedback')
-    await continueWizard()
-    expect(document.body.textContent).toContain('Current estimate required')
-    await submitWizard()
+    await submit()
 
     const input = wrapper.emitted('submit')?.[0]?.[0]
     expect(input).toMatchObject({
@@ -54,9 +47,7 @@ describe('CreateNodeDialog', () => {
     intervention.checked = true
     intervention.dispatchEvent(new Event('change', { bubbles: true }))
     await setInput('input[placeholder="Fast feedback"]', 'Improve pipeline')
-    await continueWizard()
-    expect(document.body.textContent).toContain('Action setup')
-    await submitWizard()
+    await submit()
 
     const input = wrapper.emitted('submit')?.[0]?.[0] as any
     expect(input.payload.kind).toBe('intervention')
@@ -75,17 +66,16 @@ describe('CreateNodeDialog', () => {
     metric.dispatchEvent(new Event('change', { bubbles: true }))
     await setInput('input[placeholder="Fast feedback"]', 'Lead time')
     await setInput('input[placeholder="minutes"]', 'days')
-    await continueWizard()
-    const support = document.body.querySelector<HTMLSelectElement>('.wizard-setup select')!
+    const support = document.body.querySelector<HTMLSelectElement>('.node-setup select')!
     support.value = 'bounded'
     support.dispatchEvent(new Event('change', { bubbles: true }))
     await nextTick()
-    const bounds = document.body.querySelectorAll<HTMLInputElement>('.wizard-setup input[type="number"]')
+    const bounds = document.body.querySelectorAll<HTMLInputElement>('.node-setup input[type="number"]')
     bounds[0]!.value = '0'
     bounds[0]!.dispatchEvent(new Event('input', { bubbles: true }))
     bounds[1]!.value = '30'
     bounds[1]!.dispatchEvent(new Event('input', { bubbles: true }))
-    await submitWizard()
+    await submit()
 
     expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
       payload: {

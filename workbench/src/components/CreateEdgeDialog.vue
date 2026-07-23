@@ -21,7 +21,7 @@ const responseAssessment = ref<SquiggleAssessmentResult | null>(null)
 const responseValid = ref(false)
 const form = reactive({
   source: '', destination: '', kind: 'contributes' as EdgeKind, effect: 0.5,
-  lagEnabled: false, lag: 0, mechanism: '', evidence: '',
+  lagEnabled: false, lag: 0,
   polarity: 'higher_is_better' as 'higher_is_better' | 'lower_is_better' | 'target_range',
   hard: true, thresholdEnabled: false, threshold: 0.5,
   sourceChange: 1, destinationChange: 1,
@@ -51,7 +51,7 @@ watch(() => props.open, (open) => {
   if (!open) return
   Object.assign(form, {
     source: props.initialSourceId ?? '', destination: '', kind: props.initialKind ?? 'contributes', effect: 0.5,
-    lagEnabled: false, lag: 0, mechanism: '', evidence: '',
+    lagEnabled: false, lag: 0,
     polarity: 'higher_is_better', hard: true, thresholdEnabled: false, threshold: 0.5,
     sourceChange: 1, destinationChange: 1,
   })
@@ -76,8 +76,8 @@ function submit() {
       kind: form.kind,
       effect: form.effect,
       lag: form.lagEnabled ? form.lag : null,
-      mechanism: form.mechanism,
-      evidence: form.evidence,
+      mechanism: '',
+      evidence: '',
       polarity: form.polarity,
       hard: form.hard,
       threshold: form.thresholdEnabled ? form.threshold : null,
@@ -115,7 +115,7 @@ function assessedResponse(): Estimate | undefined {
 <template>
   <Teleport to="body">
     <div v-if="open" class="dialog-backdrop" @click.self="emit('close')">
-      <form class="dialog relationship-dialog" aria-labelledby="create-edge-title" @submit.prevent="submit">
+      <form class="dialog relationship-dialog" :class="{ 'native-relationship-dialog': nativeCausal }" aria-labelledby="create-edge-title" @submit.prevent="submit">
         <header>
           <div><span class="eyebrow">Graph structure</span><h2 id="create-edge-title">Add relationship</h2></div>
           <button type="button" class="icon-button" aria-label="Close" @click="emit('close')"><X :size="18" /></button>
@@ -142,8 +142,6 @@ function assessedResponse(): Estimate | undefined {
         <template v-if="causal">
           <label class="checkbox-label"><input v-model="form.lagEnabled" type="checkbox" /> Include lag</label>
           <label v-if="form.lagEnabled">Lag in planning periods<input v-model.number="form.lag" type="number" min="0" step="0.1" required /></label>
-          <label>Mechanism<textarea v-model="form.mechanism" rows="3" placeholder="How this influence operates"></textarea></label>
-          <label>Evidence references<textarea v-model="form.evidence" rows="3" placeholder="One citation or evidence ID per line"></textarea></label>
         </template>
         <label v-if="form.kind === 'measures'">Measurement polarity<select v-model="form.polarity"><option value="higher_is_better">Higher is better</option><option value="lower_is_better">Lower is better</option><option value="target_range">Target range</option></select></label>
         <template v-if="form.kind === 'requires'">
@@ -160,10 +158,10 @@ function assessedResponse(): Estimate | undefined {
 
 <style scoped>
 .relationship-fields { margin-top: 14px; }
-.relationship-dialog { width: min(600px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.relationship-dialog { width: min(680px, 100%); }
+.native-relationship-dialog { width: min(1040px, 100%); }
 .native-response { display: grid; gap: 10px; }
-.native-response :deep(.squiggle-react-host) { height: clamp(280px, 42vh, 360px); }
 .native-response > header { display: grid; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.native-response > header strong { font-size: 10px; }
-.native-response > header span { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.native-response > header strong { font-size: 14px; }
+.native-response > header span { color: var(--muted); font-size: 12px; line-height: 1.5; }
 </style>

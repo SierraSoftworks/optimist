@@ -32,7 +32,6 @@ import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
 import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
-import EditEvidenceDialog from './components/EditEvidenceDialog.vue'
 import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
 import GraphNavigator from './components/GraphNavigator.vue'
 import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
@@ -51,8 +50,6 @@ import type {
   GraphNode,
   GraphEdge,
   Estimate,
-  Evidence,
-  EvidenceInput,
   EdgeEstimateSlot,
   EdgeKind,
   InterventionEstimateSlot,
@@ -66,7 +63,6 @@ import type {
   QuantityDefinition,
   ScenarioDraft,
   UpdateNodeInput,
-  UpdateEdgeInput,
 } from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
 import {
@@ -77,19 +73,13 @@ import {
   useImportProject,
   useProject,
   useProjects,
-  useSetStateEstimate,
   useSetNodeQuantityState,
   useUpdateNode,
-  useUpdateEdge,
   useDeleteEdge,
   useDeleteNode,
   useAppendObservation,
   useCorrectObservation,
-  useSetInterventionEstimate,
   useRemoveInterventionEstimate,
-  useCreateEvidence,
-  useUpdateEvidence,
-  useDeleteEvidence,
   useSetEdgeEstimate,
   useRemoveEdgeEstimate,
   useStructuralAnalysis,
@@ -101,6 +91,7 @@ import {
   useSetMeasurementCalibration,
   useServerHealth,
 } from './composables/useProjectData'
+import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
 import { simulationReadiness } from './domain/simulationReadiness'
 import type { WorkbenchCommand } from './domain/commandBar'
@@ -131,7 +122,6 @@ const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
 const interventionEstimateDialogOpen = ref(false)
-const evidenceDialogOpen = ref(false)
 const edgeEstimateDialogOpen = ref(false)
 const scenarioDialogOpen = ref(false)
 const commandBarOpen = ref(false)
@@ -140,7 +130,6 @@ const selectedEdge = ref<GraphEdge | null>(null)
 const selectedMeasurementEdge = ref<GraphEdge | null>(null)
 const selectedObservation = ref<Observation | null>(null)
 const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
-const selectedEvidence = ref<Evidence | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const selectedFeedbackCycle = ref<number | null>(null)
 const selectedScenarioId = ref<string | null>(null)
@@ -196,7 +185,6 @@ const relationshipMenuSource = computed<GraphNode | null>(() =>
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const setNodeQuantityState = useSetNodeQuantityState(projectQuery.data, selectedNode)
-const updateEdge = useUpdateEdge(projectQuery.data, selectedEdge)
 const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
@@ -204,9 +192,6 @@ const appendObservation = useAppendObservation(projectQuery.data, selectedMeasur
 const correctObservation = useCorrectObservation(projectQuery.data, selectedMeasurementEdge)
 const setInterventionEstimate = useSetInterventionEstimate(projectQuery.data, selectedNode)
 const removeInterventionEstimate = useRemoveInterventionEstimate(projectQuery.data, selectedNode)
-const createEvidence = useCreateEvidence(projectQuery.data, selectedNode)
-const updateEvidence = useUpdateEvidence(projectQuery.data, selectedNode, selectedEvidence)
-const deleteEvidence = useDeleteEvidence(projectQuery.data, selectedNode, selectedEvidence)
 const setEdgeEstimate = useSetEdgeEstimate(projectQuery.data, selectedEdge)
 const removeEdgeEstimate = useRemoveEdgeEstimate(projectQuery.data, selectedEdge)
 const feedbackModeEnabled = computed(() => mode.value === 'feedback')
@@ -570,16 +555,6 @@ function editRelationshipById(id: string) {
   if (edge) editRelationship(edge)
 }
 
-async function submitEdgeEdit(input: UpdateEdgeInput) {
-  mutationError.value = null
-  try {
-    await updateEdge.mutateAsync(input)
-    edgeEditDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
 async function submitMeasurementCalibration(input: SetMeasurementCalibrationInput) {
   mutationError.value = null
   try {
@@ -672,34 +647,6 @@ async function submitInterventionEstimateRemove(estimate: Estimate) {
     await removeInterventionEstimate.mutateAsync(estimate)
     interventionEstimateDialogOpen.value = false
     selectedInterventionSlot.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function editEvidence(evidence: Evidence | null) {
-  selectedEvidence.value = evidence
-  evidenceDialogOpen.value = true
-}
-
-async function submitEvidence(input: EvidenceInput) {
-  mutationError.value = null
-  try {
-    if (selectedEvidence.value) await updateEvidence.mutateAsync(input)
-    else await createEvidence.mutateAsync(input)
-    evidenceDialogOpen.value = false
-    selectedEvidence.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitEvidenceDelete() {
-  mutationError.value = null
-  try {
-    await deleteEvidence.mutateAsync()
-    evidenceDialogOpen.value = false
-    selectedEvidence.value = null
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -940,7 +887,6 @@ function retry() {
         @observe="observe"
         @correct="correct"
         @intervention-estimate="editInterventionEstimate"
-        @evidence="editEvidence"
         @delete="submitNodeDelete"
       />
     </section>
@@ -1031,10 +977,9 @@ function retry() {
     />
     <EditEdgeDialog
       :open="edgeEditDialogOpen"
-      :pending="updateEdge.isPending.value || deleteEdge.isPending.value || setMeasurementCalibration.isPending.value"
+      :pending="deleteEdge.isPending.value || setMeasurementCalibration.isPending.value"
       :edge="selectedEdge"
       @close="edgeEditDialogOpen = false"
-      @submit="submitEdgeEdit"
       @delete="submitEdgeDelete"
       @estimate="editEdgeEstimate"
       @calibration="submitMeasurementCalibration"
@@ -1064,15 +1009,6 @@ function retry() {
       @close="interventionEstimateDialogOpen = false"
       @submit="submitInterventionEstimate"
       @remove="submitInterventionEstimateRemove"
-    />
-    <EditEvidenceDialog
-      :open="evidenceDialogOpen"
-      :pending="createEvidence.isPending.value || updateEvidence.isPending.value || deleteEvidence.isPending.value"
-      :node="selectedNode"
-      :evidence="selectedEvidence"
-      @close="evidenceDialogOpen = false"
-      @submit="submitEvidence"
-      @delete="submitEvidenceDelete"
     />
     <EditEdgeEstimateDialog
       :open="edgeEstimateDialogOpen"
@@ -1120,13 +1056,13 @@ function retry() {
 .command-bar-trigger { min-width: 76px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: 4px; color: var(--muted); }
 .command-bar-trigger:hover { background: #edf0eb; color: var(--ink); }
 .command-bar-trigger kbd { min-width: 39px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: 8px 'IBM Plex Mono', monospace; text-align: center; }
-.workbench-body { min-height: 0; display: grid; grid-template-columns: 226px minmax(360px, 1fr) 286px; overflow: hidden; }
-.navigator { min-height: 0; padding: 14px 12px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
+.workbench-body { min-height: 0; display: grid; grid-template-columns: 260px minmax(420px, 1fr) 360px; overflow: hidden; }
+.navigator { min-height: 0; padding: 20px 16px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
 .canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
-.search-field { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: white; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
-.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: 12px; }
+.search-field { height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: white; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
+.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: 14px; }
 .filter-section { margin-top: 20px; }
-.kind-filter, .setup-filter { width: 100%; height: 34px; margin-top: 4px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; text-align: left; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 12px; }
+.kind-filter, .setup-filter { width: 100%; min-height: 40px; margin-top: 5px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; text-align: left; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 13px; }
 .kind-filter:hover, .kind-filter.muted:hover, .setup-filter:hover { background: #ecefe9; }
 .kind-filter > span:last-child, .setup-filter > span:last-child { color: var(--muted); font: 11px 'IBM Plex Mono', monospace; }
 .kind-filter.muted { opacity: .42; }
@@ -1150,7 +1086,7 @@ function retry() {
 @media (max-width: 1000px) {
   .app-header { grid-template-columns: 190px 1fr auto; }
   .mode-tabs { display: none; }
-  .workbench-body { grid-template-columns: 200px minmax(320px, 1fr) 250px; }
+  .workbench-body { grid-template-columns: 220px minmax(340px, 1fr) 300px; }
 }
 
 @media (max-width: 760px) {

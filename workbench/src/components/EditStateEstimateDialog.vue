@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { EstimateSourceInput, EstimateSupport, EstimateUncertainty, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import type { EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
 import { defaultSquiggleSourceInput, squiggleSourceInput } from '../domain/squiggleEstimate'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
-import EstimateUncertaintyEditor from './EstimateUncertaintyEditor.vue'
 import { calibratedState, calibrationLabel, latestObservation } from '../domain/measurementCalibration'
 
 const props = defineProps<{
@@ -17,10 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; submit: [input: SetStateEstimateInput] }>()
 const form = reactive({
   slot: 'current' as StateEstimateSlot,
-  provenance: '',
 })
 const source = ref<EstimateSourceInput>(defaultSquiggleSourceInput('probability', {}))
-const uncertainty = ref<EstimateUncertainty>({})
 const sourceValid = ref(true)
 const existing = computed(() => {
   if (props.node?.native_state) {
@@ -74,8 +71,6 @@ watch(
     if (!open) return
     if (props.node?.payload.kind === 'metric') form.slot = 'current'
     const currentDistribution = existing.value?.distribution
-    form.provenance = existing.value?.provenance?.join('\n') ?? ''
-    uncertainty.value = { ...existing.value?.uncertainty }
     if (currentDistribution) {
       source.value = existing.value?.source?.type === 'fermi'
         ? { type: 'fermi', definition: existing.value.source.definition }
@@ -94,21 +89,14 @@ function submit() {
   emit('submit', {
     slot: form.slot,
     source: source.value,
-    provenance: form.provenance
-      .split('\n')
-      .map((value) => value.trim())
-      .filter(Boolean),
-    uncertainty: uncertainty.value,
+    provenance: existing.value?.provenance ?? [],
+    uncertainty: existing.value?.uncertainty,
   })
 }
 
 function useReading(reading: typeof calibratedReadings.value[number]) {
   source.value = squiggleSourceInput(`pointMass(${reading.state})`, expectedUnit.value)
   sourceValid.value = true
-  form.provenance = [
-    form.provenance.trim(),
-    `Calibrated observation #${reading.observation.id}: ${reading.observation.value} ${reading.observation.unit} from ${reading.observation.source} at ${reading.observation.observed_at} mapped to normalized state ${reading.state.toFixed(4)}.`,
-  ].filter(Boolean).join('\n')
 }
 </script>
 
@@ -151,11 +139,6 @@ function useReading(reading: typeof calibratedReadings.value[number]) {
             <button type="button" class="secondary-button" @click="useReading(reading)">Use reading</button>
           </article>
         </section>
-        <EstimateUncertaintyEditor v-model="uncertainty" />
-        <label>
-          Provenance
-          <textarea v-model="form.provenance" rows="4" placeholder="One source or elicitation note per line"></textarea>
-        </label>
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
           <button type="submit" class="primary-button" :disabled="pending || !sourceValid || !canAuthor">

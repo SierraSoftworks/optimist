@@ -55,7 +55,7 @@ describe('EstimateSourceEditor', () => {
     expect(wrapper.text()).toContain('legacy fermi estimate')
     await vi.advanceTimersByTimeAsync(250)
     await flushPromises()
-    expect(wrapper.text()).toContain('PointMass')
+    expect(wrapper.text()).toContain('Validated · 1 effective samples')
     expect(wrapper.emitted('update:modelValue')!.at(-1)![0]).toMatchObject({
       type: 'squiggle',
       definition: { source: 'pointMass(0.5)', target_unit: {} },
