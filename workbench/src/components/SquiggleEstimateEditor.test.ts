@@ -23,6 +23,8 @@ describe('SquiggleEstimateEditor predictive checks', () => {
         invalid_draws: 0,
         support_violation_draws: 2,
         support_violation_probability: 0.4,
+        support_compatible: false,
+        support_requirement: 'values from 0 to 1',
         representative_outcomes: [
           { percentile: 0.1, value: -0.1 },
           { percentile: 0.5, value: 0.5 },
@@ -64,6 +66,8 @@ describe('SquiggleEstimateEditor predictive checks', () => {
         invalid_draws: 0,
         support_violation_draws: 0,
         support_violation_probability: 0,
+        support_compatible: true,
+        support_requirement: 'any finite real value',
         representative_outcomes: [],
       },
     })
@@ -84,5 +88,46 @@ describe('SquiggleEstimateEditor predictive checks', () => {
     await vi.advanceTimersByTimeAsync(250)
     await flushPromises()
     expect(api.assessSquiggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a symbolic family whose complete support conflicts with the state type', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(api, 'assessSquiggle').mockResolvedValue({
+      assessment: {
+        family: 'Normal', mean: 275, variance: 30_000,
+        p05: 20, p50: 275, p95: 530, seed: 42, sample_count: 256,
+      },
+      effective_distribution: { type: 'normal', mean: 275, standard_deviation: 170 },
+      predictive_checks: {
+        attempted_draws: 256,
+        valid_draws: 256,
+        invalid_draws: 0,
+        support_violation_draws: 0,
+        support_violation_probability: 0,
+        support_compatible: false,
+        support_requirement: 'values zero or greater',
+        representative_outcomes: [],
+      },
+    })
+    const wrapper = mount(SquiggleEstimateEditor, {
+      props: {
+        projectId: 'A',
+        modelValue: {
+          source: 'changesPerMonth :: change/month = normal({ p10: 50, p90: 500 })\nchangesPerMonth',
+          seed: 42,
+          sample_count: 256,
+          target_unit: { change: 1, month: -1 },
+        },
+        support: 'non_negative',
+        expectedUnit: { change: 1, month: -1 },
+      },
+    })
+
+    await vi.advanceTimersByTimeAsync(250)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Normal is incompatible with this state type')
+    expect(wrapper.text()).toContain('Normal does not guarantee values zero or greater')
+    expect(wrapper.emitted('validity')?.at(-1)).toEqual([false])
   })
 })

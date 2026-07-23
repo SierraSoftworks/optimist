@@ -10,7 +10,7 @@ vi.mock('../api/client', () => ({
     assessSquiggle: vi.fn().mockResolvedValue({
       assessment: { family: 'PointMass', mean: 1, variance: 0, p05: 1, p50: 1, p95: 1, seed: 42, sample_count: 2_048 },
       effective_distribution: { type: 'point', value: 1 },
-      predictive_checks: { attempted_draws: 2_048, valid_draws: 2_048, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, representative_outcomes: [] },
+      predictive_checks: { attempted_draws: 2_048, valid_draws: 2_048, invalid_draws: 0, support_violation_draws: 0, support_violation_probability: 0, support_compatible: true, support_requirement: 'any finite real value', representative_outcomes: [] },
     }),
   },
 }))
