@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Activity, AlertTriangle, CheckCircle2, Gauge, Goal, Pencil, Plus, Sigma, Trash2, Wrench } from '@lucide/vue'
 import type {
   Distribution,
+  Estimate,
   GraphEdge,
   GraphNode,
   InterventionEstimateSlot,
@@ -67,14 +68,14 @@ function stateEstimate(node: GraphNode, slot: 'current' | 'forecast') {
     : node.native_state?.forecast ?? null
 }
 
-function distribution(node: GraphNode, slot: 'current' | 'forecast') {
-  return stateEstimate(node, slot)?.distribution ?? null
+function distributionLabel(node: GraphNode, slot: 'current' | 'forecast') {
+  const value = stateEstimate(node, slot)
+  return value ? formatEstimate(value) : 'Not set'
 }
 
-function distributionLabel(node: GraphNode, slot: 'current' | 'forecast') {
-  const value = distribution(node, slot)
-  if (!value) return 'Not set'
-  return formatDistribution(value)
+function formatEstimate(value: Estimate) {
+  if (value.distribution) return formatDistribution(value.distribution)
+  return `Squiggle · ${value.source.definition.source.trim().split('\n')[0]}`
 }
 
 function formatDistribution(value: Distribution) {
@@ -186,7 +187,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><span>Series</span><strong>{{ measurementEdges.length }}</strong></div>
         </div>
         <dl>
-          <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatDistribution(node.payload.properties.current.distribution) : 'Not set' }}</dd></div>
+          <div><dt>Current estimate</dt><dd>{{ node.payload.properties.current ? formatEstimate(node.payload.properties.current) : 'Not set' }}</dd></div>
           <div v-if="node.payload.properties.quantity.reference_time"><dt>Reference time</dt><dd>{{ node.payload.properties.quantity.reference_time }}</dd></div>
           <div v-if="node.payload.properties.quantity.resolution_source"><dt>Resolution source</dt><dd>{{ node.payload.properties.quantity.resolution_source }}</dd></div>
         </dl>
@@ -223,15 +224,15 @@ function replacement(edge: GraphEdge, observation: Observation) {
       <section v-if="node.payload.kind === 'intervention'" class="inspector-section">
         <h3>Investment <button type="button" class="icon-button section-action" title="Add cost dimension" aria-label="Add cost dimension" @click="emit('interventionEstimate', { kind: 'cost', value: '' })"><Plus :size="14" /></button></h3>
         <div class="estimate-row">
-          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatDistribution(node.payload.properties.duration.distribution) : 'Not set' }}</strong></div>
+          <div><span>Duration</span><strong>{{ node.payload.properties.duration ? formatEstimate(node.payload.properties.duration) : 'Not set' }}</strong></div>
           <button type="button" class="icon-button" aria-label="Edit duration estimate" @click="emit('interventionEstimate', { kind: 'duration' })"><Pencil :size="13" /></button>
         </div>
         <div class="estimate-row">
-          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatDistribution(node.payload.properties.probability_of_success.distribution) : 'Not set' }}</strong></div>
+          <div><span>Success probability</span><strong>{{ node.payload.properties.probability_of_success ? formatEstimate(node.payload.properties.probability_of_success) : 'Not set' }}</strong></div>
           <button type="button" class="icon-button" aria-label="Edit success probability estimate" @click="emit('interventionEstimate', { kind: 'probability_of_success' })"><Pencil :size="13" /></button>
         </div>
         <div v-for="cost in node.payload.properties.costs" :key="cost.dimension" class="estimate-row">
-          <div><span>{{ cost.dimension }}</span><strong>{{ formatDistribution(cost.value.distribution) }}</strong></div>
+          <div><span>{{ cost.dimension }}</span><strong>{{ formatEstimate(cost.value) }}</strong></div>
           <button type="button" class="icon-button" :aria-label="`Edit ${cost.dimension} cost estimate`" @click="emit('interventionEstimate', { kind: 'cost', value: cost.dimension })"><Pencil :size="13" /></button>
         </div>
         <p v-if="!node.payload.properties.costs.length" class="muted">No cost dimensions configured.</p>
