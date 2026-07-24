@@ -60,7 +60,8 @@ fn estimate_target(
             .get_edge(id)?
             .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
         let response = match edge.payload {
-            crate::domain::EdgePayload::Contributes(value) => value.response,
+            crate::domain::EdgePayload::Contributes(value)
+            | crate::domain::EdgePayload::Changes(value) => value.response,
             _ => {
                 return Err(EstimateCommandError::InvalidSlot {
                     address: address.clone(),
@@ -767,6 +768,121 @@ mod tests {
                 EstimateCommandError::Required { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn replaces_changes_response_estimates_in_the_destination_unit() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Change frequency".to_owned()).unwrap().id;
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    0,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "delivery_change".to_owned(),
+                        title: "Delivery change".to_owned(),
+                        payload: NodePayload::Factor(Factor {
+                            controllable: true,
+                            evidence: vec![],
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "automation".to_owned(),
+                        title: "Automation".to_owned(),
+                        payload: NodePayload::Intervention(crate::domain::Intervention {
+                            costs: vec![],
+                            duration: None,
+                            probability_of_success: None,
+                            acceptance_criteria: vec![],
+                        }),
+                    }),
+                ),
+            )
+            .unwrap();
+        let unit = Unit::from_exponents([("change", 1), ("month", -1)]).unwrap();
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    2,
+                    GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                        node: EntityId::new(0),
+                        expected_revision: 0,
+                        quantity: QuantityDefinition::with_dimension(
+                            "changes/month",
+                            Some(unit.clone()),
+                            Some("total monthly".to_owned()),
+                            QuantitySupport::Real,
+                        )
+                        .unwrap(),
+                    }),
+                ),
+            )
+            .unwrap();
+        let response = crate::domain::Estimate::<QuantityValue>::new(
+            EstimateId::new(0),
+            Distribution::point(-100.0).unwrap(),
+        )
+        .unwrap();
+        let created = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    3,
+                    GraphCommand::CreateEdge(CreateEdge {
+                        source: EntityId::new(1),
+                        destination: EntityId::new(0),
+                        payload: EdgePayload::Changes(
+                            CausalEffect::linear(
+                                LinearResponse {
+                                    source_change: 1.0,
+                                    source_unit: Unit::dimensionless(),
+                                    destination_change: response,
+                                    destination_unit: unit.clone(),
+                                },
+                                None,
+                                String::new(),
+                                vec![],
+                            )
+                            .unwrap(),
+                        ),
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::EdgeCreated(edge) = created.outcome else {
+            panic!("expected changes edge")
+        };
+        let response = address(&project, EstimateOwner::Edge(edge.id()), 0);
+
+        let replaced = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    4,
+                    set_squiggle(
+                        response.clone(),
+                        EstimateSlot::Response,
+                        "-truncate(normal({ p10: 40, p90: 400 }), 0, 450)",
+                        unit,
+                    ),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::SquiggleEstimateSet(replaced) = replaced.outcome else {
+            panic!("expected replaced response estimate")
+        };
+        assert_eq!(replaced.revision, 1);
+        assert_eq!(catalog.get_estimate(&project, &response).unwrap(), replaced);
     }
 
     #[test]
