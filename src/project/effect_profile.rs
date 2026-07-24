@@ -1,33 +1,48 @@
 use crate::{
     command::{
         CommandOutcome, EffectAftereffectInput, EffectProfileInput, EffectReleaseInput,
-        SetEffectProfile,
+        SetEffectProfile, UpdateCausalEffect,
     },
     domain::{
-        Duration, EdgePayload, EffectAftereffect, EffectProfile, EffectRelease, EffectTransience,
-        Estimate, EstimateId, QuantityValue, SquiggleEstimateDefinition, Unit,
+        CausalEffect, Duration, Edge, EdgeId, EdgePayload, EffectAftereffect, EffectProfile,
+        EffectRelease, EffectTransience, Estimate, EstimateId, QuantityValue,
+        SquiggleEstimateDefinition, Unit,
     },
     store::{GraphRepository, RepositoryError},
 };
 
 use super::{AggregateUpdateError, EstimateCommandError, ProjectError, catalog::ProjectEntry};
 
+/// Replaces one causal relationship's counterfactual anchor and explanation.
+pub(super) fn update(
+    entry: &mut ProjectEntry,
+    command: UpdateCausalEffect,
+) -> Result<CommandOutcome, ProjectError> {
+    let mut edge = guarded(entry, &command.edge, command.expected_revision)?;
+    let next_revision = next_revision(&edge, &command.edge)?;
+    let effect = match &mut edge.payload {
+        EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
+        _ => return Err(ProjectError::NotCausalEdge(command.edge)),
+    };
+    let mut response = effect.response.clone();
+    response.source_change = command.source_change;
+    *effect = CausalEffect::linear(
+        response,
+        effect.lag.clone(),
+        command.mechanism,
+        command.evidence,
+    )?
+    .with_transience(effect.transience.clone().map(|value| *value));
+    edge.revision = next_revision;
+    entry.repository.update_edge(edge.clone())?;
+    Ok(CommandOutcome::CausalEffectUpdated(edge))
+}
+
 pub(super) fn set(
     entry: &mut ProjectEntry,
     command: SetEffectProfile,
 ) -> Result<CommandOutcome, ProjectError> {
-    let mut edge = entry
-        .repository
-        .get_edge(&command.edge)?
-        .ok_or_else(|| RepositoryError::MissingEdge(command.edge.to_string()))?;
-    if edge.revision != command.expected_revision {
-        return Err(AggregateUpdateError::EdgeRevisionConflict {
-            id: command.edge.clone(),
-            expected: command.expected_revision,
-            current: edge.revision,
-        }
-        .into());
-    }
+    let mut edge = guarded(entry, &command.edge, command.expected_revision)?;
     let EdgePayload::Changes(effect) = &edge.payload else {
         return Err(ProjectError::NotInterventionEffectEdge(command.edge));
     };
@@ -37,10 +52,7 @@ pub(super) fn set(
         .profile
         .map(|input| build(*input, &destination_unit, &mut ids))
         .transpose()?;
-    let next_revision = edge
-        .revision
-        .checked_add(1)
-        .ok_or_else(|| ProjectError::EdgeRevisionSpaceExhausted(command.edge.clone()))?;
+    let next_revision = next_revision(&edge, &command.edge)?;
     let EdgePayload::Changes(effect) = &mut edge.payload else {
         unreachable!("the payload was matched as an intervention effect above")
     };
@@ -48,6 +60,32 @@ pub(super) fn set(
     edge.revision = next_revision;
     entry.repository.update_edge(edge.clone())?;
     Ok(CommandOutcome::EffectProfileSet(edge))
+}
+
+fn guarded(
+    entry: &mut ProjectEntry,
+    id: &EdgeId,
+    expected_revision: u64,
+) -> Result<Edge, ProjectError> {
+    let edge = entry
+        .repository
+        .get_edge(id)?
+        .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
+    if edge.revision != expected_revision {
+        return Err(AggregateUpdateError::EdgeRevisionConflict {
+            id: id.clone(),
+            expected: expected_revision,
+            current: edge.revision,
+        }
+        .into());
+    }
+    Ok(edge)
+}
+
+fn next_revision(edge: &Edge, id: &EdgeId) -> Result<u64, ProjectError> {
+    edge.revision
+        .checked_add(1)
+        .ok_or_else(|| ProjectError::EdgeRevisionSpaceExhausted(id.clone()))
 }
 
 fn build(
@@ -129,7 +167,7 @@ mod tests {
         command::{
             CommandOutcome, CommandRequest, CreateEdge, CreateNode, EffectAftereffectInput,
             EffectProfileInput, EffectReleaseInput, GraphCommand, SetEffectProfile,
-            SetNodeQuantityState,
+            SetNodeQuantityState, UpdateCausalEffect,
         },
         domain::{
             CausalEffect, EdgeId, EdgeKind, EdgePayload, EntityId, Estimate, EstimateId, Factor,
@@ -257,6 +295,77 @@ mod tests {
                 release: EffectReleaseInput::Immediate,
             }),
         })
+    }
+
+    #[test]
+    fn rewrites_the_anchor_and_explanation_without_disturbing_the_profile() {
+        let (mut catalog, project, edge) = fixture();
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    4,
+                    GraphCommand::SetEffectProfile(SetEffectProfile {
+                        edge: edge.clone(),
+                        expected_revision: 0,
+                        profile: Some(profile()),
+                    }),
+                ),
+            )
+            .unwrap();
+        let result = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    5,
+                    GraphCommand::UpdateCausalEffect(UpdateCausalEffect {
+                        edge,
+                        expected_revision: 1,
+                        source_change: 2.0,
+                        mechanism: "Freezing changes suppresses the defect inflow.".to_owned(),
+                        evidence: vec!["2026-Q2 freeze retrospective".to_owned()],
+                    }),
+                ),
+            )
+            .unwrap();
+        let CommandOutcome::CausalEffectUpdated(stored) = result.outcome else {
+            panic!("expected an updated causal edge")
+        };
+        let EdgePayload::Changes(effect) = &stored.payload else {
+            unreachable!()
+        };
+        assert_eq!(effect.response.source_change, 2.0);
+        assert_eq!(
+            effect.mechanism,
+            "Freezing changes suppresses the defect inflow."
+        );
+        assert_eq!(
+            effect.evidence,
+            vec!["2026-Q2 freeze retrospective".to_owned()]
+        );
+        assert!(
+            effect.transience.is_some(),
+            "editing the claim must not silently drop the temporal shape"
+        );
+    }
+
+    #[test]
+    fn rejects_an_anchor_which_cannot_define_a_slope() {
+        let (mut catalog, project, edge) = fixture();
+        let invalid = catalog.execute(
+            &project,
+            CommandRequest::new(
+                4,
+                GraphCommand::UpdateCausalEffect(UpdateCausalEffect {
+                    edge,
+                    expected_revision: 0,
+                    source_change: 0.0,
+                    mechanism: String::new(),
+                    evidence: vec![],
+                }),
+            ),
+        );
+        assert!(matches!(invalid, Err(ProjectError::CausalResponse(_))));
     }
 
     #[test]

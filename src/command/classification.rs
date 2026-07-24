@@ -18,6 +18,7 @@ impl GraphCommand {
                 | Self::CorrectObservation(_)
                 | Self::SetMeasurementCalibration(_)
                 | Self::SetEffectProfile(_)
+                | Self::UpdateCausalEffect(_)
                 | Self::SetSquiggleEstimate(_)
                 | Self::RemoveEstimate(_)
         )

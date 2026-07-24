@@ -99,6 +99,7 @@ pub(super) fn command(
             Ok(CommandOutcome::MeasurementCalibrationSet(edge))
         }
         GraphCommand::SetEffectProfile(command) => effect_profile::set(entry, command),
+        GraphCommand::UpdateCausalEffect(command) => effect_profile::update(entry, command),
         GraphCommand::SetSquiggleEstimate(command) => estimate::set_squiggle(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::CreateScenario(command) => scenarios::create(entry, command),

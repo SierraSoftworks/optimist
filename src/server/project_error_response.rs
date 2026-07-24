@@ -95,6 +95,18 @@ pub(super) fn classify(
             "not_intervention_effect_edge",
             &["Choose a `changes` edge, which is the only relationship with a temporal profile."],
         ),
+        ProjectError::NotCausalEdge(_) => (
+            StatusCode::BAD_REQUEST,
+            "not_causal_edge",
+            &[
+                "Choose a `contributes` or `changes` edge, which are the relationships that own a response.",
+            ],
+        ),
+        ProjectError::CausalResponse(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_causal_response",
+            &["Anchor the response to a finite, nonzero source change."],
+        ),
         ProjectError::OngoingEffectCannotBeTransient(_) => (
             StatusCode::BAD_REQUEST,
             "ongoing_effect_cannot_be_transient",

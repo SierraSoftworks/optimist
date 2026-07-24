@@ -101,6 +101,8 @@ pub enum GraphCommand {
     SetMeasurementCalibration(SetMeasurementCalibration),
     /// Replaces or removes the temporal shape of one intervention effect.
     SetEffectProfile(SetEffectProfile),
+    /// Replaces one causal relationship's counterfactual anchor and explanation.
+    UpdateCausalEffect(UpdateCausalEffect),
     /// Creates or replaces one estimate from backend-evaluated Squiggle source.
     SetSquiggleEstimate(SetSquiggleEstimate),
     /// Removes one optional or named-cost estimate from its owner.
@@ -224,6 +226,8 @@ pub enum CommandOutcome {
     MeasurementCalibrationSet(Edge),
     /// Complete intervention edge after its temporal profile was replaced or removed.
     EffectProfileSet(Edge),
+    /// Complete causal edge after its anchor and explanation were replaced.
+    CausalEffectUpdated(Edge),
     /// Squiggle-authored estimate created or revisioned by [`GraphCommand::SetSquiggleEstimate`].
     SquiggleEstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].
