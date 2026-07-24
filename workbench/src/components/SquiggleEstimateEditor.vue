@@ -9,6 +9,7 @@ import type {
   Unit,
 } from '../api/types'
 import { formatUnitExpression } from '../domain/unitExpression'
+import { formatHumanNumber } from '../domain/humanNumber'
 import SquiggleEditorIsland from './SquiggleEditorIsland.vue'
 
 const props = defineProps<{
@@ -91,6 +92,24 @@ function schedule() {
   }, 250)
 }
 
+/**
+ * Formats a summary statistic, tolerating the families that define no mean.
+ *
+ * A Cauchy prior has no finite mean, so an em dash is more honest than a
+ * fabricated zero.
+ */
+function statistic(value: number | null | undefined) {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? '—'
+    : formatHumanNumber(value)
+}
+
+const spread = computed(() => {
+  const variance = preview.result?.assessment.variance
+  return variance === null || variance === undefined || !Number.isFinite(variance)
+    ? '—'
+    : formatHumanNumber(Math.sqrt(variance))
+})
 </script>
 
 <template>
@@ -113,6 +132,20 @@ function schedule() {
       </template>
       <span v-else>Enter a calculation returning a number or distribution.</span>
     </div>
+    <dl v-if="preview.result" class="assessment-summary">
+      <div><dt>Family</dt><dd>{{ preview.result.assessment.family }}</dd></div>
+      <div><dt>Mean</dt><dd>{{ statistic(preview.result.assessment.mean) }}</dd></div>
+      <div><dt>Std. dev.</dt><dd>{{ spread }}</dd></div>
+      <div><dt>Median</dt><dd>{{ statistic(preview.result.assessment.p50) }}</dd></div>
+      <div class="interval">
+        <dt>Central 90%</dt>
+        <dd>
+          {{ statistic(preview.result.assessment.p05) }} –
+          {{ statistic(preview.result.assessment.p95) }}
+          <span>{{ formatUnitExpression(expectedUnit) }}</span>
+        </dd>
+      </div>
+    </dl>
     <section v-if="preview.result && (!preview.result.predictive_checks.support_compatible || preview.result.predictive_checks.invalid_draws || preview.result.predictive_checks.support_violation_draws)" class="predictive-checks" data-valid="false">
       <header><strong>Validation issue</strong><span>{{ preview.result.predictive_checks.valid_draws.toLocaleString() }} / {{ preview.result.predictive_checks.attempted_draws.toLocaleString() }} valid draws</span></header>
       <dl>
@@ -135,6 +168,12 @@ function schedule() {
 .evaluation-state { min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 5px; color: var(--muted); font-size: 12px; }
 .evaluation-state[data-status='ready'] { border-color: #a8bfb2; background: #f3f8f4; color: var(--green); }
 .evaluation-state[data-status='error'] { border-color: #d8a098; background: #fff8f6; color: #8c3429; }
+.assessment-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: var(--line); }
+.assessment-summary div { display: grid; gap: 3px; padding: 8px 10px; background: var(--surface); }
+.assessment-summary .interval { grid-column: 1 / -1; }
+.assessment-summary dt { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; }
+.assessment-summary dd { margin: 0; color: var(--green); font: 11px 'IBM Plex Mono', monospace; }
+.assessment-summary dd span { color: var(--muted); }
 .predictive-checks { display: grid; gap: 10px; padding: 12px; border: 1px solid #d8a098; border-radius: 5px; background: #fff8f6; }
 .predictive-checks[data-valid='false'] { border-color: #d8a098; background: #fff8f6; }
 .predictive-checks > header { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
@@ -144,6 +183,7 @@ function schedule() {
 .predictive-checks p { margin: 0; color: #8c3429; font-size: 12px; line-height: 1.45; }
 
 @media (max-width: 760px) {
+  .assessment-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .predictive-checks > header { align-items: flex-start; flex-direction: column; }
 }
 </style>

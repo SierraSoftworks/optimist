@@ -81,7 +81,7 @@ const horizon = computed(
       positive span.
     </p>
     <div class="dialog-actions">
-      <button type="button" :disabled="pending || !valid" @click="emit('save')">
+      <button type="button" class="secondary-button" :disabled="pending || !valid" @click="emit('save')">
         {{ form.enabled ? 'Save profile' : 'Make permanent' }}
       </button>
     </div>
@@ -89,21 +89,25 @@ const horizon = computed(
 </template>
 
 <style scoped>
-.effect-profile header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  margin-bottom: 0.5rem;
+.effect-profile > header {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
 }
 
-.effect-profile header span {
-  font-size: 0.78rem;
-  color: var(--muted, #71717a);
+.effect-profile > header strong {
+  font-size: 11px;
+}
+
+.effect-profile > header span {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 0.5rem;
+  margin-top: 12px;
 }
 </style>

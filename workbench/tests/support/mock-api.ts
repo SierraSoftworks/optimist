@@ -9,6 +9,43 @@ export interface FixtureState {
   scenarios?: Array<Record<string, unknown>>
 }
 
+/**
+ * Wraps an authored Squiggle definition the way the server returns it.
+ *
+ * Commands accept bare definitions but responses carry full estimates, so the
+ * mock must convert; otherwise the workbench never exercises the round trip it
+ * performs against a real server.
+ */
+function estimateOf(definition: unknown) {
+  return definition === null || definition === undefined
+    ? null
+    : { id: 'A', revision: 0, source: { type: 'squiggle', definition }, provenance: [] }
+}
+
+function releaseOf(release: { type: string; over?: unknown; half_life?: unknown }) {
+  if (release.type === 'linear') return { type: 'linear', over: estimateOf(release.over) }
+  if (release.type === 'exponential') {
+    return { type: 'exponential', half_life: estimateOf(release.half_life) }
+  }
+  return { type: 'immediate' }
+}
+
+function transience(profile: Record<string, any> | null) {
+  if (!profile) return null
+  const aftereffect = profile.aftereffect
+  return {
+    profile: {
+      ramp: estimateOf(profile.ramp),
+      hold: estimateOf(profile.hold),
+      release: releaseOf(profile.release),
+      aftereffect: aftereffect
+        ? { hold: estimateOf(aftereffect.hold), release: releaseOf(aftereffect.release) }
+        : null,
+    },
+    rebound: estimateOf(aftereffect?.magnitude ?? null),
+  }
+}
+
 export async function mockApi(page: Page, state: FixtureState) {
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
@@ -205,6 +242,26 @@ export async function mockApi(page: Page, state: FixtureState) {
         const [edge] = state.edges.splice(index, 1)
         state.revision += 1
         return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'edge_deleted', value: edge } }, 201)
+      }
+      if (command.command.type === 'set_effect_profile' || command.command.type === 'update_causal_effect') {
+        const edge = state.edges.find((edge) =>
+          edge.source === input.edge.source &&
+          edge.destination === input.edge.destination &&
+          (edge.payload as { kind: string }).kind === input.edge.kind,
+        )!
+        const properties = (edge.payload as { properties: Record<string, unknown> }).properties
+        if (command.command.type === 'set_effect_profile') {
+          properties.transience = transience(input.profile)
+        } else {
+          const response = properties.response as { source_change: number }
+          response.source_change = input.source_change
+          properties.mechanism = input.mechanism
+          properties.evidence = input.evidence
+        }
+        edge.revision += 1
+        state.revision += 1
+        const type = command.command.type === 'set_effect_profile' ? 'effect_profile_set' : 'causal_effect_updated'
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type, value: edge } }, 201)
       }
       if (command.command.type === 'delete_node') {
         const index = state.nodes.findIndex((node) => node.id === input.id)

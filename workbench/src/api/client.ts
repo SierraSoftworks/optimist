@@ -30,6 +30,7 @@ import type {
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
   SetEffectProfileInput,
+  UpdateCausalEffectInput,
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -577,6 +578,38 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for the intervention effect profile.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async updateCausalEffect(
+    project: Project,
+    edge: GraphEdge,
+    input: UpdateCausalEffectInput,
+  ): Promise<GraphEdge> {
+    const result = await request<CommandResult<GraphEdge>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'update_causal_effect',
+            payload: {
+              edge: edgeIdentity(edge),
+              expected_revision: edge.revision,
+              ...input,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'causal_effect_updated') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for the causal relationship.',
         ['Confirm the workbench and server versions match.'],
       )
     }

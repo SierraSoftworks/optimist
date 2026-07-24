@@ -57,23 +57,26 @@ svg {
   width: 100%;
   height: auto;
   display: block;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
 }
 
 .axis {
-  stroke: var(--border, #d4d4d8);
+  stroke: var(--line);
   stroke-width: 1;
 }
 
 .activation {
   fill: none;
-  stroke: var(--accent, #2563eb);
+  stroke: var(--green);
   stroke-width: 2;
   stroke-linecap: square;
 }
 
 .rebound {
   fill: none;
-  stroke: var(--danger, #dc2626);
+  stroke: var(--intervention);
   stroke-width: 2;
   stroke-dasharray: 4 3;
   stroke-linecap: square;
@@ -81,27 +84,28 @@ svg {
 
 figcaption {
   display: flex;
-  gap: 0.75rem;
+  gap: 12px;
   align-items: center;
-  font-size: 0.72rem;
-  color: var(--muted, #71717a);
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .key::before {
   content: '';
   display: inline-block;
-  width: 0.6rem;
-  height: 0.15rem;
-  margin-right: 0.3rem;
+  width: 10px;
+  height: 2px;
+  margin-right: 5px;
   vertical-align: middle;
 }
 
 .activation-key::before {
-  background: var(--accent, #2563eb);
+  background: var(--green);
 }
 
 .rebound-key::before {
-  background: var(--danger, #dc2626);
+  background: var(--intervention);
 }
 
 .periods {

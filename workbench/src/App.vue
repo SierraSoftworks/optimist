@@ -63,6 +63,7 @@ import type {
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
   SetEffectProfileInput,
+  UpdateCausalEffectInput,
   SetNodeQuantityStateInput,
   ScenarioDraft,
   UpdateNodeInput,
@@ -93,6 +94,7 @@ import {
   useImpedimentAnalysis,
   useSetMeasurementCalibration,
   useSetEffectProfile,
+  useUpdateCausalEffect,
 } from './composables/useProjectData'
 import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
@@ -193,6 +195,7 @@ const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const setNodeQuantityState = useSetNodeQuantityState(projectQuery.data, selectedNode)
 const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
 const setEffectProfile = useSetEffectProfile(projectQuery.data, selectedEdge)
+const updateCausalEffect = useUpdateCausalEffect(projectQuery.data, selectedEdge)
 const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
 const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
 const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
@@ -606,6 +609,15 @@ async function submitEffectProfile(input: SetEffectProfileInput) {
   mutationError.value = null
   try {
     selectedEdge.value = await setEffectProfile.mutateAsync(input)
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function submitCausalEffect(input: UpdateCausalEffectInput) {
+  mutationError.value = null
+  try {
+    selectedEdge.value = await updateCausalEffect.mutateAsync(input)
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -1025,13 +1037,14 @@ function retry() {
     />
     <EditEdgeDialog
       :open="edgeEditDialogOpen"
-      :pending="deleteEdge.isPending.value || setMeasurementCalibration.isPending.value || setEffectProfile.isPending.value"
+      :pending="deleteEdge.isPending.value || setMeasurementCalibration.isPending.value || setEffectProfile.isPending.value || updateCausalEffect.isPending.value"
       :edge="selectedEdge"
       @close="edgeEditDialogOpen = false"
       @delete="submitEdgeDelete"
       @estimate="editEdgeEstimate"
       @calibration="submitMeasurementCalibration"
       @profile="submitEffectProfile"
+      @claim="submitCausalEffect"
     />
     <AddObservationDialog
       :open="observationDialogOpen"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Pencil, Trash2, X } from '@lucide/vue'
 import type {
   Distribution,
@@ -9,6 +9,7 @@ import type {
   MeasurementCalibration,
   SetEffectProfileInput,
   SetMeasurementCalibrationInput,
+  UpdateCausalEffectInput,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import {
@@ -26,8 +27,10 @@ const emit = defineEmits<{
   estimate: [slot: EdgeEstimateSlot]
   calibration: [input: SetMeasurementCalibrationInput]
   profile: [input: SetEffectProfileInput]
+  claim: [input: UpdateCausalEffectInput]
 }>()
 const profile = reactive<EffectProfileForm>(emptyEffectProfileForm())
+const claim = reactive({ sourceChange: 1, mechanism: '', evidence: '' })
 const calibration = reactive({
   enabled: false,
   stateZero: 0,
@@ -59,9 +62,30 @@ watch(
     if (edge.payload.kind === 'changes') {
       Object.assign(profile, seedProfile(edge))
     }
+    if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
+      claim.sourceChange = edge.payload.properties.response.source_change
+      claim.mechanism = edge.payload.properties.mechanism
+      claim.evidence = edge.payload.properties.evidence.join('\n')
+    }
     confirmDelete.value = false
   },
 )
+
+const claimValid = computed(
+  () => Number.isFinite(claim.sourceChange) && claim.sourceChange !== 0,
+)
+
+function saveClaim() {
+  if (!claimValid.value) return
+  emit('claim', {
+    source_change: claim.sourceChange,
+    mechanism: claim.mechanism,
+    evidence: claim.evidence
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+  })
+}
 
 /**
  * Recovers editor state from a stored profile.
@@ -179,6 +203,44 @@ function estimateLabel(value: Estimate) {
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
         </section>
+        <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section causal-claim">
+          <header>
+            <strong>Causal claim</strong>
+            <span>
+              A response is a modelling claim, not causation inferred from correlation. Record why
+              you believe it.
+            </span>
+          </header>
+          <label>
+            {{ edge.payload.kind === 'changes' ? 'Intervention activation' : 'Source change' }}
+            ({{ formatUnitExpression(edge.payload.properties.response.source_unit) }})
+            <input v-model.number="claim.sourceChange" type="number" step="any" />
+          </label>
+          <label>
+            Mechanism
+            <textarea
+              v-model="claim.mechanism"
+              rows="3"
+              placeholder="How does the source move the destination? What bounds this relationship?"
+            ></textarea>
+          </label>
+          <label>
+            Evidence
+            <textarea
+              v-model="claim.evidence"
+              rows="2"
+              placeholder="One reference per line"
+            ></textarea>
+          </label>
+          <p v-if="!claimValid" class="form-error">
+            A slope needs a finite, nonzero source change.
+          </p>
+          <div class="dialog-actions">
+            <button type="button" class="secondary-button" :disabled="pending || !claimValid" @click="saveClaim">
+              Save claim
+            </button>
+          </div>
+        </section>
         <EffectProfileEditor
           v-if="edge.payload.kind === 'changes'"
           :form="profile"
@@ -243,6 +305,12 @@ function estimateLabel(value: Estimate) {
 
 <style scoped>
 .dialog-section { margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
+.causal-claim > header { display: grid; gap: 2px; margin-bottom: 12px; }
+.causal-claim > header strong { font-size: 11px; }
+.causal-claim > header span { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.causal-claim label { display: grid; gap: 5px; margin-bottom: 10px; font-size: 11px; }
+.causal-claim textarea { resize: vertical; font: inherit; }
+.dialog-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .calibration-editor { display: grid; gap: 10px; }
 .calibration-editor .section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .calibration-editor .section-header > div { display: grid; gap: 2px; }

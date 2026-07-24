@@ -517,6 +517,12 @@ export interface SetEffectProfileInput {
   profile: EffectProfileInput | null
 }
 
+export interface UpdateCausalEffectInput {
+  source_change: number
+  mechanism: string
+  evidence: string[]
+}
+
 export type EditableEdgePayload =
   | {
       kind: 'contributes' | 'changes'
