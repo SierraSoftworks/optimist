@@ -370,6 +370,12 @@ mod tests {
             planning_horizon: 4,
             candidates: vec![InterventionProjection {
                 intervention: EntityId::new(1),
+                prerequisites: vec![],
+                blocking_requirements: vec![],
+                synergies: vec![],
+                conflicts: vec![],
+                execution_duration: estimate.clone(),
+                execution_success: estimate.clone(),
                 objectives: vec![ObjectiveProjection {
                     outcome: EntityId::new(0),
                     direction: UtilityDirection::Maximize,

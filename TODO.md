@@ -140,8 +140,8 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Stable feedback equilibrium checks and probability of instability.
 - [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [ ] Reinforcing/balancing, nested, and interacting loop explanations.
-- [x] Evidence-aware impediment ranking separate from topology-only candidates.
-- [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication.
+- [x] Intervention execution readiness from recursive Requires dependencies, blockers, duration, success, synergies, and conflicts.
+- [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication across candidate bundles.
 - [ ] Pareto impact/cost/time/risk/uncertainty frontier.
 - [ ] Scalar utility only when a scenario explicitly defines conversion preferences.
 - [ ] Reference model with hand-checked exact and sampled results.
@@ -162,8 +162,8 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [x] Explore, Impediments, Feedback, and Optimize analysis modes.
   - [x] Feedback mode with exact SCC/cycle results, bounded-result diagnostics, and graph highlighting.
-  - [x] Impediments mode with separate topology and evidence-aware review ordering.
-  - [x] Optimize mode with scenario creation and independent finite-horizon candidate projections.
+  - [x] Full-screen Impediments mode with intervention dependency plans, blockers, duration/success distributions, and synergies.
+  - [x] Full-screen Optimize mode with prerequisite-aware finite-horizon projections and semantically colored relative improvements.
   - [ ] Optimize mode with budget-aware candidate bundles and Pareto impact/cost frontiers.
 - [x] Keyboard navigation and synchronized table/outline accessibility view.
 - [x] Delete-key confirmation for graph-selected nodes and relationships, with editable-control and connected-edge guards.

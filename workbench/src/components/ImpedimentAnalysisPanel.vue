@@ -1,108 +1,128 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { AlertTriangle, GitBranch, RefreshCw, ShieldCheck } from '@lucide/vue'
-import type { EdgeIdentity, ImpedimentAnalysis, ImpedimentCandidate, GraphNode } from '../api/types'
+import { computed } from 'vue'
+import { AlertTriangle, CheckCircle2, Clock3, GitBranch, RefreshCw, Sparkles } from '@lucide/vue'
+import type { GraphNode, ImpedimentAnalysis } from '../api/types'
+import DistributionStrip from './DistributionStrip.vue'
 
 const props = defineProps<{
   analysis: ImpedimentAnalysis | undefined
   pending: boolean
   error: Error | null
   nodes: GraphNode[]
-  selectedFactorId: string | null
 }>()
-const emit = defineEmits<{
-  select: [factor: string, nodes: string[], edges: EdgeIdentity[]]
-  retry: []
-}>()
-const order = ref<'topology' | 'evidence'>('topology')
+const emit = defineEmits<{ retry: [] }>()
 const nodeTitles = computed(() => new Map(props.nodes.map((node) => [node.id, node.title])))
-const candidatesById = computed(() => new Map(
-  props.analysis?.topology_candidates.map((candidate) => [candidate.factor, candidate]) ?? [],
-))
-const candidates = computed(() => {
-  if (!props.analysis) return []
-  if (order.value === 'topology') return props.analysis.topology_candidates
-  return props.analysis.evidence_priority
-    .map((id) => candidatesById.value.get(id))
-    .filter((candidate): candidate is ImpedimentCandidate => Boolean(candidate))
-})
 
 function title(id: string) {
   return nodeTitles.value.get(id) ?? id
 }
 
-function evidenceReferenceCount(candidate: ImpedimentCandidate) {
-  return candidate.relationship_evidence.reduce(
-    (total, value) => total + value.references.length,
-    0,
-  )
-}
-
-function select(candidate: ImpedimentCandidate) {
-  emit('select', candidate.factor, [candidate.factor, ...candidate.reachable_outcomes], candidate.path_edges)
+function hardBlockers(candidate: ImpedimentAnalysis['candidates'][number]) {
+  return candidate.blocking_requirements.filter((requirement) => requirement.hard)
 }
 </script>
 
 <template>
-  <aside class="analysis-panel impediment-panel" aria-label="Impediments analysis">
-    <header class="analysis-panel-header">
-      <div><span class="eyebrow">Review candidates</span><h2>Impediments</h2></div>
+  <main class="analysis-panel readiness-panel" aria-label="Impediments analysis">
+    <header class="readiness-header">
+      <div><span class="eyebrow">Execution readiness</span><h2>Intervention impediments</h2></div>
+      <p>Required interventions run first. Their durations add and every required step must succeed before the candidate can complete.</p>
     </header>
-    <div v-if="pending" class="analysis-state"><RefreshCw class="spin" :size="20" /><span>Tracing factor-to-outcome paths</span></div>
+    <div v-if="pending" class="analysis-state"><RefreshCw class="spin" :size="20" /><span>Building intervention dependency plans</span></div>
     <div v-else-if="error" class="analysis-state analysis-error">
-      <AlertTriangle :size="20" /><strong>Analysis unavailable</strong><span>{{ error.message }}</span>
+      <AlertTriangle :size="20" /><strong>Readiness unavailable</strong><span>{{ error.message }}</span>
       <button type="button" class="secondary-button" @click="emit('retry')">Retry</button>
     </div>
     <template v-else-if="analysis">
-      <div class="analysis-summary">
-        <div><strong>{{ analysis.topology_candidates.length }}</strong><span>candidate factors</span></div>
-        <div><strong>{{ analysis.topology_candidates.filter((candidate) => candidate.controllable).length }}</strong><span>controllable</span></div>
-        <div><strong>g{{ analysis.revision.graph_revision }}</strong><span>graph revision</span></div>
+      <div class="readiness-summary">
+        <div><strong>{{ analysis.candidates.length }}</strong><span>interventions</span></div>
+        <div><strong>{{ analysis.candidates.filter((candidate) => !hardBlockers(candidate).length).length }}</strong><span>without hard blockers</span></div>
+        <div><strong>{{ analysis.candidates.filter((candidate) => candidate.execution_steps.length > 1).length }}</strong><span>dependency plans</span></div>
+        <div><strong>{{ analysis.candidates.filter((candidate) => candidate.synergies.length).length }}</strong><span>with synergies</span></div>
       </div>
-      <div class="analysis-order-tabs" role="group" aria-label="Impediment ordering">
-        <button type="button" :aria-pressed="order === 'topology'" @click="order = 'topology'"><GitBranch :size="13" /> Topology</button>
-        <button type="button" :aria-pressed="order === 'evidence'" @click="order = 'evidence'"><ShieldCheck :size="13" /> Evidence</button>
-      </div>
-      <p class="analysis-boundary">Topology orders by outcome reach and shortest path. Evidence order prioritizes documented factors and path edges separately. Neither is a causal confidence score.</p>
-      <ol v-if="candidates.length" class="impediment-list">
-        <li v-for="(candidate, index) in candidates" :key="candidate.factor">
-          <button type="button" :aria-pressed="selectedFactorId === candidate.factor" @click="select(candidate)">
-            <span class="cycle-number">{{ index + 1 }}</span>
-            <span class="impediment-title"><strong>{{ title(candidate.factor) }}</strong><small>{{ candidate.factor }} · {{ candidate.controllable ? 'controllable' : 'not directly controllable' }}</small></span>
-          </button>
-          <dl class="impediment-facts">
-            <div><dt>Reachable outcomes</dt><dd>{{ candidate.reachable_outcomes.length }}</dd></div>
-            <div><dt>Nearest outcome</dt><dd>{{ candidate.nearest_outcome_distance }} edge{{ candidate.nearest_outcome_distance === 1 ? '' : 's' }}</dd></div>
-            <div><dt>Direct evidence</dt><dd>{{ candidate.direct_evidence.length }}</dd></div>
-            <div><dt>Path references</dt><dd>{{ evidenceReferenceCount(candidate) }}</dd></div>
-          </dl>
-          <div v-if="candidate.unsupported_path_edges.length" class="unsupported-path">
-            <AlertTriangle :size="13" /><span>{{ candidate.unsupported_path_edges.length }} path edge{{ candidate.unsupported_path_edges.length === 1 ? '' : 's' }} lack{{ candidate.unsupported_path_edges.length === 1 ? 's' : '' }} typed evidence.</span>
+      <section v-if="analysis.candidates.length" class="readiness-grid">
+        <article v-for="(candidate, index) in analysis.candidates" :key="candidate.intervention" class="readiness-card">
+          <header>
+            <span class="priority">{{ index + 1 }}</span>
+            <div><h3>{{ title(candidate.intervention) }}</h3><small>{{ candidate.intervention }}</small></div>
+            <span class="readiness-badge" :data-ready="!hardBlockers(candidate).length">
+              <CheckCircle2 v-if="!hardBlockers(candidate).length" :size="13" />
+              <AlertTriangle v-else :size="13" />
+              {{ hardBlockers(candidate).length ? `${hardBlockers(candidate).length} blocked` : 'Executable' }}
+            </span>
+          </header>
+          <div class="combined-metrics">
+            <div><Clock3 :size="14" /><span>Total expected duration</span><strong>{{ Number(candidate.expected_duration.toPrecision(3)) }} periods</strong></div>
+            <div><CheckCircle2 :size="14" /><span>Plan success</span><strong>{{ (candidate.expected_success_probability * 100).toFixed(1) }}%</strong></div>
           </div>
-          <p class="reachable-outcomes">Outcomes: {{ candidate.reachable_outcomes.map(title).join(', ') }}</p>
-        </li>
-      </ol>
-      <div v-else class="analysis-empty">
-        <GitBranch :size="22" /><strong>No impediment candidates</strong><span>Add causal factor-to-outcome paths before reviewing impediments.</span>
-      </div>
+          <section class="execution-plan">
+            <h4><GitBranch :size="13" /> Execution order</h4>
+            <ol>
+              <li v-for="step in candidate.execution_steps" :key="step.intervention">
+                <div class="step-title"><strong>{{ title(step.intervention) }}</strong><span>{{ step.intervention === candidate.intervention ? 'Candidate' : 'Required first' }}</span></div>
+                <DistributionStrip :distribution="step.duration" kind="duration" />
+                <DistributionStrip :distribution="step.probability_of_success" kind="probability" />
+              </li>
+            </ol>
+          </section>
+          <section v-if="candidate.blocking_requirements.length" class="blocker-list">
+            <h4><AlertTriangle :size="13" /> Factor requirements</h4>
+            <p v-for="requirement in candidate.blocking_requirements" :key="`${requirement.dependent}-${requirement.prerequisite}`">
+              <strong>{{ title(requirement.prerequisite) }}</strong>
+              <span>{{ requirement.hard ? 'Hard blocker' : 'Soft requirement' }}<template v-if="requirement.satisfaction_threshold !== null"> · threshold {{ requirement.satisfaction_threshold }}</template></span>
+            </p>
+          </section>
+          <footer v-if="candidate.synergies.length || candidate.conflicts.length">
+            <span v-if="candidate.synergies.length" class="synergy"><Sparkles :size="12" /> Synergy: {{ candidate.synergies.map(title).join(', ') }}</span>
+            <span v-if="candidate.conflicts.length" class="conflict"><AlertTriangle :size="12" /> Conflicts: {{ candidate.conflicts.map(title).join(', ') }}</span>
+          </footer>
+        </article>
+      </section>
+      <div v-else class="analysis-empty"><GitBranch :size="22" /><strong>No interventions</strong><span>Add interventions and Requires relationships to review execution readiness.</span></div>
     </template>
-  </aside>
+  </main>
 </template>
 
 <style scoped>
-.analysis-order-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 12px; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: white; }
-.analysis-order-tabs button { min-height: 28px; display: flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; }
-.analysis-order-tabs button[aria-pressed='true'] { background: var(--green-soft); color: var(--green); }
-.impediment-list { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
-.impediment-list > li { overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
-.impediment-list > li > button { width: 100%; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; padding: 8px; border: 0; background: transparent; text-align: left; }
-.impediment-list > li > button:hover, .impediment-list > li > button[aria-pressed='true'] { background: #edf3f9; }
-.impediment-list > li > button[aria-pressed='true'] { box-shadow: inset 3px 0 #285c91; }
-.impediment-title { min-width: 0; display: grid; gap: 2px; }
-.impediment-title strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
-.impediment-title small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
-.impediment-facts { grid-template-columns: 1fr; gap: 0; padding: 0 9px 7px; }
-.impediment-facts div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
-.unsupported-path { display: grid; grid-template-columns: auto 1fr; gap: 6px; margin: 0 8px 7px; padding: 6px; border-radius: 4px; background: #fff2df; color: #765b27; font-size: 8px; line-height: 1.4; }
-.reachable-outcomes { margin: 0; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.4; }
+.readiness-panel { border: 0; padding: 24px clamp(18px, 4vw, 52px); background: #f4f6f1; }
+.readiness-header { display: grid; grid-template-columns: 1fr minmax(280px, 520px); align-items: end; gap: 24px; }
+.readiness-header h2 { font-size: 24px; }
+.readiness-header p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.readiness-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 22px; }
+.readiness-summary div { display: grid; gap: 3px; padding: 12px; border: 1px solid var(--line); background: white; }
+.readiness-summary strong { font: 18px 'IBM Plex Mono', monospace; }
+.readiness-summary span { color: var(--muted); font-size: 9px; }
+.readiness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 14px; margin-top: 14px; }
+.readiness-card { min-width: 0; border: 1px solid var(--line); background: white; }
+.readiness-card > header { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 12px; border-bottom: 1px solid var(--line); }
+.priority { display: grid; width: 26px; height: 26px; place-items: center; background: #e7ece7; font: 11px 'IBM Plex Mono', monospace; }
+.readiness-card h3 { margin: 0; font-size: 14px; }
+.readiness-card small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.readiness-badge { display: flex; align-items: center; gap: 4px; padding: 4px 6px; background: #fff0e8; color: #8c4336; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.readiness-badge[data-ready='true'] { background: var(--green-soft); color: var(--green); }
+.combined-metrics { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
+.combined-metrics div { display: grid; grid-template-columns: auto 1fr; gap: 2px 6px; padding: 10px 12px; }
+.combined-metrics div + div { border-left: 1px solid var(--line); }
+.combined-metrics svg { grid-row: span 2; color: var(--green); }
+.combined-metrics span { color: var(--muted); font-size: 8px; }
+.combined-metrics strong { font: 11px 'IBM Plex Mono', monospace; }
+.execution-plan, .blocker-list { padding: 12px; }
+.execution-plan h4, .blocker-list h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 8px; font-size: 10px; }
+.execution-plan ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.execution-plan li { display: grid; gap: 7px; padding: 9px; border-left: 3px solid #7ba08b; background: #f8faf7; }
+.step-title { display: flex; justify-content: space-between; gap: 8px; }
+.step-title strong { font-size: 10px; }
+.step-title span { color: var(--muted); font-size: 8px; }
+.blocker-list { border-top: 1px solid var(--line); background: #fff9ee; }
+.blocker-list p { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; font-size: 9px; }
+.blocker-list p span { color: #765b27; }
+.readiness-card > footer { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 12px; border-top: 1px solid var(--line); }
+.readiness-card > footer span { display: flex; align-items: center; gap: 4px; padding: 4px 6px; font-size: 8px; }
+.synergy { background: #edf5ee; color: #376c4c; }
+.conflict { background: #fff0e8; color: #8c4336; }
+@media (max-width: 720px) {
+  .readiness-header { grid-template-columns: 1fr; }
+  .readiness-summary { grid-template-columns: 1fr 1fr; }
+  .readiness-grid { grid-template-columns: 1fr; }
+}
 </style>

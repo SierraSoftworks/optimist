@@ -61,6 +61,9 @@ pub enum AnalysisError {
         /// Missing source or destination node.
         node: EntityId,
     },
+    /// Intervention `requires` relationships contain a dependency cycle.
+    #[error("intervention dependency cycle includes {0}")]
+    InterventionDependencyCycle(EntityId),
 }
 
 /// One maximal strongly connected component in the directed causal graph.

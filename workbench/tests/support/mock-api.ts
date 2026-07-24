@@ -56,6 +56,12 @@ export async function mockApi(page: Page, state: FixtureState) {
         planning_horizon: scenario.planning_horizon,
         candidates: scenario.candidate_interventions.map((intervention) => ({
           intervention,
+          prerequisites: [],
+          blocking_requirements: [],
+          synergies: [],
+          conflicts: [],
+          execution_duration: estimate,
+          execution_success: { ...estimate, mean: 1, variance: 0 },
           objectives: scenario.objectives.map((objective) => ({
             outcome: objective.outcome_id,
             direction: objective.direction,
@@ -107,59 +113,17 @@ export async function mockApi(page: Page, state: FixtureState) {
       })
     }
     if (url.pathname === '/api/v1/projects/A/analysis/impediments') {
-      const factors = state.nodes.filter((node) => (node.payload as { kind: string }).kind === 'factor')
-      const outcomes = new Set(
-        state.nodes
-          .filter((node) => (node.payload as { kind: string }).kind === 'outcome')
-          .map((node) => node.id),
-      )
-      const candidates = factors.flatMap((node) => {
-        const pathEdges = state.edges.filter((edge) =>
-          edge.source === node.id && outcomes.has(edge.destination) &&
-          ['contributes', 'blocks'].includes((edge.payload as { kind: string }).kind),
-        )
-        if (!pathEdges.length) return []
-        const evidence = (node.payload as { properties: { evidence?: unknown[] } }).properties.evidence ?? []
-        const relationshipEvidence = pathEdges.flatMap((edge) => {
-          const references = (edge.payload as { properties?: { evidence?: string[] } }).properties?.evidence ?? []
-          return references.length
-            ? [{ edge: { source: edge.source, kind: (edge.payload as { kind: string }).kind, destination: edge.destination }, references }]
-            : []
-        })
-        const evidenced = new Set(
-          relationshipEvidence.map((value) => `${value.edge.source}:${value.edge.kind}:${value.edge.destination}`),
-        )
-        const typedEdges = pathEdges.map((edge) => ({
-          source: edge.source,
-          kind: (edge.payload as { kind: string }).kind,
-          destination: edge.destination,
+      const candidates = state.nodes
+        .filter((node) => (node.payload as { kind: string }).kind === 'intervention')
+        .map((node) => ({
+          intervention: node.id,
+          execution_steps: [{ intervention: node.id, duration: null, probability_of_success: null }],
+          blocking_requirements: [], synergies: [], conflicts: [],
+          expected_duration: 0, expected_success_probability: 1,
         }))
-        return [{
-          factor: node.id,
-          controllable: Boolean((node.payload as { properties: { controllable?: boolean } }).properties.controllable),
-          reachable_outcomes: pathEdges.map((edge) => edge.destination).sort(),
-          nearest_outcome_distance: 1,
-          path_edges: typedEdges,
-          direct_evidence: evidence,
-          relationship_evidence: relationshipEvidence,
-          unsupported_path_edges: typedEdges.filter((edge) =>
-            !evidenced.has(`${edge.source}:${edge.kind}:${edge.destination}`),
-          ),
-        }]
-      }).sort((left, right) =>
-        right.reachable_outcomes.length - left.reachable_outcomes.length || left.factor.localeCompare(right.factor),
-      )
-      const evidencePriority = [...candidates]
-        .sort((left, right) =>
-          right.direct_evidence.length - left.direct_evidence.length ||
-          right.relationship_evidence.length - left.relationship_evidence.length ||
-          candidates.indexOf(left) - candidates.indexOf(right),
-        )
-        .map((candidate) => candidate.factor)
       return json({
         revision: { project: 'A', graph_revision: state.revision, scenario: null, dependence_revision: null },
-        topology_candidates: candidates,
-        evidence_priority: evidencePriority,
+        candidates,
       })
     }
       if (url.pathname === '/api/v1/projects/A/analysis/squiggle-assessment' && request.method() === 'POST') {

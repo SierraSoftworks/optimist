@@ -140,7 +140,6 @@ const selectedFeedbackCycle = ref<number | null>(null)
 const selectedScenarioId = ref<string | null>(null)
 const scenarioDialogScenario = ref<import('./api/types').Scenario | null>(null)
 const selectedCandidateId = ref<string | null>(null)
-const selectedImpedimentId = ref<string | null>(null)
 const highlightedNodeIds = ref<string[]>([])
 const highlightedEdgeIds = ref<string[]>([])
 const mutationError = ref<Error | null>(null)
@@ -221,6 +220,7 @@ const scenarioAnalysis = useScenarioAnalysis(
 const createScenario = useCreateScenario(projectQuery.data)
 const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)
 const impedimentsModeEnabled = computed(() => mode.value === 'impediments')
+const fullAnalysisMode = computed(() => mode.value === 'impediments' || mode.value === 'optimize')
 const impedimentAnalysis = useImpedimentAnalysis(
   selectedProjectId,
   projectRevision,
@@ -427,15 +427,7 @@ function clearOptimizeSelection() {
   }
 }
 
-function selectImpediment(factor: string, nodes: string[], edges: import('./api/types').EdgeIdentity[]) {
-  selectedImpedimentId.value = factor
-  highlightedNodeIds.value = nodes
-  highlightedEdgeIds.value = edges.map(edgeElementId)
-  store.selectNode(factor)
-}
-
 function clearImpedimentSelection() {
-  selectedImpedimentId.value = null
   if (mode.value === 'impediments') {
     highlightedNodeIds.value = []
     highlightedEdgeIds.value = []
@@ -798,8 +790,8 @@ function retry() {
       </div>
     </header>
 
-    <section class="workbench-body">
-      <aside class="navigator" aria-label="Graph navigator">
+    <section class="workbench-body" :class="{ 'full-analysis-workspace': fullAnalysisMode }">
+      <aside v-if="!fullAnalysisMode" class="navigator" aria-label="Graph navigator">
         <div class="search-field">
           <Search :size="16" />
           <input v-model="search" type="search" placeholder="Search graph" aria-label="Search graph" />
@@ -835,7 +827,7 @@ function retry() {
         <GraphNavigator :nodes="visibleNodes" :selected-node-id="selectedNodeId" @select="store.selectNode" />
       </aside>
 
-      <section class="canvas-panel">
+      <section v-if="!fullAnalysisMode" class="canvas-panel">
         <div class="canvas-status">
           <span><strong>{{ visibleNodes.length }}</strong> nodes</span>
           <span><strong>{{ visibleEdges.length }}</strong> relationships</span>
@@ -894,8 +886,6 @@ function retry() {
         :pending="impedimentAnalysis.isPending.value || impedimentAnalysis.isFetching.value"
         :error="impedimentAnalysis.error.value as Error | null"
         :nodes="nodes"
-        :selected-factor-id="selectedImpedimentId"
-        @select="selectImpediment"
         @retry="impedimentAnalysis.refetch()"
       />
       <OptimizeAnalysisPanel
@@ -1101,6 +1091,8 @@ function retry() {
 .command-bar-trigger:hover { background: #edf0eb; color: var(--ink); }
 .command-bar-trigger kbd { min-width: 39px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: 8px 'IBM Plex Mono', monospace; text-align: center; }
 .workbench-body { min-height: 0; display: grid; grid-template-columns: 260px minmax(420px, 1fr) 360px; overflow: hidden; }
+.workbench-body.full-analysis-workspace { display: block; overflow: auto; background: #f4f6f1; }
+.full-analysis-workspace > .analysis-panel { min-height: 100%; }
 .navigator { min-height: 0; padding: 20px 16px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
 .canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
 .search-field { height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: white; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }

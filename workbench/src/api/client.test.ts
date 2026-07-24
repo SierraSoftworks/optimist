@@ -79,24 +79,18 @@ describe('Optimist API client', () => {
     expect(fetch.mock.calls[0]![0]).toBe('/api/v1/projects/A/analysis/structure')
   })
 
-  it('reads separate topology and evidence impediment orders', async () => {
+  it('reads intervention execution readiness', async () => {
     const analysis = {
       revision: {
         project: 'A', graph_revision: 4, scenario: null,
         dependence_revision: null,
       },
-      topology_candidates: [{
-        factor: 'A', controllable: true, reachable_outcomes: ['B'],
-        nearest_outcome_distance: 1,
-        path_edges: [{ source: 'A', kind: 'contributes', destination: 'B' }],
-        direct_evidence: [],
-        relationship_evidence: [{
-          edge: { source: 'A', kind: 'contributes', destination: 'B' },
-          references: ['ADR-1'],
-        }],
-        unsupported_path_edges: [],
+      candidates: [{
+        intervention: 'A',
+        execution_steps: [{ intervention: 'A', duration: null, probability_of_success: null }],
+        blocking_requirements: [], synergies: [], conflicts: [],
+        expected_duration: 0, expected_success_probability: 1,
       }],
-      evidence_priority: ['A'],
     }
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(analysis), {

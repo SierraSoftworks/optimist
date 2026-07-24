@@ -26,6 +26,8 @@ const scenario: Scenario = {
   planning_horizon: 12, budgets: [], candidate_interventions: ['B'], monte_carlo: config,
 }
 const estimate = { mean: 0.12, variance: 0.02, mean_standard_error: 0.004, variance_standard_error: 0.003 }
+const baselineEstimate = { ...estimate, mean: 0.5 }
+const finalEstimate = { ...estimate, mean: 0.62 }
 const trajectory = [
   { period: 0, state: { ...estimate, mean: 0.5 }, improvement: { ...estimate, mean: 0 } },
   { period: 12, state: { ...estimate, mean: 0.62 }, improvement: estimate },
@@ -35,9 +37,12 @@ const analysis: ScenarioAnalysis = {
   planning_horizon: 12,
   candidates: [{
     intervention: 'B',
+    prerequisites: [], blocking_requirements: [], synergies: [], conflicts: [],
+    execution_duration: { ...estimate, mean: 3 },
+    execution_success: { ...estimate, mean: 0.8 },
     objectives: [{
       outcome: 'A', direction: 'maximize', importance: 1, reachable: true,
-      baseline: estimate, final_state: estimate, improvement: estimate, trajectory,
+      baseline: baselineEstimate, final_state: finalEstimate, improvement: estimate, trajectory,
     }],
     improvement_covariance: [[0.02]],
     clamped_state_updates: 3,
@@ -69,12 +74,68 @@ describe('OptimizeAnalysisPanel', () => {
       },
     })
     expect(wrapper.text()).toContain('Automate')
-    expect(wrapper.text()).toContain('0.12')
-    expect(wrapper.text()).toContain('0.004')
+    expect(wrapper.text()).toContain('24.0% improvement')
+    expect(wrapper.text()).toContain('0.8 pp')
     expect(wrapper.text()).toContain('118 / 120')
-    expect(wrapper.text()).toContain('No budget, bundle, conflict, synergy, or scalar ranking')
-    expect(wrapper.get('figure[aria-label="Reliability improvement over time"]').text()).toContain('12 periods')
+    expect(wrapper.text()).toContain('Impact vs baseline')
+    expect(wrapper.text()).toContain('Plan success')
+    expect(wrapper.get('figure[aria-label="Reliability relative improvement over time"]').text()).toContain('Improvement vs baseline')
     await wrapper.get('.candidate-header').trigger('click')
     expect(wrapper.emitted('selectCandidate')![0]).toEqual(['B', ['B', 'A']])
+  })
+
+  it('colors a decreasing minimize objective as positive impact', () => {
+    const minimizeTrajectory = [
+      { period: 0, state: { ...estimate, mean: 0.7 }, improvement: { ...estimate, mean: 0 } },
+      { period: 12, state: { ...estimate, mean: 0.5 }, improvement: { ...estimate, mean: 0.2 } },
+    ]
+    const minimizeAnalysis: ScenarioAnalysis = {
+      ...analysis,
+      candidates: [{
+        ...analysis.candidates[0]!,
+        objectives: [{
+          ...analysis.candidates[0]!.objectives[0]!,
+          direction: 'minimize',
+          baseline: { ...estimate, mean: 0.7 },
+          final_state: { ...estimate, mean: 0.5 },
+          improvement: { ...estimate, mean: 0.2 },
+          trajectory: minimizeTrajectory,
+        }],
+      }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: minimizeAnalysis,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('positive')
+    expect(wrapper.get('.relative-impact').text()).toBe('28.6% improvement')
+    expect(wrapper.get('.trajectory').attributes('data-impact')).toBe('positive')
+    expect(wrapper.get('.trajectory').text()).toContain('minimize')
+  })
+
+  it('labels direction-oriented losses as regressions', () => {
+    const regressionAnalysis: ScenarioAnalysis = {
+      ...analysis,
+      candidates: [{
+        ...analysis.candidates[0]!,
+        objectives: [{
+          ...analysis.candidates[0]!.objectives[0]!,
+          final_state: { ...estimate, mean: 0.4 },
+          improvement: { ...estimate, mean: -0.1 },
+        }],
+      }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: regressionAnalysis,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    expect(wrapper.get('.relative-impact').text()).toBe('20.0% regression')
+    expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('negative')
   })
 })

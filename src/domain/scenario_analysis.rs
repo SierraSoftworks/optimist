@@ -17,8 +17,9 @@ impl ScenarioAnalysis {
     /// duration and lag samples are interpreted as planning periods, rounded up,
     /// and added to that one-period transport delay.
     ///
-    /// Each candidate is evaluated independently. One pinned ChaCha20 stream samples
-    /// every primitive once per joint draw, currently under explicit independence.
+    /// Each candidate execution plan is evaluated independently. Required interventions
+    /// execute first; durations add and every required success gates later steps. One
+    /// pinned ChaCha20 stream samples every primitive once per joint draw.
     /// Online Pébay/Welford moments retain no draws and report objective improvement
     /// covariance. Sampling stops after the configured minimum when every baseline,
     /// final-state, and improvement mean satisfies $SE(\bar X)\leq a+r|\bar X|$, or
@@ -29,7 +30,7 @@ impl ScenarioAnalysis {
     ///
     /// The model is a finite-horizon baseline-delta approximation, not an equilibrium
     /// or causal-identification claim. Project-level dependence, intervention bundles,
-    /// prerequisites, costs, conflicts, synergies, and scalar utility are excluded.
+    /// costs, numeric synergy effects, and scalar utility are excluded.
     /// See Sterman, *Business Dynamics*, chapters 6 and 13, for discrete-time stock/
     /// feedback simulation, and Pébay, SAND2008-6212, for online joint moments.
     pub fn compute(
@@ -65,7 +66,8 @@ mod tests {
         CausalEffect, Distribution, EdgePayload, EntityId, Estimate, EstimateId, Factor,
         Intervention, LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome,
         OutcomeDirection, ProjectId, QuantityDefinition, QuantityState, QuantitySupport,
-        QuantityValue, ScenarioDraft, ScenarioId, ScenarioObjective, Unit, UtilityDirection,
+        QuantityValue, Requirement, ScenarioDraft, ScenarioId, ScenarioObjective, Unit,
+        UtilityDirection,
     };
 
     fn estimate<T: super::super::EstimateDimension>(id: u64, value: f64) -> Estimate<T> {
@@ -213,6 +215,71 @@ mod tests {
         assert!((objective.final_state.mean.unwrap() - 0.56).abs() < 1e-12);
         assert!((objective.improvement.mean.unwrap() - 0.06).abs() < 1e-12);
         assert_eq!(result.candidates[0].clamped_state_updates, 0);
+    }
+
+    #[test]
+    fn executes_required_interventions_before_the_candidate() {
+        let (mut scenario, mut nodes, mut edges, mut revision) = point_fixture(6);
+        let candidate = nodes[0].id;
+        let prerequisite = Node::new(
+            EntityId::new(3),
+            "foundation",
+            "Foundation",
+            NodePayload::Intervention(Intervention {
+                costs: vec![],
+                duration: Some(estimate(0, 1.0)),
+                probability_of_success: Some(estimate(1, 1.0)),
+                acceptance_criteria: vec![],
+            }),
+        )
+        .unwrap();
+        let NodePayload::Intervention(candidate_value) = &mut nodes[0].payload else {
+            unreachable!()
+        };
+        candidate_value.duration = Some(estimate(2, 2.0));
+        let prerequisite_change = Edge::new(
+            prerequisite.id,
+            NodeKind::Intervention,
+            nodes[1].id,
+            NodeKind::Factor,
+            EdgePayload::Changes(
+                CausalEffect::linear(
+                    LinearResponse {
+                        source_change: 1.0,
+                        source_unit: Unit::dimensionless(),
+                        destination_change: estimate::<QuantityValue>(0, 0.1),
+                        destination_unit: Unit::dimensionless(),
+                    },
+                    None,
+                    String::new(),
+                    vec![],
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let requires = Edge::new(
+            candidate,
+            NodeKind::Intervention,
+            prerequisite.id,
+            NodeKind::Intervention,
+            EdgePayload::Requires(Requirement {
+                hard: true,
+                satisfaction_threshold: None,
+            }),
+        )
+        .unwrap();
+        nodes.push(prerequisite);
+        edges.extend([prerequisite_change, requires]);
+        scenario.draft.monte_carlo = MonteCarloConfig::new(7, 2, 2, 0.001, 0.0).unwrap();
+        revision.graph_revision += 2;
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let projection = &result.candidates[0];
+        assert_eq!(projection.prerequisites, vec![EntityId::new(3)]);
+        assert_eq!(projection.execution_duration.mean, Some(3.0));
+        assert_eq!(projection.execution_success.mean, Some(1.0));
+        assert!(projection.objectives[0].improvement.mean.unwrap() > 0.06);
     }
 
     #[test]

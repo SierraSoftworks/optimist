@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::{
-    AnalysisRevisionKey, EntityId, MonteCarloDiagnostics, MonteCarloEstimate, ScenarioId,
-    UtilityDirection,
+    AnalysisRevisionKey, EntityId, InterventionRequirement, MonteCarloDiagnostics,
+    MonteCarloEstimate, ScenarioId, UtilityDirection,
 };
 
 /// Statistical state and improvement summary at one planning period.
@@ -44,8 +44,20 @@ pub struct ObjectiveProjection {
 /// Finite-horizon posterior projection for one candidate intervention.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct InterventionProjection {
-    /// Candidate intervention evaluated independently of other candidates.
+    /// Candidate intervention whose prerequisite plan is evaluated independently of other candidates.
     pub intervention: EntityId,
+    /// Prerequisite interventions in execution order, excluding the candidate.
+    pub prerequisites: Vec<EntityId>,
+    /// Factor requirements which can block the execution plan.
+    pub blocking_requirements: Vec<InterventionRequirement>,
+    /// Declared synergies outside the required execution plan.
+    pub synergies: Vec<EntityId>,
+    /// Declared conflicts outside the required execution plan.
+    pub conflicts: Vec<EntityId>,
+    /// Total prerequisite-plus-candidate execution duration.
+    pub execution_duration: MonteCarloEstimate,
+    /// Bernoulli summary for every required intervention succeeding.
+    pub execution_success: MonteCarloEstimate,
     /// Per-objective projections in scenario document order.
     pub objectives: Vec<ObjectiveProjection>,
     /// Sample covariance of direction-oriented improvements in objective order.
@@ -73,7 +85,7 @@ pub struct ScenarioAnalysis {
     pub revision: AnalysisRevisionKey,
     /// Number of synchronous planning periods propagated.
     pub planning_horizon: u64,
-    /// Independently evaluated candidates in scenario document order.
+    /// Independently evaluated candidate execution plans in scenario document order.
     pub candidates: Vec<InterventionProjection>,
 }
 
@@ -107,4 +119,7 @@ pub enum ScenarioAnalysisError {
     /// Dynamic scenario sampling does not yet apply project copula dependence.
     #[error("scenario analysis does not yet support non-empty project dependence models")]
     UnsupportedDependence,
+    /// Intervention `requires` relationships contain a dependency cycle.
+    #[error("intervention dependency cycle includes {0}")]
+    InterventionDependencyCycle(EntityId),
 }

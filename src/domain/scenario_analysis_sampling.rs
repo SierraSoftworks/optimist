@@ -13,9 +13,10 @@ pub(super) fn project_candidate(
     candidate: EntityId,
     scenario: &Scenario,
 ) -> Result<InterventionProjection, ScenarioAnalysisError> {
-    let (intervention, edges) = graph.intervention(candidate)?;
+    let execution = graph.intervention_plan(candidate)?;
     let config = scenario.draft.monte_carlo;
-    let dimensions = scenario.draft.objectives.len() * 3;
+    let objective_dimensions = scenario.draft.objectives.len() * 3;
+    let dimensions = objective_dimensions + 2;
     let mut moments = OnlineJointMoments::new(dimensions);
     let mut trajectory_moments = scenario
         .draft
@@ -33,7 +34,7 @@ pub(super) fn project_candidate(
     let mut clamped_state_updates = 0_u64;
     while attempted < config.maximum_samples() {
         attempted += 1;
-        match scenario_analysis_draw::draw(graph, scenario, intervention, &edges, &mut rng) {
+        match scenario_analysis_draw::draw(graph, scenario, &execution, &mut rng) {
             Ok(draw) => {
                 moments.push(&draw.values);
                 for (objective, trajectory) in trajectory_moments.iter_mut().zip(draw.trajectories)
@@ -93,6 +94,26 @@ pub(super) fn project_candidate(
     };
     Ok(InterventionProjection {
         intervention: candidate,
+        prerequisites: execution
+            .steps
+            .iter()
+            .map(|step| step.id)
+            .filter(|id| *id != candidate)
+            .collect(),
+        blocking_requirements: execution
+            .blockers
+            .iter()
+            .map(|requirement| super::InterventionRequirement {
+                dependent: requirement.dependent,
+                prerequisite: requirement.prerequisite,
+                hard: requirement.hard,
+                satisfaction_threshold: requirement.satisfaction_threshold,
+            })
+            .collect(),
+        synergies: execution.synergies.clone(),
+        conflicts: execution.conflicts.clone(),
+        execution_duration: estimate(&moments, objective_dimensions),
+        execution_success: estimate(&moments, objective_dimensions + 1),
         objectives,
         improvement_covariance,
         clamped_state_updates,

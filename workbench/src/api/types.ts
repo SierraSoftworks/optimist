@@ -372,6 +372,12 @@ export interface ObjectiveTrajectoryPoint {
 
 export interface InterventionProjection {
   intervention: string
+  prerequisites: string[]
+  blocking_requirements: InterventionRequirement[]
+  synergies: string[]
+  conflicts: string[]
+  execution_duration: MonteCarloEstimate
+  execution_success: MonteCarloEstimate
   objectives: ObjectiveProjection[]
   improvement_covariance: Array<Array<number | null>>
   clamped_state_updates: number
@@ -384,26 +390,32 @@ export interface ScenarioAnalysis {
   candidates: InterventionProjection[]
 }
 
-export interface RelationshipEvidence {
-  edge: EdgeIdentity
-  references: string[]
+export interface InterventionRequirement {
+  dependent: string
+  prerequisite: string
+  hard: boolean
+  satisfaction_threshold: number | null
+}
+
+export interface InterventionExecutionStep {
+  intervention: string
+  duration: Distribution | null
+  probability_of_success: Distribution | null
 }
 
 export interface ImpedimentCandidate {
-  factor: string
-  controllable: boolean
-  reachable_outcomes: string[]
-  nearest_outcome_distance: number
-  path_edges: EdgeIdentity[]
-  direct_evidence: Evidence[]
-  relationship_evidence: RelationshipEvidence[]
-  unsupported_path_edges: EdgeIdentity[]
+  intervention: string
+  execution_steps: InterventionExecutionStep[]
+  blocking_requirements: InterventionRequirement[]
+  synergies: string[]
+  conflicts: string[]
+  expected_duration: number
+  expected_success_probability: number
 }
 
 export interface ImpedimentAnalysis {
   revision: AnalysisRevisionKey
-  topology_candidates: ImpedimentCandidate[]
-  evidence_priority: string[]
+  candidates: ImpedimentCandidate[]
 }
 
 export interface CreateNodeInput {

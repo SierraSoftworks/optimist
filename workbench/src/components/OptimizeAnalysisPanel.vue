@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, BarChart3, Pencil, Plus, RefreshCw } from '@lucide/vue'
+import { AlertTriangle, BarChart3, CheckCircle2, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
 import type { GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
+import { impactTone, relativeImprovement } from '../domain/optimizationImpact'
 import ScenarioPicker from './ScenarioPicker.vue'
 import OptimizationTrajectory from './OptimizationTrajectory.vue'
 
@@ -45,10 +46,37 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
     ...candidate.objectives.filter((objective) => objective.reachable).map((objective) => objective.outcome),
   ])
 }
+
+function objectiveImpact(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
+  const baseline = objective.baseline.mean
+  const finalState = objective.final_state.mean
+  return impactTone(
+    baseline === null || finalState === null ? null : finalState - baseline,
+    objective.direction,
+  )
+}
+
+function relativeImpact(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
+  return relativeImprovement(objective.improvement.mean, objective.baseline.mean)
+}
+
+function relativeStandardError(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
+  return relativeImprovement(objective.improvement.mean_standard_error, objective.baseline.mean)
+}
+
+function impactLabel(value: number | null) {
+  if (value === null) return 'Unavailable'
+  if (value === 0) return 'No change'
+  return `${Math.abs(value * 100).toFixed(1)}% ${value > 0 ? 'improvement' : 'regression'}`
+}
+
+function percentagePoints(value: number | null) {
+  return value === null ? 'Unavailable' : `${(value * 100).toFixed(1)} pp`
+}
 </script>
 
 <template>
-  <aside class="analysis-panel optimize-panel" aria-label="Optimize analysis">
+  <main class="analysis-panel optimize-panel" aria-label="Optimize analysis">
     <header class="analysis-panel-header">
       <div><span class="eyebrow">Finite-horizon projection</span><h2>Candidate comparison</h2></div>
       <button type="button" class="icon-button" title="Create scenario" aria-label="Create scenario" @click="emit('create')"><Plus :size="16" /></button>
@@ -78,7 +106,7 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
         <div><strong>{{ selectedScenario.objectives.length }}</strong><span>objectives</span></div>
         <div><strong>{{ analysis.planning_horizon }}</strong><span>periods</span></div>
       </div>
-      <p class="analysis-boundary">Candidates are projected independently. No budget, bundle, conflict, synergy, or scalar ranking is applied.</p>
+      <p class="analysis-boundary">Each candidate includes its prerequisite execution plan. Durations add, required success probabilities compound, and successful prerequisite effects are propagated before the candidate. Synergies are shown but remain qualitative until a magnitude is modelled.</p>
       <div v-if="analysis.candidates.length" class="candidate-list">
         <article v-for="candidate in analysis.candidates" :key="candidate.intervention" :class="{ selected: selectedCandidateId === candidate.intervention }">
           <button type="button" class="candidate-header" :aria-pressed="selectedCandidateId === candidate.intervention" @click="selectCandidate(candidate)">
@@ -86,19 +114,27 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
             <span class="diagnostic-status" :data-status="candidate.diagnostics.status">{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</span>
           </button>
           <dl class="candidate-diagnostics">
+            <div><dt><Clock3 :size="11" /> Total duration</dt><dd>{{ number(candidate.execution_duration.mean) }} periods</dd></div>
+            <div><dt><CheckCircle2 :size="11" /> Plan success</dt><dd>{{ candidate.execution_success.mean === null ? 'Unavailable' : `${(candidate.execution_success.mean * 100).toFixed(1)}%` }}</dd></div>
             <div><dt>Valid draws</dt><dd>{{ candidate.diagnostics.valid_samples }} / {{ candidate.diagnostics.attempted_samples }}</dd></div>
             <div><dt>Invalid draws</dt><dd>{{ invalidSamples(candidate) }}</dd></div>
             <div><dt>Clamped updates</dt><dd>{{ candidate.clamped_state_updates }}</dd></div>
             <div><dt>Seed</dt><dd>{{ candidate.diagnostics.seed }}</dd></div>
           </dl>
+          <div v-if="candidate.prerequisites.length || candidate.blocking_requirements.length || candidate.synergies.length || candidate.conflicts.length" class="execution-context">
+            <span v-if="candidate.prerequisites.length"><GitBranch :size="12" /> Requires first: {{ candidate.prerequisites.map(title).join(' → ') }}</span>
+            <span v-if="candidate.blocking_requirements.length" class="negative"><AlertTriangle :size="12" /> {{ candidate.blocking_requirements.length }} factor requirement{{ candidate.blocking_requirements.length === 1 ? '' : 's' }}</span>
+            <span v-if="candidate.synergies.length" class="positive"><Sparkles :size="12" /> Synergy: {{ candidate.synergies.map(title).join(', ') }}</span>
+            <span v-if="candidate.conflicts.length" class="negative"><AlertTriangle :size="12" /> Conflicts: {{ candidate.conflicts.map(title).join(', ') }}</span>
+          </div>
           <table class="projection-table">
             <caption class="sr-only">Objective projections for {{ title(candidate.intervention) }}</caption>
-            <thead><tr><th scope="col">Objective</th><th scope="col">Improvement</th><th scope="col">MC SE</th></tr></thead>
+            <thead><tr><th scope="col">Objective</th><th scope="col">Impact vs baseline</th><th scope="col">MC SE</th></tr></thead>
             <tbody>
               <tr v-for="objective in candidate.objectives" :key="objective.outcome" :class="{ unreachable: !objective.reachable }">
                 <th scope="row"><span>{{ title(objective.outcome) }}</span><small>{{ objective.reachable ? objective.direction : 'unreachable' }}</small></th>
-                <td>{{ number(objective.improvement.mean) }}</td>
-                <td>{{ number(objective.improvement.mean_standard_error) }}</td>
+                <td class="relative-impact" :data-impact="objectiveImpact(objective)">{{ impactLabel(relativeImpact(objective)) }}</td>
+                <td>{{ percentagePoints(relativeStandardError(objective)) }}</td>
               </tr>
             </tbody>
           </table>
@@ -108,6 +144,8 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
               :key="objective.outcome"
               :points="objective.trajectory"
               :label="title(objective.outcome)"
+              :direction="objective.direction"
+              :baseline="objective.baseline.mean"
             />
           </div>
         </article>
@@ -118,7 +156,7 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
         <span>Add candidate interventions to this scenario before comparing outcomes.</span>
       </div>
     </template>
-  </aside>
+  </main>
 </template>
 
 <style scoped>
@@ -137,6 +175,11 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
 .diagnostic-status[data-status='maximum_samples_reached'], .diagnostic-status[data-status='insufficient_valid_samples'] { background: #fff2df; color: #8a5b00; }
 .candidate-diagnostics { grid-template-columns: 1fr; gap: 0; padding: 0 9px 8px; }
 .candidate-diagnostics div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
+.candidate-diagnostics dt { display: flex; align-items: center; gap: 4px; }
+.execution-context { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 9px 9px; }
+.execution-context span { display: flex; align-items: center; gap: 4px; padding: 4px 6px; background: #edf1ed; color: #46554d; font-size: 8px; }
+.execution-context .positive { background: #eaf5ed; color: #287044; }
+.execution-context .negative { background: #fff0e8; color: #984335; }
 .projection-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--line); font-size: 8px; }
 .projection-table th, .projection-table td { padding: 6px 8px; text-align: right; }
 .projection-table thead th { color: var(--muted); text-transform: uppercase; }
@@ -145,5 +188,11 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
 .projection-table tbody th span { font-size: 9px; }
 .projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
 .projection-table tr.unreachable { opacity: .55; }
+.relative-impact { font-weight: 800; }
+.relative-impact[data-impact='positive'] { color: #277445; }
+.relative-impact[data-impact='negative'] { color: #a34335; }
+.relative-impact[data-impact='neutral'] { color: var(--muted); }
 .trajectory-list { display: grid; }
+.optimize-panel { border: 0; padding: 24px clamp(18px, 4vw, 52px); background: #f4f6f1; }
+.candidate-list { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); align-items: start; }
 </style>

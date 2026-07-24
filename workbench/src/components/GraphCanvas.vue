@@ -389,6 +389,7 @@ function fit() {
 
 onMounted(async () => {
   const { default: cytoscape } = await import('cytoscape')
+  if (!container.value) return
   graph = cytoscape({
     container: container.value,
     elements: elements(),

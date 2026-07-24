@@ -1,9 +1,8 @@
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
-use super::scenario_analysis_edges::InterventionEdge;
-use super::scenario_analysis_graph::AnalysisGraph;
-use super::{Distribution, Intervention, Scenario, ScenarioAnalysisError, UtilityDirection};
+use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
+use super::{Distribution, Scenario, ScenarioAnalysisError, UtilityDirection};
 
 struct SampledPropagationEdge {
     source: usize,
@@ -27,8 +26,7 @@ pub(super) struct ScenarioDraw {
 pub(super) fn draw(
     graph: &AnalysisGraph<'_>,
     scenario: &Scenario,
-    intervention: &Intervention,
-    intervention_edges: &[InterventionEdge],
+    execution: &CandidateExecutionPlan<'_>,
     rng: &mut ChaCha20Rng,
 ) -> Result<ScenarioDraw, ScenarioAnalysisError> {
     let baselines = graph
@@ -39,35 +37,55 @@ pub(super) fn draw(
     if baselines.iter().any(|value| !value.is_finite()) {
         return Err(ScenarioAnalysisError::NonFiniteResult);
     }
-    let succeeds = rng.r#gen::<f64>()
-        < intervention
-            .probability_of_success
-            .as_ref()
-            .map_or(1.0, |estimate| estimate.distribution.sample(rng));
-    let completion = intervention
-        .duration
-        .as_ref()
-        .map(|estimate| delay(&estimate.distribution, rng))
-        .transpose()?
-        .unwrap_or(0);
-    let interventions = intervention_edges
-        .iter()
-        .map(|edge| {
-            Ok(SampledInterventionEdge {
-                destination: edge.destination,
-                effect: edge.effect.sample(rng) / edge.source_change,
-                arrival: completion
-                    .saturating_add(
-                        edge.lag
-                            .as_ref()
-                            .map(|lag| delay(lag, rng))
-                            .transpose()?
-                            .unwrap_or(0),
-                    )
-                    .saturating_add(1),
+    let blocked = execution.blockers.iter().any(|requirement| {
+        requirement.hard
+            && requirement.satisfaction_threshold.is_none_or(|threshold| {
+                graph
+                    .state_indices
+                    .get(&requirement.prerequisite)
+                    .is_none_or(|index| baselines[*index] < threshold)
             })
-        })
-        .collect::<Result<Vec<_>, ScenarioAnalysisError>>()?;
+    });
+    let mut succeeds = !blocked;
+    let mut completion = 0_u64;
+    let mut interventions = Vec::new();
+    if !blocked {
+        for step in &execution.steps {
+            completion = completion.saturating_add(
+                step.intervention
+                    .duration
+                    .as_ref()
+                    .map(|estimate| delay(&estimate.distribution, rng))
+                    .transpose()?
+                    .unwrap_or(0),
+            );
+            let step_succeeds = rng.r#gen::<f64>()
+                < step
+                    .intervention
+                    .probability_of_success
+                    .as_ref()
+                    .map_or(1.0, |estimate| estimate.distribution.sample(rng));
+            if !step_succeeds {
+                succeeds = false;
+                break;
+            }
+            for edge in &step.edges {
+                interventions.push(SampledInterventionEdge {
+                    destination: edge.destination,
+                    effect: edge.effect.sample(rng) / edge.source_change,
+                    arrival: completion
+                        .saturating_add(
+                            edge.lag
+                                .as_ref()
+                                .map(|lag| delay(lag, rng))
+                                .transpose()?
+                                .unwrap_or(0),
+                        )
+                        .saturating_add(1),
+                });
+            }
+        }
+    }
     let causal = graph
         .propagation_edges
         .iter()
@@ -90,11 +108,9 @@ pub(super) fn draw(
     let mut clamped_state_updates = 0_u64;
     for period in 1..=scenario.draft.planning_horizon {
         let mut current = baselines.clone();
-        if succeeds {
-            for edge in &interventions {
-                if period >= edge.arrival {
-                    current[edge.destination] += edge.effect;
-                }
+        for edge in &interventions {
+            if period >= edge.arrival {
+                current[edge.destination] += edge.effect;
             }
         }
         for edge in &causal {
@@ -116,7 +132,7 @@ pub(super) fn draw(
         history.push(current);
     }
     let final_state = history.last().expect("baseline plus positive horizon");
-    let values = scenario
+    let mut values = scenario
         .draft
         .objectives
         .iter()
@@ -130,7 +146,9 @@ pub(super) fn draw(
             };
             [baseline, final_value, improvement]
         })
-        .collect();
+        .collect::<Vec<_>>();
+    values.push(completion as f64);
+    values.push(if succeeds { 1.0 } else { 0.0 });
     let trajectories = scenario
         .draft
         .objectives

@@ -2,10 +2,24 @@ use std::collections::BTreeMap;
 
 use super::{
     Edge, EdgePayload, EntityId, Intervention, Node, NodePayload, Scenario, ScenarioAnalysisError,
+    intervention_execution,
     scenario_analysis_edges::{self, InterventionEdge, PropagationEdge},
     scenario_analysis_reachability,
     scenario_analysis_state::{self, StateNode},
 };
+
+pub(super) struct PlannedIntervention<'a> {
+    pub(super) id: EntityId,
+    pub(super) intervention: &'a Intervention,
+    pub(super) edges: Vec<InterventionEdge>,
+}
+
+pub(super) struct CandidateExecutionPlan<'a> {
+    pub(super) steps: Vec<PlannedIntervention<'a>>,
+    pub(super) blockers: Vec<intervention_execution::ExecutionRequirement>,
+    pub(super) synergies: Vec<EntityId>,
+    pub(super) conflicts: Vec<EntityId>,
+}
 
 pub(super) struct AnalysisGraph<'a> {
     pub(super) states: Vec<StateNode>,
@@ -40,16 +54,30 @@ impl<'a> AnalysisGraph<'a> {
         })
     }
 
-    pub(super) fn intervention(
+    pub(super) fn intervention_plan(
         &self,
         candidate: EntityId,
-    ) -> Result<(&Intervention, Vec<InterventionEdge>), ScenarioAnalysisError> {
-        let NodePayload::Intervention(intervention) = &self.nodes[&candidate].payload else {
-            unreachable!("validated candidate")
-        };
-        let edges =
-            scenario_analysis_edges::intervention(candidate, self.edges, &self.state_indices);
-        Ok((intervention, edges))
+    ) -> Result<CandidateExecutionPlan<'a>, ScenarioAnalysisError> {
+        let plan = intervention_execution::plan(candidate, &self.nodes, self.edges)
+            .map_err(ScenarioAnalysisError::InterventionDependencyCycle)?;
+        Ok(CandidateExecutionPlan {
+            steps: plan
+                .steps
+                .into_iter()
+                .map(|(id, intervention)| PlannedIntervention {
+                    id,
+                    intervention,
+                    edges: scenario_analysis_edges::intervention(
+                        id,
+                        self.edges,
+                        &self.state_indices,
+                    ),
+                })
+                .collect(),
+            blockers: plan.blockers,
+            synergies: plan.synergies,
+            conflicts: plan.conflicts,
+        })
     }
 
     pub(super) fn objective_reachable(&self, candidate: EntityId, objective: EntityId) -> bool {

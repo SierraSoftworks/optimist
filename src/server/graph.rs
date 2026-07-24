@@ -455,16 +455,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = response_json(response).await;
         assert_eq!(body["revision"]["graph_revision"], 5);
-        assert_eq!(body["topology_candidates"][0]["factor"], "A");
-        assert_eq!(
-            body["topology_candidates"][0]["reachable_outcomes"],
-            json!(["B"])
-        );
-        assert_eq!(body["evidence_priority"], json!(["A"]));
-        assert_eq!(
-            body["topology_candidates"][0]["relationship_evidence"][0]["references"],
-            json!(["ADR-1"])
-        );
+        assert_eq!(body["candidates"], json!([]));
     }
 
     #[tokio::test]

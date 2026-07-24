@@ -16,6 +16,7 @@ mod estimate_uncertainty;
 mod id;
 mod impediment_analysis;
 mod impediment_analysis_compute;
+mod intervention_execution;
 mod likelihood;
 mod measurement_calibration;
 mod monte_carlo;
@@ -65,7 +66,9 @@ pub use estimate_address::{EstimateAddress, EstimateAddressError, EstimateOwner}
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};
 pub use estimate_uncertainty::{EstimateUncertainty, EstimateUncertaintyError};
 pub use id::{EntityId, IdError, ProjectId};
-pub use impediment_analysis::{ImpedimentAnalysis, ImpedimentCandidate, RelationshipEvidence};
+pub use impediment_analysis::{
+    ImpedimentAnalysis, ImpedimentCandidate, InterventionExecutionStep, InterventionRequirement,
+};
 pub use measurement_calibration::{MeasurementCalibration, MeasurementCalibrationError};
 pub use monte_carlo::{MonteCarloConfig, MonteCarloConfigError};
 pub use monte_carlo_report::{
