@@ -17,6 +17,7 @@ impl GraphCommand {
                 | Self::AppendObservation(_)
                 | Self::CorrectObservation(_)
                 | Self::SetMeasurementCalibration(_)
+                | Self::SetEffectProfile(_)
                 | Self::SetSquiggleEstimate(_)
                 | Self::RemoveEstimate(_)
         )

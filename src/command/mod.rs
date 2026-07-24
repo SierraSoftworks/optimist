@@ -8,6 +8,7 @@ use crate::domain::{
 mod change_set;
 mod classification;
 mod command_batch;
+mod effect_profile_input;
 mod metadata_operations;
 mod operations;
 
@@ -16,6 +17,7 @@ pub(crate) use command_batch::child_request_id;
 pub use command_batch::{
     CommandBatchRequest, CommandBatchResult, CompensatingUndoRequest, MAX_COMMAND_BATCH_SIZE,
 };
+pub use effect_profile_input::{EffectAftereffectInput, EffectProfileInput, EffectReleaseInput};
 pub use metadata_operations::*;
 pub use operations::*;
 
@@ -97,6 +99,8 @@ pub enum GraphCommand {
     CorrectObservation(CorrectObservation),
     /// Replaces or removes one measurement relationship's reading-to-state calibration.
     SetMeasurementCalibration(SetMeasurementCalibration),
+    /// Replaces or removes the temporal shape of one intervention effect.
+    SetEffectProfile(SetEffectProfile),
     /// Creates or replaces one estimate from backend-evaluated Squiggle source.
     SetSquiggleEstimate(SetSquiggleEstimate),
     /// Removes one optional or named-cost estimate from its owner.
@@ -218,6 +222,8 @@ pub enum CommandOutcome {
     },
     /// Complete measurement edge after its calibration was replaced or removed.
     MeasurementCalibrationSet(Edge),
+    /// Complete intervention edge after its temporal profile was replaced or removed.
+    EffectProfileSet(Edge),
     /// Squiggle-authored estimate created or revisioned by [`GraphCommand::SetSquiggleEstimate`].
     SquiggleEstimateSet(PrimitiveEstimate),
     /// Primitive estimate removed by [`GraphCommand::RemoveEstimate`].

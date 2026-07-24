@@ -1,8 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::{
-    Duration, EdgeKind, Estimate, MeasurementCalibration, MeasurementCalibrationError,
-    QuantityValue, SignedInfluence, Unit,
+    Duration, EdgeKind, EffectTransience, Estimate, MeasurementCalibration,
+    MeasurementCalibrationError, QuantityValue, SignedInfluence, Unit,
 };
 
 /// Unit-aware counterfactual anchor pair for one local linear response.
@@ -23,10 +23,17 @@ pub struct LinearResponse {
 }
 
 /// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
+///
+/// The response describes how strongly the destination moves. The profile
+/// describes for how long, so a time-boxed intervention can be modelled without
+/// a placeholder node standing in for its own expiry.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CausalEffect {
     /// Counterfactual anchor pair defining the uncertain local slope.
     pub response: LinearResponse,
+    /// Temporal shape and rebound; absent leaves the effect permanent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transience: Option<Box<EffectTransience>>,
     /// Optional non-negative delay before the effect reaches its destination.
     pub lag: Option<Estimate<Duration>>,
     /// Markdown explanation of the causal mechanism, boundaries, and assumptions.
@@ -40,6 +47,8 @@ pub struct CausalEffect {
 #[serde(deny_unknown_fields)]
 struct CausalEffectWire {
     response: LinearResponse,
+    #[serde(default)]
+    transience: Option<Box<EffectTransience>>,
     lag: Option<Estimate<Duration>>,
     mechanism: String,
     #[serde(default)]
@@ -53,12 +62,15 @@ impl<'de> Deserialize<'de> for CausalEffect {
     {
         let value = CausalEffectWire::deserialize(deserializer)?;
         Self::linear(value.response, value.lag, value.mechanism, value.evidence)
+            .map(|effect| effect.with_transience(value.transience.map(|value| *value)))
             .map_err(de::Error::custom)
     }
 }
 
 impl CausalEffect {
     /// Creates a unit-aware local linear response after validating its anchor.
+    ///
+    /// The effect is permanent until [`Self::with_transience`] shapes it.
     pub fn linear(
         response: LinearResponse,
         lag: Option<Estimate<Duration>>,
@@ -70,10 +82,18 @@ impl CausalEffect {
         }
         Ok(Self {
             response,
+            transience: None,
             lag,
             mechanism,
             evidence,
         })
+    }
+
+    /// Applies transient behaviour, or restores a permanent effect with `None`.
+    #[must_use]
+    pub fn with_transience(mut self, transience: Option<EffectTransience>) -> Self {
+        self.transience = transience.map(Box::new);
+        self
     }
 }
 

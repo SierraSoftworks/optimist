@@ -5,8 +5,8 @@ use crate::{
 };
 
 use super::{
-    ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, estimate, evidence,
-    node_state, scenarios,
+    ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, effect_profile, estimate,
+    evidence, node_state, scenarios,
 };
 
 pub(super) fn command(
@@ -47,6 +47,7 @@ pub(super) fn command(
             )
             .map_err(RepositoryError::from)?;
             validate_causal_units(&source, &destination, &edge)?;
+            validate_effect_shape(&edge)?;
             entry.repository.create_edge(edge.clone())?;
             Ok(CommandOutcome::EdgeCreated(edge))
         }
@@ -97,6 +98,7 @@ pub(super) fn command(
             entry.repository.update_edge(edge.clone())?;
             Ok(CommandOutcome::MeasurementCalibrationSet(edge))
         }
+        GraphCommand::SetEffectProfile(command) => effect_profile::set(entry, command),
         GraphCommand::SetSquiggleEstimate(command) => estimate::set_squiggle(entry, command),
         GraphCommand::RemoveEstimate(command) => estimate::remove(entry, command),
         GraphCommand::CreateScenario(command) => scenarios::create(entry, command),
@@ -133,6 +135,20 @@ fn validate_causal_units(
         });
     }
     Ok(())
+}
+
+/// Rejects transient shapes on relationships that are always in effect.
+///
+/// A `contributes` edge describes an ongoing structural dependency, so it has no
+/// activation to start, hold, or release. Only an intervention's `changes` effect
+/// can be time-boxed.
+fn validate_effect_shape(edge: &Edge) -> Result<(), ProjectError> {
+    match &edge.payload {
+        EdgePayload::Contributes(effect) if effect.transience.is_some() => {
+            Err(ProjectError::OngoingEffectCannotBeTransient(edge.id()))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn state_unit(node: &Node) -> Result<crate::domain::Unit, ProjectError> {

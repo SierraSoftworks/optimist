@@ -6,7 +6,7 @@ use super::{
 impl ScenarioAnalysis {
     /// Propagates every candidate intervention over a finite synchronous horizon.
     ///
-    /// For state $i$, sampled baseline $b_i$, persistent intervention shift $u_i(t)$,
+    /// For state $i$, sampled baseline $b_i$, intervention forcing $u_i(t)$,
     /// local response $\beta_{ji}$, and integer delay $d_{ji}\geq1$, each period applies
     /// $x_i(t)=\operatorname{clamp}_i(b_i+u_i(t)+\sum_j
     /// \beta_{ji}(x_j(t-d_{ji})-b_j))$, where counterfactual responses sample
@@ -16,6 +16,12 @@ impl ScenarioAnalysis {
     /// synchronous: a zero-lag edge consumes its source at $t-1$, while explicit
     /// duration and lag samples are interpreted as planning periods, rounded up,
     /// and added to that one-period transport delay.
+    ///
+    /// Each `changes` effect contributes $\beta_k a_k(t)+\rho_k b_k(t)$ to $u_i(t)$, where
+    /// $a_k$ and $b_k$ are the activation and rebound of its temporal profile and $\rho_k$
+    /// is the sampled rebound magnitude. Effects without a profile hold $a_k=1$ and
+    /// $b_k=0$ after arrival, which is the monotone step a permanent intervention applies.
+    /// Shaping an effect therefore changes only its schedule, never its magnitude.
     ///
     /// Each candidate execution plan is evaluated independently. Required interventions
     /// execute first; durations add and every required success gates later steps. One
@@ -63,11 +69,11 @@ impl ScenarioAnalysis {
 mod tests {
     use super::*;
     use crate::domain::{
-        CausalEffect, Distribution, EdgePayload, EntityId, Estimate, EstimateId, Factor,
-        Intervention, LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome,
-        OutcomeDirection, ProjectId, QuantityDefinition, QuantityState, QuantitySupport,
-        QuantityValue, Requirement, ScenarioDraft, ScenarioId, ScenarioObjective, Unit,
-        UtilityDirection,
+        CausalEffect, Distribution, Duration, EdgePayload, EffectAftereffect, EffectProfile,
+        EffectRelease, EffectTransience, EntityId, Estimate, EstimateId, Factor, Intervention,
+        LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome, OutcomeDirection,
+        ProjectId, QuantityDefinition, QuantityState, QuantitySupport, QuantityValue, Requirement,
+        ScenarioDraft, ScenarioId, ScenarioObjective, Unit, UtilityDirection,
     };
 
     fn estimate<T: super::super::EstimateDimension>(id: u64, value: f64) -> Estimate<T> {
@@ -305,6 +311,78 @@ mod tests {
             result.candidates[0].objectives[0].final_state.mean,
             Some(0.5)
         );
+    }
+
+    /// Builds a two-period pulse that ends abruptly, optionally with a rebound.
+    fn pulse(aftereffect: Option<EffectAftereffect>) -> EffectProfile {
+        EffectProfile::new(
+            None,
+            Some(estimate::<Duration>(1, 2.0)),
+            EffectRelease::Immediate,
+            aftereffect,
+        )
+        .unwrap()
+    }
+
+    fn shaped(
+        planning_horizon: u64,
+        rebound: Option<Estimate<QuantityValue>>,
+        profile: EffectProfile,
+    ) -> ScenarioAnalysis {
+        let (scenario, nodes, mut edges, revision) = point_fixture(planning_horizon);
+        let EdgePayload::Changes(effect) = &mut edges[0].payload else {
+            unreachable!("the fixture's first edge is an intervention effect")
+        };
+        *effect = effect
+            .clone()
+            .with_transience(Some(EffectTransience::new(profile, rebound).unwrap()));
+        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap()
+    }
+
+    #[test]
+    fn reverts_a_time_boxed_intervention_after_its_hold_window() {
+        let (scenario, nodes, edges, revision) = point_fixture(4);
+        let persistent = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let held = persistent.candidates[0].objectives[0]
+            .final_state
+            .mean
+            .unwrap();
+        assert!(
+            (held - 0.56).abs() < 1e-12,
+            "an unshaped effect must persist to the horizon"
+        );
+
+        let inside = shaped(3, None, pulse(None));
+        assert!(
+            (inside.candidates[0].objectives[0].final_state.mean.unwrap() - 0.56).abs() < 1e-12,
+            "the outcome must still be moved while the pulse is held"
+        );
+
+        let outside = shaped(4, None, pulse(None));
+        let objective = &outside.candidates[0].objectives[0];
+        assert!(
+            (objective.final_state.mean.unwrap() - 0.5).abs() < 1e-12,
+            "the outcome must return to baseline once the pulse releases"
+        );
+        assert!(objective.improvement.mean.unwrap().abs() < 1e-12);
+    }
+
+    #[test]
+    fn applies_a_rebound_when_a_time_boxed_intervention_ends() {
+        let result = shaped(
+            4,
+            Some(estimate::<QuantityValue>(3, -0.1)),
+            pulse(Some(EffectAftereffect {
+                hold: Some(estimate::<Duration>(2, 1.0)),
+                release: EffectRelease::Immediate,
+            })),
+        );
+        let objective = &result.candidates[0].objectives[0];
+        assert!(
+            (objective.final_state.mean.unwrap() - 0.48).abs() < 1e-12,
+            "the rebound must overshoot past the original baseline"
+        );
+        assert!((objective.improvement.mean.unwrap() + 0.02).abs() < 1e-12);
     }
 
     #[test]

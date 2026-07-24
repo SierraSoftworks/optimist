@@ -6,6 +6,8 @@ use crate::domain::{
     ScenarioId, SquiggleEstimateDefinition,
 };
 
+use super::EffectProfileInput;
+
 /// Data required to construct a new structural node.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CreateNode {
@@ -123,6 +125,22 @@ pub struct SetMeasurementCalibration {
     pub expected_revision: u64,
     /// Complete replacement, or `None` to return the relationship to descriptive polarity only.
     pub calibration: Option<MeasurementCalibration>,
+}
+
+/// Revision-checked replacement of one intervention effect's temporal shape.
+///
+/// The profile owns every estimate it needs, so it is authored as one document
+/// rather than assembled from individually addressed slots. Passing `None`
+/// restores the permanent step applied when no profile is configured.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetEffectProfile {
+    /// Canonical identity of the `changes` relationship being shaped.
+    pub edge: EdgeId,
+    /// Edge revision observed before preparing the profile.
+    pub expected_revision: u64,
+    /// Complete replacement, or `None` to restore a permanent effect.
+    pub profile: Option<Box<EffectProfileInput>>,
 }
 
 /// Data required to create or replace an estimate from backend-evaluated Squiggle source.

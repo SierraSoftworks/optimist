@@ -1,8 +1,9 @@
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
+use super::effect_activation::{self, SampledEffectProfile};
 use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
-use super::{Distribution, Scenario, ScenarioAnalysisError, UtilityDirection};
+use super::{Scenario, ScenarioAnalysisError, UtilityDirection};
 
 struct SampledPropagationEdge {
     source: usize,
@@ -14,7 +15,9 @@ struct SampledPropagationEdge {
 struct SampledInterventionEdge {
     destination: usize,
     effect: f64,
+    rebound: Option<f64>,
     arrival: u64,
+    profile: SampledEffectProfile,
 }
 
 pub(super) struct ScenarioDraw {
@@ -55,7 +58,7 @@ pub(super) fn draw(
                 step.intervention
                     .duration
                     .as_ref()
-                    .map(|estimate| delay(&estimate.distribution, rng))
+                    .map(|estimate| effect_activation::delay(&estimate.distribution, rng))
                     .transpose()?
                     .unwrap_or(0),
             );
@@ -77,11 +80,16 @@ pub(super) fn draw(
                         .saturating_add(
                             edge.lag
                                 .as_ref()
-                                .map(|lag| delay(lag, rng))
+                                .map(|lag| effect_activation::delay(lag, rng))
                                 .transpose()?
                                 .unwrap_or(0),
                         )
                         .saturating_add(1),
+                    profile: effect_activation::sample(&edge.profile, rng)?,
+                    rebound: edge
+                        .rebound
+                        .as_ref()
+                        .map(|rebound| rebound.sample(rng) / edge.source_change),
                 });
             }
         }
@@ -97,7 +105,7 @@ pub(super) fn draw(
                 delay: edge
                     .lag
                     .as_ref()
-                    .map(|lag| delay(lag, rng))
+                    .map(|lag| effect_activation::delay(lag, rng))
                     .transpose()?
                     .unwrap_or(0)
                     .saturating_add(1),
@@ -110,7 +118,12 @@ pub(super) fn draw(
         let mut current = baselines.clone();
         for edge in &interventions {
             if period >= edge.arrival {
-                current[edge.destination] += edge.effect;
+                let elapsed = period - edge.arrival;
+                let mut movement = edge.effect * edge.profile.activation(elapsed);
+                if let Some(rebound) = edge.rebound {
+                    movement += rebound * edge.profile.rebound(elapsed);
+                }
+                current[edge.destination] += movement;
             }
         }
         for edge in &causal {
@@ -174,12 +187,4 @@ pub(super) fn draw(
         trajectories,
         clamped_state_updates,
     })
-}
-
-fn delay(distribution: &Distribution, rng: &mut ChaCha20Rng) -> Result<u64, ScenarioAnalysisError> {
-    let value = distribution.sample(rng);
-    if !value.is_finite() {
-        return Err(ScenarioAnalysisError::NonFinitePrimitive);
-    }
-    Ok(value.ceil().min(u64::MAX as f64) as u64)
 }

@@ -90,6 +90,25 @@ pub(super) fn classify(
             "not_measurement_edge",
             &["Choose a `measures` edge returned by `optimist edge list`."],
         ),
+        ProjectError::NotInterventionEffectEdge(_) => (
+            StatusCode::BAD_REQUEST,
+            "not_intervention_effect_edge",
+            &["Choose a `changes` edge, which is the only relationship with a temporal profile."],
+        ),
+        ProjectError::OngoingEffectCannotBeTransient(_) => (
+            StatusCode::BAD_REQUEST,
+            "ongoing_effect_cannot_be_transient",
+            &[
+                "Remove the profile and rebound from this `contributes` edge, and shape the intervention's `changes` edge instead.",
+            ],
+        ),
+        ProjectError::EffectProfile(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_effect_profile",
+            &[
+                "Declare a hold window before configuring a release form, and pair every aftereffect with a rebound magnitude.",
+            ],
+        ),
         ProjectError::ObservationUnitMismatch { .. } => (
             StatusCode::BAD_REQUEST,
             "observation_unit_mismatch",

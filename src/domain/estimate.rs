@@ -28,6 +28,19 @@ impl EstimateId {
     pub const fn new(value: u64) -> Self {
         Self(EntityId::new(value))
     }
+
+    /// Returns the monotonic counter behind this aggregate-local ID.
+    ///
+    /// Owners which allocate several estimates at once, such as a temporal
+    /// profile, use this to issue IDs above every value already in use.
+    ///
+    /// ```
+    /// use optimist::domain::EstimateId;
+    /// assert_eq!(EstimateId::new(3).value(), 3);
+    /// ```
+    pub const fn value(self) -> u64 {
+        self.0.value()
+    }
 }
 
 impl fmt::Display for EstimateId {

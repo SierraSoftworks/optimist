@@ -16,6 +16,7 @@ mod command_journal_document;
 mod commands;
 mod dependence;
 mod dependence_addresses;
+mod effect_profile;
 mod error;
 mod estimate;
 mod estimate_edge;

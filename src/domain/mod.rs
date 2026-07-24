@@ -9,6 +9,8 @@ mod distribution_quantile;
 mod edge;
 mod edge_id;
 mod edge_payload;
+mod effect_activation;
+mod effect_profile;
 mod estimate;
 mod estimate_address;
 mod estimate_slot;
@@ -57,6 +59,9 @@ pub use edge_id::{EdgeId, EdgeIdError, EdgeKind};
 pub use edge_payload::{
     BlockingEffect, CausalEffect, CausalResponseError, EdgePayload, LinearResponse, Measurement,
     MeasurementPolarity, Observation, Requirement,
+};
+pub use effect_profile::{
+    EffectAftereffect, EffectProfile, EffectProfileError, EffectRelease, EffectTransience,
 };
 pub use estimate::{
     Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,

@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::{Distribution, Edge, EdgePayload, EntityId, NodeKind, ScenarioAnalysisError};
+use super::{
+    Distribution, Edge, EdgePayload, EffectProfile, EntityId, NodeKind, ScenarioAnalysisError,
+};
 
 pub(super) struct PropagationEdge {
     pub(super) source: usize,
@@ -13,6 +15,8 @@ pub(super) struct PropagationEdge {
 pub(super) struct InterventionEdge {
     pub(super) destination: usize,
     pub(super) effect: Distribution,
+    pub(super) rebound: Option<Distribution>,
+    pub(super) profile: EffectProfile,
     pub(super) source_change: f64,
     pub(super) lag: Option<Distribution>,
 }
@@ -64,6 +68,16 @@ pub(super) fn intervention(
                 Some(InterventionEdge {
                     destination: indices[&edge.destination],
                     effect: effect.response.destination_change.distribution.clone(),
+                    rebound: effect
+                        .transience
+                        .as_ref()
+                        .and_then(|transience| transience.rebound.as_ref())
+                        .map(|estimate| estimate.distribution.clone()),
+                    profile: effect
+                        .transience
+                        .as_ref()
+                        .map(|transience| transience.profile.clone())
+                        .unwrap_or_default(),
                     source_change: effect.response.source_change,
                     lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
                 })

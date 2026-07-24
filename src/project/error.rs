@@ -77,6 +77,15 @@ pub enum ProjectError {
     /// The selected edge does not own a measurement observation series.
     #[error("edge {0} is not a measurement edge")]
     NotMeasurementEdge(EdgeId),
+    /// Only intervention `changes` effects carry a temporal profile.
+    #[error("edge {0} is not an intervention effect edge")]
+    NotInterventionEffectEdge(EdgeId),
+    /// A structural relationship cannot declare a transient shape.
+    #[error("edge {0} is ongoing and cannot declare a temporal profile")]
+    OngoingEffectCannotBeTransient(EdgeId),
+    /// A temporal profile declares a phase which can never be reached.
+    #[error(transparent)]
+    EffectProfile(#[from] crate::domain::EffectProfileError),
     /// A reading's unit disagrees with the source metric definition.
     #[error("observation unit {actual:?} does not match metric unit {expected:?}")]
     ObservationUnitMismatch {
