@@ -78,6 +78,47 @@ Successful response:
 }
 ```
 
+### Causal relationship commands
+
+`update_causal_effect` replaces the reviewable claim behind a `contributes` or `changes` relationship. Units are derived from the endpoints and are not editable here.
+
+```json
+{
+  "type": "update_causal_effect",
+  "payload": {
+    "edge": {"source": "H", "kind": "changes", "destination": "E"},
+    "expected_revision": 0,
+    "source_change": 1.0,
+    "mechanism": "Freezing changes suppresses the defect inflow.",
+    "evidence": ["2026-Q2 freeze retrospective"]
+  }
+}
+```
+
+`set_effect_profile` shapes how long an intervention effect lasts. It applies only to `changes` relationships; a `contributes` relationship is always in effect. Passing `"profile": null` restores a permanent effect.
+
+```json
+{
+  "type": "set_effect_profile",
+  "payload": {
+    "edge": {"source": "H", "kind": "changes", "destination": "E"},
+    "expected_revision": 1,
+    "profile": {
+      "ramp": null,
+      "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
+      "release": {"type": "immediate"},
+      "aftereffect": {
+        "magnitude": {"source": "pointMass(120)", "seed": 42, "sample_count": 256, "target_unit": {"change": 1, "month": -1}},
+        "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
+        "release": {"type": "immediate"}
+      }
+    }
+  }
+}
+```
+
+`release` is `{"type": "immediate"}`, `{"type": "linear", "over": <duration>}`, or `{"type": "exponential", "half_life": <duration>}`. Every duration is a Squiggle estimate in the synthetic `duration` unit, so schedules carry uncertainty like any other estimate. A profile owns its estimates, so it is replaced as one document rather than through individually addressed slots.
+
 ## Atomic command batches
 
 ```http
