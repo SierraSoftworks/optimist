@@ -47,6 +47,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Store factor/outcome current and forecast estimates only in native quantity state with support-aware propagation and unit-aware edge guards.
 - [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
   - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
+  - [x] Shape intervention effects over time with ramp, hold, release, and rebound profiles so time-boxed interventions need no placeholder nodes.
   - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.
   - [ ] Treat observational co-movement as evidence rather than causal identification unless the relationship records an experiment or explicit identification assumptions.
 - [ ] Make metrics measured causal variables: state-bearing, eligible for factor/metric/outcome relationships in both directions, and directly observable in native units.
@@ -89,6 +90,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Squiggle estimate preview and durable set commands for every state, intervention, and edge estimate slot.
 - [x] Scenario create/list/show/update/delete commands.
   - [x] Scenario analysis command and result transport.
+- [x] Transient intervention effect profiles with ramp, hold, release, and rebound.
 - [x] Atomic command batches and compensating undo.
 - [ ] Generate OpenAPI and TypeScript contracts from Rust API types.
 - [ ] Add pagination/filter/search endpoints and CLI flags.
@@ -137,6 +139,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 
 - [x] Immutable analysis projection keyed by graph/scenario/dependence/formula revisions.
 - [x] Finite-horizon intervention-to-outcome posterior propagation.
+- [x] Time-boxed intervention forcing with activation, release, and rebound kernels.
 - [ ] Stable feedback equilibrium checks and probability of instability.
 - [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [ ] Reinforcing/balancing, nested, and interacting loop explanations.
@@ -169,6 +172,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Delete-key confirmation for graph-selected nodes and relationships, with editable-control and connected-edge guards.
 - [x] Per-period optimization trajectories with backend Monte Carlo means and uncertainty bands.
 - [x] Unit-aware intervention-to-metric `changes` relationships authored as Squiggle destination responses.
+- [x] Effect profile editor with activation preview for time-boxed interventions.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
 - [x] Serve production assets from Axum with SPA fallback and immutable caching.
 

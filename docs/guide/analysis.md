@@ -74,7 +74,7 @@ cargo run -- --project A scenario analyze A
 
 Every factor and objective on a candidate-to-objective causal path needs a native quantity and `current` estimate. For `A requires B`, B executes before A. Recursive prerequisite durations add, each required intervention must succeed, and successful prerequisite `changes` effects enter propagation before the candidate. Hard factor requirements preclude execution when their threshold is absent or unsatisfied. `changes` and `contributes` provide sampled unit-aware local responses.
 
-For sampled baseline $b_i$, state $x_i(t)$, persistent intervention shift $u_i(t)$, local response $\beta_{ji}$, and delay $d_{ji}$, Optimist applies the synchronous recurrence
+For sampled baseline $b_i$, state $x_i(t)$, intervention forcing $u_i(t)$, local response $\beta_{ji}$, and delay $d_{ji}$, Optimist applies the synchronous recurrence
 
 $$
 x_i(t) = \operatorname{clamp}_i\left(
@@ -82,7 +82,27 @@ x_i(t) = \operatorname{clamp}_i\left(
 \right).
 $$
 
-A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. Intervention changes persist after their sampled completion and lag. The recurrence uses deviations from sampled baselines so an unchanged source contributes zero movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. Horizons are bounded to 10,000 periods.
+A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. The recurrence uses deviations from sampled baselines so an unchanged source contributes zero movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. Horizons are bounded to 10,000 periods.
+
+### Time-boxed interventions
+
+Every `changes` effect contributes $\beta_k a_k(t) + \rho_k b_k(t)$ to $u_i(t)$. The activation $a_k$ and rebound $b_k$ come from the effect's temporal profile, and $\rho_k$ is its sampled rebound movement. An effect without a profile holds $a_k = 1$ and $b_k = 0$ after arrival, which is the monotone step a permanent intervention applies, so adding a profile changes only an effect's schedule and never its magnitude.
+
+A profile has four parts. `ramp` spends $r$ periods rising to full strength, `hold` keeps $h$ periods at full strength, `release` returns the effect toward zero, and an optional `aftereffect` fires a rebound when the release begins:
+
+$$
+a_k(e) = \begin{cases}
+  \dfrac{e+1}{r+1} & e < r \\[6pt]
+  1 & r \leq e < r + h \\[4pt]
+  \sigma(e - r - h) & e \geq r + h
+\end{cases}
+$$
+
+where $e$ counts periods since arrival and $\sigma$ is the release kernel: $0$ for an abrupt end, $\max(0,\,1-\frac{k+1}{L+1})$ for a decline over $L$ periods, and $2^{-(k+1)/H}$ for a half-life $H$. Omitting `hold` leaves the effect permanent and removes the release phase entirely.
+
+The rebound carries its own magnitude rather than a share of the primary effect, because ending an intervention is its own event: a backlog that drains after a change freeze rarely returns exactly what was withheld. Every profile duration is an ordinary Squiggle estimate, so a schedule is as uncertain as any other input, and durations are sampled per draw and rounded up to whole periods. Only `changes` effects accept a profile; a `contributes` relationship is always in effect and has no activation to start or stop.
+
+Modelling a time-boxed intervention this way removes the older workaround of adding a placeholder factor whose only job was to fire a lagged rebound.
 
 Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, prerequisite and candidate success, cumulative duration, lags, and destination responses are sampled once per joint draw. Reports include total execution duration, all-steps success, prerequisite/blocker/synergy/conflict context, baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, reachability, clamping, Monte Carlo errors, and convergence status. Improvement is always a relative, preference-oriented delta from baseline: positive means improvement even for a minimize objective.
 

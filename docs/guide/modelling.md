@@ -77,6 +77,41 @@ with dimension $\mathrm{unit}(y)/\mathrm{unit}(x)$. During propagation it applie
 
 This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
 
+## Time-boxed interventions
+
+Interventions are permanent by default: once an effect arrives it holds for the rest of the horizon. Many real interventions are not. A change freeze runs for two planning cycles, a temporary staffing uplift ends when the contract does, and a mitigation gets reverted once the underlying defect is fixed.
+
+Give a `changes` relationship an effect profile to say how long it lasts:
+
+```sh
+cargo run -- --project A batch apply \
+  --request-id 00000000-0000-4000-8000-000000000010 \
+  --expected-revision 12 \
+  --commands '[{
+    "type": "set_effect_profile",
+    "payload": {
+      "edge": {"source": "H", "kind": "changes", "destination": "E"},
+      "expected_revision": 0,
+      "profile": {
+        "ramp": null,
+        "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
+        "release": {"type": "immediate"},
+        "aftereffect": {
+          "magnitude": {"source": "pointMass(120)", "seed": 42, "sample_count": 256, "target_unit": {"change": 1, "month": -1}},
+          "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
+          "release": {"type": "immediate"}
+        }
+      }
+    }
+  }]'
+```
+
+That reads as: hold the effect for two periods, end it abruptly, and add 120 changes per month for one period afterwards as the suppressed work drains. Set `profile` to `null` to restore a permanent effect.
+
+The rebound declares its own movement rather than a share of the effect it follows, so releasing an intervention can overshoot, undershoot, or exactly reverse. Every duration is a Squiggle estimate, so an uncertain schedule is expressed the same way as any other uncertain quantity. `ramp` staggers the onset, and `release` can decline linearly over a span or decay by half-life instead of stopping abruptly.
+
+Only `changes` accepts a profile. A `contributes` relationship describes an ongoing structural dependency with no activation to start or stop, and Optimist rejects a profile on one.
+
 ## Descriptions and metadata
 
 Nodes and edges carry Markdown descriptions plus extensible JSON metadata. Updates are complete replacements guarded by the aggregate revision:
