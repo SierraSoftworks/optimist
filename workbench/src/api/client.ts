@@ -29,6 +29,7 @@ import type {
   InterventionEstimateSlot,
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
+  SetEffectProfileInput,
   StateEstimateSlot,
   UpdateNodeInput,
   UpdateEdgeInput,
@@ -544,6 +545,38 @@ export const api = {
       throw new OptimistApiError(
         'unexpected_command_result',
         'Optimist returned an unexpected result for measurement calibration.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
+  async setEffectProfile(
+    project: Project,
+    edge: GraphEdge,
+    input: SetEffectProfileInput,
+  ): Promise<GraphEdge> {
+    const result = await request<CommandResult<GraphEdge>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_effect_profile',
+            payload: {
+              edge: edgeIdentity(edge),
+              expected_revision: edge.revision,
+              profile: input.profile,
+            },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'effect_profile_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for the intervention effect profile.',
         ['Confirm the workbench and server versions match.'],
       )
     }

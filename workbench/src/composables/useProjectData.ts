@@ -20,6 +20,7 @@ import type {
   EvidenceInput,
   SetEdgeEstimateInput,
   SetMeasurementCalibrationInput,
+  SetEffectProfileInput,
   UpdateNodeInput,
   UpdateEdgeInput,
 } from '../api/types'
@@ -290,6 +291,25 @@ export function useSetMeasurementCalibration(
   return useMutation({
     mutationFn: (input: SetMeasurementCalibrationInput) =>
       api.setMeasurementCalibration(project.value!, edge.value!, input),
+    onSuccess: (updated) => {
+      const current = project.value!
+      advanceProject(queryClient, current)
+      queryClient.setQueryData<GraphEdge[]>(['edges', current.id], (edges = []) =>
+        edges.map((edge) => edge.source === updated.source && edge.destination === updated.destination && edge.payload.kind === updated.payload.kind ? updated : edge),
+      )
+      invalidateAnalysis(queryClient, current.id)
+    },
+  })
+}
+
+export function useSetEffectProfile(
+  project: Ref<Project | undefined>,
+  edge: Ref<GraphEdge | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SetEffectProfileInput) =>
+      api.setEffectProfile(project.value!, edge.value!, input),
     onSuccess: (updated) => {
       const current = project.value!
       advanceProject(queryClient, current)

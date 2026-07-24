@@ -7,10 +7,17 @@ import type {
   Estimate,
   GraphEdge,
   MeasurementCalibration,
+  SetEffectProfileInput,
   SetMeasurementCalibrationInput,
 } from '../api/types'
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
+import {
+  effectProfileInput,
+  emptyEffectProfileForm,
+  type EffectProfileForm,
+} from '../domain/effectProfile'
 import { formatUnitExpression } from '../domain/unitExpression'
+import EffectProfileEditor from './EffectProfileEditor.vue'
 
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
 const emit = defineEmits<{
@@ -18,7 +25,9 @@ const emit = defineEmits<{
   delete: []
   estimate: [slot: EdgeEstimateSlot]
   calibration: [input: SetMeasurementCalibrationInput]
+  profile: [input: SetEffectProfileInput]
 }>()
+const profile = reactive<EffectProfileForm>(emptyEffectProfileForm())
 const calibration = reactive({
   enabled: false,
   stateZero: 0,
@@ -47,9 +56,66 @@ watch(
         calibration.outerUpper = current.outer_upper
       }
     }
+    if (edge.payload.kind === 'changes') {
+      Object.assign(profile, seedProfile(edge))
+    }
     confirmDelete.value = false
   },
 )
+
+/**
+ * Recovers editor state from a stored profile.
+ *
+ * Point-mass durations round-trip exactly; richer Squiggle schedules fall back to
+ * the nearest whole-period shape so the editor never silently discards them
+ * without the author seeing the substitution in the preview.
+ */
+function seedProfile(edge: GraphEdge): EffectProfileForm {
+  const form = emptyEffectProfileForm()
+  if (edge.payload.kind !== 'changes') return form
+  const transience = edge.payload.properties.transience
+  if (!transience) return form
+  form.enabled = true
+  form.ramp = periodsOf(transience.profile.ramp) ?? 0
+  form.hold = periodsOf(transience.profile.hold) ?? 0
+  const release = transience.profile.release
+  if (release.type === 'linear') {
+    form.release = 'linear'
+    form.releaseSpan = periodsOf(release.over) ?? 1
+  } else if (release.type === 'exponential') {
+    form.release = 'exponential'
+    form.releaseSpan = periodsOf(release.half_life) ?? 1
+  }
+  if (transience.profile.aftereffect) {
+    form.reboundEnabled = true
+    form.reboundHold = periodsOf(transience.profile.aftereffect.hold) ?? 0
+    form.reboundMagnitude = periodsOf(transience.rebound) ?? 0
+  }
+  return form
+}
+
+/**
+ * Reads a whole-period duration back out of a stored estimate.
+ *
+ * The editor authors point masses, so those round-trip exactly. Richer Squiggle
+ * schedules have no whole-period form and return `null`, which seeds the field
+ * with its default rather than inventing a number the author never wrote.
+ */
+function periodsOf(estimate: Estimate | null | undefined): number | null {
+  if (!estimate) return null
+  if (estimate.distribution?.type === 'point' && estimate.distribution.value !== undefined) {
+    return estimate.distribution.value
+  }
+  const match = /^pointMass\(([-\d.eE+]+)\)$/.exec(estimate.source.definition.source.trim())
+  return match?.[1] === undefined ? null : Number(match[1])
+}
+
+function saveProfile() {
+  if (props.edge?.payload.kind !== 'changes') return
+  emit('profile', {
+    profile: effectProfileInput(profile, props.edge.payload.properties.response.destination_unit),
+  })
+}
 
 function calibrationValue(): MeasurementCalibration | null {
   if (!calibration.enabled || props.edge?.payload.kind !== 'measures') return null
@@ -113,6 +179,13 @@ function estimateLabel(value: Estimate) {
             <button type="button" class="icon-button" aria-label="Edit relationship lag estimate" @click="emit('estimate', { kind: 'lag' })"><Pencil :size="13" /></button>
           </div>
         </section>
+        <EffectProfileEditor
+          v-if="edge.payload.kind === 'changes'"
+          :form="profile"
+          :edge="edge"
+          :pending="pending"
+          @save="saveProfile"
+        />
         <section v-else-if="edge.payload.kind === 'blocks'" class="dialog-section">
           <div class="estimate-row">
             <div><span>Blocking degree</span><strong>{{ estimateLabel(edge.payload.properties.degree) }}</strong></div>

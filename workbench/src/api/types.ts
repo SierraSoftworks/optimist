@@ -193,6 +193,7 @@ export interface GraphEdge {
         kind: 'contributes' | 'changes'
         properties: {
           response: LinearResponse
+          transience?: EffectTransience | null
           lag: Estimate | null
           mechanism: string
           evidence: string[]
@@ -221,6 +222,30 @@ export interface LinearResponse {
   source_unit: Unit
   destination_change: Estimate
   destination_unit: Unit
+}
+
+/** How a transient effect subsides once its hold window ends. */
+export type EffectRelease =
+  | { type: 'immediate' }
+  | { type: 'linear'; over: Estimate }
+  | { type: 'exponential'; half_life: Estimate }
+
+export interface EffectAftereffect {
+  hold?: Estimate | null
+  release: EffectRelease
+}
+
+export interface EffectProfile {
+  ramp?: Estimate | null
+  hold?: Estimate | null
+  release: EffectRelease
+  aftereffect?: EffectAftereffect | null
+}
+
+/** Temporal shape and rebound of one intervention effect. */
+export interface EffectTransience {
+  profile: EffectProfile
+  rebound?: Estimate | null
 }
 
 export interface EdgeIdentity {
@@ -469,6 +494,29 @@ export interface SetMeasurementCalibrationInput {
   calibration: MeasurementCalibration | null
 }
 
+/** Authored release form; every duration is a Squiggle program in `duration` units. */
+export type EffectReleaseInput =
+  | { type: 'immediate' }
+  | { type: 'linear'; over: SquiggleEstimateDefinition }
+  | { type: 'exponential'; half_life: SquiggleEstimateDefinition }
+
+export interface EffectAftereffectInput {
+  magnitude: SquiggleEstimateDefinition
+  hold: SquiggleEstimateDefinition | null
+  release: EffectReleaseInput
+}
+
+export interface EffectProfileInput {
+  ramp: SquiggleEstimateDefinition | null
+  hold: SquiggleEstimateDefinition | null
+  release: EffectReleaseInput
+  aftereffect: EffectAftereffectInput | null
+}
+
+export interface SetEffectProfileInput {
+  profile: EffectProfileInput | null
+}
+
 export type EditableEdgePayload =
   | {
       kind: 'contributes' | 'changes'
@@ -478,8 +526,7 @@ export type EditableEdgePayload =
         mechanism: string
         evidence: string[]
       }
-    }
-  | {
+    }  | {
       kind: 'measures'
       properties: {
         polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
