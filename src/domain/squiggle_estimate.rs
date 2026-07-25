@@ -242,6 +242,12 @@ fn wrapped_source(source: &str, unit: &Unit) -> String {
     )
 }
 
+/// Renders a unit as a Squiggle `::` annotation.
+///
+/// Squiggle folds unit factors left-associatively, so a denominator is emitted
+/// as one division per term: `a*b/c/d` groups as `((a*b)/c)/d`, which is
+/// $ab/(cd)$. Joining the denominator with `*` instead would read as
+/// $abd/c$, silently inverting every term after the first.
 pub(super) fn squiggle_unit(unit: &Unit) -> String {
     let mut numerator = Vec::new();
     let mut denominator = Vec::new();
@@ -267,7 +273,7 @@ pub(super) fn squiggle_unit(unit: &Unit) -> String {
     if denominator.is_empty() {
         numerator
     } else {
-        format!("{numerator}/{}", denominator.join("*"))
+        format!("{numerator}/{}", denominator.join("/"))
     }
 }
 
@@ -312,6 +318,28 @@ fn diagnostics_text(diagnostics: &[Diagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Squiggle folds unit factors left-associatively, so every denominator term
+    /// needs its own division. Combining units in an expression is the only place
+    /// this shows: a wrapper that renders and parses a unit the same wrong way
+    /// still round-trips, which is how this survived until a ratio was taken.
+    #[test]
+    fn multi_term_denominators_survive_being_combined_in_an_expression() {
+        let per_change_month =
+            Unit::from_exponents([("minute", 1), ("change", -1), ("month", -1)]).unwrap();
+        assert_eq!(squiggle_unit(&per_change_month), "minute/change/month");
+
+        let definition = SquiggleEstimateDefinition {
+            source: "cost :: minute/change/month = 3\nvolume :: change*month = 4\ncost * volume"
+                .to_owned(),
+            seed: 42,
+            sample_count: 256,
+            target_unit: Unit::base("minute").unwrap(),
+        };
+        let (_, assessment, _) =
+            assess_squiggle_estimate(definition, &Unit::base("minute").unwrap()).unwrap();
+        assert_eq!(assessment.mean, Some(12.0));
+    }
 
     #[test]
     fn evaluates_rich_distributions_to_reproducible_empirical_results() {
