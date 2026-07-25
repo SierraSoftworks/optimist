@@ -18,7 +18,7 @@ mod token;
 
 pub use diagnostic::{Diagnostic, DiagnosticKind};
 pub use distribution::Distribution;
-pub use lint::lint;
+pub use lint::{lint, lint_program};
 pub use parse::parse;
 pub use runtime::{ModuleOutput, Runtime, RuntimeConfig, builtin_names};
 pub use value::{DateValue, Domain, DurationValue, Function, Value};

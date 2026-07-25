@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::squiggle::{Diagnostic, Runtime, RuntimeConfig, Value, lint};
+use crate::squiggle::{Diagnostic, Runtime, RuntimeConfig, Value, lint_program, parse};
 
 use super::{Distribution, Unit};
 
@@ -139,7 +139,9 @@ pub fn assess_squiggle_estimate(
         return Err(SquiggleEstimateError::TargetUnitMismatch);
     }
     let source = wrapped_source(&definition.source, expected_unit);
-    if let Some(diagnostic) = lint(&source).into_iter().next() {
+    let program = parse(&source)
+        .map_err(|diagnostics| SquiggleEstimateError::Diagnostic(diagnostics_text(&diagnostics)))?;
+    if let Some(diagnostic) = lint_program(&program).into_iter().next() {
         return Err(SquiggleEstimateError::Diagnostic(diagnostic_text(
             &diagnostic,
         )));
@@ -151,8 +153,8 @@ pub fn assess_squiggle_estimate(
     })
     .map_err(SquiggleEstimateError::InvalidDistribution)?;
     let value = runtime
-        .evaluate(&source)
-        .map_err(|diagnostics| SquiggleEstimateError::Diagnostic(diagnostics_text(&diagnostics)))?;
+        .evaluate_program(&program)
+        .map_err(|diagnostic| SquiggleEstimateError::Diagnostic(diagnostic_text(&diagnostic)))?;
     let (family, mean, variance, p05, p50, p95, distribution, sample_count) = match value {
         Value::Number(value) if value.is_finite() => (
             "Number".to_owned(),
