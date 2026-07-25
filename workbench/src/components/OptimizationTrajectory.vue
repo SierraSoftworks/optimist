@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { ObjectiveTrajectoryPoint } from '../api/types'
 import { impactTone, relativeImprovement } from '../domain/optimizationImpact'
+import { normalize, trajectoryScale } from '../domain/trajectoryScale'
 
 const props = defineProps<{
   points: ObjectiveTrajectoryPoint[]
@@ -12,22 +13,24 @@ const props = defineProps<{
 
 const width = 320
 const height = 122
-const inset = { top: 12, right: 12, bottom: 24, left: 34 }
+const inset = { top: 12, right: 12, bottom: 24, left: 40 }
 const usableWidth = width - inset.left - inset.right
 const usableHeight = height - inset.top - inset.bottom
-const values = computed(() => props.points.flatMap((point) => {
-  const mean = relativeImprovement(point.improvement.mean, props.baseline)
-  if (mean === null) return []
-  const spread = normalizedSpread(point)
-  return [mean - spread, mean + spread, 0]
+const clipId = `trajectory-clip-${Math.random().toString(36).slice(2, 9)}`
+
+const means = computed(() => props.points.map(
+  (point) => relativeImprovement(point.improvement.mean, props.baseline),
+))
+/**
+ * The band is kept apart from the means so the scale can cut back one without
+ * ever cutting the other.
+ */
+const scale = computed(() => trajectoryScale({
+  means: means.value.filter((mean): mean is number => mean !== null),
+  lower: props.points.map((point) => bound(point, -1)),
+  upper: props.points.map((point) => bound(point, 1)),
 }))
-const domain = computed(() => {
-  const minimum = Math.min(...values.value, 0)
-  const maximum = Math.max(...values.value, 0)
-  const padding = Math.max((maximum - minimum) * 0.12, 0.01)
-  return [minimum - padding, maximum + padding] as const
-})
-const line = computed(() => path(props.points.map((point) => relativeImprovement(point.improvement.mean, props.baseline))))
+const line = computed(() => path(means.value))
 const band = computed(() => {
   const upper = props.points.map((point) => bound(point, 1))
   const lower = props.points.map((point) => bound(point, -1)).reverse()
@@ -50,8 +53,7 @@ function x(index: number) {
 }
 
 function y(value: number) {
-  const [minimum, maximum] = domain.value
-  return inset.top + (maximum - value) / (maximum - minimum) * usableHeight
+  return inset.top + (1 - normalize(value, scale.value)) * usableHeight
 }
 
 function bound(point: ObjectiveTrajectoryPoint, direction: number) {
@@ -80,21 +82,33 @@ function format(value: number) {
 
 <template>
   <figure class="trajectory" :data-impact="finalImpact" :aria-label="`${label} relative improvement over time`">
-    <figcaption><strong>{{ label }}</strong><span>Improvement vs baseline · {{ direction }} · ±1 SD</span></figcaption>
+    <figcaption>
+      <strong>{{ label }}</strong>
+      <span>
+        Improvement vs baseline · {{ direction }} · ±1 SD · symlog<template v-if="scale.clipped"> · band clipped to p10–p90</template>
+      </span>
+    </figcaption>
     <svg :viewBox="`0 0 ${width} ${height}`" role="img">
+      <defs>
+        <clipPath :id="clipId">
+          <rect :x="inset.left" :y="inset.top" :width="usableWidth" :height="usableHeight" />
+        </clipPath>
+      </defs>
       <line :x1="inset.left" :x2="width - inset.right" :y1="zeroY" :y2="zeroY" class="zero-line" />
-      <path v-if="points.length" :d="`${band} Z`" class="uncertainty-band" />
-      <path v-if="points.length" :d="line" class="trajectory-line" />
-      <circle v-for="(point, index) in points" :key="point.period" :cx="x(index)" :cy="y(relativeImprovement(point.improvement.mean, baseline) ?? 0)" r="2.5">
-        <title>Period {{ point.period }}: {{ relativeImprovement(point.improvement.mean, baseline) === null ? 'unavailable' : format(relativeImprovement(point.improvement.mean, baseline)!) }}</title>
-      </circle>
+      <g :clip-path="`url(#${clipId})`">
+        <path v-if="points.length" :d="`${band} Z`" class="uncertainty-band" />
+        <path v-if="points.length" :d="line" class="trajectory-line" />
+        <circle v-for="(point, index) in points" :key="point.period" :cx="x(index)" :cy="y(means[index] ?? 0)" r="2.5">
+          <title>Period {{ point.period }}: {{ means[index] === null || means[index] === undefined ? 'unavailable' : format(means[index]!) }}</title>
+        </circle>
+      </g>
       <text :x="inset.left" :y="height - 6">0</text>
       <text :x="width - inset.right" :y="height - 6" text-anchor="end">{{ points.at(-1)?.period ?? 0 }} periods</text>
-      <text :x="inset.left - 5" :y="inset.top + 4" text-anchor="end">{{ format(domain[1]) }}</text>
-      <text :x="inset.left - 5" :y="height - inset.bottom" text-anchor="end">{{ format(domain[0]) }}</text>
+      <text :x="inset.left - 5" :y="inset.top + 4" text-anchor="end">{{ format(scale.upper) }}</text>
+      <text :x="inset.left - 5" :y="height - inset.bottom" text-anchor="end">{{ format(scale.lower) }}</text>
     </svg>
     <ol class="sr-only">
-      <li v-for="point in points" :key="point.period">Period {{ point.period }}: mean improvement {{ relativeImprovement(point.improvement.mean, baseline) === null ? 'unavailable' : format(relativeImprovement(point.improvement.mean, baseline)!) }}</li>
+      <li v-for="(point, index) in points" :key="point.period">Period {{ point.period }}: mean improvement {{ means[index] === null || means[index] === undefined ? 'unavailable' : format(means[index]!) }}</li>
     </ol>
   </figure>
 </template>
