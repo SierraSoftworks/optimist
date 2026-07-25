@@ -77,6 +77,11 @@ impl CompiledRelation {
         }
     }
 
+    /// Reports which states this equation reads, so baselines can settle in order.
+    pub(super) fn parent_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.parents.values().copied()
+    }
+
     /// Records a parent's value for this period, ignoring names it cannot bind.
     ///
     /// A relationship may reach a state that has no relation, or reach one from a

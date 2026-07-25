@@ -810,6 +810,99 @@ mod tests {
         assert!((objective.improvement.mean.unwrap() - 60.0).abs() < 1e-12);
     }
 
+    /// Derives an equation-backed baseline from the equation, not the estimate.
+    ///
+    /// The fixture stores a deliberately stale current value on the outcome and
+    /// on the metric between it and the root. Both equations must be settled in
+    /// dependency order for the objective to read the root's 4 through the chain,
+    /// and improvement must stay at zero: nothing intervenes, so a baseline drawn
+    /// from anything other than the equation would manufacture a difference.
+    #[test]
+    fn an_equation_baseline_settles_through_a_chain_of_equations() {
+        let (mut scenario, mut nodes, _, revision) = point_fixture(3);
+        nodes.pop();
+        let root = measured(
+            3,
+            "outage_frequency",
+            "Outage frequency",
+            Unit::base("outage").unwrap(),
+            4.0,
+        );
+        let mut middle = measured(
+            4,
+            "weekly_outages",
+            "Weekly outages",
+            Unit::base("outage").unwrap(),
+            999.0,
+        );
+        let NodePayload::Metric(metric) = &mut middle.payload else {
+            panic!("expected a metric")
+        };
+        *metric = metric.clone().with_relation(Some(
+            StateRelation::new("outage_frequency".to_owned(), Default::default()).unwrap(),
+        ));
+        let mut impact = Node::new(
+            EntityId::new(5),
+            "customer_impact",
+            "Customer impact",
+            NodePayload::Outcome(Outcome {
+                direction: OutcomeDirection::Minimize,
+                evidence: vec![],
+            }),
+        )
+        .unwrap();
+        impact.native_state = Some(
+            QuantityState::new(
+                QuantityDefinition::with_dimension(
+                    "outages",
+                    Some(Unit::base("outage").unwrap()),
+                    None,
+                    QuantitySupport::NonNegative,
+                )
+                .unwrap(),
+                Some(estimate::<QuantityValue>(0, 999.0)),
+                None,
+            )
+            .unwrap()
+            .with_relation(Some(
+                StateRelation::new("weekly_outages".to_owned(), Default::default()).unwrap(),
+            )),
+        );
+        let link = |source: EntityId, source_kind, destination: EntityId, destination_kind| {
+            Edge::new(
+                source,
+                source_kind,
+                destination,
+                destination_kind,
+                EdgePayload::Contributes(CausalEffect::proportional(
+                    estimate::<Elasticity>(0, 1.0),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
+            )
+            .unwrap()
+        };
+        let edges = vec![
+            link(root.id, NodeKind::Metric, middle.id, NodeKind::Metric),
+            link(middle.id, NodeKind::Metric, impact.id, NodeKind::Outcome),
+        ];
+        scenario.draft.objectives = vec![ScenarioObjective {
+            outcome_id: impact.id,
+            direction: UtilityDirection::Minimize,
+            importance: 1.0,
+        }];
+        nodes.extend([root, middle, impact]);
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let objective = &result.candidates[0].objectives[0];
+        assert!(
+            (objective.baseline.mean.unwrap() - 4.0).abs() < 1e-12,
+            "the baseline must come from the equations, not the stale estimates"
+        );
+        assert!(objective.improvement.mean.unwrap().abs() < 1e-12);
+    }
+
     /// Builds a metric with a native unit and a point-mass current estimate.
     fn measured(id: u64, name: &str, title: &str, unit: Unit, value: f64) -> Node {
         Node::new(

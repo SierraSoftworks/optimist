@@ -5,6 +5,7 @@ use rand_chacha::ChaCha20Rng;
 
 use super::effect_activation::{self, SampledEffectProfile};
 use super::scenario_analysis_accumulator::Accumulator;
+use super::scenario_analysis_baseline;
 use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
 use super::{Scenario, ScenarioAnalysisError, UtilityDirection};
 use crate::squiggle::Runtime;
@@ -41,11 +42,24 @@ pub(super) fn draw(
     runtime: &mut Runtime,
 ) -> Result<ScenarioDraw, ScenarioAnalysisError> {
     let coupled = graph.coupling.draw(rng);
-    let baselines = graph
+    let mut baselines = graph
         .states
         .iter()
         .map(|state| state.baseline.sample(rng, &coupled))
         .collect::<Vec<_>>();
+    let parameters = graph
+        .states
+        .iter()
+        .map(|state| {
+            state
+                .relation
+                .as_ref()
+                .map(|relation| relation.sample_parameters(rng))
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    scenario_analysis_baseline::settle(&graph.states, &mut baselines, &parameters, runtime)?;
+    let baselines = baselines;
     if baselines.iter().any(|value| !value.is_finite()) {
         return Err(ScenarioAnalysisError::NonFiniteResult);
     }
@@ -118,17 +132,6 @@ pub(super) fn draw(
             })
         })
         .collect::<Result<Vec<_>, ScenarioAnalysisError>>()?;
-    let parameters = graph
-        .states
-        .iter()
-        .map(|state| {
-            state
-                .relation
-                .as_ref()
-                .map(|relation| relation.sample_parameters(rng))
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>();
     let mut history = vec![baselines.clone()];
     let mut clamped_state_updates = 0_u64;
     let mut undefined_responses = 0_u64;

@@ -107,7 +107,7 @@ Parents are bound by node name, at the value they held one relationship lag ago.
 baseline * (1 - suppression * code_yellow)
 ```
 
-An equation **replaces** proportional composition for the state that owns it. The incoming responses no longer scale anything; the relationships still declare which parents exist and how far they lag, and intervention effects still supply their activation, but the magnitudes come from the equation.
+An equation **replaces** proportional composition for the state that owns it. The incoming responses no longer scale anything; the relationships still declare which parents exist and how far they lag, and intervention effects still supply their activation, but the magnitudes come from the equation. It replaces the state's baseline too: the value the analysis compares against is the equation with every parent at rest, not the authored current estimate. Keep that estimate as your independent reading of the quantity — where it disagrees with the equation, one of the two is wrong.
 
 Three things are checked before an equation is stored:
 
