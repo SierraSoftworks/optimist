@@ -242,7 +242,7 @@ fn wrapped_source(source: &str, unit: &Unit) -> String {
     )
 }
 
-fn squiggle_unit(unit: &Unit) -> String {
+pub(super) fn squiggle_unit(unit: &Unit) -> String {
     let mut numerator = Vec::new();
     let mut denominator = Vec::new();
     for (name, exponent) in unit.terms() {

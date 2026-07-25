@@ -32,6 +32,7 @@ mod propagation;
 mod quantile_fit;
 mod quantity;
 mod quantity_state;
+mod relation_program;
 pub use analysis::{
     AnalysisError, AnalysisLimits, AnalysisRevisionKey, ElementaryCycle,
     StronglyConnectedComponent, StructuralAnalysis,
@@ -92,6 +93,7 @@ pub use propagation::PropagationError;
 pub use quantiles::{FitDiagnostics, FittedDistribution, QuantileElicitation, QuantileFitError};
 pub use quantity::{QuantityDefinition, QuantityError, QuantitySupport};
 pub use quantity_state::QuantityState;
+pub use relation_program::{RelationBindings, RelationError, RelationProgram, RelationSchema};
 pub use scenario::{
     ScalarPreference, Scenario, ScenarioBudget, ScenarioDraft, ScenarioObjective, UtilityDirection,
 };
