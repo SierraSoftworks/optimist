@@ -147,6 +147,20 @@ optimist --project A node quantity <NODE> \
 
 The `current` slot stores native current state. The `forecast` slot stores the native pre-intervention forecast.
 
+### Node equations
+
+Replace proportional composition for one state with authored arithmetic over its parents:
+
+```sh
+optimist --project A node relation <NODE> --source 'outage_frequency * impact_duration'
+optimist --project A node relation <NODE> \
+  --source 'baseline * (1 - suppression * code_yellow)' \
+  --parameters '{"suppression":{"quantity":{"unit":"ratio","dimension":{},"support":{"type":"bounded","lower":0,"upper":1}},"value":{"id":"A","revision":0,"source":{"type":"squiggle","definition":{"source":"beta(4, 2)","seed":42,"sample_count":256,"target_unit":{}}}}}}'
+optimist --project A node relation <NODE> --clear
+```
+
+Parents bind by node name, interventions reaching the state bind their activation, and `baseline` binds the state's own sampled baseline. Units, names, and result shape are checked before the equation is stored. See [Node equations](../guide/modelling.md#node-equations).
+
 ### Scenarios and dependence
 
 ```sh

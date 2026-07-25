@@ -47,6 +47,45 @@ source:
 
 The effective distribution, generated samples, moments, and quantiles are absent. Optimist reevaluates the source with the stored seed when runtime analysis needs them. Supported symbolic results remain analytical; composed distributions use deterministic in-memory draws only for the duration of analysis.
 
+## Node equations
+
+A factor or outcome stores its equation under `native_state.relation`; a metric stores it under `payload.properties.relation`. Both hold the authored source and the named coefficients it may reference:
+
+```yaml
+native_state:
+  quantity:
+    unit: minutes
+    dimension:
+      minute: 1
+    support:
+      type: non_negative
+  relation:
+    source: |-
+      perOutage :: 1/outage = 1
+      outage_frequency * ttm * perOutage
+    parameters:
+      suppression:
+        quantity:
+          unit: ratio
+          dimension: {}
+          support:
+            type: bounded
+            lower: 0.0
+            upper: 1.0
+        value:
+          id: A
+          revision: 0
+          source:
+            type: squiggle
+            definition:
+              source: beta(4, 2)
+              seed: 42
+              sample_count: 256
+              target_unit: {}
+```
+
+The names an equation may bind are derived from the graph rather than stored beside it, so the document holds no copy of the parents to fall out of date. That also means an equation is **not** compiled while a project is being read: the parents live in other files, and the graph is not assembled until every document has been parsed. Source bounds and parameter names are checked on load; units, names, and result shape are checked whenever the equation is written through a command and again when a projection runs.
+
 ## Validation
 
 The parser:
