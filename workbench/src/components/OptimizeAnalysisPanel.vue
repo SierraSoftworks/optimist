@@ -119,6 +119,7 @@ function percentagePoints(value: number | null) {
             <div><dt>Valid draws</dt><dd>{{ candidate.diagnostics.valid_samples }} / {{ candidate.diagnostics.attempted_samples }}</dd></div>
             <div><dt>Invalid draws</dt><dd>{{ invalidSamples(candidate) }}</dd></div>
             <div><dt>Clamped updates</dt><dd>{{ candidate.clamped_state_updates }}</dd></div>
+            <div v-if="candidate.undefined_responses" class="negative"><dt>Undefined responses</dt><dd>{{ candidate.undefined_responses }}</dd></div>
             <div><dt>Seed</dt><dd>{{ candidate.diagnostics.seed }}</dd></div>
           </dl>
           <div v-if="candidate.prerequisites.length || candidate.blocking_requirements.length || candidate.synergies.length || candidate.conflicts.length" class="execution-context">

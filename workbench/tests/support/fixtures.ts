@@ -124,7 +124,7 @@ export function interventionNode(
   } as unknown as GraphNode
 }
 
-/** Builds a `contributes` or `changes` relationship with a unit-aware response. */
+/** Builds a `contributes` or `changes` relationship with a dimensionless response. */
 export function causalEdge(
   source: string,
   sourceKind: string,
@@ -149,12 +149,7 @@ export function causalEdge(
     payload: {
       kind,
       properties: {
-        response: {
-          source_change: 1,
-          source_unit: STATE_UNIT,
-          destination_change: pointEstimate('A', options.response ?? 0.5),
-          destination_unit: STATE_UNIT,
-        },
+        response: pointEstimate('A', options.response ?? 0.5),
         transience: null,
         lag: null,
         mechanism: options.mechanism ?? '',

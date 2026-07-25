@@ -29,7 +29,7 @@ describe('edge authoring', () => {
     expect(endpointsAreValid('conflicts_with', 'intervention', 'factor')).toBe(false)
   })
 
-  it('constructs unit-aware counterfactual responses for metric endpoints', () => {
+  it('constructs dimensionless elasticities across unrelated endpoint units', () => {
     const source = {
       id: 'A', revision: 0, name: 'flow', normalized_name: 'flow', title: 'Flow',
       description: '', aliases: [], metadata: {},
@@ -44,23 +44,19 @@ describe('edge authoring', () => {
     expect(edgePayload({
       kind: 'contributes', effect: 0, lag: null, mechanism: 'Flow reduces delay', evidence: '',
       polarity: 'higher_is_better', hard: true, threshold: null,
-      source, destination, sourceChange: 0.1, destinationChange: -2,
+      source, destination, response: -0.5,
     })).toMatchObject({
       kind: 'contributes',
       properties: {
         response: {
-          source_change: 0.1,
-          source_unit: {},
-          destination_change: {
-            source: { definition: { source: 'pointMass(-2)', target_unit: { day: 1 } } },
-          },
-          destination_unit: { day: 1 },
+          id: 'A',
+          source: { definition: { source: 'pointMass(-0.5)', target_unit: {} } },
         },
       },
     })
   })
 
-  it('constructs a unit-aware intervention shift for a metric', () => {
+  it('constructs an intervention multiplier from an assessed estimate', () => {
     const source = {
       id: 'A', revision: 0, name: 'automation', normalized_name: 'automation', title: 'Automation',
       description: '', aliases: [], metadata: {},
@@ -71,29 +67,24 @@ describe('edge authoring', () => {
       description: '', aliases: [], metadata: {},
       payload: { kind: 'metric', properties: { quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null } } },
     } as GraphNode
-    const destinationEstimate = {
-      id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 },
+    const responseEstimate = {
+      id: 'A', revision: 0, distribution: { type: 'point' as const, value: 0.6 },
       source: {
         type: 'squiggle' as const,
-        definition: { source: 'pointMass(-2)', seed: 42, sample_count: 256, target_unit: { day: 1 } },
+        definition: { source: 'pointMass(0.6)', seed: 42, sample_count: 256, target_unit: {} },
       },
       provenance: [],
     }
     expect(edgePayload({
       kind: 'changes', effect: 0, lag: null, mechanism: 'Automation reduces delay', evidence: '',
       polarity: 'higher_is_better', hard: true, threshold: null,
-      source, destination, sourceChange: 1, destinationEstimate,
+      source, destination, responseEstimate,
     })).toMatchObject({
       kind: 'changes',
       properties: {
         response: {
-          source_change: 1,
-          source_unit: {},
-          destination_change: {
-            id: 'A',
-            source: destinationEstimate.source,
-          },
-          destination_unit: { day: 1 },
+          id: 'A',
+          source: responseEstimate.source,
         },
       },
     })

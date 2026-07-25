@@ -15,43 +15,33 @@ describe('edgePresentation', () => {
     expect(edgeMetadataLabel(edge)).toBe('mean degree 0.75')
   })
 
-  it('summarizes a destination response', () => {
+  it('summarizes a proportional elasticity', () => {
     const edge = {
       payload: {
         kind: 'contributes',
         properties: {
-          response: {
-            source_change: 0.1,
-            source_unit: {},
-            destination_change: { distribution: { type: 'point', value: -2 } },
-            destination_unit: { day: 1 },
-          },
+          response: { distribution: { type: 'point', value: -0.5 } },
           lag: null,
           mechanism: '',
           evidence: [],
         },
       },
     } as unknown as GraphEdge
-    expect(edgeMetadataLabel(edge)).toBe('mean response -2.00')
+    expect(edgeMetadataLabel(edge)).toBe('mean elasticity -0.50')
   })
 
-  it('summarizes empirical Squiggle responses from retained draws', () => {
+  it('summarizes empirical Squiggle multipliers from retained draws', () => {
     const edge = {
       payload: {
         kind: 'changes',
         properties: {
-          response: {
-            source_change: 1,
-            source_unit: {},
-            destination_change: { distribution: { type: 'empirical', samples: [-3, -2, -1] } },
-            destination_unit: { day: 1 },
-          },
+          response: { distribution: { type: 'empirical', samples: [0.1, 0.2, 0.3] } },
           lag: null,
           mechanism: '',
           evidence: [],
         },
       },
     } as unknown as GraphEdge
-    expect(edgeMetadataLabel(edge)).toBe('mean response -2.00')
+    expect(edgeMetadataLabel(edge)).toBe('mean multiplier ×0.20')
   })
 })

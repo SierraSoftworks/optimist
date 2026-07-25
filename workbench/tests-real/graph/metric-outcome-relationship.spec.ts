@@ -11,7 +11,6 @@ test('creates a Squiggle-authored metric-to-outcome contribution', async ({ page
   await form.getByRole('combobox').first().selectOption('contributes')
   await form.getByRole('group', { name: 'Source' }).getByText('Deployment frequency', { exact: true }).click()
   await form.getByRole('group', { name: 'Target' }).getByText('Customer impact', { exact: true }).click()
-  await form.getByLabel(/Source change/).fill('2')
   await form.getByLabel('Squiggle source').fill('pointMass(0.1)')
   await expect(form.getByText(/Validated/)).toBeVisible()
 
@@ -24,7 +23,7 @@ test('creates a Squiggle-authored metric-to-outcome contribution', async ({ page
   const response = await command
   expect(response.status()).toBe(201)
   const body = response.request().postDataJSON()
-  const estimate = body.command.payload.payload.properties.response.destination_change
+  const estimate = body.command.payload.payload.properties.response
   expect(estimate).not.toHaveProperty('distribution')
   expect(estimate.source.definition).toMatchObject({
     source: 'pointMass(0.1)',

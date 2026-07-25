@@ -1,6 +1,6 @@
 import { expect, mockApi, test, type FixtureState } from '../support/mock-api'
 
-const rejection = 'Failed to deserialize the JSON body into the target type: command.payload.payload.properties.response.destination_change.distribution: unknown field `distribution`, expected one of `id`, `revision`, `quantity`, `source`, `provenance`, `uncertainty` at line 1 column 320'
+const rejection = 'Failed to deserialize the JSON body into the target type: command.payload.payload.properties.response.distribution: unknown field `distribution`, expected one of `id`, `revision`, `quantity`, `source`, `provenance`, `uncertainty` at line 1 column 320'
 
 test('presents relationship contract failures with recovery guidance', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop relationship toolbar workflow')
@@ -50,6 +50,6 @@ test('presents relationship contract failures with recovery guidance', async ({ 
   const alert = page.getByRole('alert')
   await expect(alert).toContainText('The server rejected the “distribution” field in the submitted relationship estimate.')
   await expect(alert).toContainText('Refresh the page before retrying')
-  await expect(alert).toContainText('destination_change.distribution')
+  await expect(alert).toContainText('response.distribution')
   await expect(form).toBeVisible()
 })

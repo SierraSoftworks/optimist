@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { GraphEdge, Unit } from '../api/types'
+import type { GraphEdge } from '../api/types'
 import { effectProfileValid, type EffectProfileForm } from '../domain/effectProfile'
-import { formatUnitExpression } from '../domain/unitExpression'
 import EffectProfilePreview from './EffectProfilePreview.vue'
 
 const props = defineProps<{ form: EffectProfileForm; edge: GraphEdge; pending: boolean }>()
 const emit = defineEmits<{ save: [] }>()
 
-const destinationUnit = computed<Unit>(() =>
-  props.edge.payload.kind === 'changes' ? props.edge.payload.properties.response.destination_unit : {},
-)
 const valid = computed(() => effectProfileValid(props.form))
 const horizon = computed(
   () => props.form.ramp + props.form.hold + props.form.reboundHold + props.form.releaseSpan + 3,
@@ -62,7 +58,7 @@ const horizon = computed(
       </label>
       <div v-if="form.reboundEnabled" class="field-grid">
         <label>
-          Rebound movement ({{ formatUnitExpression(destinationUnit) }})
+          Rebound multiplier
           <input v-model.number="form.reboundMagnitude" type="number" step="any" />
         </label>
         <label>
@@ -71,8 +67,8 @@ const horizon = computed(
         </label>
       </div>
       <p class="form-note">
-        The rebound is a separate movement, not a share of the effect above, because a drained
-        backlog rarely returns exactly what was withheld.
+        The rebound is a separate multiplier, not a share of the effect above, because a drained
+        backlog rarely returns exactly what was withheld. 1 leaves the target at baseline.
       </p>
     </template>
     <EffectProfilePreview :form="form" :periods="horizon" />

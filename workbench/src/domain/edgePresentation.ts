@@ -26,10 +26,11 @@ export function distributionMean(distribution: Distribution) {
 
 export function edgeMetadataLabel(edge: GraphEdge) {
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    const distribution = edge.payload.properties.response.destination_change.distribution
+    const distribution = edge.payload.properties.response.distribution
     if (!distribution) return 'Squiggle response'
     const mean = distributionMean(distribution)
-    return `mean response ${mean >= 0 ? '+' : ''}${mean.toFixed(2)}`
+    if (edge.payload.kind === 'changes') return `mean multiplier ×${mean.toFixed(2)}`
+    return `mean elasticity ${mean >= 0 ? '+' : ''}${mean.toFixed(2)}`
   }
   if (edge.payload.kind === 'blocks') {
     const distribution = edge.payload.properties.degree.distribution

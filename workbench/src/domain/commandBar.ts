@@ -6,7 +6,7 @@ import type {
   NodeKind,
 } from '../api/types'
 import type { WorkbenchMode } from '../stores/workbench'
-import { edgePayload, endpointsAreValid, nodeUnit } from './edgeAuthoring'
+import { edgePayload, endpointsAreValid } from './edgeAuthoring'
 import { normalizedEdgeKind, resolveCommandNode, tokenizeCommand } from './commandBarSyntax'
 import { parseUnitExpression } from './unitExpression'
 export { commandSuggestions, type CommandSuggestion } from './commandBarSuggestions'
@@ -122,16 +122,16 @@ export function parseCommand(input: string, nodes: GraphNode[], edges: GraphEdge
       edge.source === source.id && edge.destination === destination.id && edge.payload.kind === kind,
     )) return error('That relationship already exists.')
     const causal = kind === 'contributes' || kind === 'changes'
-    const sourceChange = causal ? Number(args[3]) : undefined
-    const destinationChange = causal ? Number(args[4]) : undefined
-    if (causal && (args[3] === undefined || args[4] === undefined)) {
-      return hint('Provide source change and destination change for this response.')
+    const response = causal ? Number(args[3]) : undefined
+    if (causal && args[3] === undefined) {
+      return hint(
+        kind === 'changes'
+          ? 'Provide the multiplier this intervention applies while active.'
+          : 'Provide the elasticity of the destination to the source.',
+      )
     }
-    if (causal && (!Number.isFinite(sourceChange) || sourceChange === 0 || !Number.isFinite(destinationChange))) {
-      return error('Response changes must be finite and source change cannot be zero.')
-    }
-    if (causal && (!nodeUnit(source) || !nodeUnit(destination))) {
-      return error('Both causal endpoints require canonical quantity dimensions.')
+    if (causal && !Number.isFinite(response)) {
+      return error('A proportional response must be a finite number.')
     }
     const effect = kind === 'blocks' ? (args[3] === undefined ? 0.5 : Number(args[3])) : 0
     if (kind === 'blocks' && (!Number.isFinite(effect) || effect < 0 || effect > 1)) {
@@ -153,8 +153,7 @@ export function parseCommand(input: string, nodes: GraphNode[], edges: GraphEdge
           threshold: null,
           source,
           destination,
-          sourceChange,
-          destinationChange,
+          response,
         }),
       },
     })
@@ -188,8 +187,10 @@ export function commandPreview(command: WorkbenchCommand): Array<[string, string
       ['Kind', payload.kind.replaceAll('_', ' ')],
     ]
     if (payload.kind === 'contributes' || payload.kind === 'changes') {
-      preview.push(['Source change', String(payload.properties.response.source_change)])
-      preview.push(['Destination change', estimatePreview(payload.properties.response.destination_change)])
+      preview.push([
+        payload.kind === 'changes' ? 'Multiplier' : 'Elasticity',
+        estimatePreview(payload.properties.response),
+      ])
     }
     if (payload.kind === 'blocks') {
       preview.push(['Degree', estimatePreview(payload.properties.degree)])

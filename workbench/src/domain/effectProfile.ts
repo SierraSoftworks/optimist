@@ -16,6 +16,10 @@ export type ReleaseShape = 'immediate' | 'linear' | 'exponential'
  * Durations are whole planning periods here because the editor authors point
  * masses. The wire format keeps full Squiggle programs, so uncertain schedules
  * remain expressible without changing this shape.
+ *
+ * `reboundMagnitude` is a dimensionless multiplier applied while the rebound
+ * runs, so `1` is no rebound at all and `1.25` returns a quarter more than
+ * baseline for its window.
  */
 export interface EffectProfileForm {
   enabled: boolean
@@ -36,7 +40,7 @@ export function emptyEffectProfileForm(): EffectProfileForm {
     release: 'immediate',
     releaseSpan: 1,
     reboundEnabled: false,
-    reboundMagnitude: 0,
+    reboundMagnitude: 1.25,
     reboundHold: 1,
   }
 }
@@ -67,10 +71,7 @@ function releaseInput(form: EffectProfileForm): EffectReleaseInput {
  * with no ramp, no hold, and no rebound restores the unshaped effect rather than
  * sending a shape the server would reject.
  */
-export function effectProfileInput(
-  form: EffectProfileForm,
-  destinationUnit: Unit,
-): EffectProfileInput | null {
+export function effectProfileInput(form: EffectProfileForm): EffectProfileInput | null {
   if (!form.enabled) return null
   const ramp = form.ramp > 0 ? periodsDefinition(form.ramp) : null
   const hold = periodsDefinition(form.hold)
@@ -86,7 +87,7 @@ export function effectProfileInput(
         source: `pointMass(${form.reboundMagnitude})`,
         seed: 42,
         sample_count: 256,
-        target_unit: destinationUnit,
+        target_unit: {},
       },
       hold: periodsDefinition(form.reboundHold),
       release: { type: 'immediate' },

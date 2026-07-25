@@ -253,8 +253,6 @@ export async function mockApi(page: Page, state: FixtureState) {
         if (command.command.type === 'set_effect_profile') {
           properties.transience = transience(input.profile)
         } else {
-          const response = properties.response as { source_change: number }
-          response.source_change = input.source_change
           properties.mechanism = input.mechanism
           properties.evidence = input.evidence
         }

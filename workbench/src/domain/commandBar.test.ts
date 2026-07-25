@@ -24,26 +24,26 @@ describe('command bar grammar', () => {
   })
 
   it('validates relationship endpoints, values, and duplicates', () => {
-    expect(parseCommand('connect A changes B 1 0.4', nodes, []).command).toMatchObject({
+    expect(parseCommand('connect A changes B 0.4', nodes, []).command).toMatchObject({
       type: 'create_edge',
       input: { source: 'A', destination: 'B', payload: { kind: 'changes' } },
     })
-    expect(commandPreview(parseCommand('connect A changes B 1 0.4', nodes, []).command!))
-      .toContainEqual(['Destination change', '0.4'])
-    expect(parseCommand('connect B changes A 1 0.4', nodes, []).diagnostic.severity).toBe('error')
-    expect(parseCommand('connect A changes B 0 2', nodes, []).diagnostic.message).toContain('cannot be zero')
+    expect(commandPreview(parseCommand('connect A changes B 0.4', nodes, []).command!))
+      .toContainEqual(['Multiplier', '0.4'])
+    expect(parseCommand('connect B changes A 0.4', nodes, []).diagnostic.severity).toBe('error')
+    expect(parseCommand('connect A changes B nonsense', nodes, []).diagnostic.message).toContain('finite number')
     expect(parseCommand('connect A changes B', nodes, [{ source: 'A', destination: 'B', payload: { kind: 'changes' } } as GraphEdge]).diagnostic.message).toContain('already exists')
   })
 
-  it('requires counterfactual changes for metric causal relationships', () => {
+  it('connects causal relationships across unrelated endpoint units', () => {
     const metric = {
       id: 'C', revision: 0, name: 'cycle_time', normalized_name: 'cycle_time', title: 'Cycle time',
       description: '', aliases: [], metadata: {},
       payload: { kind: 'metric', properties: { quantity: { unit: 'days', dimension: { day: 1 }, aggregation: null } } },
     } as GraphNode
     const graph = [...nodes, metric]
-    expect(parseCommand('connect B contributes C', graph, []).diagnostic.message).toContain('source change')
-    const result = parseCommand('connect B contributes C 0.1 -2', graph, [])
+    expect(parseCommand('connect B contributes C', graph, []).diagnostic.message).toContain('elasticity')
+    const result = parseCommand('connect B contributes C -0.5', graph, [])
     expect(result.command).toMatchObject({
       type: 'create_edge',
       input: {
@@ -51,18 +51,14 @@ describe('command bar grammar', () => {
           kind: 'contributes',
           properties: {
             response: {
-              source_change: 0.1,
-              source_unit: {},
-              destination_change: {
-                source: { definition: { source: 'pointMass(-2)', target_unit: { day: 1 } } },
-              },
-              destination_unit: { day: 1 },
+              id: 'A',
+              source: { definition: { source: 'pointMass(-0.5)', target_unit: {} } },
             },
           },
         },
       },
     })
-    expect(commandPreview(result.command!)).toContainEqual(['Destination change', '-2'])
+    expect(commandPreview(result.command!)).toContainEqual(['Elasticity', '-0.5'])
   })
 
   it('provides context-aware suggestions and previews', () => {

@@ -68,7 +68,6 @@ export async function addRelationship(
   await form.locator(`input[name="relationship-source"][value="${source}"]`).locator('..').click()
   await form.locator(`input[name="relationship-destination"][value="${destination}"]`).locator('..').click()
   if (kind === 'contributes' || kind === 'changes') {
-    await form.getByLabel(/Source change|Intervention activation/).fill('1')
     await form.getByLabel('Squiggle source').fill(`pointMass(${options.effect ?? 0.5})`)
     await expect(form.getByText(/Validated/)).toBeVisible()
   } else if (kind === 'blocks') {

@@ -121,7 +121,7 @@ function nextInterventionEstimateId(node: GraphNode) {
 
 function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    if (slot.kind === 'response') return edge.payload.properties.response.destination_change
+    if (slot.kind === 'response') return edge.payload.properties.response
     if (slot.kind === 'lag') return edge.payload.properties.lag
   }
   if (edge.payload.kind === 'blocks' && slot.kind === 'degree') {
@@ -133,7 +133,7 @@ function edgeEstimate(edge: GraphEdge, slot: EdgeEstimateSlot) {
 function nextEdgeEstimateId(edge: GraphEdge) {
   const used = new Set<string>()
   if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-    used.add(edge.payload.properties.response.destination_change.id)
+    used.add(edge.payload.properties.response.id)
     if (edge.payload.properties.lag) used.add(edge.payload.properties.lag.id)
   } else if (edge.payload.kind === 'blocks') {
     used.add(edge.payload.properties.degree.id)
@@ -234,7 +234,7 @@ function deserializeRejection(value: string) {
   return {
     path,
     field: match[2]!,
-    subject: path.includes('response.destination_change')
+    subject: path.includes('properties.response')
       ? 'relationship estimate'
       : 'change',
   }

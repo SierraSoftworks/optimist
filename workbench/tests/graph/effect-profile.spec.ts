@@ -39,23 +39,18 @@ function state(): FixtureState {
           kind: 'changes',
           properties: {
             response: {
-              source_change: 1,
-              source_unit: {},
-              destination_change: {
-                id: 'A',
-                revision: 0,
-                source: {
-                  type: 'squiggle',
-                  definition: {
-                    source: 'pointMass(-200)',
-                    seed: 42,
-                    sample_count: 256,
-                    target_unit: CHANGE_RATE_UNIT,
-                  },
+              id: 'A',
+              revision: 0,
+              source: {
+                type: 'squiggle',
+                definition: {
+                  source: 'pointMass(0.1)',
+                  seed: 42,
+                  sample_count: 256,
+                  target_unit: {},
                 },
-                provenance: [],
               },
-              destination_unit: CHANGE_RATE_UNIT,
+              provenance: [],
             },
             lag: null,
             mechanism: '',
@@ -83,7 +78,7 @@ test('time-boxes an intervention effect and records its rebound', async ({ page 
   await dialog.getByLabel('Time-box this intervention').check()
   await dialog.getByLabel('Hold (periods)').fill('2')
   await dialog.getByLabel('Ending this intervention has its own effect').check()
-  await dialog.getByLabel(/Rebound movement/).fill('120')
+  await dialog.getByLabel('Rebound multiplier').fill('1.25')
   await dialog.getByLabel('Rebound holds for (periods)').fill('1')
 
   // The preview must show the pulse and its rebound before anything is saved.
@@ -105,13 +100,13 @@ test('time-boxes an intervention effect and records its rebound', async ({ page 
     }
   }).properties
   expect(properties.transience?.profile.hold.source.definition.source).toBe('pointMass(2)')
-  expect(properties.transience?.rebound.source.definition.source).toBe('pointMass(120)')
+  expect(properties.transience?.rebound.source.definition.source).toBe('pointMass(1.25)')
 
   // Reopening must recover the authored shape rather than resetting the form.
   await dialog.getByRole('button', { name: 'Close' }).click()
   await page.getByRole('button', { name: 'Edit focused relationship A changes B' }).click()
   await expect(dialog.getByLabel('Hold (periods)')).toHaveValue('2')
-  await expect(dialog.getByLabel(/Rebound movement/)).toHaveValue('120')
+  await expect(dialog.getByLabel('Rebound multiplier')).toHaveValue('1.25')
 })
 
 test('records the reviewable claim behind a relationship', async ({ page }, testInfo) => {
@@ -125,7 +120,6 @@ test('records the reviewable claim behind a relationship', async ({ page }, test
   await page.getByRole('button', { name: 'Edit focused relationship A changes B' }).click()
 
   const dialog = page.getByRole('dialog', { name: 'Edit relationship' })
-  await dialog.getByLabel(/Intervention activation/).fill('2')
   await dialog.getByLabel('Mechanism').fill('A freeze suppresses the defect inflow.')
   await dialog.getByLabel('Evidence').fill('2026-Q2 retrospective\nIncident review 4831')
   await dialog.getByRole('button', { name: 'Save claim' }).click()
@@ -134,9 +128,8 @@ test('records the reviewable claim behind a relationship', async ({ page }, test
     .poll(() => fixture.edges[0]!.revision, { message: 'the claim must reach the server' })
     .toBe(1)
   const properties = (fixture.edges[0]!.payload as {
-    properties: { response: { source_change: number }; mechanism: string; evidence: string[] }
+    properties: { mechanism: string; evidence: string[] }
   }).properties
-  expect(properties.response.source_change).toBe(2)
   expect(properties.mechanism).toBe('A freeze suppresses the defect inflow.')
   expect(properties.evidence).toEqual(['2026-Q2 retrospective', 'Incident review 4831'])
 })

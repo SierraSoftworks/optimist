@@ -58,7 +58,7 @@ describe('CreateEdgeDialog', () => {
     wrapper.unmount()
   })
 
-  it('does not evaluate a response before the target unit is available', async () => {
+  it('evaluates a dimensionless response before a target is chosen', async () => {
     vi.useFakeTimers()
     const wrapper = mount(CreateEdgeDialog, {
       props: {
@@ -70,11 +70,11 @@ describe('CreateEdgeDialog', () => {
 
     await vi.advanceTimersByTimeAsync(300)
     await flushPromises()
-    expect(api.assessSquiggle).not.toHaveBeenCalled()
-
-    await vi.advanceTimersByTimeAsync(300)
-    await flushPromises()
-    expect(api.assessSquiggle).not.toHaveBeenCalled()
+    expect(api.assessSquiggle).toHaveBeenCalledWith(
+      'A',
+      expect.objectContaining({ target_unit: {} }),
+      'real',
+    )
     wrapper.unmount()
   })
 

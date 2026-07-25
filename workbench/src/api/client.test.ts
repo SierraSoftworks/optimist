@@ -246,7 +246,7 @@ describe('Optimist API client', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         new Response(
-          'Failed to deserialize the JSON body into the target type: command.payload.payload.properties.response.destination_change.distribution: unknown field `distribution`, expected one of `id`, `revision`, `quantity`, `source`, `provenance`, `uncertainty` at line 1 column 320',
+          'Failed to deserialize the JSON body into the target type: command.payload.payload.properties.response.distribution: unknown field `distribution`, expected one of `id`, `revision`, `quantity`, `source`, `provenance`, `uncertainty` at line 1 column 320',
           { status: 422, headers: { 'Content-Type': 'text/plain' } },
         ),
       ),
@@ -258,7 +258,7 @@ describe('Optimist API client', () => {
       message: 'The server rejected the “distribution” field in the submitted relationship estimate. The workbench and server data formats may be out of sync.',
       advice: [
         'Refresh the page before retrying so the workbench matches the running server.',
-        expect.stringContaining('destination_change.distribution'),
+        expect.stringContaining('response.distribution'),
       ],
     })
   })
@@ -849,7 +849,7 @@ describe('Optimist API client', () => {
       source: 'A', source_kind: 'factor' as const, destination: 'B', destination_kind: 'outcome' as const,
       revision: 0, description: '', metadata: {},
       payload: { kind: 'contributes' as const, properties: {
-        response: { source_change: 1, source_unit: {}, destination_change: response, destination_unit: {} },
+        response,
         lag, mechanism: '', evidence: [],
       } },
     }
@@ -887,18 +887,15 @@ describe('Optimist API client', () => {
     })
   })
 
-  it('replaces a native destination response estimate', async () => {
-    const destinationChange = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: -2 }, source: pointSource(-2, { day: 1 }) }
+  it('replaces a dimensionless proportional response estimate', async () => {
+    const response = { id: 'A', revision: 0, distribution: { type: 'point' as const, value: -0.5 }, source: pointSource(-0.5) }
     const edge = {
       source: 'A', source_kind: 'factor' as const, destination: 'B', destination_kind: 'metric' as const,
       revision: 0, description: '', metadata: {},
       payload: {
         kind: 'contributes' as const,
         properties: {
-          response: {
-            source_change: 0.1, source_unit: {}, destination_change: destinationChange,
-            destination_unit: { day: 1 },
-          },
+          response,
           lag: null, mechanism: '', evidence: [],
         },
       },
@@ -910,14 +907,14 @@ describe('Optimist API client', () => {
         value: {
           address: { project: 'A', owner: { kind: 'edge', id: { source: 'A', kind: 'contributes', destination: 'B' } }, estimate: 'A' },
           slot: { kind: 'response' }, revision: 1,
-          distribution: { type: 'normal', mean: -2, standard_deviation: 0.5 }, provenance: [],
+          distribution: { type: 'normal', mean: -0.5, standard_deviation: 0.2 }, provenance: [],
         },
       },
     }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetch)
     vi.stubGlobal('crypto', { randomUUID: () => 'request' })
 
-    const definition = { source: 'normal(-2, 0.5)', seed: 42, sample_count: 256, target_unit: { day: 1 } }
+    const definition = { source: 'normal(-0.5, 0.2)', seed: 42, sample_count: 256, target_unit: {} }
     await api.setEdgeEstimate(project, edge, {
       slot: { kind: 'response' },
       source: { type: 'squiggle', definition },

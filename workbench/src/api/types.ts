@@ -192,7 +192,7 @@ export interface GraphEdge {
     | {
         kind: 'contributes' | 'changes'
         properties: {
-          response: LinearResponse
+          response: Estimate
           transience?: EffectTransience | null
           lag: Estimate | null
           mechanism: string
@@ -215,13 +215,6 @@ export interface GraphEdge {
         kind: Exclude<EdgeKind, 'contributes' | 'changes' | 'blocks' | 'measures'>
         properties?: Record<string, unknown>
       }
-}
-
-export interface LinearResponse {
-  source_change: number
-  source_unit: Unit
-  destination_change: Estimate
-  destination_unit: Unit
 }
 
 /** How a transient effect subsides once its hold window ends. */
@@ -406,6 +399,7 @@ export interface InterventionProjection {
   objectives: ObjectiveProjection[]
   improvement_covariance: Array<Array<number | null>>
   clamped_state_updates: number
+  undefined_responses: number
   diagnostics: MonteCarloDiagnostics
 }
 
@@ -518,7 +512,6 @@ export interface SetEffectProfileInput {
 }
 
 export interface UpdateCausalEffectInput {
-  source_change: number
   mechanism: string
   evidence: string[]
 }
@@ -527,7 +520,7 @@ export type EditableEdgePayload =
   | {
       kind: 'contributes' | 'changes'
       properties: {
-        response: LinearResponse
+        response: Estimate
         lag: Estimate | null
         mechanism: string
         evidence: string[]

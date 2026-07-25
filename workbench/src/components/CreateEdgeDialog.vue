@@ -29,7 +29,6 @@ const form = reactive({
   effect: 0.5, lagEnabled: false, lag: 0,
   polarity: 'higher_is_better' as 'higher_is_better' | 'lower_is_better' | 'target_range',
   hard: true, thresholdEnabled: false, threshold: 0.5,
-  sourceChange: 1, destinationChange: 1,
 })
 
 const validSources = computed(() => sourcesFor(props.kind, props.nodes))
@@ -44,15 +43,13 @@ const destination = computed(() => props.nodes.find((node) => node.id === props.
 const nativeCausal = causal
 const sourceUnit = computed(() => source.value ? nodeUnit(source.value) : null)
 const destinationUnit = computed(() => destination.value ? nodeUnit(destination.value) : null)
-const nativeUnitsReady = computed(() => !nativeCausal.value || (sourceUnit.value !== null && destinationUnit.value !== null))
-const assessmentProjectId = computed(() => nativeUnitsReady.value ? props.projectId : null)
+const assessmentProjectId = computed(() => props.projectId)
 
 watch(() => props.open, (open) => {
   if (!open) return
   Object.assign(form, {
     effect: 0.5, lagEnabled: false, lag: 0,
     polarity: 'higher_is_better', hard: true, thresholdEnabled: false, threshold: 0.5,
-    sourceChange: 1, destinationChange: 1,
   })
   resetResponse()
 })
@@ -88,8 +85,8 @@ function changeDestination(destinationId: string) {
 
 function submit() {
   if (!source.value || !destination.value) return
-  const destinationEstimate = causal.value ? assessedResponse() : undefined
-  if (causal.value && !destinationEstimate) return
+  const responseEstimate = causal.value ? assessedResponse() : undefined
+  if (causal.value && !responseEstimate) return
   emit('submit', {
     source: props.sourceId,
     destination: props.destinationId,
@@ -104,9 +101,7 @@ function submit() {
       threshold: form.thresholdEnabled ? form.threshold : null,
       source: source.value,
       destination: destination.value,
-      sourceChange: form.sourceChange,
-      destinationChange: form.destinationChange,
-      destinationEstimate,
+      responseEstimate,
     }),
   })
 }
@@ -114,7 +109,7 @@ function submit() {
 function resetResponse() {
   responseAssessment.value = null
   responseValid.value = false
-  responseDefinition.value = squiggleDefinition('pointMass(1)', destinationUnit.value ?? {})
+  responseDefinition.value = squiggleDefinition('pointMass(1)', {})
 }
 
 function assessedResponse(): Estimate | undefined {
@@ -184,17 +179,25 @@ function assessedResponse(): Estimate | undefined {
         </div>
         <label v-if="kind === 'blocks'">Blocking degree on [0, 1]<input v-model.number="form.effect" type="number" min="0" max="1" step="0.05" required /></label>
         <section v-if="nativeCausal" class="native-response">
-          <header><strong>Counterfactual response</strong><span>Model destination movement for one source movement. This is a local response assumption, not causation inferred from correlation.</span></header>
-          <label>{{ kind === 'changes' ? 'Intervention activation' : 'Source change' }} ({{ sourceUnit ? formatUnitExpression(sourceUnit) : 'unit unavailable' }})<input v-model.number="form.sourceChange" type="number" step="any" required /></label>
+          <header>
+            <strong>{{ kind === 'changes' ? 'Intervention multiplier' : 'Proportional response' }}</strong>
+            <span v-if="kind === 'changes'">The factor this intervention multiplies its target by while fully active. 0.1 cuts it to a tenth, 1 leaves it unchanged, 1.25 raises it by a quarter. This is a local response assumption, not causation inferred from correlation.</span>
+            <span v-else>The elasticity of {{ destination?.title ?? 'the target' }} to {{ source?.title ?? 'the source' }}: doubling the source multiplies the target by 2 raised to this power. 1 is a plain product, 0 is no response, and negative values invert the direction. This is a local response assumption, not causation inferred from correlation.</span>
+          </header>
+          <p class="response-units">
+            <span>{{ sourceUnit ? formatUnitExpression(sourceUnit) : 'no declared unit' }}</span>
+            <span aria-hidden="true">→</span>
+            <span>{{ destinationUnit ? formatUnitExpression(destinationUnit) : 'no declared unit' }}</span>
+            <small>Ratios carry no unit, so the endpoints need not agree.</small>
+          </p>
           <SquiggleEstimateEditor
             v-model="responseDefinition"
             :project-id="assessmentProjectId"
             support="real"
-            :expected-unit="destinationUnit ?? {}"
+            :expected-unit="{}"
             @validity="responseValid = $event"
             @assessment="responseAssessment = $event"
           />
-          <p v-if="!nativeUnitsReady" class="form-error">Both endpoints need canonical unit terms before this relationship can be created.</p>
         </section>
         <template v-if="causal">
           <label class="checkbox-label"><input v-model="form.lagEnabled" type="checkbox" /> Include lag</label>
@@ -207,7 +210,7 @@ function assessedResponse(): Estimate | undefined {
           <label v-if="form.thresholdEnabled">Satisfaction threshold on [0, 1]<input v-model.number="form.threshold" type="number" min="0" max="1" step="0.05" required /></label>
         </template>
         <p v-if="validSources.length === 0" class="form-note">Add compatible endpoint node kinds for this relationship first.</p>
-        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !destination || !nativeUnitsReady || (nativeCausal && (!responseValid || form.sourceChange === 0))">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
+        <footer><button type="button" class="secondary-button" @click="emit('close')">Cancel</button><button type="submit" class="primary-button" :disabled="pending || !destination || (nativeCausal && !responseValid)">{{ pending ? 'Adding…' : 'Add relationship' }}</button></footer>
       </form>
     </div>
   </Teleport>
@@ -236,4 +239,6 @@ function assessedResponse(): Estimate | undefined {
 .native-response > header { display: grid; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .native-response > header strong { font-size: 14px; }
 .native-response > header span { color: var(--muted); font-size: 12px; line-height: 1.5; }
-</style>
+.response-units { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; color: var(--muted); font-size: 12px; }
+.response-units > span:not([aria-hidden]) { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 11px; }
+.response-units small { font-size: 11px; }</style>

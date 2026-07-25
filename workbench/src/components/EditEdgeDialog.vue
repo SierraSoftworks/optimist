@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { Pencil, Trash2, X } from '@lucide/vue'
 import type {
   Distribution,
@@ -17,7 +17,6 @@ import {
   emptyEffectProfileForm,
   type EffectProfileForm,
 } from '../domain/effectProfile'
-import { formatUnitExpression } from '../domain/unitExpression'
 import EffectProfileEditor from './EffectProfileEditor.vue'
 
 const props = defineProps<{ open: boolean; pending: boolean; edge: GraphEdge | null }>()
@@ -30,7 +29,7 @@ const emit = defineEmits<{
   claim: [input: UpdateCausalEffectInput]
 }>()
 const profile = reactive<EffectProfileForm>(emptyEffectProfileForm())
-const claim = reactive({ sourceChange: 1, mechanism: '', evidence: '' })
+const claim = reactive({ mechanism: '', evidence: '' })
 const calibration = reactive({
   enabled: false,
   stateZero: 0,
@@ -63,7 +62,6 @@ watch(
       Object.assign(profile, seedProfile(edge))
     }
     if (edge.payload.kind === 'contributes' || edge.payload.kind === 'changes') {
-      claim.sourceChange = edge.payload.properties.response.source_change
       claim.mechanism = edge.payload.properties.mechanism
       claim.evidence = edge.payload.properties.evidence.join('\n')
     }
@@ -71,14 +69,8 @@ watch(
   },
 )
 
-const claimValid = computed(
-  () => Number.isFinite(claim.sourceChange) && claim.sourceChange !== 0,
-)
-
 function saveClaim() {
-  if (!claimValid.value) return
   emit('claim', {
-    source_change: claim.sourceChange,
     mechanism: claim.mechanism,
     evidence: claim.evidence
       .split('\n')
@@ -113,7 +105,7 @@ function seedProfile(edge: GraphEdge): EffectProfileForm {
   if (transience.profile.aftereffect) {
     form.reboundEnabled = true
     form.reboundHold = periodsOf(transience.profile.aftereffect.hold) ?? 0
-    form.reboundMagnitude = periodsOf(transience.rebound) ?? 0
+    form.reboundMagnitude = periodsOf(transience.rebound) ?? 1
   }
   return form
 }
@@ -136,9 +128,7 @@ function periodsOf(estimate: Estimate | null | undefined): number | null {
 
 function saveProfile() {
   if (props.edge?.payload.kind !== 'changes') return
-  emit('profile', {
-    profile: effectProfileInput(profile, props.edge.payload.properties.response.destination_unit),
-  })
+  emit('profile', { profile: effectProfileInput(profile) })
 }
 
 function calibrationValue(): MeasurementCalibration | null {
@@ -195,8 +185,8 @@ function estimateLabel(value: Estimate) {
         </header>
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section">
           <div class="estimate-row">
-            <div><span>Counterfactual response</span><strong>{{ edge.payload.properties.response.source_change }} {{ formatUnitExpression(edge.payload.properties.response.source_unit) }} → {{ estimateLabel(edge.payload.properties.response.destination_change) }} {{ formatUnitExpression(edge.payload.properties.response.destination_unit) }}</strong></div>
-            <button type="button" class="icon-button" aria-label="Edit destination response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
+            <div><span>{{ edge.payload.kind === 'changes' ? 'Intervention multiplier' : 'Elasticity' }}</span><strong>{{ estimateLabel(edge.payload.properties.response) }}</strong></div>
+            <button type="button" class="icon-button" aria-label="Edit proportional response estimate" @click="emit('estimate', { kind: 'response' })"><Pencil :size="13" /></button>
           </div>
           <div class="estimate-row">
             <div><span>Lag</span><strong>{{ edge.payload.properties.lag ? estimateLabel(edge.payload.properties.lag) : 'Not set' }}</strong></div>
@@ -206,16 +196,16 @@ function estimateLabel(value: Estimate) {
         <section v-if="edge.payload.kind === 'contributes' || edge.payload.kind === 'changes'" class="dialog-section causal-claim">
           <header>
             <strong>Causal claim</strong>
-            <span>
-              A response is a modelling claim, not causation inferred from correlation. Record why
-              you believe it.
+            <span v-if="edge.payload.kind === 'changes'">
+              The multiplier says how far this intervention moves its target while active. It is a
+              modelling claim, not causation inferred from correlation. Record why you believe it.
+            </span>
+            <span v-else>
+              The elasticity says what fraction of the source's movement reaches the destination. It
+              is a modelling claim, not causation inferred from correlation. Record why you believe
+              it.
             </span>
           </header>
-          <label>
-            {{ edge.payload.kind === 'changes' ? 'Intervention activation' : 'Source change' }}
-            ({{ formatUnitExpression(edge.payload.properties.response.source_unit) }})
-            <input v-model.number="claim.sourceChange" type="number" step="any" />
-          </label>
           <label>
             Mechanism
             <textarea
@@ -232,11 +222,8 @@ function estimateLabel(value: Estimate) {
               placeholder="One reference per line"
             ></textarea>
           </label>
-          <p v-if="!claimValid" class="form-error">
-            A slope needs a finite, nonzero source change.
-          </p>
           <div class="dialog-actions">
-            <button type="button" class="secondary-button" :disabled="pending || !claimValid" @click="saveClaim">
+            <button type="button" class="secondary-button" :disabled="pending" @click="saveClaim">
               Save claim
             </button>
           </div>

@@ -67,9 +67,8 @@ interface PayloadInput {
   threshold: number | null
   source?: GraphNode
   destination?: GraphNode
-  sourceChange?: number
-  destinationChange?: number
-  destinationEstimate?: Estimate
+  response?: number
+  responseEstimate?: Estimate
 }
 
 function estimate(id: string, value: number) {
@@ -112,29 +111,16 @@ export function edgePayload(input: PayloadInput): EditableEdgePayload {
 }
 
 function causal(input: PayloadInput, kind: 'contributes' | 'changes'): EditableEdgePayload {
-  if (!input.source || !input.destination || !input.sourceChange) {
-    throw new Error('Native causal responses require a nonzero source change.')
-  }
-  const sourceUnit = nodeUnit(input.source)
-  const destinationUnit = nodeUnit(input.destination)
-  if (!sourceUnit || !destinationUnit) {
-    throw new Error('Native causal response endpoints require canonical unit terms.')
-  }
-  const destinationChange = input.destinationEstimate ? sourceOnly(input.destinationEstimate) : (
-    input.destinationChange === undefined
+  const response = input.responseEstimate
+    ? sourceOnly(input.responseEstimate)
+    : input.response === undefined
       ? null
-      : pointEstimate('A', input.destinationChange, destinationUnit)
-  )
-  if (!destinationChange) throw new Error('Native causal responses require a destination estimate.')
+      : pointEstimate('A', input.response, {})
+  if (!response) throw new Error('A proportional response requires a dimensionless estimate.')
   return {
     kind,
     properties: {
-      response: {
-        source_change: input.sourceChange,
-        source_unit: sourceUnit,
-        destination_change: destinationChange,
-        destination_unit: destinationUnit,
-      },
+      response,
       lag: input.lag === null ? null : pointEstimate('B', input.lag, { duration: 1 }),
       mechanism: input.mechanism,
       evidence: evidence(input.evidence),

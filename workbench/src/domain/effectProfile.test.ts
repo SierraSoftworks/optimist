@@ -14,11 +14,11 @@ function form(overrides: Partial<EffectProfileForm> = {}): EffectProfileForm {
 
 describe('effectProfileInput', () => {
   it('returns null for a permanent effect', () => {
-    expect(effectProfileInput(emptyEffectProfileForm(), {})).toBeNull()
+    expect(effectProfileInput(emptyEffectProfileForm())).toBeNull()
   })
 
   it('omits an absent ramp and aftereffect', () => {
-    const input = effectProfileInput(form({ hold: 2 }), {})
+    const input = effectProfileInput(form({ hold: 2 }))
     expect(input).toEqual({
       ramp: null,
       hold: { source: 'pointMass(2)', seed: 42, sample_count: 256, target_unit: { duration: 1 } },
@@ -27,27 +27,26 @@ describe('effectProfileInput', () => {
     })
   })
 
-  it('carries the rebound magnitude in the destination unit', () => {
+  it('carries the rebound magnitude as a dimensionless multiplier', () => {
     const input = effectProfileInput(
-      form({ hold: 2, reboundEnabled: true, reboundMagnitude: 0.25, reboundHold: 1 }),
-      { change: 1, month: -1 },
+      form({ hold: 2, reboundEnabled: true, reboundMagnitude: 1.25, reboundHold: 1 }),
     )
     expect(input?.aftereffect?.magnitude).toEqual({
-      source: 'pointMass(0.25)',
+      source: 'pointMass(1.25)',
       seed: 42,
       sample_count: 256,
-      target_unit: { change: 1, month: -1 },
+      target_unit: {},
     })
     expect(input?.aftereffect?.hold?.source).toBe('pointMass(1)')
   })
 
   it('selects the release span field matching the chosen shape', () => {
-    expect(effectProfileInput(form({ release: 'linear', releaseSpan: 3 }), {})?.release).toEqual({
+    expect(effectProfileInput(form({ release: 'linear', releaseSpan: 3 }))?.release).toEqual({
       type: 'linear',
       over: { source: 'pointMass(3)', seed: 42, sample_count: 256, target_unit: { duration: 1 } },
     })
     expect(
-      effectProfileInput(form({ release: 'exponential', releaseSpan: 2 }), {})?.release,
+      effectProfileInput(form({ release: 'exponential', releaseSpan: 2 }))?.release,
     ).toEqual({
       type: 'exponential',
       half_life: {

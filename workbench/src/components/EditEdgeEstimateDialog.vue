@@ -31,7 +31,7 @@ const signed = computed(() => props.slot?.kind === 'degree')
 const existing = computed(() => {
   if (!props.edge || !props.slot) return null
   if (props.edge.payload.kind === 'contributes' || props.edge.payload.kind === 'changes') {
-    if (props.slot.kind === 'response') return props.edge.payload.properties.response.destination_change
+    if (props.slot.kind === 'response') return props.edge.payload.properties.response
     if (props.slot.kind === 'lag') return props.edge.payload.properties.lag
   }
   if (props.edge.payload.kind === 'blocks' && props.slot.kind === 'degree') {
@@ -40,18 +40,14 @@ const existing = computed(() => {
   return null
 })
 const title = computed(() => {
-  if (props.slot?.kind === 'response') return 'Destination response'
+  if (props.slot?.kind === 'response') {
+    return props.edge?.payload.kind === 'changes' ? 'Intervention multiplier' : 'Elasticity'
+  }
   if (props.slot?.kind === 'degree') return 'Blocking degree'
   return 'Causal lag'
 })
 const expectedUnit = computed<Unit>(() => {
   if (props.slot?.kind === 'lag') return { duration: 1 }
-  if (
-    props.slot?.kind === 'response' &&
-    (props.edge?.payload.kind === 'contributes' || props.edge?.payload.kind === 'changes')
-  ) {
-    return props.edge.payload.properties.response.destination_unit
-  }
   return {} as Unit
 })
 
