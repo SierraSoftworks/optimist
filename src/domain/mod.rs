@@ -52,6 +52,7 @@ mod scenario_analysis_model;
 mod scenario_analysis_reachability;
 mod scenario_analysis_relation;
 mod scenario_analysis_sampling;
+mod scenario_analysis_stability;
 mod scenario_analysis_state;
 mod scenario_id;
 mod scenario_validation;
@@ -107,6 +108,7 @@ pub use scenario_analysis_model::{
     InterventionProjection, ObjectiveProjection, ObjectiveTrajectoryPoint, ScenarioAnalysis,
     ScenarioAnalysisError,
 };
+pub use scenario_analysis_stability::FeedbackLoop;
 pub use scenario_id::ScenarioId;
 pub use scenario_validation::ScenarioError;
 pub use squiggle_estimate::{

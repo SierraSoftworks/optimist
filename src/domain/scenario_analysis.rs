@@ -1,6 +1,7 @@
 use super::{
     AnalysisRevisionKey, Edge, Node, ProjectDependenceModel, Scenario, ScenarioAnalysis,
     ScenarioAnalysisError, scenario_analysis_graph::AnalysisGraph, scenario_analysis_sampling,
+    scenario_analysis_stability,
 };
 
 impl ScenarioAnalysis {
@@ -82,6 +83,12 @@ impl ScenarioAnalysis {
             revision,
             planning_horizon: scenario.draft.planning_horizon,
             candidates,
+            feedback_loops: scenario_analysis_stability::feedback_loops(
+                nodes,
+                edges,
+                &graph.states,
+                &graph.propagation_edges,
+            ),
         })
     }
 }
@@ -1028,5 +1035,160 @@ mod tests {
             )),
         )
         .unwrap()
+    }
+
+    /// Reports a feedback loop and the gain that decides whether it settles.
+    ///
+    /// The fixture closes the factor/outcome pair into a circuit whose responses
+    /// multiply to $0.2 \times 3.0 = 0.6$, so a deviation entering the loop keeps
+    /// only 60% of itself each trip and dies out. Raising the return response to
+    /// 6.0 makes the product 1.2, which grows without bound until the declared
+    /// support clamps it — a projection that reports the bound rather than the
+    /// intervention, which is exactly what the diagnostic exists to reveal.
+    #[test]
+    fn reports_a_feedback_loop_and_whether_it_settles() {
+        let (scenario, nodes, mut edges, revision) = point_fixture(3);
+        let returns = |effect: f64| {
+            Edge::new(
+                nodes[2].id,
+                NodeKind::Outcome,
+                nodes[1].id,
+                NodeKind::Factor,
+                EdgePayload::Contributes(CausalEffect::proportional(
+                    estimate::<Elasticity>(0, effect),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
+            )
+            .unwrap()
+        };
+        edges.push(returns(3.0));
+
+        let damped =
+            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        assert_eq!(damped.feedback_loops.len(), 1, "one circuit, reported once");
+        let loop_ = &damped.feedback_loops[0];
+        assert_eq!(
+            loop_
+                .states
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [nodes[1].id, nodes[2].id].into_iter().collect(),
+        );
+        assert!((loop_.gain.unwrap() - 0.6).abs() < 1e-12);
+        assert!(!loop_.is_amplifying() && loop_.settles());
+
+        edges.pop();
+        edges.push(returns(6.0));
+        let amplifying =
+            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let loop_ = &amplifying.feedback_loops[0];
+        assert!((loop_.gain.unwrap() - 1.2).abs() < 1e-12);
+        assert!(
+            loop_.is_amplifying() && !loop_.settles(),
+            "a gain above one must be flagged before the numbers are trusted"
+        );
+        assert!(
+            amplifying.candidates[0].clamped_state_updates > 0,
+            "the fixture must actually saturate, or the diagnostic proves nothing"
+        );
+    }
+
+    /// Refuses to call a loop safe when it cannot be weighed.
+    ///
+    /// A node equation is arbitrary arithmetic over its parents, so no elasticity
+    /// describes its response and the product around the circuit would be a
+    /// number with no meaning. Reporting the loop with an absent gain — rather
+    /// than omitting it or inventing one — is what stops a caller that warns on
+    /// "does not settle" from treating an unweighable loop as a settled one.
+    #[test]
+    fn reports_a_loop_through_an_equation_without_inventing_a_gain() {
+        let (scenario, mut nodes, mut edges, revision) = point_fixture(3);
+        nodes[2].native_state = Some(nodes[2].native_state.clone().unwrap().with_relation(Some(
+            StateRelation::new("feedback".to_owned(), Default::default()).unwrap(),
+        )));
+        edges.push(
+            Edge::new(
+                nodes[2].id,
+                NodeKind::Outcome,
+                nodes[1].id,
+                NodeKind::Factor,
+                EdgePayload::Contributes(CausalEffect::proportional(
+                    estimate::<Elasticity>(0, 0.1),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
+            )
+            .unwrap(),
+        );
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        assert_eq!(result.feedback_loops.len(), 1);
+        let loop_ = &result.feedback_loops[0];
+        assert_eq!(loop_.gain, None, "no elasticity describes an equation");
+        assert!(!loop_.is_amplifying(), "an unknown gain is not a known one");
+        assert!(
+            !loop_.settles(),
+            "an unweighable loop must never be reported as safe"
+        );
+    }
+
+    /// Distinguishes an objective that cannot move yet from one that never will.
+    ///
+    /// Every relationship adds a transport period, so the outcome three hops from
+    /// the intervention cannot respond before period three. Reachability reports
+    /// the same `true` whatever the horizon, which is why the period count is
+    /// carried alongside it: a horizon of two returns a flat zero that means "not
+    /// yet", and only this count separates that from a disconnected objective.
+    #[test]
+    fn counts_the_periods_an_effect_needs_to_arrive() {
+        let (mut scenario, mut nodes, mut edges, revision) = point_fixture(2);
+        let outcome = nodes.pop().unwrap();
+        let relay = with_state(
+            Node::new(
+                EntityId::new(3),
+                "relay",
+                "Relay",
+                NodePayload::Factor(Factor {
+                    controllable: false,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap(),
+            0.5,
+        );
+        // Route the existing factor through a relay instead of straight to the
+        // outcome, which lengthens the chain without changing its strength.
+        edges.pop();
+        edges.push(contributes(nodes[1].id, relay.id, 0.2));
+        edges.push(contributes(relay.id, outcome.id, 0.2));
+        nodes.extend([relay, outcome]);
+
+        let short =
+            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let objective = &short.candidates[0].objectives[0];
+        assert!(objective.reachable);
+        assert_eq!(
+            objective.periods_to_effect,
+            Some(3),
+            "one period into the factor, then one per relationship"
+        );
+        assert!(
+            objective.periods_to_effect > Some(short.planning_horizon),
+            "the fixture must outrun its horizon"
+        );
+        assert_eq!(objective.improvement.mean, Some(0.0));
+
+        scenario.draft.planning_horizon = 4;
+        let long = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let objective = &long.candidates[0].objectives[0];
+        assert_eq!(objective.periods_to_effect, Some(3));
+        assert!(
+            objective.improvement.mean.unwrap() > 0.0,
+            "the same model must move once the horizon covers the delay"
+        );
     }
 }

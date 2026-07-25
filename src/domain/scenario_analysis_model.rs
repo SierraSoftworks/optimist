@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use super::{
     AnalysisRevisionKey, EntityId, InterventionRequirement, MonteCarloDiagnostics,
-    MonteCarloEstimate, ScenarioId, UtilityDirection,
+    MonteCarloEstimate, ScenarioId, UtilityDirection, scenario_analysis_stability::FeedbackLoop,
 };
 
 /// Statistical state and improvement summary at one planning period.
@@ -31,6 +31,14 @@ pub struct ObjectiveProjection {
     /// An unreachable objective still reports its sampled baseline and zero movement;
     /// callers should not interpret that zero as evidence of ineffectiveness.
     pub reachable: bool,
+    /// Periods after plan completion before this objective can first move.
+    ///
+    /// Every relationship adds a mandatory transport period to its authored lag,
+    /// so a distant objective cannot respond within a short horizon. A projection
+    /// whose horizon ends before this count reports a flat zero that means "not
+    /// yet" rather than "not effective", which reachability alone cannot
+    /// distinguish. `None` whenever the objective is unreachable.
+    pub periods_to_effect: Option<u64>,
     /// Sampled baseline normalized state.
     pub baseline: MonteCarloEstimate,
     /// Normalized state at the end of the planning horizon.
@@ -94,6 +102,13 @@ pub struct ScenarioAnalysis {
     pub planning_horizon: u64,
     /// Independently evaluated candidate execution plans in scenario document order.
     pub candidates: Vec<InterventionProjection>,
+    /// Feedback loops among the projected states, whatever the candidate.
+    ///
+    /// Loops are a property of the model rather than of any one plan, so they are
+    /// reported once. An amplifying loop makes a projection depend on the horizon
+    /// and the declared support rather than on the intervention, which is worth
+    /// knowing before the numbers are trusted.
+    pub feedback_loops: Vec<FeedbackLoop>,
 }
 
 /// Failures which prevent finite-horizon scenario propagation.

@@ -421,6 +421,8 @@ export interface ObjectiveProjection {
   direction: 'maximize' | 'minimize'
   importance: number
   reachable: boolean
+  /** Periods after plan completion before this objective can first move; null when unreachable. */
+  periods_to_effect: number | null
   baseline: MonteCarloEstimate
   final_state: MonteCarloEstimate
   improvement: MonteCarloEstimate
@@ -448,10 +450,18 @@ export interface InterventionProjection {
   diagnostics: MonteCarloDiagnostics
 }
 
+/** A circuit in the propagation graph and the gain that decides whether it settles. */
+export interface FeedbackLoop {
+  states: string[]
+  /** Product of the mean responses around the circuit; null where no elasticity describes an edge. */
+  gain: number | null
+}
+
 export interface ScenarioAnalysis {
   revision: AnalysisRevisionKey
   planning_horizon: number
   candidates: InterventionProjection[]
+  feedback_loops: FeedbackLoop[]
 }
 
 export interface InterventionRequirement {

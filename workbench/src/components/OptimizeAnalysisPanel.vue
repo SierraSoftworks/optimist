@@ -73,6 +73,34 @@ function impactLabel(value: number | null) {
 function percentagePoints(value: number | null) {
   return value === null ? 'Unavailable' : `${(value * 100).toFixed(1)} pp`
 }
+
+/**
+ * Reports objectives the horizon ends before their effect can arrive.
+ *
+ * Such an objective reports the same flat zero as an unreachable one, so without
+ * this the reader cannot tell "no effect" from "not yet".
+ */
+function truncated(candidate: ScenarioAnalysis['candidates'][number]) {
+  const horizon = props.analysis?.planning_horizon ?? 0
+  return candidate.objectives.filter(
+    (objective) => objective.periods_to_effect !== null && objective.periods_to_effect > horizon,
+  )
+}
+
+/**
+ * Loops that cannot be shown to settle.
+ *
+ * An unknown gain is not a safe one: a loop closed through a node equation admits
+ * no elasticity to multiply, yet it can run away just as far. Only a known,
+ * contracting gain is excluded.
+ */
+const unsettledLoops = computed(
+  () => props.analysis?.feedback_loops.filter((loop) => loop.gain === null || Math.abs(loop.gain) >= 1) ?? [],
+)
+
+function gainLabel(gain: number | null) {
+  return gain === null ? 'gain unknown' : `gain ${gain.toFixed(2)}`
+}
 </script>
 
 <template>
@@ -107,6 +135,19 @@ function percentagePoints(value: number | null) {
         <div><strong>{{ analysis.planning_horizon }}</strong><span>periods</span></div>
       </div>
       <p class="analysis-boundary">Each candidate includes its prerequisite execution plan. Durations add, required success probabilities compound, and successful prerequisite effects are propagated before the candidate. Synergies are shown but remain qualitative until a magnitude is modelled.</p>
+      <div v-if="unsettledLoops.length" class="stability-warning">
+        <AlertTriangle :size="15" />
+        <div>
+          <strong>{{ unsettledLoops.length }} feedback loop{{ unsettledLoops.length === 1 ? '' : 's' }} not shown to settle</strong>
+          <ul>
+            <li v-for="(loop, index) in unsettledLoops" :key="index">
+              {{ loop.states.map(title).join(' → ') }} → {{ title(loop.states[0]!) }}
+              <code>{{ gainLabel(loop.gain) }}</code>
+            </li>
+          </ul>
+          <span>A deviation entering these loops is not shown to decay, so it grows each period until the destination's declared support clamps it and the projection reports that bound more than the intervention. An unknown gain means a node equation sits on the loop, which admits no elasticity to multiply rather than being safe.</span>
+        </div>
+      </div>
       <div v-if="analysis.candidates.length" class="candidate-list">
         <article v-for="candidate in analysis.candidates" :key="candidate.intervention" :class="{ selected: selectedCandidateId === candidate.intervention }">
           <button type="button" class="candidate-header" :aria-pressed="selectedCandidateId === candidate.intervention" @click="selectCandidate(candidate)">
@@ -139,6 +180,16 @@ function percentagePoints(value: number | null) {
               </tr>
             </tbody>
           </table>
+          <p v-if="truncated(candidate).length" class="horizon-warning">
+            <Clock3 :size="13" />
+            <span>
+              {{ truncated(candidate).map((objective) => title(objective.outcome)).join(', ') }}
+              {{ truncated(candidate).length === 1 ? 'needs' : 'need' }} at least
+              {{ Math.max(...truncated(candidate).map((objective) => objective.periods_to_effect!)) }}
+              periods to respond, beyond this scenario's {{ analysis.planning_horizon }}. Their flat
+              result means the horizon ended first, not that the intervention failed.
+            </span>
+          </p>
           <div class="trajectory-list">
             <OptimizationTrajectory
               v-for="objective in candidate.objectives.filter((objective) => objective.reachable)"
@@ -189,6 +240,14 @@ function percentagePoints(value: number | null) {
 .projection-table tbody th span { font-size: 9px; }
 .projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
 .projection-table tr.unreachable { opacity: .55; }
+.horizon-warning { display: flex; gap: 6px; align-items: flex-start; margin: 6px 0 0; color: #8a6206; font-size: 9px; line-height: 1.5; }
+.horizon-warning svg { flex: none; margin-top: 1px; }
+.stability-warning { display: flex; gap: 9px; align-items: flex-start; padding: 11px 13px; border: 1px solid #e2c98f; border-radius: 7px; background: #fdf6e6; color: #6f4f05; }
+.stability-warning svg { flex: none; margin-top: 2px; }
+.stability-warning strong { display: block; font-size: 11px; }
+.stability-warning ul { margin: 5px 0; padding-left: 16px; font-size: 10px; }
+.stability-warning code { padding: 0 3px; border-radius: 3px; background: #f3e6c4; font-size: 9px; }
+.stability-warning span { display: block; font-size: 9px; line-height: 1.5; opacity: .85; }
 .relative-impact { font-weight: 800; }
 .relative-impact[data-impact='positive'] { color: #277445; }
 .relative-impact[data-impact='negative'] { color: #a34335; }

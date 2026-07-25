@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
     Edge, EdgePayload, EntityId, Node, NodeKind, Scenario,
-    scenario_analysis_edges::PropagationEdge, scenario_analysis_state::StateNode,
-    state_relation_schema,
+    scenario_analysis_edges::PropagationEdge, state_relation_schema,
 };
 
 pub(super) fn relevant_states(
@@ -88,19 +87,42 @@ fn with_relation_parents(
     relevant
 }
 
-pub(super) fn reaches(
-    starts: Vec<EntityId>,
-    objective: EntityId,
+/// Reports the earliest period at which an effect entering `starts` can move `objective`.
+///
+/// Every relationship carries a mandatory one-period transport delay on top of
+/// its authored lag, so a chain of relationships cannot deliver an effect faster
+/// than its length. Reachability alone therefore says less than it appears to:
+/// an objective five hops away cannot move within a four-period horizon, yet a
+/// purely topological check calls it reachable and the projection reports the
+/// same flat zero as a genuinely disconnected one.
+///
+/// Lags are evaluated at their means, which makes this a structural property of
+/// the model rather than a per-draw one. `None` means no directed path exists at
+/// all.
+pub(super) fn periods_to_reach(
+    starts: &[(usize, u64)],
+    objective: usize,
     edges: &[PropagationEdge],
-    states: &[StateNode],
-) -> bool {
-    let ids = states.iter().map(|state| state.id).collect::<Vec<_>>();
-    let adjacency = adjacency(
-        edges
-            .iter()
-            .map(|edge| (ids[edge.source], ids[edge.destination])),
-    );
-    closure(starts.into_iter(), &adjacency).contains(&objective)
+) -> Option<u64> {
+    let mut best = BTreeMap::<usize, u64>::new();
+    let mut queue = VecDeque::new();
+    for (state, arrival) in starts {
+        if best.get(state).is_none_or(|current| arrival < current) {
+            best.insert(*state, *arrival);
+            queue.push_back(*state);
+        }
+    }
+    while let Some(state) = queue.pop_front() {
+        let arrival = best[&state];
+        for edge in edges.iter().filter(|edge| edge.source == state) {
+            let next = arrival.saturating_add(edge.transport_delay());
+            if best.get(&edge.destination).is_none_or(|best| next < *best) {
+                best.insert(edge.destination, next);
+                queue.push_back(edge.destination);
+            }
+        }
+    }
+    best.get(&objective).copied()
 }
 
 fn adjacency(

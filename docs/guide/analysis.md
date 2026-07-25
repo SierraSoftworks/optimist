@@ -54,6 +54,8 @@ The [feedback-loop example](../examples/#feedback-loop-discovery) builds and ver
 cargo run --example feedback_loop
 ```
 
+Structural analysis says where the loops are but nothing about their strength. Scenario projection adds that, under [loop gain](#loop-gain).
+
 ## Scenario-scoped keys
 
 You may include a scenario revision in the projection key:
@@ -124,17 +126,41 @@ Repeating the same immutable revision and seed is bit-reproducible for the curre
 Estimates are independent unless a dependence group couples them; Optimist never infers correlation from graph structure. Candidate execution plans are still evaluated one at a time; budgets, costs, numeric synergy magnitudes, candidate bundles, and scalar utility are not yet optimization inputs. Synergy and conflict edges are reported as qualitative decision context.
 :::
 
+## Loop gain
+
+Both composition rules are linear in relative deviation. Multiplicative composition gives $u_i = \sum_j \varepsilon_{ji} u_j$ in log deviations $u_i = \log(x_i/b_i)$; additive composition gives $d_i = \sum_j \varepsilon_{ji} d_j$ in relative deviations $d_i = (x_i - b_i)/b_i$. Either way, one trip around a circuit multiplies the deviation by the product of the responses on it:
+
+$$
+g = \prod_{(j \to i) \in C} \varepsilon_{ji}.
+$$
+
+`feedback_loops` reports each circuit among the projected states with its gain, using the same enumeration and canonical rotation as [structural analysis](#elementary-cycles):
+
+- $|g| < 1$ contracts. A deviation entering the loop dies out and the projection settles.
+- $|g| > 1$ expands. The loop runs away until the destination's declared support clamps it, so the result reports that bound rather than the intervention. Watch `clamped_state_updates` climb alongside it.
+- $|g| = 1$ is marginal: a deviation neither decays nor grows.
+- $g < 0$ alternates sign each trip, which reads as oscillation rather than drift.
+
+The gain is a linearization about the baseline evaluated at each response's mean. It says what the loop does to a small deviation, not what any one Monte Carlo draw does to a large one. Where two relationships run between the same pair, the larger magnitude is used, which keeps the gain a bound rather than an average that could hide an amplifying path behind a damping one.
+
+A loop through a state carrying a node equation reports `null`. The state does not respond proportionally to its parents, so no elasticity describes the edge and the product would mean nothing. **An unknown gain is not a safe one** — such a loop can run away just as far, it simply admits no number to multiply. Treat anything other than a known gain below one as needing review.
+
+## Horizon adequacy
+
+Every relationship adds a transport period to its authored lag, so a chain of relationships cannot deliver an effect faster than its length. Each objective therefore reports `periods_to_effect` beside `reachable`: the shortest delay-weighted path from the candidate to that objective, evaluated at the mean lags.
+
+This distinguishes two results that otherwise look identical. An objective the horizon ends before reaching reports a flat zero improvement — exactly what a disconnected objective reports. `reachable` is purely topological and says `true` in both cases; only the period count separates "not yet" from "not effective". Extend `planning_horizon` past `periods_to_effect` before concluding an intervention does nothing.
+
 ## What analysis does not claim
 
 Current structural and scenario output does **not** establish:
 
-- whether a loop is stable,
 - whether it is reinforcing or balancing with a particular probability,
 - equilibrium values,
 - causal identification from observational data,
 - a ranked investment frontier.
 
-Finite-horizon projection estimates impact under the recurrence and supplied priors; it does not prove that an edge is causal or identify effects from observational data. Stable feedback, bundles, costs, and Pareto ranking remain separate roadmap items.
+Finite-horizon projection estimates impact under the recurrence and supplied priors; it does not prove that an edge is causal or identify effects from observational data. Bundles, costs, and Pareto ranking remain separate roadmap items.
 
 ## Interpreting results
 

@@ -334,10 +334,11 @@ mod tests {
             },
             planning_horizon: 4,
             candidates: vec![],
+            feedback_loops: vec![],
         };
         assert_eq!(
             OutputFormat::Table.scenario_analysis(&analysis).unwrap(),
-            "INTERVENTION\tOUTCOME\tREACHABLE\tDIRECTION\tIMPORTANCE\tBASELINE_MEAN\tFINAL_MEAN\tIMPROVEMENT_MEAN\tIMPROVEMENT_VARIANCE\tCLAMPED_UPDATES\tSAMPLES\tSTATUS"
+            "INTERVENTION\tOUTCOME\tREACHABLE\tPERIODS_TO_EFFECT\tDIRECTION\tIMPORTANCE\tBASELINE_MEAN\tFINAL_MEAN\tIMPROVEMENT_MEAN\tIMPROVEMENT_VARIANCE\tCLAMPED_UPDATES\tSAMPLES\tSTATUS"
         );
         assert_eq!(
             OutputFormat::Jsonl.scenario_analysis(&analysis).unwrap(),
@@ -381,6 +382,7 @@ mod tests {
                     direction: UtilityDirection::Maximize,
                     importance: 1.0,
                     reachable: true,
+                    periods_to_effect: Some(2),
                     baseline: estimate.clone(),
                     final_state: estimate.clone(),
                     improvement: estimate,
@@ -398,12 +400,14 @@ mod tests {
                     status: crate::domain::ConvergenceStatus::Converged,
                 },
             }],
+            feedback_loops: vec![],
         };
         let table = OutputFormat::Table.scenario_analysis(&analysis).unwrap();
-        assert!(table.contains("B\tA\ttrue\tMaximize"));
+        assert!(table.contains("B\tA\ttrue\t2\tMaximize"));
         assert!(table.contains("\t3\t2\tConverged"));
         let jsonl = OutputFormat::Jsonl.scenario_analysis(&analysis).unwrap();
         assert!(jsonl.contains("\"reachable\":true"));
+        assert!(jsonl.contains("\"periods_to_effect\":2"));
         assert!(jsonl.contains("\"clamped_state_updates\":3"));
     }
 }

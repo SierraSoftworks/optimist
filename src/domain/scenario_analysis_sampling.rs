@@ -65,23 +65,27 @@ pub(super) fn project_candidate(
         .objectives
         .iter()
         .enumerate()
-        .map(|(index, objective)| ObjectiveProjection {
-            outcome: objective.outcome_id,
-            direction: objective.direction,
-            importance: objective.importance,
-            reachable: graph.objective_reachable(candidate, objective.outcome_id),
-            baseline: estimate(&moments, index * 3),
-            final_state: estimate(&moments, index * 3 + 1),
-            improvement: estimate(&moments, index * 3 + 2),
-            trajectory: trajectory_moments[index]
-                .iter()
-                .enumerate()
-                .map(|(period, moments)| ObjectiveTrajectoryPoint {
-                    period: period as u64,
-                    state: estimate(moments, 0),
-                    improvement: estimate(moments, 1),
-                })
-                .collect(),
+        .map(|(index, objective)| {
+            let periods_to_effect = graph.periods_to_effect(candidate, objective.outcome_id);
+            ObjectiveProjection {
+                outcome: objective.outcome_id,
+                direction: objective.direction,
+                importance: objective.importance,
+                reachable: periods_to_effect.is_some(),
+                periods_to_effect,
+                baseline: estimate(&moments, index * 3),
+                final_state: estimate(&moments, index * 3 + 1),
+                improvement: estimate(&moments, index * 3 + 2),
+                trajectory: trajectory_moments[index]
+                    .iter()
+                    .enumerate()
+                    .map(|(period, moments)| ObjectiveTrajectoryPoint {
+                        period: period as u64,
+                        state: estimate(moments, 0),
+                        improvement: estimate(moments, 1),
+                    })
+                    .collect(),
+            }
         })
         .collect();
     let improvement_covariance = (0..scenario.draft.objectives.len())

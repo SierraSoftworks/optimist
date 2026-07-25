@@ -106,7 +106,6 @@ impl CoupledPrimitive {
     }
 
     /// Returns the mean of the underlying marginal, which coupling never changes.
-    #[cfg(test)]
     pub(super) fn marginal_mean(&self) -> f64 {
         self.distribution.mean()
     }

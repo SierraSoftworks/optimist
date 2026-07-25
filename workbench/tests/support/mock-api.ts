@@ -122,6 +122,7 @@ export async function mockApi(page: Page, state: FixtureState) {
             direction: objective.direction,
             importance: objective.importance,
             reachable: true,
+            periods_to_effect: 2,
             baseline: estimate,
             final_state: estimate,
             improvement: estimate,
@@ -142,6 +143,7 @@ export async function mockApi(page: Page, state: FixtureState) {
             status: 'converged',
           },
         })),
+        feedback_loops: [],
       })
     }
     if (url.pathname === '/api/v1/projects/A/analysis/structure') {

@@ -15,6 +15,21 @@ pub(super) struct PropagationEdge {
     pub(super) lag: Option<CoupledPrimitive>,
 }
 
+impl PropagationEdge {
+    /// Periods this relationship needs to carry a change, evaluated at its mean lag.
+    ///
+    /// The one-period transport delay every relationship carries is included, so
+    /// this is never zero: a state cannot move its neighbour within the period it
+    /// moves itself.
+    pub(super) fn transport_delay(&self) -> u64 {
+        self.lag
+            .as_ref()
+            .map(|lag| lag.marginal_mean().max(0.0).ceil() as u64)
+            .unwrap_or(0)
+            .saturating_add(1)
+    }
+}
+
 pub(super) struct InterventionEdge {
     pub(super) destination: usize,
     /// Intervention node name, which is how a node equation binds its activation.

@@ -41,7 +41,7 @@ const analysis: ScenarioAnalysis = {
     execution_duration: { ...estimate, mean: 3 },
     execution_success: { ...estimate, mean: 0.8 },
     objectives: [{
-      outcome: 'A', direction: 'maximize', importance: 1, reachable: true,
+      outcome: 'A', direction: 'maximize', importance: 1, reachable: true, periods_to_effect: 2,
       baseline: baselineEstimate, final_state: finalEstimate, improvement: estimate, trajectory,
     }],
     improvement_covariance: [[0.02]],
@@ -53,6 +53,7 @@ const analysis: ScenarioAnalysis = {
       criterion: config, status: 'converged',
     },
   }],
+  feedback_loops: [],
 }
 
 describe('OptimizeAnalysisPanel', () => {
@@ -138,5 +139,50 @@ describe('OptimizeAnalysisPanel', () => {
 
     expect(wrapper.get('.relative-impact').text()).toBe('20.0% regression')
     expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('negative')
+  })
+
+  it('separates an effect the horizon cut short from one that never arrives', () => {
+    const slow: ScenarioAnalysis = {
+      ...analysis,
+      planning_horizon: 4,
+      candidates: [{
+        ...analysis.candidates[0]!,
+        objectives: [{ ...analysis.candidates[0]!.objectives[0]!, periods_to_effect: 9 }],
+      }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: slow,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    const warning = wrapper.get('.horizon-warning').text()
+    expect(warning).toContain('Reliability')
+    expect(warning).toContain('at least 9 periods')
+    expect(warning).toContain('the horizon ended first, not that the intervention failed')
+  })
+
+  it('warns about every loop it cannot rule out, including one it cannot weigh', () => {
+    const unstable: ScenarioAnalysis = {
+      ...analysis,
+      feedback_loops: [
+        { states: ['A', 'B'], gain: 1.4 },
+        { states: ['A', 'C'], gain: 0.5 },
+        { states: ['B', 'C'], gain: null },
+      ],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: unstable,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    const warning = wrapper.get('.stability-warning').text()
+    expect(warning).toContain('2 feedback loops not shown to settle')
+    expect(warning).toContain('gain 1.40')
+    expect(warning).toContain('gain unknown')
+    expect(warning).not.toContain('0.50')
   })
 })

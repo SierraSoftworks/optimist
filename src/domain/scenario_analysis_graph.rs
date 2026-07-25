@@ -103,22 +103,40 @@ impl<'a> AnalysisGraph<'a> {
         })
     }
 
-    pub(super) fn objective_reachable(&self, candidate: EntityId, objective: EntityId) -> bool {
+    /// Reports how many periods after plan completion this objective can first move.
+    ///
+    /// `None` means no directed causal path reaches it. A returned count is the
+    /// structural minimum: the intervention's own lag plus the transport delay of
+    /// the fastest chain of relationships between it and the objective.
+    pub(super) fn periods_to_effect(
+        &self,
+        candidate: EntityId,
+        objective: EntityId,
+    ) -> Option<u64> {
+        let objective = self.state_indices.get(&objective)?;
         let starts = self
             .edges
             .iter()
             .filter(|edge| {
-                edge.source == candidate
-                    && matches!(edge.payload, EdgePayload::Changes(_))
-                    && self.state_indices.contains_key(&edge.destination)
+                edge.source == candidate && matches!(edge.payload, EdgePayload::Changes(_))
             })
-            .map(|edge| edge.destination)
+            .filter_map(|edge| {
+                let index = *self.state_indices.get(&edge.destination)?;
+                let EdgePayload::Changes(effect) = &edge.payload else {
+                    return None;
+                };
+                let lag = effect
+                    .lag
+                    .as_ref()
+                    .map(|lag| lag.distribution.mean().max(0.0).ceil() as u64)
+                    .unwrap_or(0);
+                Some((index, lag.saturating_add(1)))
+            })
             .collect::<Vec<_>>();
-        super::scenario_analysis_reachability::reaches(
-            starts,
-            objective,
+        scenario_analysis_reachability::periods_to_reach(
+            &starts,
+            *objective,
             &self.propagation_edges,
-            &self.states,
         )
     }
 }
