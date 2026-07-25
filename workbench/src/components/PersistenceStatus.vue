@@ -20,6 +20,6 @@ const health = useServerHealth()
 </template>
 
 <style scoped>
-.persistence-state { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; font-weight: 700; white-space: nowrap; }
+.persistence-state { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--text-2xs); font-weight: 700; white-space: nowrap; }
 .persistence-state[data-state='error'] { color: #9a3e31; }
 </style>

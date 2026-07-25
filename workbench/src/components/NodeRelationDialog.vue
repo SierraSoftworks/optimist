@@ -144,15 +144,15 @@ function clear() {
 
 <style scoped>
 .relation-dialog { width: min(560px, 92vw); }
-.dialog-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
-.relation-dialog textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-.result-unit { margin: -4px 0 0; color: var(--muted); font-size: 12px; }
+.dialog-note { margin: 0; color: var(--muted); font-size: var(--text-sm); line-height: 1.55; }
+.relation-dialog textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); }
+.result-unit { margin: -4px 0 0; color: var(--muted); font-size: var(--text-sm); }
 .bindings { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #fbfbfa; }
-.bindings h3 { margin: 0; font-size: 12px; }
+.bindings h3 { margin: 0; font-size: var(--text-sm); }
 .bindings ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.bindings li { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.bindings li { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-sm); }
 .bindings code { padding: 1px 5px; border: 1px solid var(--line); border-radius: 4px; background: white; }
-.binding-unit { color: var(--ink); font-size: 11px; }
-.binding-kind { color: var(--muted); font-size: 11px; }
-.binding-parameters, .binding-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.binding-unit { color: var(--ink); font-size: var(--text-2xs); }
+.binding-kind { color: var(--muted); font-size: var(--text-2xs); }
+.binding-parameters, .binding-hint { margin: 0; color: var(--muted); font-size: var(--text-2xs); line-height: 1.5; }
 </style>

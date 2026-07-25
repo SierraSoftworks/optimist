@@ -224,7 +224,7 @@ function submit() {
 .kind-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .kind-options label { position: relative; }
 .kind-options input { position: absolute; opacity: 0; }
-.kind-options span { display: grid; place-items: center; min-height: 44px; border: 2px solid transparent; border-radius: 5px; color: #29312d; font-size: 13px; text-transform: capitalize; }
+.kind-options span { display: grid; place-items: center; min-height: 44px; border: 2px solid transparent; border-radius: 5px; color: #29312d; font-size: var(--text-md); text-transform: capitalize; }
 .kind-options input:checked + span { border-color: #26352e; }
 .node-setup { display: grid; gap: 18px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
 

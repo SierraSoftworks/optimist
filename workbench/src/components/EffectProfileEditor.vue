@@ -92,12 +92,12 @@ const horizon = computed(
 }
 
 .effect-profile > header strong {
-  font-size: 11px;
+  font-size: var(--text-2xs);
 }
 
 .effect-profile > header span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 

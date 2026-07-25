@@ -151,14 +151,14 @@ onBeforeUnmount(unlisten)
 .scenario-picker-trigger { width: 100%; min-height: 42px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); text-align: left; }
 .scenario-picker-trigger:hover, .scenario-picker-trigger[aria-expanded='true'] { border-color: #95a39a; background: #f7f9f5; }
 .scenario-picker-trigger > span { min-width: 0; display: grid; gap: 2px; }
-.scenario-picker-trigger strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
-.scenario-picker-trigger small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.scenario-picker-trigger strong { overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); white-space: nowrap; }
+.scenario-picker-trigger small { color: var(--muted); font: var(--text-2xs) var(--mono); }
 .scenario-menu { position: fixed; z-index: 80; overflow: auto; border: 1px solid #aeb9b1; border-radius: 6px; background: white; box-shadow: 0 12px 32px rgba(30, 40, 34, .18); }
 .scenario-menu > button { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; align-items: center; padding: 8px 9px; border: 0; background: transparent; color: var(--ink); text-align: left; }
 .scenario-menu > button:hover, .scenario-menu > button:focus-visible, .scenario-menu > button[aria-selected='true'] { background: var(--green-soft); }
 .scenario-menu > button > span { min-width: 0; display: grid; gap: 2px; }
-.scenario-menu strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
-.scenario-menu small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.scenario-menu strong { overflow: hidden; text-overflow: ellipsis; font-size: var(--text-xs); white-space: nowrap; }
+.scenario-menu small { color: var(--muted); font: var(--text-2xs) var(--mono); }
 .scenario-menu svg.hidden { opacity: 0; }
-.scenario-menu .scenario-menu-create { border-top: 1px solid var(--line); color: var(--green); font-size: 10px; font-weight: 700; }
+.scenario-menu .scenario-menu-create { border-top: 1px solid var(--line); color: var(--green); font-size: var(--text-xs); font-weight: 700; }
 </style>

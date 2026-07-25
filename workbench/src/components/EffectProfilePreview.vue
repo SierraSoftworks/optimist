@@ -88,7 +88,7 @@ figcaption {
   align-items: center;
   margin-top: 6px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--text-xs);
 }
 
 .key::before {

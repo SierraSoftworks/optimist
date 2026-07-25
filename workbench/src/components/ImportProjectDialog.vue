@@ -122,11 +122,11 @@ function submit() {
 <style scoped>
 .file-picker { display: grid !important; grid-template-columns: auto 1fr; align-items: center; gap: 10px !important; min-height: 64px; padding: 12px; border: 1px dashed #aeb6b0; border-radius: 6px; background: #f7f9f5; cursor: pointer; }
 .file-picker span { display: grid; gap: 2px; }
-.file-picker small { color: var(--muted); font: 9px 'IBM Plex Mono', monospace; }
+.file-picker small { color: var(--muted); font: var(--text-xs) var(--mono); }
 .file-picker input { position: absolute; opacity: 0; pointer-events: none; }
 .archive-preview { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: end; margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
 .archive-preview > div { display: grid; gap: 3px; }
-.archive-preview code { color: var(--muted); font: 9px 'IBM Plex Mono', monospace; }
+.archive-preview code { color: var(--muted); font: var(--text-xs) var(--mono); }
 .archive-preview dl { grid-template-columns: repeat(3, auto); gap: 12px; }
 .archive-preview dl div { display: grid; grid-template-columns: auto; gap: 1px; text-align: right; }
 .archive-preview dd { font-weight: 700; }

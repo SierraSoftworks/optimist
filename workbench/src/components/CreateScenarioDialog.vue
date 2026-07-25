@@ -152,11 +152,11 @@ function submit() {
 .scenario-option { grid-template-columns: auto minmax(0, 1fr) 82px !important; align-items: center; gap: 8px !important; min-height: 38px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: #f9faf7; }
 .scenario-option + .scenario-option { margin-top: 5px; }
 .scenario-option > span { display: grid; gap: 2px; }
-.scenario-option strong { font-size: 10px; }
-.scenario-option small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
+.scenario-option strong { font-size: var(--text-xs); }
+.scenario-option small { color: var(--muted); font: var(--text-2xs) var(--mono); }
 .scenario-option input[type='number'] { height: 30px !important; }
 .sampling-controls { margin-top: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 5px; background: #f7f9f5; }
-.sampling-controls summary { cursor: pointer; color: var(--muted); font-size: 10px; font-weight: 700; }
+.sampling-controls summary { cursor: pointer; color: var(--muted); font-size: var(--text-xs); font-weight: 700; }
 .sampling-controls :deep(.field-grid) { margin: 10px 0 0; }
 
 @media (max-width: 760px) {

@@ -138,10 +138,10 @@ function share() {
 <style scoped>
 .shared-quantity { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; }
 .shared-quantity > header { display: grid; gap: 3px; }
-.shared-quantity > header span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.shared-quantity > header span { color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
 .partner-list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.partner-list li { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.form-warning { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: #8a5a00; font-size: 12px; line-height: 1.5; }
-.form-note { margin: 0; color: var(--muted); font-size: 12px; }
+.partner-list li { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
+.form-warning { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: #8a5a00; font-size: var(--text-sm); line-height: 1.5; }
+.form-note { margin: 0; color: var(--muted); font-size: var(--text-sm); }
 .dialog-actions button { display: inline-flex; align-items: center; gap: 6px; }
 </style>

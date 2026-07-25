@@ -228,8 +228,8 @@ function assessedResponse(): Estimate | undefined {
 .node-picker-option { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: white; }
 .node-picker-option > span:last-child { min-width: 0; display: grid; gap: 2px; }
 .node-picker-option strong, .node-picker-option small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-picker-option strong { color: var(--ink); font-size: 12px; }
-.node-picker-option small { color: var(--muted); font-size: 9px; text-transform: capitalize; }
+.node-picker-option strong { color: var(--ink); font-size: var(--text-sm); }
+.node-picker-option small { color: var(--muted); font-size: var(--text-xs); text-transform: capitalize; }
 .node-picker-options label:hover .node-picker-option { border-color: #aeb8b1; background: #f7f9f5; }
 .node-picker-options input:checked + .node-picker-option { border-color: var(--green); background: var(--green-soft); box-shadow: inset 3px 0 var(--green); }
 .node-picker-options input:focus-visible + .node-picker-option { outline: 2px solid #2a7059; outline-offset: 2px; }
@@ -237,8 +237,8 @@ function assessedResponse(): Estimate | undefined {
 .node-picker-options input:disabled:not(:checked) + .node-picker-option { display: none; }
 .native-response { display: grid; gap: 10px; }
 .native-response > header { display: grid; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-.native-response > header strong { font-size: 14px; }
-.native-response > header span { color: var(--muted); font-size: 12px; line-height: 1.5; }
-.response-units { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; color: var(--muted); font-size: 12px; }
-.response-units > span:not([aria-hidden]) { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: 11px; }
-.response-units small { font-size: 11px; }</style>
+.native-response > header strong { font-size: var(--text-md); }
+.native-response > header span { color: var(--muted); font-size: var(--text-sm); line-height: 1.5; }
+.response-units { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.response-units > span:not([aria-hidden]) { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); font-size: var(--text-2xs); }
+.response-units small { font-size: var(--text-2xs); }</style>

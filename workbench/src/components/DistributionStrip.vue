@@ -82,8 +82,8 @@ function number(value: number) {
 <style scoped>
 .distribution-strip { display: grid; gap: 5px; }
 .distribution-copy { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.distribution-copy strong { font: 11px 'IBM Plex Mono', monospace; }
-.distribution-copy span { color: var(--muted); font-size: 8px; }
+.distribution-copy strong { font: var(--text-2xs) var(--mono); }
+.distribution-copy span { color: var(--muted); font-size: var(--text-2xs); }
 .distribution-track { position: relative; height: 7px; overflow: hidden; border-radius: 2px; background: #dfe5df; }
 .distribution-track::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #d58c73, #d7c779 52%, #73a987); opacity: .65; }
 .distribution-track i { position: absolute; top: -2px; width: 3px; height: 11px; border-radius: 2px; background: #17231d; transform: translateX(-50%); }

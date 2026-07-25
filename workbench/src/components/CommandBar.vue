@@ -123,24 +123,24 @@ function keys(event: KeyboardEvent) {
 .command-bar { width: min(680px, 100%); max-height: min(680px, calc(100vh - 32px)); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid #9faaa3; border-radius: 8px; background: var(--surface-strong); box-shadow: 0 28px 80px rgba(21, 29, 25, .28); }
 .command-bar > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .command-bar > header > span { display: flex; align-items: center; gap: 7px; color: var(--green); }
-.command-bar > header strong { color: var(--ink); font-size: 11px; }
+.command-bar > header strong { color: var(--ink); font-size: var(--text-2xs); }
 .command-input { min-height: 54px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: center; padding: 0 15px; border-bottom: 1px solid var(--line); color: var(--muted); }
-.command-input input { width: 100%; height: 52px; border: 0; outline: 0; background: transparent; color: var(--ink); font: 14px 'IBM Plex Mono', monospace; }
+.command-input input { width: 100%; height: 52px; border: 0; outline: 0; background: transparent; color: var(--ink); font: var(--text-md) var(--mono); }
 .command-body { min-height: 110px; overflow: auto; }
 .command-suggestions { display: grid; padding: 6px; }
 .command-suggestions button { min-height: 48px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, auto); gap: 12px; align-items: center; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); text-align: left; }
 .command-suggestions button[aria-selected='true'] { background: var(--green-soft); }
 .command-suggestions button > span { min-width: 0; display: grid; gap: 2px; }
-.command-suggestions strong { font-size: 10px; }
-.command-suggestions small { color: var(--muted); font-size: 8px; }
-.command-suggestions code { overflow: hidden; color: #53605a; font: 8px 'IBM Plex Mono', monospace; text-overflow: ellipsis; white-space: nowrap; }
+.command-suggestions strong { font-size: var(--text-xs); }
+.command-suggestions small { color: var(--muted); font-size: var(--text-2xs); }
+.command-suggestions code { overflow: hidden; color: #53605a; font: var(--text-2xs) var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .command-preview { margin: 8px 12px; padding: 10px; border: 1px solid #a8bfb2; border-radius: 6px; background: #f3f8f4; }
-.preview-label { display: block; margin-bottom: 8px; color: var(--green); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.preview-label { display: block; margin-bottom: 8px; color: var(--green); font-size: var(--text-2xs); font-weight: 800; text-transform: uppercase; }
 .command-preview dl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .command-preview dl div { display: grid; grid-template-columns: 1fr; gap: 2px; }
-.command-preview dt { font-size: 8px; }
-.command-preview dd { color: var(--ink); font-size: 10px; font-weight: 700; }
-.command-diagnostic { margin: 8px 12px 12px; color: var(--muted); font-size: 9px; }
+.command-preview dt { font-size: var(--text-2xs); }
+.command-preview dd { color: var(--ink); font-size: var(--text-xs); font-weight: 700; }
+.command-diagnostic { margin: 8px 12px 12px; color: var(--muted); font-size: var(--text-xs); }
 .command-diagnostic[data-severity='error'] { color: #9a3e31; }
 .command-bar > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); background: #f7f9f5; }
 

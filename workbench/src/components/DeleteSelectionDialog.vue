@@ -32,6 +32,6 @@ const emit = defineEmits<{ close: []; confirm: [] }>()
 <style scoped>
 .delete-selection-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px; border: 1px solid #d8a098; border-radius: 5px; background: #fff8f6; color: #8c3429; }
 .delete-selection-summary div { display: grid; gap: 3px; }
-.delete-selection-summary strong { color: var(--ink); font-size: 11px; }
-.delete-selection-summary span { font-size: 9px; line-height: 1.45; }
+.delete-selection-summary strong { color: var(--ink); font-size: var(--text-2xs); }
+.delete-selection-summary span { font-size: var(--text-xs); line-height: 1.45; }
 </style>

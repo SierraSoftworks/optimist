@@ -68,7 +68,7 @@ function accessibleInput(event: Event) {
 <style scoped>
 .squiggle-react-island { width: 100%; min-width: 0; }
 .squiggle-react-host { width: 100%; height: clamp(460px, 58vh, 620px); overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
-.squiggle-react-host:empty::before { content: 'Loading Squiggle editor'; display: grid; min-height: 460px; place-items: center; color: var(--muted); font-size: 12px; }
+.squiggle-react-host:empty::before { content: 'Loading Squiggle editor'; display: grid; min-height: 460px; place-items: center; color: var(--muted); font-size: var(--text-sm); }
 
 @media (max-width: 760px) {
   .squiggle-react-host { height: clamp(420px, 64svh, 560px); }
