@@ -126,11 +126,11 @@ pub(super) fn classify(
             "native_state_unsupported",
             &["Choose a factor or outcome node before configuring native state."],
         ),
-        ProjectError::StateQuantityUsedByCausalEdge(_) => (
+        ProjectError::StateQuantityBreaksRelation { .. } => (
             StatusCode::CONFLICT,
-            "state_quantity_in_use",
+            "state_quantity_breaks_relation",
             &[
-                "Remove or replace incident causal relationships before changing the quantity's canonical unit terms.",
+                "Update the node equation that reads this quantity before changing its canonical unit terms.",
             ],
         ),
         ProjectError::Quantity(_) => (

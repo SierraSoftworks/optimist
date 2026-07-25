@@ -1,6 +1,8 @@
+use std::collections::BTreeMap;
+
 use crate::{
     command::{CommandOutcome, SetNodeQuantityState},
-    domain::{NodePayload, QuantityState},
+    domain::{Node, NodePayload, QuantityState, state_relation_schema},
     store::{GraphRepository, RepositoryError},
 };
 
@@ -26,22 +28,6 @@ pub(super) fn set(
         NodePayload::Factor(_) | NodePayload::Outcome(_) => {}
         _ => return Err(ProjectError::NativeStateUnsupported(node.id)),
     }
-    let current_dimension = node
-        .native_state
-        .as_ref()
-        .and_then(|state| state.quantity.dimension.as_ref());
-    if current_dimension != command.quantity.dimension.as_ref()
-        && let Some(edge) = entry.repository.list_edges()?.into_iter().find(|edge| {
-            (edge.source == node.id || edge.destination == node.id)
-                && matches!(
-                    edge.payload,
-                    crate::domain::EdgePayload::Contributes(_)
-                        | crate::domain::EdgePayload::Changes(_)
-                )
-        })
-    {
-        return Err(ProjectError::StateQuantityUsedByCausalEdge(edge.id()));
-    }
     node.native_state = Some(match node.native_state.take() {
         Some(state) => state.with_quantity(command.quantity)?,
         None => QuantityState::new(command.quantity, None, None)?,
@@ -50,8 +36,45 @@ pub(super) fn set(
         .revision
         .checked_add(1)
         .ok_or(AggregateUpdateError::NodeRevisionSpaceExhausted(node.id))?;
+    revalidate_relations(entry, &node)?;
     entry.repository.update_node(node.clone())?;
     Ok(CommandOutcome::NodeQuantityStateSet(node))
+}
+
+/// Rejects a unit change that would break an equation reading this quantity.
+///
+/// Relationships stopped carrying units when responses became dimensionless, so
+/// a causal edge no longer constrains its endpoints. Node equations do: they are
+/// checked against the units their parents declare, and this node may be a
+/// parent of several. Recompiling them here keeps the failure beside the edit
+/// that caused it rather than surfacing as a broken projection.
+fn revalidate_relations(entry: &mut ProjectEntry, updated: &Node) -> Result<(), ProjectError> {
+    let edges = entry.repository.list_edges()?;
+    let nodes = entry
+        .repository
+        .list_nodes()?
+        .into_iter()
+        .map(|node| {
+            if node.id == updated.id {
+                updated.clone()
+            } else {
+                node
+            }
+        })
+        .collect::<Vec<_>>();
+    let by_id: BTreeMap<_, _> = nodes.iter().map(|node| (node.id, node)).collect();
+    for node in &nodes {
+        let Some(relation) = state_relation_schema::relation_of(node) else {
+            continue;
+        };
+        state_relation_schema::compile(node, &by_id, &edges, relation).map_err(|error| {
+            ProjectError::StateQuantityBreaksRelation {
+                node: node.id,
+                reason: error.to_string(),
+            }
+        })?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -267,5 +290,124 @@ mod tests {
         };
         let crate::domain::EstimateSource::Squiggle { definition } = estimate.source;
         assert_eq!(definition.source, source);
+    }
+
+    /// A relationship no longer constrains its endpoints, but an equation does.
+    #[test]
+    fn rejects_a_unit_change_that_would_break_a_downstream_equation() {
+        use crate::command::{CreateEdge, SetStateRelation};
+        use crate::domain::{
+            CausalEffect, Distribution, EdgePayload, Elasticity, Estimate, Metric, Outcome,
+            OutcomeDirection, StateRelation,
+        };
+
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Equations".to_owned()).unwrap().id;
+        let mut revision = 0;
+        let mut execute = |catalog: &mut ProjectCatalog, command| {
+            let result = catalog
+                .execute(&project, CommandRequest::new(revision, command))
+                .unwrap();
+            revision = result.project_revision;
+        };
+        execute(
+            &mut catalog,
+            GraphCommand::CreateNode(CreateNode {
+                name: "outage_frequency".to_owned(),
+                title: "Outage frequency".to_owned(),
+                payload: NodePayload::Metric(
+                    Metric::with_quantity(
+                        QuantityDefinition::with_dimension(
+                            "outages",
+                            Some(Unit::base("outage").unwrap()),
+                            None,
+                            QuantitySupport::NonNegative,
+                        )
+                        .unwrap(),
+                        Some(
+                            Estimate::new(EstimateId::new(0), Distribution::point(4.0).unwrap())
+                                .unwrap(),
+                        ),
+                    )
+                    .unwrap(),
+                ),
+            }),
+        );
+        execute(
+            &mut catalog,
+            GraphCommand::CreateNode(CreateNode {
+                name: "impact".to_owned(),
+                title: "Impact".to_owned(),
+                payload: NodePayload::Outcome(Outcome {
+                    direction: OutcomeDirection::Minimize,
+                    evidence: vec![],
+                }),
+            }),
+        );
+        execute(
+            &mut catalog,
+            GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                node: EntityId::new(1),
+                expected_revision: 0,
+                quantity: QuantityDefinition::with_dimension(
+                    "outages",
+                    Some(Unit::base("outage").unwrap()),
+                    None,
+                    QuantitySupport::NonNegative,
+                )
+                .unwrap(),
+            }),
+        );
+        execute(
+            &mut catalog,
+            GraphCommand::CreateEdge(CreateEdge {
+                source: EntityId::new(0),
+                destination: EntityId::new(1),
+                payload: EdgePayload::Contributes(CausalEffect::proportional(
+                    Estimate::<Elasticity>::new(
+                        EstimateId::new(0),
+                        Distribution::point(1.0).unwrap(),
+                    )
+                    .unwrap(),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
+            }),
+        );
+        execute(
+            &mut catalog,
+            GraphCommand::SetStateRelation(SetStateRelation {
+                node: EntityId::new(1),
+                expected_revision: 1,
+                relation: Some(
+                    StateRelation::new("outage_frequency".to_owned(), Default::default()).unwrap(),
+                ),
+            }),
+        );
+
+        // Re-uniting the parent leaves the equation producing outages while its
+        // owner now expects minutes.
+        let broken = catalog.execute(
+            &project,
+            CommandRequest::new(
+                revision,
+                GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                    node: EntityId::new(1),
+                    expected_revision: 2,
+                    quantity: QuantityDefinition::with_dimension(
+                        "minutes",
+                        Some(Unit::base("minute").unwrap()),
+                        None,
+                        QuantitySupport::NonNegative,
+                    )
+                    .unwrap(),
+                }),
+            ),
+        );
+        assert!(matches!(
+            broken,
+            Err(ProjectError::StateQuantityBreaksRelation { .. })
+        ));
     }
 }

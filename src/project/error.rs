@@ -100,9 +100,14 @@ pub enum ProjectError {
     /// Only factors and outcomes may replace standardized state with native state.
     #[error("node {0} cannot own native quantity state")]
     NativeStateUnsupported(EntityId),
-    /// A state dimension change would invalidate an incident causal response.
-    #[error("state quantity change would invalidate causal edge {0}")]
-    StateQuantityUsedByCausalEdge(EdgeId),
+    /// A state unit change would invalidate a node equation reading that quantity.
+    #[error("state quantity change would invalidate the equation on node {node}: {reason}")]
+    StateQuantityBreaksRelation {
+        /// Node whose equation no longer compiles.
+        node: EntityId,
+        /// Diagnostic explaining why the equation no longer compiles.
+        reason: String,
+    },
     /// A native state quantity or estimate is internally inconsistent.
     #[error(transparent)]
     Quantity(#[from] QuantityError),

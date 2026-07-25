@@ -106,7 +106,7 @@ pub(super) fn quantity(node: &Node) -> Option<&QuantityDefinition> {
 }
 
 /// Returns the equation computing a node's value, if it has one.
-pub(super) fn relation_of(node: &Node) -> Option<&StateRelation> {
+pub(crate) fn relation_of(node: &Node) -> Option<&StateRelation> {
     match &node.payload {
         NodePayload::Metric(metric) => metric.relation.as_ref(),
         _ => node
