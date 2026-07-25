@@ -72,18 +72,18 @@ const feedbackComponents = computed(() =>
 </template>
 
 <style scoped>
-.analysis-warning { display: grid; grid-template-columns: auto 1fr; gap: 7px; margin-top: 10px; padding: 8px; border: 1px solid #d8a098; border-radius: 5px; background: #fff8f6; color: #654b46; font-size: 9px; line-height: 1.45; }
+.analysis-warning { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--danger-line); border-radius: var(--radius-md); background: var(--danger-surface); color: #654b46; font-size: var(--text-sm); line-height: 1.5; }
 .analysis-warning svg { color: #a83f31; }
-.cycle-list { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.cycle-list button { width: 100%; min-height: 48px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px; border: 1px solid var(--line); border-radius: 5px; background: white; color: var(--ink); text-align: left; }
+.cycle-list { margin: var(--space-4) 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.cycle-list button { width: 100%; min-height: 50px; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: white; color: var(--ink); text-align: left; }
 .cycle-list button:hover { background: #f0f3ee; }
 .cycle-list button[aria-pressed='true'] { border-color: #a83f31; background: #fff2ef; }
 .cycle-route { min-width: 0; display: grid; gap: 3px; }
-.cycle-route strong { overflow: hidden; text-overflow: ellipsis; color: var(--ink); font: 10px 'IBM Plex Mono', monospace; white-space: nowrap; }
-.cycle-route small { color: var(--muted); font-size: 8px; }
-.component-list { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.component-list h3 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-.component-list > div { display: grid; gap: 2px; padding: 7px 0; border-bottom: 1px solid #e5e8e2; }
-.component-list strong { font: 9px 'IBM Plex Mono', monospace; }
-.component-list span { color: var(--muted); font-size: 8px; }
+.cycle-route strong { overflow: hidden; text-overflow: ellipsis; color: var(--ink); font: var(--text-sm) var(--mono); white-space: nowrap; }
+.cycle-route small { color: var(--muted); font-size: var(--text-xs); }
+.component-list { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.component-list h3 { margin: 0 0 var(--space-2); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .07em; color: #7b837e; }
+.component-list > div { display: grid; gap: 3px; padding: var(--space-2) 0; border-bottom: 1px solid #e5e8e2; }
+.component-list strong { font: var(--text-sm) var(--mono); }
+.component-list span { color: var(--muted); font-size: var(--text-xs); }
 </style>

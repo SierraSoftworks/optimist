@@ -32,8 +32,10 @@ test('creates and compares finite-horizon scenario candidates', async ({ page },
   await expect(panel.getByText('Automate', { exact: true })).toBeVisible()
   await expect(panel.getByRole('cell', { name: '100.0% improvement' })).toBeVisible()
   await expect(panel.getByRole('cell', { name: '3.3 pp' })).toBeVisible()
+  // Scope prose is one click away rather than competing with the result.
+  await panel.getByText('What this projection assumes').click()
   await expect(panel.getByText(/Each candidate includes its prerequisite execution plan/)).toBeVisible()
-  const candidate = panel.getByRole('button', { name: /Automate B converged/ })
+  const candidate = panel.getByRole('button', { name: /Automate B/ })
   await candidate.click()
   await expect(candidate).toHaveAttribute('aria-pressed', 'true')
   await panel.getByRole('button', { name: /Reliable delivery A · r0 · 12 periods/ }).click()

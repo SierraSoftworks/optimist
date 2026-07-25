@@ -245,6 +245,16 @@ const createScenario = useCreateScenario(projectQuery.data)
 const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)
 const impedimentsModeEnabled = computed(() => mode.value === 'impediments')
 const fullAnalysisMode = computed(() => mode.value === 'impediments' || mode.value === 'optimize')
+/**
+ * Whether the inspector column has anything worth its width.
+ *
+ * Only the explore inspector can be empty; the analysis panels always have
+ * content. An empty inspector gives its column back to the canvas rather than
+ * holding a third of a wide display to say that nothing is selected.
+ */
+const inspectorState = computed(() =>
+  !fullAnalysisMode.value && mode.value !== 'feedback' && !selectedNode.value ? 'idle' : 'active',
+)
 const impedimentAnalysis = useImpedimentAnalysis(
   selectedProjectId,
   projectRevision,
@@ -863,7 +873,11 @@ function retry() {
       </div>
     </header>
 
-    <section class="workbench-body" :class="{ 'full-analysis-workspace': fullAnalysisMode }">
+    <section
+      class="workbench-body"
+      :class="{ 'full-analysis-workspace': fullAnalysisMode }"
+      :data-inspector="inspectorState"
+    >
       <aside v-if="!fullAnalysisMode" class="navigator" aria-label="Graph navigator">
         <div class="search-field">
           <Search :size="16" />
@@ -1157,79 +1171,117 @@ function retry() {
 </template>
 
 <style scoped>
-.workbench-shell { width: 100%; height: 100vh; min-height: 100vh; display: grid; grid-template-rows: 58px minmax(0, 1fr); overflow: hidden; background: #eef0eb; }
-.app-header { display: grid; grid-template-columns: 220px minmax(210px, 1fr) auto auto; align-items: center; gap: 18px; padding: 0 14px; background: #fbfcf9; border-bottom: 1px solid var(--line); min-width: 0; }
+.workbench-shell { width: 100%; height: 100vh; min-height: 100vh; display: grid; grid-template-rows: 60px minmax(0, 1fr); overflow: hidden; background: #eef0eb; }
+/*
+ * The mode tab column absorbs every spare pixel, so the action cluster is laid
+ * out before it and can never be pushed past the right edge however long a
+ * project name grows.
+ */
+.app-header { display: grid; grid-template-columns: auto minmax(150px, 290px) minmax(0, 1fr) auto; align-items: center; gap: clamp(8px, 1.4vw, 22px); padding: 0 clamp(10px, 1vw, 16px); background: #fbfcf9; border-bottom: 1px solid var(--line); min-width: 0; }
 .brand-block { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; color: white; background: var(--green); border-radius: 6px; }
-.brand-block div { display: grid; line-height: 1.05; }
-.brand-block strong { font-size: 15px; }
-.brand-block span:last-child { color: var(--muted); font-size: 11px; margin-top: 3px; text-transform: uppercase; }
-.project-switcher { position: relative; display: flex; align-items: center; justify-self: start; min-width: 220px; max-width: 420px; height: 36px; border: 1px solid var(--line); border-radius: 6px; background: white; }
-.project-switcher select { appearance: none; width: 100%; height: 100%; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-weight: 600; }
+.brand-mark { flex: none; width: 34px; height: 34px; display: grid; place-items: center; color: white; background: var(--green); border-radius: var(--radius-md); }
+.brand-block div { display: grid; line-height: 1.05; min-width: 0; }
+.brand-block strong { font-size: var(--text-lg); }
+.brand-block span:last-child { color: var(--muted); font-size: var(--text-2xs); margin-top: 3px; text-transform: uppercase; letter-spacing: .07em; }
+.project-switcher { position: relative; display: flex; align-items: center; justify-self: stretch; min-width: 0; height: 38px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; }
+.project-switcher select { appearance: none; width: 100%; height: 100%; min-width: 0; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-size: var(--text-md); font-weight: 600; text-overflow: ellipsis; }
 .project-switcher > svg { position: absolute; right: 48px; pointer-events: none; color: var(--muted); }
-.revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: 11px 'IBM Plex Mono', monospace; color: var(--muted); }
-.mode-tabs { display: flex; align-items: center; height: 100%; }
-.mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 11px; font-size: 12px; font-weight: 600; }
+.revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: var(--text-2xs) var(--mono); color: var(--muted); }
+.mode-tabs { display: flex; align-items: center; height: 100%; min-width: 0; overflow: hidden; }
+.mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 clamp(8px, 1vw, 14px); font-size: var(--text-md); font-weight: 600; white-space: nowrap; }
 .mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
 .mode-tabs button:disabled { opacity: .4; cursor: not-allowed; }
 .add-node-button { justify-self: end; }
 .header-actions { display: flex; align-items: center; gap: 7px; justify-self: end; }
 .header-actions button:disabled { opacity: .42; cursor: not-allowed; }
 .header-icon { border: 1px solid var(--line); background: white; }
-.command-bar-trigger { min-width: 76px; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: 4px; color: var(--muted); }
+.command-bar-trigger { min-width: 76px; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: var(--radius-sm); color: var(--muted); }
 .command-bar-trigger:hover { background: #edf0eb; color: var(--ink); }
-.command-bar-trigger kbd { min-width: 39px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: 8px 'IBM Plex Mono', monospace; text-align: center; }
-.workbench-body { min-height: 0; display: grid; grid-template-columns: 260px minmax(420px, 1fr) 360px; overflow: hidden; }
+.command-bar-trigger kbd { min-width: 42px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: var(--text-2xs) var(--mono); text-align: center; }
+/*
+ * Side panels are proportional rather than fixed, so a wide display spends its
+ * extra pixels on the graph instead of stretching one column of text.
+ */
+.workbench-body { min-height: 0; display: grid; grid-template-columns: clamp(228px, 16vw, 320px) minmax(0, 1fr) clamp(316px, 22vw, 430px); overflow: hidden; }
+/*
+ * An inspector with nothing to inspect is the largest piece of dead space in the
+ * app, so it yields its column to the canvas until something is selected. The
+ * inspector is always the last child of this row, whichever panel is mounted.
+ */
+.workbench-body[data-inspector='idle'] { grid-template-columns: clamp(228px, 16vw, 320px) minmax(0, 1fr) 0; }
+.workbench-body[data-inspector='idle'] > :last-child { overflow: hidden; border-left: 0; opacity: 0; pointer-events: none; }
 .workbench-body.full-analysis-workspace { display: block; overflow: auto; background: #f4f6f1; }
 .full-analysis-workspace > .analysis-panel { min-height: 100%; }
-.navigator { min-height: 0; padding: 20px 16px; overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
+.navigator { min-height: 0; padding: var(--space-4) var(--space-3); overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
 .canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
-.search-field { height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: white; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); }
-.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: 14px; }
-.filter-section { margin-top: 20px; }
-.kind-filter, .setup-filter { width: 100%; min-height: 40px; margin-top: 5px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; text-align: left; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font-size: 13px; }
+.search-field { height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: white; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--muted); }
+.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--text-md); }
+.filter-section { margin-top: var(--space-4); }
+/*
+ * Filters are a scannable list, not a menu: one compact row each so all five fit
+ * without scrolling and leave room for the node outline beneath them.
+ */
+.kind-filter, .setup-filter { width: 100%; min-height: 32px; margin-top: 1px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 4px; text-align: left; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font-size: var(--text-md); }
 .kind-filter:hover, .kind-filter.muted:hover, .setup-filter:hover { background: #ecefe9; }
-.kind-filter > span:last-child, .setup-filter > span:last-child { color: var(--muted); font: 11px 'IBM Plex Mono', monospace; }
+.kind-filter > span:last-child, .setup-filter > span:last-child { color: var(--muted); font: var(--text-xs) var(--mono); }
+.kind-filter .kind-dot, .kind-filter > svg, .setup-filter > svg { width: 20px; height: 20px; }
 .kind-filter.muted { opacity: .42; }
-.setup-filter { margin-bottom: 8px; border: 1px solid transparent; color: #795710; }
+.setup-filter { margin-bottom: var(--space-2); border: 1px solid transparent; color: #795710; }
 .setup-filter[aria-pressed='true'] { border-color: #d4b171; background: #fff8e9; }
-.canvas-status { position: absolute; top: 12px; left: 14px; z-index: 2; display: flex; gap: 6px; }
-.canvas-status span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.9); color: var(--muted); font-size: 10px; }
+.canvas-status { position: absolute; top: 12px; left: 14px; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; }
+.canvas-status span { padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.9); color: var(--muted); font-size: var(--text-xs); }
 .canvas-status strong { color: var(--ink); }
 .canvas-status .mode-note { color: var(--green); font-weight: 700; text-transform: capitalize; }
 .canvas-status .readiness-status { display: inline-flex; align-items: center; gap: 4px; border-color: #d4b171; background: #fff8e9; color: #795710; }
 .canvas-status .readiness-status strong { color: #795710; }
 .state-panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--muted); }
-.state-panel h2 { margin: 12px 0 5px; color: var(--ink); font-size: 18px; }
-.state-panel p { margin: 0 0 16px; max-width: 380px; font-size: 12px; line-height: 1.55; }
+.state-panel h2 { margin: 12px 0 5px; color: var(--ink); font-size: var(--text-xl); }
+.state-panel p { margin: 0 0 16px; max-width: 420px; font-size: var(--text-md); line-height: 1.55; }
 .error-state svg { color: #a83f31; }
-.toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 10px; align-items: start; width: min(390px, calc(100vw - 32px)); padding: 12px; border: 1px solid #d8a098; border-radius: 7px; background: #fff8f6; color: #8c3429; box-shadow: 0 14px 38px rgba(41, 29, 26, .18); }
+.toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 10px; align-items: start; width: min(410px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--danger-line); border-radius: var(--radius-md); background: var(--danger-surface); color: #8c3429; box-shadow: 0 14px 38px rgba(41, 29, 26, .18); }
 .toast div { display: grid; gap: 3px; }
-.toast strong { font-size: 11px; }
-.toast span { color: #654b46; font-size: 10px; line-height: 1.45; }
-.toast ul { display: grid; gap: 2px; margin: 3px 0 0; padding-left: 14px; color: #654b46; font-size: 10px; line-height: 1.45; }
+.toast strong { font-size: var(--text-md); }
+.toast span { color: #654b46; font-size: var(--text-sm); line-height: 1.45; }
+.toast ul { display: grid; gap: 2px; margin: 3px 0 0; padding-left: 14px; color: #654b46; font-size: var(--text-sm); line-height: 1.45; }
 
+@media (max-width: 1180px) {
+  .brand-block div { display: none; }
+  .mode-tabs button { font-size: var(--text-sm); }
+}
+
+/*
+ * Below this the tabs cannot share a row with the project name, so they take
+ * their own. Hiding them instead would leave no way to change mode at all.
+ */
 @media (max-width: 1000px) {
-  .app-header { grid-template-columns: 190px 1fr auto; }
-  .mode-tabs { display: none; }
-  .workbench-body { grid-template-columns: 220px minmax(340px, 1fr) 300px; }
+  .app-header { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 1fr auto; min-height: 96px; padding-bottom: 0; }
+  .project-switcher { grid-column: 2; }
+  .header-actions { grid-column: 3; }
+  .mode-tabs { grid-column: 1 / -1; grid-row: 2; height: 38px; overflow-x: auto; scrollbar-width: none; }
+  .mode-tabs::-webkit-scrollbar { display: none; }
 }
 
 @media (max-width: 760px) {
   .workbench-shell { height: auto; min-height: 100svh; grid-template-rows: auto 1fr; overflow: visible; }
-  .app-header { grid-template-columns: 1fr auto; gap: 9px; min-height: 112px; padding: 10px; }
+  .app-header { grid-template-columns: auto 1fr; gap: 9px; min-height: 132px; padding: 10px 10px 0; }
   .project-switcher { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
   .header-actions { grid-column: 2; grid-row: 1; }
+  .mode-tabs { grid-row: 3; }
   .header-actions .secondary-button { display: none; }
-  .command-bar-trigger { min-width: 30px; width: 30px; padding: 0; }
+  .command-bar-trigger { min-width: 32px; width: 32px; padding: 0; }
   .command-bar-trigger kbd { display: none; }
-  .workbench-body { min-height: calc(100svh - 112px); grid-template-columns: 1fr; grid-template-rows: auto minmax(330px, 48svh) auto; overflow: visible; }
-  .navigator { border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; overflow: visible; }
+  .workbench-body, .workbench-body[data-inspector='idle'] { grid-template-columns: 1fr; grid-template-rows: auto minmax(340px, 52svh) auto; overflow: visible; }
+  .workbench-body[data-inspector='idle'] > :last-child { display: none; }
+  /*
+   * The navigator scrolls within a bounded height rather than growing with the
+   * model, so a large graph cannot push the canvas below the fold.
+   */
+  .navigator { max-height: 40svh; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; overflow: auto; }
   .filter-section { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
   .filter-section > .section-label { display: none; }
   .kind-filter { margin: 0; grid-template-columns: 22px 1fr; padding: 0 5px; }
   .kind-filter > span:last-child { display: none; }
   .setup-filter { grid-column: 1 / -1; margin: 0 0 4px; }
-  .canvas-panel { min-height: 330px; }
+  .canvas-panel { min-height: 340px; }
 }
 </style>

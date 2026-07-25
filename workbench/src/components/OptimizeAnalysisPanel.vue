@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, BarChart3, CheckCircle2, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
 import type { GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
 import { impactTone, relativeImprovement } from '../domain/optimizationImpact'
 import ScenarioPicker from './ScenarioPicker.vue'
@@ -101,6 +101,21 @@ const unsettledLoops = computed(
 function gainLabel(gain: number | null) {
   return gain === null ? 'gain unknown' : `gain ${gain.toFixed(2)}`
 }
+
+/**
+ * Counters worth reading only when they are not zero.
+ *
+ * A healthy run reports no invalid draws, no clamping, and no undefined
+ * responses, so printing all three every time trained the eye to skip the block
+ * that matters when one of them fires.
+ */
+function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
+  return [
+    { label: 'Invalid draws', value: invalidSamples(candidate) },
+    { label: 'Clamped updates', value: candidate.clamped_state_updates },
+    { label: 'Undefined responses', value: candidate.undefined_responses },
+  ].filter((entry) => entry.value > 0)
+}
 </script>
 
 <template>
@@ -129,12 +144,15 @@ function gainLabel(gain: number | null) {
       <button type="button" class="secondary-button" @click="emit('retry')">Retry</button>
     </div>
     <template v-else-if="analysis && selectedScenario">
-      <div class="analysis-summary optimize-summary">
-        <div><strong>{{ analysis.candidates.length }}</strong><span>candidates</span></div>
-        <div><strong>{{ selectedScenario.objectives.length }}</strong><span>objectives</span></div>
-        <div><strong>{{ analysis.planning_horizon }}</strong><span>periods</span></div>
-      </div>
-      <p class="analysis-boundary">Each candidate includes its prerequisite execution plan. Durations add, required success probabilities compound, and successful prerequisite effects are propagated before the candidate. Synergies are shown but remain qualitative until a magnitude is modelled.</p>
+      <p class="scenario-meta">
+        <span><strong>{{ analysis.candidates.length }}</strong> candidates</span>
+        <span><strong>{{ selectedScenario.objectives.length }}</strong> objectives</span>
+        <span><strong>{{ analysis.planning_horizon }}</strong> periods</span>
+      </p>
+      <details class="detail-disclosure projection-scope">
+        <summary><ChevronRight :size="13" /> What this projection assumes</summary>
+        <p class="analysis-boundary">Each candidate includes its prerequisite execution plan. Durations add, required success probabilities compound, and successful prerequisite effects are propagated before the candidate. Synergies are shown but remain qualitative until a magnitude is modelled.</p>
+      </details>
       <div v-if="unsettledLoops.length" class="stability-warning">
         <AlertTriangle :size="15" />
         <div>
@@ -152,17 +170,30 @@ function gainLabel(gain: number | null) {
         <article v-for="candidate in analysis.candidates" :key="candidate.intervention" :class="{ selected: selectedCandidateId === candidate.intervention }">
           <button type="button" class="candidate-header" :aria-pressed="selectedCandidateId === candidate.intervention" @click="selectCandidate(candidate)">
             <span><strong>{{ title(candidate.intervention) }}</strong><small>{{ candidate.intervention }}</small></span>
-            <span class="diagnostic-status" :data-status="candidate.diagnostics.status">{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</span>
+            <span
+              v-if="candidate.diagnostics.status !== 'converged'"
+              class="diagnostic-status"
+              :data-status="candidate.diagnostics.status"
+            >{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</span>
           </button>
           <dl class="candidate-diagnostics">
-            <div><dt><Clock3 :size="11" /> Total duration</dt><dd>{{ number(candidate.execution_duration.mean) }} periods</dd></div>
-            <div><dt><CheckCircle2 :size="11" /> Plan success</dt><dd>{{ candidate.execution_success.mean === null ? 'Unavailable' : `${(candidate.execution_success.mean * 100).toFixed(1)}%` }}</dd></div>
-            <div><dt>Valid draws</dt><dd>{{ candidate.diagnostics.valid_samples }} / {{ candidate.diagnostics.attempted_samples }}</dd></div>
-            <div><dt>Invalid draws</dt><dd>{{ invalidSamples(candidate) }}</dd></div>
-            <div><dt>Clamped updates</dt><dd>{{ candidate.clamped_state_updates }}</dd></div>
-            <div v-if="candidate.undefined_responses" class="negative"><dt>Undefined responses</dt><dd>{{ candidate.undefined_responses }}</dd></div>
-            <div><dt>Seed</dt><dd>{{ candidate.diagnostics.seed }}</dd></div>
+            <div><dt><Clock3 :size="13" /> Total duration</dt><dd>{{ number(candidate.execution_duration.mean) }} periods</dd></div>
+            <div><dt><CheckCircle2 :size="13" /> Plan success</dt><dd>{{ candidate.execution_success.mean === null ? 'Unavailable' : `${(candidate.execution_success.mean * 100).toFixed(1)}%` }}</dd></div>
+            <div v-for="concern in concerns(candidate)" :key="concern.label" class="negative">
+              <dt><AlertTriangle :size="13" /> {{ concern.label }}</dt><dd>{{ concern.value }}</dd>
+            </div>
           </dl>
+          <details class="detail-disclosure">
+            <summary><ChevronRight :size="13" /> Run detail</summary>
+            <dl class="fact-list">
+              <div><dt>Valid draws</dt><dd>{{ candidate.diagnostics.valid_samples }} / {{ candidate.diagnostics.attempted_samples }}</dd></div>
+              <div><dt>Invalid draws</dt><dd>{{ invalidSamples(candidate) }}</dd></div>
+              <div><dt>Clamped updates</dt><dd>{{ candidate.clamped_state_updates }}</dd></div>
+              <div><dt>Undefined responses</dt><dd>{{ candidate.undefined_responses }}</dd></div>
+              <div><dt>Convergence</dt><dd>{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</dd></div>
+              <div><dt>Seed</dt><dd>{{ candidate.diagnostics.seed }}</dd></div>
+            </dl>
+          </details>
           <div v-if="candidate.prerequisites.length || candidate.blocking_requirements.length || candidate.synergies.length || candidate.conflicts.length" class="execution-context">
             <span v-if="candidate.prerequisites.length"><GitBranch :size="12" /> Requires first: {{ candidate.prerequisites.map(title).join(' → ') }}</span>
             <span v-if="candidate.blocking_requirements.length" class="negative"><AlertTriangle :size="12" /> {{ candidate.blocking_requirements.length }} factor requirement{{ candidate.blocking_requirements.length === 1 ? '' : 's' }}</span>
@@ -212,47 +243,57 @@ function gainLabel(gain: number | null) {
 </template>
 
 <style scoped>
-.scenario-selector-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 6px; margin-top: 15px; }
-.scenario-edit-button { width: 32px; height: 32px; margin-bottom: 5px; border: 1px solid var(--line); background: white; }
-.candidate-list { display: grid; gap: 9px; margin-top: 12px; }
-.candidate-list article { overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.scenario-selector-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2); margin-top: var(--space-4); }
+.scenario-meta { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-3) 0 0; color: var(--muted); font-size: var(--text-sm); }
+.scenario-meta strong { color: var(--ink); font-family: var(--mono); font-size: var(--text-md); }
+.projection-scope { margin-top: var(--space-3); }
+.projection-scope .analysis-boundary { margin-top: var(--space-2); }
+.scenario-edit-button { width: 36px; height: 36px; margin-bottom: 4px; border: 1px solid var(--line); background: white; }
+.candidate-list { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.candidate-list article { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; }
 .candidate-list article.selected { border-color: #285c91; box-shadow: 0 0 0 1px #285c91; }
-.candidate-header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px; border: 0; background: transparent; text-align: left; }
+.candidate-header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 0; background: transparent; text-align: left; }
 .candidate-header:hover, .candidate-header[aria-pressed='true'] { background: #edf3f9; }
 .candidate-header > span:first-child { display: grid; gap: 2px; }
-.candidate-header strong { font-size: 11px; }
-.candidate-header small { color: var(--muted); font: 8px 'IBM Plex Mono', monospace; }
-.diagnostic-status { padding: 3px 5px; border-radius: 4px; background: #edf0eb; color: var(--muted); font-size: 7px; font-weight: 700; text-transform: uppercase; }
-.diagnostic-status[data-status='converged'] { background: var(--green-soft); color: var(--green); }
+.candidate-header strong { font-size: var(--text-lg); }
+.candidate-header small { color: var(--muted); font: var(--text-2xs) var(--mono); }
+.diagnostic-status { flex: none; padding: 4px 7px; border-radius: var(--radius-sm); background: #edf0eb; color: var(--muted); font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .diagnostic-status[data-status='maximum_samples_reached'], .diagnostic-status[data-status='insufficient_valid_samples'] { background: #fff2df; color: #8a5b00; }
-.candidate-diagnostics { grid-template-columns: 1fr; gap: 0; padding: 0 9px 8px; }
-.candidate-diagnostics div { grid-template-columns: 1fr auto; padding: 3px 0; border-bottom: 1px solid #eef0ec; font-size: 8px; }
-.candidate-diagnostics dt { display: flex; align-items: center; gap: 4px; }
-.execution-context { display: flex; flex-wrap: wrap; gap: 5px; padding: 0 9px 9px; }
-.execution-context span { display: flex; align-items: center; gap: 4px; padding: 4px 6px; background: #edf1ed; color: #46554d; font-size: 8px; }
+.candidate-diagnostics { grid-template-columns: 1fr; gap: 0; padding: 0 var(--space-4) var(--space-2); }
+.candidate-diagnostics div { grid-template-columns: 1fr auto; padding: 6px 0; border-bottom: 1px solid #eef0ec; font-size: var(--text-md); }
+.candidate-diagnostics dt { display: flex; align-items: center; gap: 6px; }
+.candidate-diagnostics dd { font-family: var(--mono); font-size: var(--text-sm); }
+.candidate-diagnostics .negative dt, .candidate-diagnostics .negative dd { color: #984335; }
+.detail-disclosure { margin: 0 var(--space-4) var(--space-3); }
+.execution-context { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 var(--space-4) var(--space-3); }
+.execution-context span { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: var(--radius-sm); background: #edf1ed; color: #46554d; font-size: var(--text-xs); }
 .execution-context .positive { background: #eaf5ed; color: #287044; }
 .execution-context .negative { background: #fff0e8; color: #984335; }
-.projection-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--line); font-size: 8px; }
-.projection-table th, .projection-table td { padding: 6px 8px; text-align: right; }
-.projection-table thead th { color: var(--muted); text-transform: uppercase; }
+.projection-table { width: 100%; border-collapse: collapse; border-top: 1px solid var(--line); font-size: var(--text-sm); }
+.projection-table th, .projection-table td { padding: var(--space-2) var(--space-4); text-align: right; }
+.projection-table thead th { color: var(--muted); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: .05em; }
 .projection-table th:first-child { text-align: left; }
-.projection-table tbody th { display: grid; gap: 1px; }
-.projection-table tbody th span { font-size: 9px; }
-.projection-table tbody th small { color: var(--muted); font-size: 7px; font-weight: 400; text-transform: capitalize; }
+.projection-table tbody th { display: grid; gap: 2px; }
+.projection-table tbody th span { font-size: var(--text-md); }
+.projection-table tbody th small { color: var(--muted); font-size: var(--text-xs); font-weight: 400; text-transform: capitalize; }
 .projection-table tr.unreachable { opacity: .55; }
-.horizon-warning { display: flex; gap: 6px; align-items: flex-start; margin: 6px 0 0; color: #8a6206; font-size: 9px; line-height: 1.5; }
-.horizon-warning svg { flex: none; margin-top: 1px; }
-.stability-warning { display: flex; gap: 9px; align-items: flex-start; padding: 11px 13px; border: 1px solid #e2c98f; border-radius: 7px; background: #fdf6e6; color: #6f4f05; }
+.horizon-warning { display: flex; gap: 7px; align-items: flex-start; margin: 0; padding: var(--space-2) var(--space-4) var(--space-3); color: #8a6206; font-size: var(--text-sm); line-height: 1.5; }
+.horizon-warning svg { flex: none; margin-top: 2px; }
+.stability-warning { display: flex; gap: var(--space-3); align-items: flex-start; margin-top: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--caution-line); border-radius: var(--radius-md); background: var(--caution-surface); color: var(--caution); }
 .stability-warning svg { flex: none; margin-top: 2px; }
-.stability-warning strong { display: block; font-size: 11px; }
-.stability-warning ul { margin: 5px 0; padding-left: 16px; font-size: 10px; }
-.stability-warning code { padding: 0 3px; border-radius: 3px; background: #f3e6c4; font-size: 9px; }
-.stability-warning span { display: block; font-size: 9px; line-height: 1.5; opacity: .85; }
-.relative-impact { font-weight: 800; }
+.stability-warning strong { display: block; font-size: var(--text-md); }
+.stability-warning ul { margin: 6px 0; padding-left: 18px; font-size: var(--text-sm); line-height: 1.6; }
+.stability-warning code { padding: 1px 4px; border-radius: 3px; background: #f3e6c4; font: var(--text-xs) var(--mono); }
+.stability-warning span { display: block; font-size: var(--text-sm); line-height: 1.55; opacity: .85; }
+.relative-impact { font-weight: 800; font-size: var(--text-md); }
 .relative-impact[data-impact='positive'] { color: #277445; }
 .relative-impact[data-impact='negative'] { color: #a34335; }
 .relative-impact[data-impact='neutral'] { color: var(--muted); }
 .trajectory-list { display: grid; }
-.optimize-panel { border: 0; padding: 24px clamp(18px, 4vw, 52px); background: #f4f6f1; }
-.candidate-list { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); align-items: start; }
+.optimize-panel { border: 0; background: #f4f6f1; }
+/*
+ * Cards get wider before they get more numerous, so a large display shows two
+ * readable comparisons rather than four cramped ones.
+ */
+.candidate-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); align-items: start; }
 </style>

@@ -29,8 +29,15 @@ test('renders a bounded 100-node model without a blank canvas', async ({ page },
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(page.viewportSize()!.height)
   await expectCanvasPainted(page)
   await expect(page.getByRole('button', { name: 'Cluster by kind' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.detail-indicator')).toHaveText('overview')
+  // A hundred nodes must never render at full detail, and zooming out must still
+  // reach the overview. The exact level at fit depends on the canvas width, so
+  // asserting one bucket here would only re-measure the panel layout.
+  await expect(page.locator('.detail-indicator')).not.toHaveText('detail')
   await page.locator('.canvas-panel').screenshot({ path: 'artifacts/graph-semantic-overview.png' })
+  for (let step = 0; step < 4; step += 1) {
+    await page.getByRole('button', { name: 'Zoom out' }).click()
+  }
+  await expect(page.locator('.detail-indicator')).toHaveText('overview')
   await page.getByRole('button', { name: 'Hierarchy layout' }).click()
   await page.getByRole('button', { name: 'Cluster by kind' }).click()
   await expect(page.getByRole('button', { name: 'Cluster by kind' })).toHaveAttribute('aria-pressed', 'true')

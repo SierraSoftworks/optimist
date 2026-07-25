@@ -100,12 +100,12 @@ function format(value: number) {
 </template>
 
 <style scoped>
-.trajectory { margin: 0; padding: 9px; border-top: 1px solid var(--line); background: #fbfcfa; }
-.trajectory figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.trajectory figcaption strong { font-size: 9px; }
-.trajectory figcaption span { color: var(--muted); font-size: 7px; }
-.trajectory svg { width: 100%; aspect-ratio: 320 / 122; display: block; margin-top: 4px; overflow: visible; }
-.trajectory text { fill: var(--muted); font: 7px 'IBM Plex Mono', monospace; }
+.trajectory { margin: 0; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); background: #fbfcfa; }
+.trajectory figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.trajectory figcaption strong { font-size: var(--text-md); }
+.trajectory figcaption span { color: var(--muted); font-size: var(--text-xs); }
+.trajectory svg { width: 100%; aspect-ratio: 320 / 122; display: block; margin-top: 6px; overflow: visible; }
+.trajectory text { fill: var(--muted); font: var(--text-2xs) var(--mono); }
 .zero-line { stroke: #aeb8b2; stroke-dasharray: 3 3; }
 .uncertainty-band { fill: #dbe8df; opacity: .8; }
 .trajectory-line { fill: none; stroke: #6d786f; stroke-width: 2; vector-effect: non-scaling-stroke; }
