@@ -80,7 +80,7 @@ Successful response:
 
 ### Causal relationship commands
 
-`update_causal_effect` replaces the reviewable claim behind a `contributes` or `changes` relationship. Units are derived from the endpoints and are not editable here.
+`update_causal_effect` replaces the stated reasoning behind a `contributes` or `changes` relationship. Strength lives in the relationship's `response` estimate and is edited through the estimate commands, not here.
 
 ```json
 {
@@ -88,7 +88,6 @@ Successful response:
   "payload": {
     "edge": {"source": "H", "kind": "changes", "destination": "E"},
     "expected_revision": 0,
-    "source_change": 1.0,
     "mechanism": "Freezing changes suppresses the defect inflow.",
     "evidence": ["2026-Q2 freeze retrospective"]
   }
@@ -108,7 +107,7 @@ Successful response:
       "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
       "release": {"type": "immediate"},
       "aftereffect": {
-        "magnitude": {"source": "pointMass(120)", "seed": 42, "sample_count": 256, "target_unit": {"change": 1, "month": -1}},
+        "magnitude": {"source": "pointMass(1.25)", "seed": 42, "sample_count": 256, "target_unit": {}},
         "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
         "release": {"type": "immediate"}
       }

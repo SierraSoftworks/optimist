@@ -35,7 +35,7 @@ Every estimate can retain provenance plus separate descriptions of epistemic unc
 
 | Kind | Direction | Purpose |
 | --- | --- | --- |
-| `contributes` | Directed | A unit-aware counterfactual response. |
+| `contributes` | Directed | A proportional causal response. |
 | `measures` | Directed | A metric measuring a factor or outcome. |
 | `changes` | Directed | An intervention changing a factor or native metric. |
 | `requires` | Directed | A hard or soft prerequisite. |
@@ -44,7 +44,7 @@ Every estimate can retain provenance plus separate descriptions of epistemic unc
 | `conflicts-with` | Symmetric | Incompatible interventions. |
 | `synergizes-with` | Symmetric | Mutually beneficial interventions. |
 
-Endpoint combinations are validated. `contributes` may connect any configured factor, metric, or outcome to another such state variable. Every causal edge defines a counterfactual response whose source and destination units exactly match the endpoint quantity definitions. For `changes`, the source anchor is a dimensionless intervention activation and the destination change is a Squiggle estimate in the destination quantity's unit. `measures` remains a metric-to-factor/outcome observation model.
+Endpoint combinations are validated. `contributes` may connect any configured factor, metric, or outcome to another such state variable. Every causal edge carries one dimensionless response estimate, so the endpoints' units need not agree and re-baselining either endpoint leaves the claim intact. `measures` remains a metric-to-factor/outcome observation model.
 
 Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
 
@@ -63,17 +63,21 @@ This design avoids graph noise and makes deletion/reference checks explicit.
 
 ## Causal responses
 
-Every causal relationship answers a concrete counterfactual:
+Every `contributes` relationship answers a concrete counterfactual:
 
-> If the source changes by $\Delta x$ in its declared unit, what uncertain change $\Delta y$ should we expect in the destination after the stated lag?
+> If the source moves by some fraction of its baseline, what fraction of its own baseline should we expect the destination to move after the stated lag?
 
-Optimist derives the local coefficient
+That ratio of fractional changes is an elasticity $\varepsilon_{xy}$, and it carries no unit:
 
 $$
-\beta_{xy}=\frac{\Delta y}{\Delta x},
+\varepsilon_{xy} = \frac{\Delta y / y_0}{\Delta x / x_0}.
 $$
 
-with dimension $\mathrm{unit}(y)/\mathrm{unit}(x)$. During propagation it applies $\beta_{xy}(x_t-x_0)$ to destination baseline. The destination change is a revisioned Squiggle estimate evaluated against the destination unit. A zero or non-finite source anchor is invalid.
+So $\varepsilon = 1$ is a plain product, $\varepsilon = 0$ is no response, and a negative value inverts the direction. Because it is dimensionless, one relationship can connect a rate to a duration without the author converting between them.
+
+A `changes` relationship is different, because an intervention has no level to take a ratio of. Its response is instead the multiplier applied to the target while the intervention is fully active: `0.1` cuts the target to a tenth, `1` leaves it unchanged, and `1.25` raises it by a quarter.
+
+Both are revisioned Squiggle estimates evaluated as dimensionless quantities, so uncertainty in the response is expressed the same way as anywhere else in the model.
 
 This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
 
@@ -97,7 +101,7 @@ cargo run -- --project A batch apply \
         "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
         "release": {"type": "immediate"},
         "aftereffect": {
-          "magnitude": {"source": "pointMass(120)", "seed": 42, "sample_count": 256, "target_unit": {"change": 1, "month": -1}},
+          "magnitude": {"source": "pointMass(1.25)", "seed": 42, "sample_count": 256, "target_unit": {}},
           "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
           "release": {"type": "immediate"}
         }
@@ -106,9 +110,9 @@ cargo run -- --project A batch apply \
   }]'
 ```
 
-That reads as: hold the effect for two periods, end it abruptly, and add 120 changes per month for one period afterwards as the suppressed work drains. Set `profile` to `null` to restore a permanent effect.
+That reads as: hold the effect for two periods, end it abruptly, and run the change rate a quarter above baseline for one period afterwards as the suppressed work drains. Set `profile` to `null` to restore a permanent effect.
 
-The rebound declares its own movement rather than a share of the effect it follows, so releasing an intervention can overshoot, undershoot, or exactly reverse. Every duration is a Squiggle estimate, so an uncertain schedule is expressed the same way as any other uncertain quantity. `ramp` staggers the onset, and `release` can decline linearly over a span or decay by half-life instead of stopping abruptly.
+The rebound declares its own multiplier rather than a share of the effect it follows, so releasing an intervention can overshoot, undershoot, or exactly reverse. Every duration is a Squiggle estimate, so an uncertain schedule is expressed the same way as any other uncertain quantity. `ramp` staggers the onset, and `release` can decline linearly over a span or decay by half-life instead of stopping abruptly.
 
 Only `changes` accepts a profile. A `contributes` relationship describes an ongoing structural dependency with no activation to start or stop, and Optimist rejects a profile on one.
 

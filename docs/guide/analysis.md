@@ -72,21 +72,29 @@ Analyze every candidate execution plan in a stored scenario:
 cargo run -- --project A scenario analyze A
 ```
 
-Every factor and objective on a candidate-to-objective causal path needs a native quantity and `current` estimate. For `A requires B`, B executes before A. Recursive prerequisite durations add, each required intervention must succeed, and successful prerequisite `changes` effects enter propagation before the candidate. Hard factor requirements preclude execution when their threshold is absent or unsatisfied. `changes` and `contributes` provide sampled unit-aware local responses.
+Every factor and objective on a candidate-to-objective causal path needs a native quantity and `current` estimate. For `A requires B`, B executes before A. Recursive prerequisite durations add, each required intervention must succeed, and successful prerequisite `changes` effects enter propagation before the candidate. Hard factor requirements preclude execution when their threshold is absent or unsatisfied. `changes` and `contributes` provide sampled dimensionless local responses.
 
-For sampled baseline $b_i$, state $x_i(t)$, intervention forcing $u_i(t)$, local response $\beta_{ji}$, and delay $d_{ji}$, Optimist applies the synchronous recurrence
+A response is a ratio, so a state moves relative to its own sampled baseline rather than by an amount expressed in its unit. How responses combine follows the destination quantity's declared support, because support is what makes one rule sound. A strictly non-negative quantity has a ratio scale, so its responses multiply:
 
 $$
 x_i(t) = \operatorname{clamp}_i\left(
-  b_i + u_i(t) + \sum_j \beta_{ji}\left(x_j(t-d_{ji})-b_j\right)
+  b_i \prod_j \left(\frac{x_j(t-d_{ji})}{b_j}\right)^{\varepsilon_{ji}}
 \right).
 $$
 
-A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. The recurrence uses deviations from sampled baselines so an unchanged source contributes zero movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. Horizons are bounded to 10,000 periods.
+A plain product such as $\text{impact} = \text{frequency} \times \text{duration}$ is therefore two edges with $\varepsilon = 1$, and the result stays non-negative for free. A quantity that may be zero or negative has no ratio scale, so its responses accumulate against baseline instead:
+
+$$
+x_i(t) = \operatorname{clamp}_i\left(
+  b_i \left(1 + \sum_j \varepsilon_{ji}\left(\frac{x_j(t-d_{ji})}{b_j} - 1\right)\right)
+\right).
+$$
+
+A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. An unchanged source has a ratio of one and so contributes no movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. A source whose sampled baseline is zero has no fractional movement at all; its responses are dropped and reported as undefined rather than propagating an infinity. Horizons are bounded to 10,000 periods.
 
 ### Time-boxed interventions
 
-Every `changes` effect contributes $\beta_k a_k(t) + \rho_k b_k(t)$ to $u_i(t)$. The activation $a_k$ and rebound $b_k$ come from the effect's temporal profile, and $\rho_k$ is its sampled rebound movement. An effect without a profile holds $a_k = 1$ and $b_k = 0$ after arrival, which is the monotone step a permanent intervention applies, so adding a profile changes only an effect's schedule and never its magnitude.
+An intervention has no level to take a ratio of, so a `changes` response is the multiplier $m_k$ applied to its target while the intervention is fully active. Its temporal activation $a_k(t)$ enters as the exponent, contributing $m_k^{a_k(t)}$ multiplicatively or the share $(m_k - 1)a_k(t)$ additively, with the sampled rebound multiplier $\rho_k$ applied the same way against $b_k(t)$. Ramping therefore interpolates geometrically. An effect without a profile holds $a_k = 1$ and $b_k = 0$ after arrival, which is the monotone step a permanent intervention applies, so adding a profile changes only an effect's schedule and never its magnitude.
 
 A profile has four parts. `ramp` spends $r$ periods rising to full strength, `hold` keeps $h$ periods at full strength, `release` returns the effect toward zero, and an optional `aftereffect` fires a rebound when the release begins:
 

@@ -44,15 +44,16 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Introduce validated native quantity definitions and state-bearing metric estimates under one canonical nested quantity schema.
   - [x] Assess real, non-negative, and arbitrary bounded metric Squiggle sources against owner-derived native units and support.
   - [x] Capture unit, aggregation window, reference time, support, operational definition, resolution source, provenance, and distinct epistemic/process/measurement uncertainty.
-  - [x] Store factor/outcome current and forecast estimates only in native quantity state with support-aware propagation and unit-aware edge guards.
-- [ ] Replace dimensionless signed causal strength with unit-aware behaviour expressions over source changes, destination responses, lag, residual uncertainty, and stated assumptions.
+  - [x] Store factor/outcome current and forecast estimates only in native quantity state with support-aware propagation.
+- [ ] Replace dimensionless signed causal strength with behaviour expressions over proportional responses, lag, residual uncertainty, and stated assumptions.
   - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
   - [x] Shape intervention effects over time with ramp, hold, release, and rebound profiles so time-boxed interventions need no placeholder nodes.
-  - [ ] Add elasticity, nonlinear, threshold, and saturation forms only after predictive checks cover the linear model.
+  - [x] Replace unit-bearing anchor pairs with one dimensionless response per relationship, composing multiplicatively or additively by declared support.
+  - [ ] Add nonlinear, threshold, and saturation forms only after predictive checks cover the proportional model.
   - [ ] Treat observational co-movement as evidence rather than causal identification unless the relationship records an experiment or explicit identification assumptions.
 - [ ] Make metrics measured causal variables: state-bearing, eligible for factor/metric/outcome relationships in both directions, and directly observable in native units.
   - [x] Author, validate, inspect, replace, show, and remove direct metric estimates in native units through the existing estimate lifecycle.
-  - [x] Allow factor, metric, and outcome `contributes` paths through metrics with unit-checked linear responses and native support-aware propagation.
+  - [x] Allow factor, metric, and outcome `contributes` paths through metrics with proportional responses and native support-aware propagation.
   - [ ] Distinguish direct observations from proxy observation models for latent factors.
   - [ ] Infer or update uncertain relationships from paired measurements only through an explicit statistical model with diagnostics and retained source data.
 - [ ] Move maximize/minimize/target-range semantics entirely into scenario objectives and evaluate transparent native-unit utility or goal-attainment functions after causal propagation.
@@ -171,7 +172,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Keyboard navigation and synchronized table/outline accessibility view.
 - [x] Delete-key confirmation for graph-selected nodes and relationships, with editable-control and connected-edge guards.
 - [x] Per-period optimization trajectories with backend Monte Carlo means and uncertainty bands.
-- [x] Unit-aware intervention-to-metric `changes` relationships authored as Squiggle destination responses.
+- [x] Intervention-to-metric `changes` relationships authored as Squiggle multipliers.
 - [x] Effect profile editor with activation preview for time-boxed interventions.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.
 - [x] Serve production assets from Axum with SPA fallback and immutable caching.
