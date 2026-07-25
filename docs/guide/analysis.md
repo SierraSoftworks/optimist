@@ -92,6 +92,8 @@ $$
 
 A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. An unchanged source has a ratio of one and so contributes no movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. A source whose sampled baseline is zero has no fractional movement at all; its responses are dropped and reported as undefined rather than propagating an infinity. Horizons are bounded to 10,000 periods.
 
+A state carrying a [node equation](./modelling.md#node-equations) is computed from that equation instead of from either rule. Its parents are bound at the value they held one relationship lag ago, its interventions bind their activation, and its parameters are sampled once per draw and held across the horizon. Because the one-period transport delay guarantees every parent is already resolved, equations within a period never depend on each other's order.
+
 ### Time-boxed interventions
 
 An intervention has no level to take a ratio of, so a `changes` response is the multiplier $m_k$ applied to its target while the intervention is fully active. Its temporal activation $a_k(t)$ enters as the exponent, contributing $m_k^{a_k(t)}$ multiplicatively or the share $(m_k - 1)a_k(t)$ additively, with the sampled rebound multiplier $\rho_k$ applied the same way against $b_k(t)$. Ramping therefore interpolates geometrically. An effect without a profile holds $a_k = 1$ and $b_k = 0$ after arrival, which is the monotone step a permanent intervention applies, so adding a profile changes only an effect's schedule and never its magnitude.

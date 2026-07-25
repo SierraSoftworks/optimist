@@ -81,6 +81,56 @@ Both are revisioned Squiggle estimates evaluated as dimensionless quantities, so
 
 This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
 
+## Node equations
+
+An elasticity says how strongly one parent moves a state. Some states are not like that: they *are* an expression of their parents. Customer impact is not "responsive to" outage frequency and impact duration, it is their product, and no pair of independent elasticities says so.
+
+Give the state a node equation and write the arithmetic:
+
+```sh
+cargo run -- --project A batch apply \
+  --request-id 00000000-0000-4000-8000-000000000020 \
+  --expected-revision 14 \
+  --commands '[{
+    "type": "set_state_relation",
+    "payload": {
+      "node": "A",
+      "expected_revision": 2,
+      "relation": {"source": "outage_frequency * impact_duration"}
+    }
+  }]'
+```
+
+Parents are bound by node name, at the value they held one relationship lag ago. The names are not authored: they come from the relationships already drawn into this state, so an equation cannot invent a dependency the graph does not show. Interventions reaching the state bind their activation in $[0, 1]$ instead, which is how a relative effect is written:
+
+```
+baseline * (1 - suppression * code_yellow)
+```
+
+An equation **replaces** proportional composition for the state that owns it. The incoming responses no longer scale anything; the relationships still declare which parents exist and how far they lag, and intervention effects still supply their activation, but the magnitudes come from the equation.
+
+Three things are checked before an equation is stored:
+
+- **Units.** `outage_frequency * impact_duration` is accepted when the product is measured in the state's own unit, and rejected when it is not. `outage_frequency + impact_duration` is rejected outright.
+- **Names.** Only parents the graph connects, interventions that change this state, `baseline`, and the equation's own parameters can be referenced.
+- **Shape.** An equation must produce a number. Authoring `normal(1, 0.1)` inside it is rejected.
+
+Uncertainty belongs in named parameters rather than in the source, because propagation samples a parameter once per Monte Carlo draw and holds it across the horizon. A distribution written inline would be resampled every period, modelling a coefficient as noise, and would resample shared assumptions independently and quietly destroy common-cause structure:
+
+```json
+{
+  "source": "baseline * (1 - suppression * code_yellow)",
+  "parameters": {
+    "suppression": {
+      "quantity": {"unit": "ratio", "dimension": {}, "support": {"type": "bounded", "lower": 0, "upper": 1}},
+      "value": {"id": "A", "revision": 0, "source": {"type": "squiggle", "definition": {"source": "beta(4, 2)", "seed": 42, "sample_count": 256, "target_unit": {}}}}
+    }
+  }
+}
+```
+
+A state with an equation always projects every parent it reads, even one no intervention moves. Proportional composition can ignore such a parent, because an unchanged parent contributes a ratio of one; an equation cannot, because it computes the whole value from all of its inputs.
+
 ## Time-boxed interventions
 
 Interventions are permanent by default: once an effect arrives it holds for the rest of the horizon. Many real interventions are not. A change freeze runs for two planning cycles, a temporary staffing uplift ends when the contract does, and a mitigation gets reverted once the underlying defect is fixed.

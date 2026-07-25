@@ -49,6 +49,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Support counterfactual anchor pairs first, deriving linear response coefficients with destination-unit/source-unit dimensions.
   - [x] Shape intervention effects over time with ramp, hold, release, and rebound profiles so time-boxed interventions need no placeholder nodes.
   - [x] Replace unit-bearing anchor pairs with one dimensionless response per relationship, composing multiplicatively or additively by declared support.
+  - [x] Author node equations over graph-derived parents, activations, and named parameters, replacing proportional composition where a state is an expression of its inputs.
   - [ ] Add nonlinear, threshold, and saturation forms only after predictive checks cover the proportional model.
   - [ ] Treat observational co-movement as evidence rather than causal identification unless the relationship records an experiment or explicit identification assumptions.
 - [ ] Make metrics measured causal variables: state-bearing, eligible for factor/metric/outcome relationships in both directions, and directly observable in native units.
