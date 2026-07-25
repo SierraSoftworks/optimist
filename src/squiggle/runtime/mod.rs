@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
-use super::{Diagnostic, Value, ast::Program, parse};
+use super::{Diagnostic, Value, ast::Program, parse, value::Environment};
 
 mod builtin;
 #[macro_use]
@@ -58,6 +58,8 @@ pub struct Runtime {
     pub(super) rng: ChaCha20Rng,
     pub(super) steps: usize,
     pub(super) modules: BTreeMap<String, Value>,
+    /// Standard globals, built once and shared by every run as a parent scope.
+    pub(super) globals: Environment,
 }
 
 /// The value and named exports produced by evaluating a Squiggle module.
@@ -78,6 +80,7 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            globals: standard::environment(),
         }
     }
 
@@ -94,6 +97,7 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            globals: standard::environment(),
         })
     }
 
@@ -134,13 +138,18 @@ impl Runtime {
     }
 
     /// Evaluates a parsed module while retaining its explicit exports.
+    ///
+    /// Each run evaluates in a child of this runtime's standard globals, so
+    /// imports and top-level bindings are discarded afterwards while the ~100
+    /// builtin entries are built once rather than per evaluation. That matters
+    /// when a caller evaluates the same program for every period of every draw.
     pub fn evaluate_program_output(
         &mut self,
         program: &Program,
     ) -> Result<ModuleOutput, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
-        let environment = standard::environment();
+        let environment = self.globals.child();
         self.eval_program(program, &environment)
     }
 }
