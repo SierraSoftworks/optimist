@@ -450,13 +450,25 @@ export interface InterventionProjection {
   diagnostics: MonteCarloDiagnostics
 }
 
+/** One relationship's additive share of a loop's compounding. */
+export interface LoopWeight {
+  source: string
+  destination: string
+  /** Proportional response of the destination to the source at baseline. */
+  response: number
+  /** Additive share of ln|gain|; positive where the response amplifies. */
+  contribution: number
+}
+
 /** A circuit in the propagation graph and the gain that decides whether it settles. */
 export interface FeedbackLoop {
   states: string[]
-  /** Product of the mean responses around the circuit; null where no elasticity describes an edge. */
+  /** Product of the mean responses around the circuit; null where a hop cannot be measured. */
   gain: number | null
-  /** Share of sampled draws in which the circuit fails to contract; null where the gain is. */
+  /** Share of sampled draws in which the circuit fails to contract; null where no hop is sampled. */
   instability: number | null
+  /** Each relationship's share of the compounding, in circuit order. */
+  weights: LoopWeight[]
 }
 
 export interface ScenarioAnalysis {

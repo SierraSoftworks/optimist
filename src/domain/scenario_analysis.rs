@@ -1098,14 +1098,20 @@ mod tests {
         );
     }
 
-    /// Refuses to call a loop safe when it cannot be weighed.
-    ///    /// A node equation is arbitrary arithmetic over its parents, so no elasticity
-    /// describes its response and the product around the circuit would be a
-    /// number with no meaning. Reporting the loop with an absent gain — rather
-    /// than omitting it or inventing one — is what stops a caller that warns on
-    /// "does not settle" from treating an unweighable loop as a settled one.
+    /// Weighs a loop that runs through a node equation.
+    ///
+    /// An equation is arbitrary arithmetic, so no elasticity is authored for the
+    /// edge feeding it. One is still measurable: nudge the parent about its
+    /// baseline and read the relative change in the result. That is the same
+    /// linearisation the gain already assumes for an authored response, so the
+    /// two multiply together. Here the outcome equals its parent outright, which
+    /// is an elasticity of exactly one, leaving the loop's gain to the authored
+    /// 0.1 on the return hop.
+    ///
+    /// Instability stays absent: sampling multiplies authored distributions, and
+    /// an equation supplies none.
     #[test]
-    fn reports_a_loop_through_an_equation_without_inventing_a_gain() {
+    fn measures_an_equation_elasticity_by_differentiating_it() {
         let (scenario, mut nodes, mut edges, revision) = point_fixture(3);
         nodes[2].native_state = Some(nodes[2].native_state.clone().unwrap().with_relation(Some(
             StateRelation::new("feedback".to_owned(), Default::default()).unwrap(),
@@ -1129,14 +1135,47 @@ mod tests {
         let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         assert_eq!(result.feedback_loops.len(), 1);
         let loop_ = &result.feedback_loops[0];
-        assert_eq!(loop_.gain, None, "no elasticity describes an equation");
-        assert!(!loop_.is_amplifying(), "an unknown gain is not a known one");
         assert!(
-            !loop_.settles(),
-            "an unweighable loop must never be reported as safe"
+            (loop_.gain.unwrap() - 0.1).abs() < 1e-6,
+            "the equation contributes an elasticity of one, got {:?}",
+            loop_.gain,
         );
-        assert_eq!(loop_.instability, None);
-        assert!(loop_.needs_review());
+        assert!(loop_.settles() && !loop_.needs_review());
+        assert_eq!(
+            loop_.instability, None,
+            "an equation supplies no distribution to sample"
+        );
+
+        let weights = &loop_.weights;
+        assert_eq!(weights.len(), 2, "one weight per hop");
+        let equation = weights
+            .iter()
+            .find(|weight| weight.destination == nodes[2].id)
+            .unwrap();
+        assert!((equation.response - 1.0).abs() < 1e-6);
+        assert!(
+            equation.contribution.abs() < 1e-6,
+            "a response of one neither amplifies nor damps"
+        );
+        let authored = weights
+            .iter()
+            .find(|weight| weight.destination == nodes[1].id)
+            .unwrap();
+        assert!((authored.response - 0.1).abs() < 1e-12);
+        assert!(
+            (authored.contribution - 0.1_f64.ln()).abs() < 1e-12,
+            "the damping hop carries the whole of the log gain"
+        );
+        assert!(
+            (weights
+                .iter()
+                .map(|weight| weight.contribution)
+                .sum::<f64>()
+                - loop_.gain.unwrap().abs().ln())
+            .abs()
+                < 1e-6,
+            "contributions must decompose the log gain exactly"
+        );
     }
 
     /// Reports how often an uncertain loop fails to contract, not just on average.

@@ -167,9 +167,9 @@ describe('OptimizeAnalysisPanel', () => {
     const unstable: ScenarioAnalysis = {
       ...analysis,
       feedback_loops: [
-        { states: ['A', 'B'], gain: 1.4, instability: 0.82 },
-        { states: ['A', 'C'], gain: 0.5, instability: 0 },
-        { states: ['B', 'C'], gain: null, instability: null },
+        { states: ['A', 'B'], gain: 1.4, instability: 0.82, weights: [] },
+        { states: ['A', 'C'], gain: 0.5, instability: 0, weights: [] },
+        { states: ['B', 'C'], gain: null, instability: null, weights: [] },
       ],
     }
     const wrapper = mount(OptimizeAnalysisPanel, {
@@ -193,7 +193,7 @@ describe('OptimizeAnalysisPanel', () => {
   it('warns about a loop whose mean settles but whose draws often do not', () => {
     const unstable: ScenarioAnalysis = {
       ...analysis,
-      feedback_loops: [{ states: ['A', 'B'], gain: 0.81, instability: 0.21 }],
+      feedback_loops: [{ states: ['A', 'B'], gain: 0.81, instability: 0.21, weights: [] }],
     }
     const wrapper = mount(OptimizeAnalysisPanel, {
       props: {

@@ -20,6 +20,7 @@ mod impediment_analysis;
 mod impediment_analysis_compute;
 mod intervention_execution;
 mod likelihood;
+mod loop_gain;
 mod measurement_calibration;
 mod monte_carlo;
 mod monte_carlo_report;

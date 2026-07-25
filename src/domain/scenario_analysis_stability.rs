@@ -5,8 +5,11 @@ use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    AnalysisLimits, Edge, EntityId, Node, analysis_cycles, analysis_graph::CausalGraph,
-    scenario_analysis_coupling::Coupling, scenario_analysis_edges::PropagationEdge,
+    AnalysisLimits, Edge, EntityId, Node, analysis_cycles,
+    analysis_graph::CausalGraph,
+    loop_gain::{self, LoopWeight},
+    scenario_analysis_coupling::Coupling,
+    scenario_analysis_edges::PropagationEdge,
     scenario_analysis_state::StateNode,
 };
 
@@ -56,11 +59,19 @@ pub struct FeedbackLoop {
     pub states: Vec<EntityId>,
     /// Product of the mean responses around the circuit, or `None` where it has no meaning.
     ///
-    /// A state computed from a node equation does not respond proportionally to
-    /// its parents, so no elasticity describes its incoming edge and the product
-    /// would be a number with no interpretation. The loop is still reported,
-    /// because its existence is what the author needs to know.
+    /// A state computed from a node equation contributes the equation's local
+    /// elasticity, measured by nudging the parent about its baseline, so an
+    /// equation-driven model is weighed like any other. `None` remains for a
+    /// circuit some hop of which cannot be measured at all — a missing baseline,
+    /// a baseline of zero, or an equation that will not evaluate.
     pub gain: Option<f64>,
+    /// Each relationship's additive share of $\ln|g|$, in circuit order.
+    ///
+    /// The gain is a product, so in logs it is a sum and every hop has a share
+    /// of the compounding. That is what says where to intervene: a loop running
+    /// away because of one response is a different problem from one running away
+    /// because of five.
+    pub weights: Vec<LoopWeight>,
     /// Share of sampled draws in which this loop fails to contract.
     ///
     /// The gain above is one number derived from the responses' means, and a
@@ -145,14 +156,22 @@ pub(super) fn feedback_loops(
     )
     .unwrap_or_default();
     let (cycles, _) = analysis_cycles::enumerate(&graph, limits);
+    let by_id = nodes.iter().map(|node| (node.id, node)).collect();
+    // Weighed against the whole graph rather than the projected subset: an
+    // equation declares the parents the model gives it, so compiling it against
+    // a filtered edge list would leave a name it references undeclared.
+    let anchors = loop_gain::baselines(nodes, edges);
     cycles
         .into_iter()
         .enumerate()
         .map(|(position, cycle)| {
-            let circuit = circuit(&cycle.nodes, &indices, states, propagation);
+            let weights = loop_gain::weigh(&cycle.nodes, &by_id, edges, &anchors);
+            let hops = circuit(&cycle.nodes, &indices, states, propagation);
             FeedbackLoop {
-                gain: circuit.as_ref().map(|hops| gain(hops, propagation)),
-                instability: circuit.as_ref().map(|hops| {
+                gain: weights
+                    .as_ref()
+                    .map(|weights| weights.iter().map(|weight| weight.response).product()),
+                instability: hops.as_ref().map(|hops| {
                     // Each circuit gets its own stream so adding a loop to the
                     // model cannot change the estimate reported for another.
                     instability(
@@ -162,17 +181,19 @@ pub(super) fn feedback_loops(
                         seed.wrapping_add(position as u64),
                     )
                 }),
+                weights: weights.unwrap_or_default(),
                 states: cycle.nodes,
             }
         })
         .collect()
 }
 
-/// Chooses one relationship per hop, or reports that the circuit cannot be weighed.
+/// Chooses one relationship per hop for sampling, where every hop has one.
 ///
-/// Parallel relationships compose additively in deviation, but taking the
-/// largest keeps the reported gain a bound on what one trip can do rather than
-/// an average that could hide an amplifying path behind a damping one.
+/// Sampling multiplies authored estimates, so a circuit through a node equation
+/// has no set of distributions to draw and reports no instability even though
+/// its gain can still be measured by differentiating the equation. Parallel
+/// relationships take the largest magnitude, matching how the gain is weighed.
 fn circuit(
     cycle: &[EntityId],
     indices: &BTreeMap<EntityId, usize>,
@@ -206,12 +227,6 @@ fn circuit(
                 .map(|(index, _)| index)
         })
         .collect()
-}
-
-fn gain(hops: &[usize], propagation: &[PropagationEdge]) -> f64 {
-    hops.iter()
-        .map(|hop| propagation[*hop].effect.marginal_mean())
-        .product()
 }
 
 /// Estimates how often one trip around the circuit fails to contract.
