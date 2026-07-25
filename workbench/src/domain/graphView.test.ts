@@ -30,9 +30,15 @@ describe('graph view policy', () => {
     expect(graphDetailForZoom(0.94)).toBe('detail')
   })
 
-  it('defaults dense graphs to clusters', () => {
-    expect(defaultGraphLayout(59)).toBe('hierarchy')
-    expect(defaultGraphLayout(60)).toBe('clusters')
+  /**
+   * The force layout is bounded at every size, so density no longer decides the
+   * opening view; clustering by kind is a deliberate choice rather than a
+   * fallback for graphs the old layout could not cope with.
+   */
+  it('opens every model in the causal layout', () => {
+    expect(defaultGraphLayout(3)).toBe('hierarchy')
+    expect(defaultGraphLayout(60)).toBe('hierarchy')
+    expect(defaultGraphLayout(500)).toBe('hierarchy')
   })
 
   it('places node kinds into ordered non-overlapping bands', () => {

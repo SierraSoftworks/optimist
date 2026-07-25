@@ -28,7 +28,9 @@ test('renders a bounded 100-node model without a blank canvas', async ({ page },
   await expect(page.getByText('100 nodes')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(page.viewportSize()!.height)
   await expectCanvasPainted(page)
-  await expect(page.getByRole('button', { name: 'Cluster by kind' })).toHaveAttribute('aria-pressed', 'true')
+  // The force layout is bounded, so even a hundred nodes open in the causal
+  // view rather than falling back to a grid that ignores relationships.
+  await expect(page.getByRole('button', { name: 'Hierarchy layout' })).toHaveAttribute('aria-pressed', 'true')
   // A hundred nodes must never render at full detail, and zooming out must still
   // reach the overview. The exact level at fit depends on the canvas width, so
   // asserting one bucket here would only re-measure the panel layout.
@@ -38,7 +40,6 @@ test('renders a bounded 100-node model without a blank canvas', async ({ page },
     await page.getByRole('button', { name: 'Zoom out' }).click()
   }
   await expect(page.locator('.detail-indicator')).toHaveText('overview')
-  await page.getByRole('button', { name: 'Hierarchy layout' }).click()
   await page.getByRole('button', { name: 'Cluster by kind' }).click()
   await expect(page.getByRole('button', { name: 'Cluster by kind' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.getByLabel('Node kind clusters')).toContainText('Factors 100')

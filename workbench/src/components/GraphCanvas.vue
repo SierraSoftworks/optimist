@@ -5,6 +5,7 @@ import { Focus, GitBranch, LayoutGrid, Minus, Pencil, Plus } from '@lucide/vue'
 import type { GraphEdge, GraphNode } from '../api/types'
 import { simulationReadiness } from '../domain/simulationReadiness'
 import { edgeDisplayLabel } from '../domain/edgePresentation'
+import { forceLayout } from '../domain/graphLayout'
 import {
   clusteredPositions,
   defaultGraphLayout,
@@ -283,17 +284,18 @@ function layout() {
       animate: false,
     }).run()
   } else {
-    const interventions = graph.nodes('[kind = "intervention"]')
+    const positions = Object.fromEntries(forceLayout(
+      props.nodes.map((node) => ({ id: node.id, kind: node.payload.kind })),
+      props.edges
+        .filter((edge) => edge.payload.kind !== 'measures')
+        .map((edge) => ({ source: edge.source, destination: edge.destination })),
+    ))
     graph.layout({
-      name: 'breadthfirst',
-      directed: true,
-      roots: interventions.length ? interventions.map((node) => node.id()) : undefined,
-      circle: false,
+      name: 'preset',
+      positions,
       padding: 48,
-      spacingFactor: 1.5,
       animate: false,
     }).run()
-    enforceKindBands()
   }
   graph.fit(undefined, 48)
   if (graph.zoom() > 1.4) {
@@ -310,25 +312,6 @@ function setLayoutMode(mode: GraphLayoutMode) {
   syncSelection()
   syncFocus()
   syncHighlights()
-}
-
-function enforceKindBands() {
-  if (!graph || graph.nodes().length < 2) return
-  const positions = graph.nodes().map((node) => node.position('y'))
-  const top = Math.min(...positions)
-  const bottom = Math.max(Math.max(...positions), top + 220)
-  const middleTop = top + 82
-  const middleBottom = bottom - 82
-  graph.nodes('[kind = "intervention"]').forEach((node) => {
-    node.position('y', top)
-  })
-  graph.nodes('[kind = "outcome"]').forEach((node) => {
-    node.position('y', bottom)
-  })
-  graph.nodes().forEach((node) => {
-    if (node.data('kind') === 'intervention' || node.data('kind') === 'outcome') return
-    node.position('y', Math.min(middleBottom, Math.max(middleTop, node.position('y'))))
-  })
 }
 
 function syncElements() {

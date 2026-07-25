@@ -12,8 +12,15 @@ export function graphDetailForZoom(zoom: number): GraphDetail {
   return 'detail'
 }
 
-export function defaultGraphLayout(nodeCount: number): GraphLayoutMode {
-  return nodeCount >= 60 ? 'clusters' : 'hierarchy'
+/**
+ * The layout a model opens with.
+ *
+ * The force layout is bounded and stays affordable at every size the workbench
+ * renders, so it is the default whatever the node count; clustering by kind is
+ * an explicit choice for reading the model by type rather than by causal flow.
+ */
+export function defaultGraphLayout(_nodeCount: number): GraphLayoutMode {
+  return 'hierarchy'
 }
 
 export function clusteredPositions(nodes: GraphNode[]): Map<string, GraphPosition> {
