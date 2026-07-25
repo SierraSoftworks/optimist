@@ -112,12 +112,12 @@ The rebound carries its own magnitude rather than a share of the primary effect,
 
 Modelling a time-boxed intervention this way removes the older workaround of adding a placeholder factor whose only job was to fire a lagged rebound.
 
-Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, prerequisite and candidate success, cumulative duration, lags, and destination responses are sampled once per joint draw. Reports include total execution duration, all-steps success, prerequisite/blocker/synergy/conflict context, baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, reachability, clamping, Monte Carlo errors, and convergence status. Improvement is always a relative, preference-oriented delta from baseline: positive means improvement even for a minimize objective.
+Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, prerequisite and candidate success, cumulative duration, lags, and destination responses are sampled once per joint draw. Estimates named by the project's residual dependence document are drawn through their Gaussian copula instead, by inverse transform, so a stated correlation reaches the projection while every authored marginal survives unchanged. See [Uncertainty](./uncertainty.md#dependence) for the document itself. Reports include total execution duration, all-steps success, prerequisite/blocker/synergy/conflict context, baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, reachability, clamping, Monte Carlo errors, and convergence status. Improvement is always a relative, preference-oriented delta from baseline: positive means improvement even for a minimize objective.
 
 Repeating the same immutable revision and seed is bit-reproducible for the current algorithm and pinned dependency versions. Adding or reordering sampled model inputs changes the random stream and therefore the exact sample sequence.
 
 ::: warning Current statistical boundary
-Primitive estimates are sampled independently. A non-empty project dependence model causes scenario analysis to fail explicitly until correlated dynamic sampling is implemented. Candidate execution plans are still evaluated one at a time; budgets, costs, numeric synergy magnitudes, candidate bundles, and scalar utility are not yet optimization inputs. Synergy and conflict edges are reported as qualitative decision context.
+Estimates are independent unless a dependence group couples them; Optimist never infers correlation from graph structure. Candidate execution plans are still evaluated one at a time; budgets, costs, numeric synergy magnitudes, candidate bundles, and scalar utility are not yet optimization inputs. Synergy and conflict edges are reported as qualitative decision context.
 :::
 
 ## What analysis does not claim
@@ -130,7 +130,7 @@ Current structural and scenario output does **not** establish:
 - causal identification from observational data,
 - a ranked investment frontier.
 
-Finite-horizon projection estimates impact under the recurrence and supplied priors; it does not prove that an edge is causal or identify effects from observational data. Stable feedback, dependence-aware dynamics, bundles, costs, and Pareto ranking remain separate roadmap items.
+Finite-horizon projection estimates impact under the recurrence and supplied priors; it does not prove that an edge is causal or identify effects from observational data. Stable feedback, bundles, costs, and Pareto ranking remain separate roadmap items.
 
 ## Interpreting results
 

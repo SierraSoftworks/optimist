@@ -130,6 +130,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Exact Normal sum and LogNormal product/ratio propagation including covariance and numerical variance checks.
 - [x] Gaussian copula validation with positive-semidefinite correlation matrices.
 - [x] Deterministic seeded joint Monte Carlo engine with pinned ChaCha20 sampling.
+- [x] Inverse-transform copula sampling of coupled estimates during scenario analysis.
 - [x] Formula DAG validation and evaluation with one sample per shared estimate address per draw.
 - [x] Monte Carlo mean/variance standard errors, convergence criteria/status, reproducibility metadata, and invalid-sample accounting.
 - [ ] Calibration history with proper scoring rules and interval coverage.

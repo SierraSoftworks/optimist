@@ -136,6 +136,29 @@ Optimist validates:
 
 Point masses and discrete ties may reduce observed rank correlation. Singular positive-semidefinite matrices are supported.
 
+Scenario analysis draws each group's copula once per Monte Carlo iteration, before any independent primitive, and its members take their values by inverse transform $x = F^{-1}(u)$. This reproduces every authored marginal exactly while carrying the stated correlation, and it means a coupled estimate consumes none of the analysis's own randomness. A project with no groups draws nothing extra and reproduces the results it produced before it had a dependence document.
+
+### Sharing one quantity across several estimates
+
+Two estimates that stand for the *same* real quantity are a dependence problem, not a duplication problem. Give them the same marginal and couple them with a correlation of 1:
+
+```json
+{
+  "revision": 0,
+  "residual_groups": [{
+    "members": [
+      "A/node/C/estimate/A",
+      "A/edge/H-changes-E/estimate/A"
+    ],
+    "correlation": {"scale": "latent", "matrix": [[1.0, 1.0], [1.0, 1.0]]}
+  }]
+}
+```
+
+Every draw then gives both members the same value, so they behave as one variable without either estimate having to reference the other. Members with a correlation of 1 but *different* marginals are comonotonic rather than equal: they take the same quantile of their own distribution, which is usually what you want when the same driver is expressed in two units.
+
+State the shared driver in each member's provenance. Coupling records that two estimates move together; it does not record why, and a reviewer needs both.
+
 ## Review checklist
 
 Before relying on a result, ask:
