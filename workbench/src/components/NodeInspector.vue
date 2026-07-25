@@ -13,12 +13,14 @@ import type {
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
 import { edgeMetadataLabel } from '../domain/edgePresentation'
+import { canOwnRelation, nodeRelation } from '../domain/stateRelation'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
   edit: []
   estimate: []
   quantity: []
+  relation: []
   relationship: [edge: GraphEdge]
   observe: [edge: GraphEdge]
   correct: [edge: GraphEdge, observation: Observation]
@@ -26,6 +28,8 @@ const emit = defineEmits<{
   delete: []
 }>()
 const confirmDelete = ref(false)
+const equation = computed(() => (props.node ? nodeRelation(props.node) : null))
+const equationEligible = computed(() => Boolean(props.node && canOwnRelation(props.node)))
 const readiness = computed(() => props.node ? simulationReadiness(props.node) : null)
 const incidentEdges = computed(() =>
   props.node
@@ -167,6 +171,23 @@ function replacement(edge: GraphEdge, observation: Observation) {
           <div><dt>Forecast</dt><dd>{{ distributionLabel(node, 'forecast') }}</dd></div>
         </dl>
         <p v-if="node.native_state?.quantity.operational_definition" class="model-definition">{{ node.native_state.quantity.operational_definition }}</p>
+      </section>
+
+      <section v-if="equationEligible" class="inspector-section equation-section">
+        <h3>Node equation</h3>
+        <template v-if="equation">
+          <pre class="equation-source">{{ equation.source }}</pre>
+          <p class="equation-note">
+            Computed from its parents each period, replacing the responses on the relationships
+            reaching it.
+          </p>
+        </template>
+        <p v-else class="muted">
+          Composed from the proportional responses on its incoming relationships.
+        </p>
+        <button type="button" class="secondary-button" @click="emit('relation')">
+          <Sigma :size="13" /> {{ equation ? 'Edit equation' : 'Add equation' }}
+        </button>
       </section>
 
       <section v-if="(node.payload.kind === 'factor' || node.payload.kind === 'outcome') && node.payload.properties.evidence.length" class="inspector-section">
@@ -347,6 +368,9 @@ function replacement(edge: GraphEdge, observation: Observation) {
 .observation-list li.superseded > strong { color: var(--muted); text-decoration: line-through; }
 .observation-correct { position: absolute; top: 0; right: 0; width: 24px; height: 24px; }
 .section-action { width: 24px; height: 24px; margin: -6px 0; }
+.equation-section { display: grid; gap: 7px; justify-items: start; }
+.equation-source { margin: 0; padding: 7px 8px; width: 100%; border: 1px solid var(--line); border-radius: 5px; background: #fbfbfa; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.equation-note { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .acceptance-criteria { margin-top: 12px; color: var(--muted); font-size: 9px; }
 .acceptance-criteria ul { margin: 5px 0 0; padding-left: 17px; color: var(--ink); line-height: 1.55; }
 .empty-inspector { min-height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: var(--muted); }

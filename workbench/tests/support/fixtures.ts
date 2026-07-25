@@ -100,6 +100,26 @@ export function outcomeNode(
   } as unknown as GraphNode
 }
 
+/** Builds a metric carrying a native unit and a point-mass current estimate. */
+export function metricNode(
+  id: string,
+  title: string,
+  unit: string,
+  dimension: Unit,
+  current: number,
+): GraphNode {
+  return {
+    ...identity(id, title),
+    payload: {
+      kind: 'metric',
+      properties: {
+        quantity: { unit, dimension, aggregation: null, support: { type: 'non_negative' } },
+        current: pointEstimate('A', current, dimension),
+      },
+    },
+  } as unknown as GraphNode
+}
+
 export function interventionNode(
   id: string,
   title: string,

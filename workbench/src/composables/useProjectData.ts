@@ -286,6 +286,25 @@ export function useSetNodeQuantityState(
   })
 }
 
+export function useSetStateRelation(
+  project: Ref<Project | undefined>,
+  node: Ref<GraphNode | null>,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: import('../api/types').SetStateRelationInput) =>
+      api.setStateRelation(project.value!, node.value!, input),
+    onSuccess: (updated) => {
+      const current = project.value!
+      advanceProject(queryClient, current)
+      queryClient.setQueryData<GraphNode[]>(['nodes', current.id], (nodes = []) =>
+        nodes.map((node) => (node.id === updated.id ? updated : node)),
+      )
+      invalidateAnalysis(queryClient, current.id)
+    },
+  })
+}
+
 export function useSetStateEstimate(
   project: Ref<Project | undefined>,
   node: Ref<GraphNode | null>,

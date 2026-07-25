@@ -460,6 +460,34 @@ export const api = {
     }
     return result.outcome.value
   },
+  async setStateRelation(
+    project: Project,
+    node: GraphNode,
+    input: import('./types').SetStateRelationInput,
+  ): Promise<GraphNode> {
+    const result = await request<CommandResult<GraphNode>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: {
+            type: 'set_state_relation',
+            payload: { node: node.id, expected_revision: node.revision, ...input },
+          },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'state_relation_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for node equation editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
   async setStateEstimate(
     project: Project,
     node: GraphNode,

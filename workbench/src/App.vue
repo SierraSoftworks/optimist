@@ -29,6 +29,7 @@ import ImportProjectDialog from './components/ImportProjectDialog.vue'
 import EditNodeDialog from './components/EditNodeDialog.vue'
 import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
 import ConfigureStateQuantityDialog from './components/ConfigureStateQuantityDialog.vue'
+import NodeRelationDialog from './components/NodeRelationDialog.vue'
 import EditEdgeDialog from './components/EditEdgeDialog.vue'
 import AddObservationDialog from './components/AddObservationDialog.vue'
 import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
@@ -66,6 +67,7 @@ import type {
   SetEffectProfileInput,
   UpdateCausalEffectInput,
   SetNodeQuantityStateInput,
+  SetStateRelationInput,
   ScenarioDraft,
   UpdateNodeInput,
 } from './api/types'
@@ -98,6 +100,7 @@ import {
   useUpdateCausalEffect,
   useDependence,
   useSetDependence,
+  useSetStateRelation,
 } from './composables/useProjectData'
 import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
@@ -132,6 +135,7 @@ const importDialogOpen = ref(false)
 const editNodeDialogOpen = ref(false)
 const estimateDialogOpen = ref(false)
 const stateQuantityDialogOpen = ref(false)
+const relationDialogOpen = ref(false)
 const edgeEditDialogOpen = ref(false)
 const observationDialogOpen = ref(false)
 const correctionDialogOpen = ref(false)
@@ -198,6 +202,7 @@ const relationshipMenuSource = computed<GraphNode | null>(() =>
 const updateNode = useUpdateNode(projectQuery.data, selectedNode)
 const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
 const setNodeQuantityState = useSetNodeQuantityState(projectQuery.data, selectedNode)
+const setStateRelation = useSetStateRelation(projectQuery.data, selectedNode)
 const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
 const setEffectProfile = useSetEffectProfile(projectQuery.data, selectedEdge)
 const updateCausalEffect = useUpdateCausalEffect(projectQuery.data, selectedEdge)
@@ -595,6 +600,16 @@ async function submitStateQuantity(input: SetNodeQuantityStateInput) {
   }
 }
 
+async function submitStateRelation(input: SetStateRelationInput) {
+  mutationError.value = null
+  try {
+    await setStateRelation.mutateAsync(input)
+    relationDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
 async function shareQuantityWith(input: { address: EstimateAddress; partner: CatalogueEntry }) {
   mutationError.value = null
   try {
@@ -968,6 +983,7 @@ function retry() {
         @edit="editNodeDialogOpen = true"
         @estimate="estimateDialogOpen = true"
         @quantity="stateQuantityDialogOpen = true"
+        @relation="relationDialogOpen = true"
         @relationship="editRelationship"
         @observe="observe"
         @correct="correct"
@@ -1072,6 +1088,15 @@ function retry() {
       :node="selectedNode"
       @close="stateQuantityDialogOpen = false"
       @submit="submitStateQuantity"
+    />
+    <NodeRelationDialog
+      :open="relationDialogOpen"
+      :pending="setStateRelation.isPending.value"
+      :node="selectedNode"
+      :nodes="nodes"
+      :edges="edges"
+      @close="relationDialogOpen = false"
+      @submit="submitStateRelation"
     />
     <EditEdgeDialog
       :open="edgeEditDialogOpen"

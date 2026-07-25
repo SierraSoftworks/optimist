@@ -224,6 +224,18 @@ export async function mockApi(page: Page, state: FixtureState) {
         state.revision += 1
         return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'project_dependence_set', value: state.dependence } }, 201)
       }
+      if (command.command.type === 'set_state_relation') {
+        const node = state.nodes.find((node) => node.id === input.node)!
+        if ((node.payload as { kind: string }).kind === 'metric') {
+          (node.payload as { properties: Record<string, unknown> }).properties.relation =
+            input.relation
+        } else {
+          (node.native_state as Record<string, unknown>).relation = input.relation
+        }
+        node.revision = (node.revision as number) + 1
+        state.revision += 1
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'state_relation_set', value: node } }, 201)
+      }
       if (command.command.type === 'create_scenario') {
         const scenario = { id: 'A', revision: 0, ...input.scenario }
         state.scenarios = [...(state.scenarios ?? []), scenario]

@@ -64,14 +64,31 @@ export interface QuantityDefinition {
   resolution_source?: string | null
 }
 
+/** One uncertain coefficient a node equation may reference by name. */
+export interface RelationParameter {
+  quantity: QuantityDefinition
+  value: Estimate
+}
+
+/** Authored arithmetic computing one state's value from its parents. */
+export interface StateRelation {
+  source: string
+  parameters?: Record<string, RelationParameter>
+}
+
 export interface QuantityState {
   quantity: QuantityDefinition
   current?: Estimate | null
   forecast?: Estimate | null
+  relation?: StateRelation | null
 }
 
 export interface SetNodeQuantityStateInput {
   quantity: QuantityDefinition
+}
+
+export interface SetStateRelationInput {
+  relation: StateRelation | null
 }
 
 export interface EstimateSource {
@@ -148,6 +165,7 @@ export type NodePayload =
       properties: {
         quantity: QuantityDefinition
         current?: Estimate | null
+        relation?: StateRelation | null
       }
     }
   | {
