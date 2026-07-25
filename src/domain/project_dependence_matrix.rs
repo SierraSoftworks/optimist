@@ -8,6 +8,32 @@ use super::{CorrelationScale, DependenceError, GaussianCopulaCorrelation, Gaussi
 
 const MATRIX_TOLERANCE: f64 = 1e-10;
 
+/// A validated correlation matrix's reusable latent square root $Q\sqrt{\Lambda}$.
+pub(super) struct CopulaFactor {
+    root: DMatrix<f64>,
+}
+
+impl CopulaFactor {
+    /// Draws one correlated latent vector and its standard Normal uniforms.
+    pub(super) fn draw(&self, rng: &mut ChaCha20Rng) -> GaussianCopulaDraw {
+        let dimension = self.root.nrows();
+        let independent = DVector::from_iterator(
+            dimension,
+            (0..dimension).map(|_| StandardNormal.sample(rng)),
+        );
+        let normal = Normal::standard();
+        let latent_normals: Vec<_> = (&self.root * independent).iter().copied().collect();
+        let uniforms = latent_normals
+            .iter()
+            .map(|value| normal.cdf(*value))
+            .collect();
+        GaussianCopulaDraw {
+            latent_normals,
+            uniforms,
+        }
+    }
+}
+
 impl GaussianCopulaCorrelation {
     /// Validates matrix shape, values, symmetry, unit diagonal, and PSD.
     pub fn validate(&self) -> Result<(), DependenceError> {
@@ -33,26 +59,23 @@ impl GaussianCopulaCorrelation {
     }
 
     pub(super) fn sample(&self, rng: &mut ChaCha20Rng) -> GaussianCopulaDraw {
+        self.factored().draw(rng)
+    }
+
+    /// Precomputes the latent square root so repeated draws avoid eigensolving.
+    ///
+    /// A copula coupling $n$ estimates is drawn once per Monte Carlo iteration,
+    /// so decomposing $R$ per draw would dominate an analysis. The factor depends
+    /// only on the matrix, making this pure caching rather than a change of model.
+    pub(super) fn factored(&self) -> CopulaFactor {
         let matrix = self.latent_matrix();
         let dimension = matrix.len();
         let eigen = SymmetricEigen::new(DMatrix::from_fn(dimension, dimension, |row, column| {
             matrix[row][column]
         }));
-        let independent = DVector::from_iterator(
-            dimension,
-            (0..dimension).map(|_| StandardNormal.sample(rng)),
-        );
         let scales = DMatrix::from_diagonal(&eigen.eigenvalues.map(|value| value.max(0.0).sqrt()));
-        let latent = eigen.eigenvectors * scales * independent;
-        let normal = Normal::standard();
-        let latent_normals: Vec<_> = latent.iter().copied().collect();
-        let uniforms = latent_normals
-            .iter()
-            .map(|value| normal.cdf(*value))
-            .collect();
-        GaussianCopulaDraw {
-            latent_normals,
-            uniforms,
+        CopulaFactor {
+            root: eigen.eigenvectors * scales,
         }
     }
 

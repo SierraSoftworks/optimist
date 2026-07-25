@@ -1,6 +1,6 @@
 use super::{
-    AnalysisRevisionKey, Edge, Node, Scenario, ScenarioAnalysis, ScenarioAnalysisError,
-    scenario_analysis_graph::AnalysisGraph, scenario_analysis_sampling,
+    AnalysisRevisionKey, Edge, Node, ProjectDependenceModel, Scenario, ScenarioAnalysis,
+    ScenarioAnalysisError, scenario_analysis_graph::AnalysisGraph, scenario_analysis_sampling,
 };
 
 impl ScenarioAnalysis {
@@ -35,6 +35,16 @@ impl ScenarioAnalysis {
     /// Each candidate execution plan is evaluated independently. Required interventions
     /// execute first; durations add and every required success gates later steps. One
     /// pinned ChaCha20 stream samples every primitive once per joint draw.
+    ///
+    /// Estimates named by the project's residual dependence document are not drawn from
+    /// that stream. Each group's Gaussian copula is drawn first, and its members take
+    /// their values by inverse transform $x=F^{-1}(u)$, which reproduces every authored
+    /// marginal exactly while carrying the stated correlation. Coupling is an asserted
+    /// residual relationship rather than one inferred from the graph, and a group whose
+    /// members this scenario never samples still consumes its draw so member positions
+    /// stay aligned with the matrix. A project without groups consumes no extra
+    /// randomness and reproduces results from before it had a dependence document.
+    ///
     /// Online Pébay/Welford moments retain no draws and report objective improvement
     /// covariance. Sampling stops after the configured minimum when every baseline,
     /// final-state, and improvement mean satisfies $SE(\bar X)\leq a+r|\bar X|$, or
@@ -44,20 +54,22 @@ impl ScenarioAnalysis {
     /// versions; adding or reordering sampled primitives changes the random stream.
     ///
     /// The model is a finite-horizon baseline-delta approximation, not an equilibrium
-    /// or causal-identification claim. Project-level dependence, intervention bundles,
-    /// costs, numeric synergy effects, and scalar utility are excluded.
+    /// or causal-identification claim. Intervention bundles, costs, numeric synergy
+    /// effects, and scalar utility are excluded.
     /// See Sterman, *Business Dynamics*, chapters 6 and 13, for discrete-time stock/
-    /// feedback simulation, and Pébay, SAND2008-6212, for online joint moments.
+    /// feedback simulation, Nelsen, *An Introduction to Copulas*, chapter 5, for the
+    /// inverse-transform construction, and Pébay, SAND2008-6212, for online joint moments.
     pub fn compute(
         revision: AnalysisRevisionKey,
         scenario: &Scenario,
         nodes: &[Node],
         edges: &[Edge],
+        dependence: Option<&ProjectDependenceModel>,
     ) -> Result<Self, ScenarioAnalysisError> {
         if revision.scenario != Some((scenario.id, scenario.revision)) {
             return Err(ScenarioAnalysisError::RevisionMismatch(scenario.id));
         }
-        let graph = AnalysisGraph::new(scenario, nodes, edges)?;
+        let graph = AnalysisGraph::new(&revision.project, scenario, nodes, edges, dependence)?;
         let candidates = scenario
             .draft
             .candidate_interventions
@@ -78,11 +90,13 @@ impl ScenarioAnalysis {
 mod tests {
     use super::*;
     use crate::domain::{
-        CausalEffect, Distribution, Duration, EdgePayload, EffectAftereffect, EffectProfile,
-        EffectRelease, EffectTransience, Elasticity, EntityId, Estimate, EstimateId, Factor,
+        CausalEffect, CorrelationScale, Distribution, Duration, EdgePayload, EffectAftereffect,
+        EffectProfile, EffectRelease, EffectTransience, Elasticity, EntityId, Estimate,
+        EstimateAddress, EstimateId, EstimateOwner, Factor, GaussianCopulaCorrelation,
         Intervention, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome, OutcomeDirection,
-        ProjectId, QuantityDefinition, QuantityState, QuantitySupport, QuantityValue, Requirement,
-        ScenarioDraft, ScenarioId, ScenarioObjective, Unit, UtilityDirection,
+        ProjectDependenceModel, ProjectId, QuantityDefinition, QuantityState, QuantitySupport,
+        QuantityValue, Requirement, ResidualDependenceGroup, ScenarioDraft, ScenarioId,
+        ScenarioObjective, Unit, UtilityDirection,
     };
 
     fn estimate<T: super::super::EstimateDimension>(id: u64, value: f64) -> Estimate<T> {
@@ -206,6 +220,7 @@ mod tests {
             &scenario,
             &[intervention, factor, outcome],
             &[changes, contributes],
+            None,
         )
         .unwrap();
         let objective = &result.candidates[0].objectives[0];
@@ -265,7 +280,7 @@ mod tests {
         scenario.draft.monte_carlo = MonteCarloConfig::new(7, 2, 2, 0.001, 0.0).unwrap();
         revision.graph_revision += 2;
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         let projection = &result.candidates[0];
         assert_eq!(projection.prerequisites, vec![EntityId::new(3)]);
         assert_eq!(projection.execution_duration.mean, Some(3.0));
@@ -280,7 +295,7 @@ mod tests {
             unreachable!()
         };
         effect.lag = Some(estimate(1, 1.0));
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         assert!(
             (result.candidates[0].objectives[0].final_state.mean.unwrap() - 0.56).abs() < 1e-12
         );
@@ -291,7 +306,8 @@ mod tests {
             unreachable!()
         };
         effect.lag = Some(estimate(1, 1.0));
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &delayed).unwrap();
+        let result =
+            ScenarioAnalysis::compute(revision, &scenario, &nodes, &delayed, None).unwrap();
         assert_eq!(
             result.candidates[0].objectives[0].final_state.mean,
             Some(0.5)
@@ -321,13 +337,14 @@ mod tests {
         *effect = effect
             .clone()
             .with_transience(Some(EffectTransience::new(profile, rebound).unwrap()));
-        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap()
+        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap()
     }
 
     #[test]
     fn reverts_a_time_boxed_intervention_after_its_hold_window() {
         let (scenario, nodes, edges, revision) = point_fixture(4);
-        let persistent = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let persistent =
+            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         let held = persistent.candidates[0].objectives[0]
             .final_state
             .mean
@@ -404,7 +421,7 @@ mod tests {
         edges.push(contributes(unrelated.id, unrelated_outcome.id, 0.5));
         nodes.extend([unrelated, unrelated_outcome]);
         let result =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges).unwrap();
+            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
         assert!(result.candidates[0].objectives[0].reachable);
         assert!(!result.candidates[0].objectives[1].reachable);
         assert_eq!(
@@ -414,7 +431,7 @@ mod tests {
 
         nodes[1].native_state.as_mut().unwrap().current = None;
         assert_eq!(
-            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges),
+            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None),
             Err(ScenarioAnalysisError::MissingFactorBaseline(EntityId::new(
                 1
             )))
@@ -435,8 +452,9 @@ mod tests {
             Distribution::scaled_beta(2.0, 2.0, 0.0, 2.0).unwrap(),
         )
         .unwrap();
-        let first = ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges).unwrap();
-        let second = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let first =
+            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let second = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         assert_eq!(first, second);
         let projection = &first.candidates[0].objectives[0];
         assert!((0.0..=1.0).contains(&projection.final_state.mean.unwrap()));
@@ -447,7 +465,8 @@ mod tests {
         };
         effect.response = estimate(0, 3.0);
         let saturated =
-            ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges).unwrap();
+            ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges, None)
+                .unwrap();
         assert!(saturated.candidates[0].clamped_state_updates > 0);
     }
 
@@ -508,7 +527,7 @@ mod tests {
         edges.pop();
         edges.extend([factor_to_metric, metric_to_outcome]);
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert_eq!(objective.baseline.mean, Some(0.5));
@@ -574,7 +593,7 @@ mod tests {
         nodes.push(outcome);
         let edges = vec![intervention_to_metric, metric_to_outcome];
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert!((objective.final_state.mean.unwrap() - 0.65).abs() < 1e-12);
@@ -585,6 +604,103 @@ mod tests {
             assert!((point.state.mean.unwrap() - state).abs() < 1e-12);
             assert!((point.improvement.mean.unwrap() - improvement).abs() < 1e-12);
         }
+    }
+
+    /// Couples two objective baselines and checks the coupling reaches the result.
+    ///
+    /// Both objectives read the same factor through equal elasticities, so each
+    /// improvement is a fixed multiple of its own baseline. Under a unit
+    /// correlation the two baselines are one variable per draw, which makes the
+    /// sampled improvement covariance exactly the sampled improvement variance —
+    /// an identity that holds per draw and so carries no Monte Carlo error.
+    #[test]
+    fn coupled_baselines_move_together_without_changing_their_marginals() {
+        let coupled = correlated_objectives(1.0);
+        let (covariance, variance) = (
+            coupled.candidates[0].improvement_covariance[0][1].unwrap(),
+            coupled.candidates[0].objectives[0]
+                .improvement
+                .variance
+                .unwrap(),
+        );
+        assert!(
+            (covariance - variance).abs() < 1e-12,
+            "perfectly coupled baselines must produce one shared improvement"
+        );
+        assert!(
+            variance > 0.0,
+            "the fixture must retain baseline uncertainty"
+        );
+
+        let independent = correlated_objectives(0.0);
+        let uncoupled = independent.candidates[0].improvement_covariance[0][1].unwrap();
+        assert!(
+            uncoupled.abs() < covariance / 4.0,
+            "independent baselines must not reproduce a coupled covariance"
+        );
+        for analysis in [&coupled, &independent] {
+            for objective in &analysis.candidates[0].objectives {
+                assert!(
+                    (objective.baseline.mean.unwrap() - 0.4).abs() < 0.01,
+                    "coupling must leave each authored marginal in place"
+                );
+            }
+        }
+    }
+
+    /// Projects two objectives whose baselines share a copula of `correlation`.
+    fn correlated_objectives(correlation: f64) -> ScenarioAnalysis {
+        let (mut scenario, mut nodes, mut edges, revision) = point_fixture(2);
+        let uncertain = |id: u64, name: &str, title: &str| {
+            let node = Node::new(
+                EntityId::new(id),
+                name,
+                title,
+                NodePayload::Outcome(Outcome {
+                    direction: OutcomeDirection::Maximize,
+                    evidence: vec![],
+                }),
+            )
+            .unwrap();
+            let mut node = with_state(node, 0.4);
+            node.native_state.as_mut().unwrap().current = Some(
+                Estimate::new(
+                    EstimateId::new(0),
+                    Distribution::scaled_beta(2.0, 2.0, 0.2, 0.6).unwrap(),
+                )
+                .unwrap(),
+            );
+            node
+        };
+        nodes[2] = uncertain(2, "delivery", "Delivery");
+        let second = uncertain(3, "retention", "Retention");
+        edges.push(contributes(nodes[1].id, second.id, 0.2));
+        scenario.draft.objectives.push(ScenarioObjective {
+            outcome_id: second.id,
+            direction: UtilityDirection::Maximize,
+            importance: 1.0,
+        });
+        scenario.draft.monte_carlo = MonteCarloConfig::new(17, 400, 400, 1e-9, 0.0).unwrap();
+        nodes.push(second);
+        let dependence = ProjectDependenceModel {
+            revision: 0,
+            residual_groups: vec![ResidualDependenceGroup {
+                members: [2, 3]
+                    .map(|id| {
+                        EstimateAddress::new(
+                            revision.project.clone(),
+                            EstimateOwner::Node(EntityId::new(id)),
+                            EstimateId::new(0),
+                        )
+                    })
+                    .to_vec(),
+                correlation: GaussianCopulaCorrelation {
+                    scale: CorrelationScale::Latent,
+                    matrix: vec![vec![1.0, correlation], vec![correlation, 1.0]],
+                },
+            }],
+        };
+        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, Some(&dependence)).unwrap()
     }
 
     fn point_fixture(

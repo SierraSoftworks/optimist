@@ -31,13 +31,14 @@ pub(super) struct ScenarioDraw {
 pub(super) fn draw(
     graph: &AnalysisGraph<'_>,
     scenario: &Scenario,
-    execution: &CandidateExecutionPlan<'_>,
+    execution: &CandidateExecutionPlan,
     rng: &mut ChaCha20Rng,
 ) -> Result<ScenarioDraw, ScenarioAnalysisError> {
+    let coupled = graph.coupling.draw(rng);
     let baselines = graph
         .states
         .iter()
-        .map(|state| state.baseline.sample(rng))
+        .map(|state| state.baseline.sample(rng, &coupled))
         .collect::<Vec<_>>();
     if baselines.iter().any(|value| !value.is_finite()) {
         return Err(ScenarioAnalysisError::NonFiniteResult);
@@ -57,19 +58,17 @@ pub(super) fn draw(
     if !blocked {
         for step in &execution.steps {
             completion = completion.saturating_add(
-                step.intervention
-                    .duration
+                step.duration
                     .as_ref()
-                    .map(|estimate| effect_activation::delay(&estimate.distribution, rng))
+                    .map(|estimate| effect_activation::periods(estimate.sample(rng, &coupled)))
                     .transpose()?
                     .unwrap_or(0),
             );
             let step_succeeds = rng.r#gen::<f64>()
                 < step
-                    .intervention
                     .probability_of_success
                     .as_ref()
-                    .map_or(1.0, |estimate| estimate.distribution.sample(rng));
+                    .map_or(1.0, |estimate| estimate.sample(rng, &coupled));
             if !step_succeeds {
                 succeeds = false;
                 break;
@@ -77,12 +76,12 @@ pub(super) fn draw(
             for edge in &step.edges {
                 interventions.push(SampledInterventionEdge {
                     destination: edge.destination,
-                    effect: edge.effect.sample(rng),
+                    effect: edge.effect.sample(rng, &coupled),
                     arrival: completion
                         .saturating_add(
                             edge.lag
                                 .as_ref()
-                                .map(|lag| effect_activation::delay(lag, rng))
+                                .map(|lag| effect_activation::periods(lag.sample(rng, &coupled)))
                                 .transpose()?
                                 .unwrap_or(0),
                         )
@@ -100,11 +99,11 @@ pub(super) fn draw(
             Ok(SampledPropagationEdge {
                 source: edge.source,
                 destination: edge.destination,
-                effect: edge.effect.sample(rng),
+                effect: edge.effect.sample(rng, &coupled),
                 delay: edge
                     .lag
                     .as_ref()
-                    .map(|lag| effect_activation::delay(lag, rng))
+                    .map(|lag| effect_activation::periods(lag.sample(rng, &coupled)))
                     .transpose()?
                     .unwrap_or(0)
                     .saturating_add(1),

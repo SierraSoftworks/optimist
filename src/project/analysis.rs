@@ -1,7 +1,7 @@
 use crate::{
     domain::{
-        AnalysisLimits, AnalysisRevisionKey, ImpedimentAnalysis, ScenarioAnalysis,
-        ScenarioAnalysisError, ScenarioId, StructuralAnalysis,
+        AnalysisLimits, AnalysisRevisionKey, ImpedimentAnalysis, ScenarioAnalysis, ScenarioId,
+        StructuralAnalysis,
     },
     store::GraphRepository,
 };
@@ -74,9 +74,9 @@ impl ProjectCatalog {
 
     /// Projects each scenario candidate over its finite planning horizon.
     ///
-    /// The returned key captures every independently revisioned input document.
-    /// Non-empty dependence documents are rejected until dynamic copula sampling
-    /// can preserve their addressed correlations instead of silently ignoring them.
+    /// The returned key captures every independently revisioned input document,
+    /// including the residual dependence document whose copulas couple the
+    /// estimates it names.
     pub fn analyze_scenario(
         &mut self,
         project_id: &crate::domain::ProjectId,
@@ -86,13 +86,6 @@ impl ProjectCatalog {
             .projects
             .get_mut(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
-        if entry
-            .dependence
-            .as_ref()
-            .is_some_and(|model| !model.residual_groups.is_empty())
-        {
-            return Err(ScenarioAnalysisError::UnsupportedDependence.into());
-        }
         let scenario = entry
             .scenarios
             .get(&scenario_id)
@@ -107,7 +100,11 @@ impl ProjectCatalog {
         let nodes = entry.repository.list_nodes()?;
         let edges = entry.repository.list_edges()?;
         Ok(ScenarioAnalysis::compute(
-            revision, &scenario, &nodes, &edges,
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            entry.dependence.as_ref(),
         )?)
     }
 }

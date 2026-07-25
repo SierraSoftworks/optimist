@@ -150,7 +150,19 @@ pub(super) fn delay(
     distribution: &Distribution,
     rng: &mut ChaCha20Rng,
 ) -> Result<u64, ScenarioAnalysisError> {
-    Ok(finite(distribution, rng)?.ceil().min(u64::MAX as f64) as u64)
+    periods(finite(distribution, rng)?)
+}
+
+/// Rounds an already-sampled duration up to whole planning periods.
+///
+/// Coupled durations are drawn through their copula rather than from the local
+/// stream, so rounding is kept separate from sampling and both paths round a
+/// value the same way once it exists.
+pub(super) fn periods(value: f64) -> Result<u64, ScenarioAnalysisError> {
+    if !value.is_finite() {
+        return Err(ScenarioAnalysisError::NonFinitePrimitive);
+    }
+    Ok(value.ceil().min(u64::MAX as f64) as u64)
 }
 
 fn finite(

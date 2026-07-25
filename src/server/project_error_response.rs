@@ -255,10 +255,7 @@ pub(super) fn classify(
         ProjectError::ScenarioAnalysis(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "scenario_analysis_unavailable",
-            &[
-                "Add current estimates to every objective and causal factor used by the scenario.",
-                "Remove non-empty dependence groups until correlated dynamic propagation is supported.",
-            ],
+            &["Add current estimates to every objective and causal factor used by the scenario."],
         ),
         ProjectError::Yaml(_) | ProjectError::Import(_) | ProjectError::InvalidArchivePath(_) => (
             StatusCode::BAD_REQUEST,

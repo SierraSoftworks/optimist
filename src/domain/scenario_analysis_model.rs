@@ -123,9 +123,6 @@ pub enum ScenarioAnalysisError {
     /// A duration or lag sampler produced NaN or infinity.
     #[error("scenario propagation sampled a non-finite primitive duration or lag")]
     NonFinitePrimitive,
-    /// Dynamic scenario sampling does not yet apply project copula dependence.
-    #[error("scenario analysis does not yet support non-empty project dependence models")]
-    UnsupportedDependence,
     /// Intervention `requires` relationships contain a dependency cycle.
     #[error("intervention dependency cycle includes {0}")]
     InterventionDependencyCycle(EntityId),

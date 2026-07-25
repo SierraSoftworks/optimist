@@ -1,21 +1,23 @@
 use std::collections::BTreeMap;
 
 use super::{
-    Edge, EdgePayload, EntityId, Intervention, Node, NodePayload, Scenario, ScenarioAnalysisError,
-    intervention_execution,
+    Edge, EdgePayload, EntityId, EstimateOwner, Node, NodePayload, ProjectDependenceModel,
+    ProjectId, Scenario, ScenarioAnalysisError, intervention_execution,
+    scenario_analysis_coupling::{CoupledPrimitive, Coupling},
     scenario_analysis_edges::{self, InterventionEdge, PropagationEdge},
     scenario_analysis_reachability,
     scenario_analysis_state::{self, StateNode},
 };
 
-pub(super) struct PlannedIntervention<'a> {
+pub(super) struct PlannedIntervention {
     pub(super) id: EntityId,
-    pub(super) intervention: &'a Intervention,
+    pub(super) duration: Option<CoupledPrimitive>,
+    pub(super) probability_of_success: Option<CoupledPrimitive>,
     pub(super) edges: Vec<InterventionEdge>,
 }
 
-pub(super) struct CandidateExecutionPlan<'a> {
-    pub(super) steps: Vec<PlannedIntervention<'a>>,
+pub(super) struct CandidateExecutionPlan {
+    pub(super) steps: Vec<PlannedIntervention>,
     pub(super) blockers: Vec<intervention_execution::ExecutionRequirement>,
     pub(super) synergies: Vec<EntityId>,
     pub(super) conflicts: Vec<EntityId>,
@@ -25,30 +27,36 @@ pub(super) struct AnalysisGraph<'a> {
     pub(super) states: Vec<StateNode>,
     pub(super) state_indices: BTreeMap<EntityId, usize>,
     pub(super) propagation_edges: Vec<PropagationEdge>,
+    pub(super) coupling: Coupling,
     nodes: BTreeMap<EntityId, &'a Node>,
     edges: &'a [Edge],
 }
 
 impl<'a> AnalysisGraph<'a> {
     pub(super) fn new(
+        project: &ProjectId,
         scenario: &Scenario,
         nodes: &'a [Node],
         edges: &'a [Edge],
+        dependence: Option<&ProjectDependenceModel>,
     ) -> Result<Self, ScenarioAnalysisError> {
         let nodes_by_id: BTreeMap<_, _> = nodes.iter().map(|node| (node.id, node)).collect();
         validate_references(scenario, &nodes_by_id)?;
+        let coupling = Coupling::new(project, dependence);
         let relevant = scenario_analysis_reachability::relevant_states(scenario, edges);
-        let states = scenario_analysis_state::project(&nodes_by_id, &relevant)?;
+        let states = scenario_analysis_state::project(&nodes_by_id, &relevant, &coupling)?;
         let state_indices = states
             .iter()
             .enumerate()
             .map(|(index, state)| (state.id, index))
             .collect::<BTreeMap<_, _>>();
-        let propagation_edges = scenario_analysis_edges::propagation(edges, &state_indices)?;
+        let propagation_edges =
+            scenario_analysis_edges::propagation(edges, &state_indices, &coupling)?;
         Ok(Self {
             states,
             state_indices,
             propagation_edges,
+            coupling,
             nodes: nodes_by_id,
             edges,
         })
@@ -57,21 +65,34 @@ impl<'a> AnalysisGraph<'a> {
     pub(super) fn intervention_plan(
         &self,
         candidate: EntityId,
-    ) -> Result<CandidateExecutionPlan<'a>, ScenarioAnalysisError> {
+    ) -> Result<CandidateExecutionPlan, ScenarioAnalysisError> {
         let plan = intervention_execution::plan(candidate, &self.nodes, self.edges)
             .map_err(ScenarioAnalysisError::InterventionDependencyCycle)?;
         Ok(CandidateExecutionPlan {
             steps: plan
                 .steps
                 .into_iter()
-                .map(|(id, intervention)| PlannedIntervention {
-                    id,
-                    intervention,
-                    edges: scenario_analysis_edges::intervention(
+                .map(|(id, intervention)| {
+                    let owner = EstimateOwner::Node(id);
+                    PlannedIntervention {
                         id,
-                        self.edges,
-                        &self.state_indices,
-                    ),
+                        duration: intervention.duration.as_ref().map(|estimate| {
+                            self.coupling
+                                .primitive(&owner, estimate.id, &estimate.distribution)
+                        }),
+                        probability_of_success: intervention.probability_of_success.as_ref().map(
+                            |estimate| {
+                                self.coupling
+                                    .primitive(&owner, estimate.id, &estimate.distribution)
+                            },
+                        ),
+                        edges: scenario_analysis_edges::intervention(
+                            id,
+                            self.edges,
+                            &self.state_indices,
+                            &self.coupling,
+                        ),
+                    }
                 })
                 .collect(),
             blockers: plan.blockers,

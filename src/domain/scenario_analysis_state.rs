@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{Distribution, EntityId, Node, NodePayload, QuantitySupport, ScenarioAnalysisError};
+use super::{
+    EntityId, EstimateOwner, Node, NodePayload, QuantitySupport, ScenarioAnalysisError,
+    scenario_analysis_coupling::{CoupledPrimitive, Coupling},
+};
 
 #[derive(Clone, Copy)]
 pub(super) struct StateBounds {
@@ -34,7 +37,7 @@ pub(super) enum Combination {
 #[derive(Clone)]
 pub(super) struct StateNode {
     pub(super) id: EntityId,
-    pub(super) baseline: Distribution,
+    pub(super) baseline: CoupledPrimitive,
     pub(super) bounds: StateBounds,
     pub(super) combination: Combination,
 }
@@ -42,6 +45,7 @@ pub(super) struct StateNode {
 pub(super) fn project(
     nodes: &BTreeMap<EntityId, &Node>,
     relevant: &BTreeSet<EntityId>,
+    coupling: &Coupling,
 ) -> Result<Vec<StateNode>, ScenarioAnalysisError> {
     relevant
         .iter()
@@ -63,9 +67,7 @@ pub(super) fn project(
                             .forecast
                             .as_ref()
                             .or(state.current.as_ref())
-                            .ok_or(missing)?
-                            .distribution
-                            .clone(),
+                            .ok_or(missing)?,
                         quantity_bounds(state.quantity.support),
                     )
                 }
@@ -73,16 +75,18 @@ pub(super) fn project(
                     metric
                         .current
                         .as_ref()
-                        .ok_or(ScenarioAnalysisError::MissingMetricBaseline(node.id))?
-                        .distribution
-                        .clone(),
+                        .ok_or(ScenarioAnalysisError::MissingMetricBaseline(node.id))?,
                     quantity_bounds(metric.quantity.support),
                 ),
                 _ => return Err(ScenarioAnalysisError::MissingCausalNode(node.id)),
             };
             Ok(StateNode {
                 id: node.id,
-                baseline,
+                baseline: coupling.primitive(
+                    &EstimateOwner::Node(node.id),
+                    baseline.id,
+                    &baseline.distribution,
+                ),
                 bounds,
                 combination: combination(support(node)),
             })
@@ -165,9 +169,14 @@ mod tests {
             .unwrap(),
         );
         let nodes = BTreeMap::from([(node.id, &node)]);
-        let state = project(&nodes, &BTreeSet::from([node.id])).unwrap();
+        let state = project(
+            &nodes,
+            &BTreeSet::from([node.id]),
+            &super::super::scenario_analysis_coupling::Coupling::default(),
+        )
+        .unwrap();
 
-        assert_eq!(state[0].baseline.mean(), 15.0);
+        assert_eq!(state[0].baseline.marginal_mean(), 15.0);
         assert_eq!(state[0].bounds.clamp(12.0), 12.0);
         assert_eq!(state[0].bounds.clamp(-1.0), 0.0);
     }

@@ -121,10 +121,9 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_analysis" => {
             &["Use positive cycle limits and select a scenario which still exists."]
         }
-        "scenario_analysis_unavailable" => &[
-            "Set current estimates on every objective and causal factor used by the scenario.",
-            "Remove non-empty dependence groups until correlated scenario propagation is supported.",
-        ],
+        "scenario_analysis_unavailable" => {
+            &["Set current estimates on every objective and causal factor used by the scenario."]
+        }
         _ if status.is_server_error() => {
             &["Retry the request and inspect server logs if it persists."]
         }

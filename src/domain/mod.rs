@@ -43,6 +43,7 @@ mod quantiles;
 mod scenario;
 mod scenario_analysis;
 mod scenario_analysis_accumulator;
+mod scenario_analysis_coupling;
 mod scenario_analysis_draw;
 mod scenario_analysis_edges;
 mod scenario_analysis_graph;
