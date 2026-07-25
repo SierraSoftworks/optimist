@@ -143,7 +143,21 @@ $$
 
 The gain is a linearization about the baseline evaluated at each response's mean. It says what the loop does to a small deviation, not what any one Monte Carlo draw does to a large one. Where two relationships run between the same pair, the larger magnitude is used, which keeps the gain a bound rather than an average that could hide an amplifying path behind a damping one.
 
-A loop through a state carrying a node equation reports `null`. The state does not respond proportionally to its parents, so no elasticity describes the edge and the product would mean nothing. **An unknown gain is not a safe one** — such a loop can run away just as far, it simply admits no number to multiply. Treat anything other than a known gain below one as needing review.
+A loop through a state carrying a node equation reports `null`. The state does not respond proportionally to its parents, so no elasticity describes the edge and the product would mean nothing. **An unknown gain is not a safe one** — such a loop can run away just as far, it simply admits no number to multiply.
+
+### Probability of instability
+
+A mean says nothing about how often a product crosses one. Two responses averaging 0.9 apiece give a mean gain of 0.81 and look safe, but if each is uncertain enough their product exceeds one in a large minority of draws — and those are the draws in which the projection reports its clamp rather than the plan.
+
+Each circuit therefore also reports `instability`, the share of sampled draws in which $|g| \geq 1$:
+
+$$
+\widehat{P}(|g| \geq 1) = \frac{1}{n}\sum_{k=1}^{n} \mathbf{1}\left[\left|\prod_{(j \to i) \in C} \varepsilon_{ji}^{(k)}\right| \geq 1\right].
+$$
+
+Responses are drawn jointly through the project's Gaussian copula, so two hops that share a quantity move together rather than being multiplied as if independent. That difference matters most here: a shared assumption appearing twice on a circuit squares its effect on the gain. A draw whose product is not finite carries no information about stability and is left out of the denominator rather than counted either way.
+
+Treat anything other than a known gain below one **and** a small sampled share as needing review.
 
 ## Horizon adequacy
 

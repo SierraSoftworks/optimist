@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
-import type { GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
+import type { FeedbackLoop, GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
 import { impactTone, relativeImprovement } from '../domain/optimizationImpact'
 import ScenarioPicker from './ScenarioPicker.vue'
 import OptimizationTrajectory from './OptimizationTrajectory.vue'
@@ -91,15 +91,18 @@ function truncated(candidate: ScenarioAnalysis['candidates'][number]) {
  * Loops that cannot be shown to settle.
  *
  * An unknown gain is not a safe one: a loop closed through a node equation admits
- * no elasticity to multiply, yet it can run away just as far. Only a known,
- * contracting gain is excluded.
+ * no elasticity to multiply, yet it can run away just as far. Nor is a mean below
+ * one, when the sampled product crosses it often enough to matter.
  */
-const unsettledLoops = computed(
-  () => props.analysis?.feedback_loops.filter((loop) => loop.gain === null || Math.abs(loop.gain) >= 1) ?? [],
-)
+const unsettledLoops = computed(() => props.analysis?.feedback_loops.filter(
+  (loop) => loop.gain === null || Math.abs(loop.gain) >= 1 || (loop.instability ?? 0) >= 0.05,
+) ?? [])
 
-function gainLabel(gain: number | null) {
-  return gain === null ? 'gain unknown' : `gain ${gain.toFixed(2)}`
+function gainLabel(loop: FeedbackLoop) {
+  const gain = loop.gain === null ? 'gain unknown' : `gain ${loop.gain.toFixed(2)}`
+  return loop.instability === null || loop.instability === 0
+    ? gain
+    : `${gain} · runs away in ${(loop.instability * 100).toFixed(0)}% of draws`
 }
 
 /**
@@ -160,10 +163,10 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
           <ul>
             <li v-for="(loop, index) in unsettledLoops" :key="index">
               {{ loop.states.map(title).join(' → ') }} → {{ title(loop.states[0]!) }}
-              <code>{{ gainLabel(loop.gain) }}</code>
+              <code>{{ gainLabel(loop) }}</code>
             </li>
           </ul>
-          <span>A deviation entering these loops is not shown to decay, so it grows each period until the destination's declared support clamps it and the projection reports that bound more than the intervention. An unknown gain means a node equation sits on the loop, which admits no elasticity to multiply rather than being safe.</span>
+          <span>A deviation entering these loops is not shown to decay, so it grows each period until the destination's declared support clamps it and the projection reports that bound more than the intervention. A mean gain below one is not on its own a guarantee: what matters is how often the sampled responses multiply past it. An unknown gain means a node equation sits on the loop, which admits no elasticity to multiply rather than being safe.</span>
         </div>
       </div>
       <div v-if="analysis.candidates.length" class="candidate-list">

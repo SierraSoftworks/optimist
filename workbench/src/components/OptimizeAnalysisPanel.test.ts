@@ -167,9 +167,9 @@ describe('OptimizeAnalysisPanel', () => {
     const unstable: ScenarioAnalysis = {
       ...analysis,
       feedback_loops: [
-        { states: ['A', 'B'], gain: 1.4 },
-        { states: ['A', 'C'], gain: 0.5 },
-        { states: ['B', 'C'], gain: null },
+        { states: ['A', 'B'], gain: 1.4, instability: 0.82 },
+        { states: ['A', 'C'], gain: 0.5, instability: 0 },
+        { states: ['B', 'C'], gain: null, instability: null },
       ],
     }
     const wrapper = mount(OptimizeAnalysisPanel, {
@@ -184,5 +184,26 @@ describe('OptimizeAnalysisPanel', () => {
     expect(warning).toContain('gain 1.40')
     expect(warning).toContain('gain unknown')
     expect(warning).not.toContain('0.50')
+  })
+
+  /**
+   * The case a point estimate hides: the mean contracts, so nothing above would
+   * flag it, yet the sampled responses multiply past one in a fifth of draws.
+   */
+  it('warns about a loop whose mean settles but whose draws often do not', () => {
+    const unstable: ScenarioAnalysis = {
+      ...analysis,
+      feedback_loops: [{ states: ['A', 'B'], gain: 0.81, instability: 0.21 }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: unstable,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    const warning = wrapper.get('.stability-warning').text()
+    expect(warning).toContain('1 feedback loop not shown to settle')
+    expect(warning).toContain('gain 0.81 · runs away in 21% of draws')
   })
 })

@@ -88,6 +88,8 @@ impl ScenarioAnalysis {
                 edges,
                 &graph.states,
                 &graph.propagation_edges,
+                &graph.coupling,
+                scenario.draft.monte_carlo.seed(),
             ),
         })
     }
@@ -1097,8 +1099,7 @@ mod tests {
     }
 
     /// Refuses to call a loop safe when it cannot be weighed.
-    ///
-    /// A node equation is arbitrary arithmetic over its parents, so no elasticity
+    ///    /// A node equation is arbitrary arithmetic over its parents, so no elasticity
     /// describes its response and the product around the circuit would be a
     /// number with no meaning. Reporting the loop with an absent gain — rather
     /// than omitting it or inventing one — is what stops a caller that warns on
@@ -1133,6 +1134,83 @@ mod tests {
         assert!(
             !loop_.settles(),
             "an unweighable loop must never be reported as safe"
+        );
+        assert_eq!(loop_.instability, None);
+        assert!(loop_.needs_review());
+    }
+
+    /// Reports how often an uncertain loop fails to contract, not just on average.
+    ///
+    /// Both responses average 0.9, so the mean gain is 0.81 and the loop looks
+    /// safe. They are uncertain enough that their product still exceeds one in a
+    /// large minority of draws, and those are the draws where the projection
+    /// reports its clamp rather than the plan. A point estimate cannot say that,
+    /// which is the whole reason the sampled share is carried beside it.
+    #[test]
+    fn measures_how_often_an_uncertain_loop_fails_to_contract() {
+        let uncertain = |spread: f64| {
+            let (mut scenario, nodes, mut edges, revision) = point_fixture(3);
+            let response = |id: u64| {
+                let distribution = if spread > 0.0 {
+                    Distribution::scaled_beta(1.0, 1.0, 0.9 - spread, 0.9 + spread).unwrap()
+                } else {
+                    Distribution::point(0.9).unwrap()
+                };
+                Estimate::<Elasticity>::new(EstimateId::new(id), distribution).unwrap()
+            };
+            let EdgePayload::Contributes(effect) = &mut edges[1].payload else {
+                unreachable!()
+            };
+            effect.response = response(0);
+            edges.push(
+                Edge::new(
+                    nodes[2].id,
+                    NodeKind::Outcome,
+                    nodes[1].id,
+                    NodeKind::Factor,
+                    EdgePayload::Contributes(CausalEffect::proportional(
+                        response(1),
+                        None,
+                        String::new(),
+                        vec![],
+                    )),
+                )
+                .unwrap(),
+            );
+            scenario.draft.monte_carlo = MonteCarloConfig::new(31, 2, 2, 0.5, 0.0).unwrap();
+            let result =
+                ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+            result.feedback_loops.into_iter().next().unwrap()
+        };
+
+        let certain = uncertain(0.0);
+        assert!((certain.gain.unwrap() - 0.81).abs() < 1e-12);
+        assert_eq!(
+            certain.instability,
+            Some(0.0),
+            "a loop with no uncertainty cannot cross one"
+        );
+        assert!(!certain.needs_review());
+
+        let wide = uncertain(0.6);
+        assert!(
+            (wide.gain.unwrap() - certain.gain.unwrap()).abs() < 0.01,
+            "the two loops must be indistinguishable by mean gain, got {:?} and {:?}",
+            certain.gain,
+            wide.gain,
+        );
+        let share = wide.instability.unwrap();
+        assert!(
+            share > 0.15 && share < 0.45,
+            "an uncertain loop must report how often it runs away, got {share}"
+        );
+        assert!(
+            wide.settles(),
+            "the mean still contracts, which is exactly what hides the risk"
+        );
+        assert!(
+            wide.needs_review(),
+            "a loop that runs away in a fifth of draws must not be dismissed"
         );
     }
 

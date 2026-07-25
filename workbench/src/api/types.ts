@@ -455,6 +455,8 @@ export interface FeedbackLoop {
   states: string[]
   /** Product of the mean responses around the circuit; null where no elasticity describes an edge. */
   gain: number | null
+  /** Share of sampled draws in which the circuit fails to contract; null where the gain is. */
+  instability: number | null
 }
 
 export interface ScenarioAnalysis {

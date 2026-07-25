@@ -145,7 +145,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Time-boxed intervention forcing with activation, release, and rebound kernels.
 - [ ] Stable feedback equilibrium checks and probability of instability.
   - [x] Report each projected circuit with its loop gain, and refuse to call a loop it cannot weigh a settled one.
-  - [ ] Derive a probability of instability from the sampled gain rather than its mean.
+  - [x] Derive a probability of instability from the sampled gain rather than its mean.
   - [ ] Solve for equilibrium values where the loop gain proves one exists.
 - [x] Tarjan SCC detection and bounded elementary-cycle enumeration.
 - [x] Report the periods an effect needs to reach each objective, so a truncated horizon is not read as no effect.
