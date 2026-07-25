@@ -46,6 +46,7 @@ const analysis: ScenarioAnalysis = {
     }],
     improvement_covariance: [[0.02]],
     clamped_state_updates: 3,
+    undefined_responses: 0,
     diagnostics: {
       seed: 42, attempted_samples: 120, valid_samples: 118,
       invalid_samples: { non_finite_primitive: 2, non_finite_result: 0 },
