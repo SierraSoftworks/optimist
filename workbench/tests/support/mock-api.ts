@@ -7,6 +7,7 @@ export interface FixtureState {
   nodes: Array<Record<string, unknown>>
   edges: Array<Record<string, unknown>>
   scenarios?: Array<Record<string, unknown>>
+  dependence?: Record<string, unknown> | null
 }
 
 /**
@@ -77,6 +78,20 @@ export async function mockApi(page: Page, state: FixtureState) {
     }
     if (url.pathname === '/api/v1/projects/A/nodes') return json(state.nodes)
     if (url.pathname === '/api/v1/projects/A/edges') return json(state.edges)
+    if (url.pathname === '/api/v1/projects/A/dependence') {
+      return state.dependence
+        ? json(state.dependence)
+        : json(
+            {
+              error: {
+                code: 'dependence_not_found',
+                message: 'no dependence document',
+                advice: [],
+              },
+            },
+            404,
+          )
+    }
     if (url.pathname === '/api/v1/projects/A/scenarios') return json(state.scenarios ?? [])
     if (url.pathname === '/api/v1/projects/A/scenarios/A/analysis') {
       const scenario = state.scenarios?.[0] as {
@@ -203,6 +218,12 @@ export async function mockApi(page: Page, state: FixtureState) {
     if (url.pathname === '/api/v1/projects/A/commands' && request.method() === 'POST') {
       const command = JSON.parse(request.postData()!)
       const input = command.command.payload
+      if (command.command.type === 'set_project_dependence') {
+        const revision = state.dependence ? (state.dependence.revision as number) + 1 : 0
+        state.dependence = { ...input.model, revision }
+        state.revision += 1
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'project_dependence_set', value: state.dependence } }, 201)
+      }
       if (command.command.type === 'create_scenario') {
         const scenario = { id: 'A', revision: 0, ...input.scenario }
         state.scenarios = [...(state.scenarios ?? []), scenario]

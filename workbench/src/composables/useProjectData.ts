@@ -10,6 +10,7 @@ import type {
   GraphEdge,
   Project,
   ProjectArchive,
+  ProjectDependenceModel,
   Scenario,
   ScenarioDraft,
   SetStateEstimateInput,
@@ -98,6 +99,34 @@ export function useScenarios(
     queryKey: computed(() => ['scenarios', projectId.value]),
     queryFn: () => api.scenarios(projectId.value!),
     enabled: computed(() => Boolean(projectId.value) && enabled.value),
+  })
+}
+
+export function useDependence(projectId: Ref<string | null>) {
+  return useQuery({
+    queryKey: computed(() => ['dependence', projectId.value]),
+    queryFn: () => api.dependence(projectId.value!),
+    enabled: computed(() => Boolean(projectId.value)),
+  })
+}
+
+/**
+ * Replaces the residual dependence document.
+ *
+ * Analysis results depend on the document, so they are invalidated alongside
+ * it: coupling changes how estimates move together and therefore every
+ * projection that samples them.
+ */
+export function useSetDependence(project: Ref<Project | undefined>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (model: ProjectDependenceModel) => api.setDependence(project.value!, model),
+    onSuccess: (model) => {
+      const id = project.value!.id
+      advanceProject(queryClient, project.value!)
+      queryClient.setQueryData<ProjectDependenceModel>(['dependence', id], model)
+      invalidateAnalysis(queryClient, id)
+    },
   })
 }
 

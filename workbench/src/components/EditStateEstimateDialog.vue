@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import type { EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import type { EstimateAddress, EstimateSourceInput, EstimateSupport, GraphEdge, GraphNode, ProjectDependenceModel, QuantitySupport, SetStateEstimateInput, StateEstimateSlot, Unit } from '../api/types'
+import type { CatalogueEntry } from '../domain/estimateCatalogue'
 import { defaultSquiggleSourceInput } from '../domain/squiggleEstimate'
+import { formatUnitExpression } from '../domain/unitExpression'
 import EstimateSourceEditor from './EstimateSourceEditor.vue'
+import SharedQuantityEditor from './SharedQuantityEditor.vue'
 
 const props = defineProps<{
   open: boolean
@@ -11,8 +14,15 @@ const props = defineProps<{
   node: GraphNode | null
   projectId: string | null
   edges: GraphEdge[]
+  catalogue: CatalogueEntry[]
+  dependence: ProjectDependenceModel | null
 }>()
-const emit = defineEmits<{ close: []; submit: [input: SetStateEstimateInput] }>()
+const emit = defineEmits<{
+  close: []
+  submit: [input: SetStateEstimateInput]
+  share: [input: { address: EstimateAddress; partner: CatalogueEntry }]
+  unshare: [address: EstimateAddress]
+}>()
 const form = reactive({
   slot: 'current' as StateEstimateSlot,
 })
@@ -75,6 +85,28 @@ function submit() {
   })
 }
 
+/// An estimate can only be coupled once it exists and therefore has an ID.
+const address = computed<EstimateAddress | null>(() =>
+  props.projectId && props.node && existing.value
+    ? {
+        project: props.projectId,
+        owner: { kind: 'node', id: props.node.id },
+        estimate: existing.value.id,
+      }
+    : null,
+)
+const unitText = computed(() => formatUnitExpression(expectedUnit.value))
+const authoredSource = computed(() => source.value.definition.source)
+
+/// Adopting the partner's source is what makes the two marginals identical.
+function share(partner: CatalogueEntry) {
+  if (!address.value) return
+  source.value = {
+    type: 'squiggle',
+    definition: { ...source.value.definition, source: partner.source },
+  }
+  emit('share', { address: address.value, partner })
+}
 </script>
 
 <template>
@@ -105,6 +137,17 @@ function submit() {
           @validity="sourceValid = $event"
         />
         <p v-else class="form-error">Configure a canonical quantity before authoring a Squiggle estimate.</p>
+        <SharedQuantityEditor
+          v-if="canAuthor"
+          :address="address"
+          :unit="unitText"
+          :source="authoredSource"
+          :catalogue="catalogue"
+          :dependence="dependence"
+          :pending="pending"
+          @share="share"
+          @unshare="address && emit('unshare', address)"
+        />
         <footer>
           <button type="button" class="secondary-button" @click="emit('close')">Cancel</button>
           <button type="submit" class="primary-button" :disabled="pending || !sourceValid || !canAuthor">

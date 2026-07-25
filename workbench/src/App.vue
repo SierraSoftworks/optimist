@@ -54,6 +54,7 @@ import type {
   Estimate,
   EdgeEstimateSlot,
   EdgeKind,
+  EstimateAddress,
   InterventionEstimateSlot,
   NodeKind,
   Observation,
@@ -95,9 +96,13 @@ import {
   useSetMeasurementCalibration,
   useSetEffectProfile,
   useUpdateCausalEffect,
+  useDependence,
+  useSetDependence,
 } from './composables/useProjectData'
 import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
 import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
+import { estimateCatalogue, type CatalogueEntry } from './domain/estimateCatalogue'
+import { shareQuantity, stopSharing } from './domain/estimateCoupling'
 import { simulationReadiness } from './domain/simulationReadiness'
 import type { WorkbenchCommand } from './domain/commandBar'
 import { commandShortcutLabel } from './domain/platformShortcut'
@@ -213,6 +218,14 @@ const structuralAnalysis = useStructuralAnalysis(
 )
 const optimizeModeEnabled = computed(() => mode.value === 'optimize')
 const scenariosQuery = useScenarios(selectedProjectId, optimizeModeEnabled)
+const dependenceQuery = useDependence(selectedProjectId)
+const setDependence = useSetDependence(projectQuery.data)
+const dependence = computed(() => dependenceQuery.data.value ?? null)
+const estimateCatalogueEntries = computed(() =>
+  selectedProjectId.value
+    ? estimateCatalogue(selectedProjectId.value, nodes.value, edges.value)
+    : [],
+)
 const selectedScenario = computed(() =>
   scenariosQuery.data.value?.find((scenario) => scenario.id === selectedScenarioId.value) ?? null,
 )
@@ -577,6 +590,27 @@ async function submitStateQuantity(input: SetNodeQuantityStateInput) {
   try {
     await setNodeQuantityState.mutateAsync(input)
     stateQuantityDialogOpen.value = false
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function shareQuantityWith(input: { address: EstimateAddress; partner: CatalogueEntry }) {
+  mutationError.value = null
+  try {
+    await setDependence.mutateAsync(
+      shareQuantity(dependence.value, input.address, input.partner.address),
+    )
+  } catch (error) {
+    mutationError.value = error as Error
+  }
+}
+
+async function stopSharingQuantity(address: EstimateAddress) {
+  mutationError.value = null
+  if (!dependence.value) return
+  try {
+    await setDependence.mutateAsync(stopSharing(dependence.value, address))
   } catch (error) {
     mutationError.value = error as Error
   }
@@ -1021,12 +1055,16 @@ function retry() {
     />
     <EditStateEstimateDialog
       :open="estimateDialogOpen"
-      :pending="setStateEstimate.isPending.value"
+      :pending="setStateEstimate.isPending.value || setDependence.isPending.value"
       :node="selectedNode"
       :project-id="selectedProjectId"
       :edges="edges"
+      :catalogue="estimateCatalogueEntries"
+      :dependence="dependence"
       @close="estimateDialogOpen = false"
       @submit="submitStateEstimate"
+      @share="shareQuantityWith"
+      @unshare="stopSharingQuantity"
     />
     <ConfigureStateQuantityDialog
       :open="stateQuantityDialogOpen"

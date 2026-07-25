@@ -247,6 +247,32 @@ export interface EdgeIdentity {
   destination: string
 }
 
+/** Stable project-scoped address of an estimate embedded in a node or edge. */
+export interface EstimateAddress {
+  project: string
+  owner: { kind: 'node'; id: string } | { kind: 'edge'; id: EdgeIdentity }
+  estimate: string
+}
+
+/** Whether a correlation matrix holds rank or latent Normal coefficients. */
+export type CorrelationScale = 'rank' | 'latent'
+
+export interface GaussianCopulaCorrelation {
+  scale: CorrelationScale
+  matrix: number[][]
+}
+
+/** One non-overlapping set of estimates coupled by a Gaussian copula. */
+export interface ResidualDependenceGroup {
+  members: EstimateAddress[]
+  correlation: GaussianCopulaCorrelation
+}
+
+export interface ProjectDependenceModel {
+  revision: number
+  residual_groups: ResidualDependenceGroup[]
+}
+
 export interface AnalysisRevisionKey {
   project: string
   graph_revision: number

@@ -16,6 +16,7 @@ import type {
   GraphNode,
   Project,
   ProjectArchive,
+  ProjectDependenceModel,
   SetStateEstimateInput,
   Scenario,
   ScenarioAnalysis,
@@ -259,6 +260,39 @@ export const api = {
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),
   scenarioAnalysis: (project: string, scenario: string) =>
     request<ScenarioAnalysis>(`/api/v1/projects/${project}/scenarios/${scenario}/analysis`),
+  /** Reads the residual dependence document, which most projects do not have. */
+  async dependence(project: string): Promise<ProjectDependenceModel | null> {
+    try {
+      return await request<ProjectDependenceModel>(`/api/v1/projects/${project}/dependence`)
+    } catch (error) {
+      if (error instanceof OptimistApiError && error.code === 'dependence_not_found') return null
+      throw error
+    }
+  },
+  async setDependence(
+    project: Project,
+    model: ProjectDependenceModel,
+  ): Promise<ProjectDependenceModel> {
+    const result = await request<CommandResult<ProjectDependenceModel>>(
+      `/api/v1/projects/${project.id}/commands`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_revision: project.revision,
+          command: { type: 'set_project_dependence', payload: { model } },
+        }),
+      },
+    )
+    if (result.outcome.type !== 'project_dependence_set') {
+      throw new OptimistApiError(
+        'unexpected_command_result',
+        'Optimist returned an unexpected result for dependence editing.',
+        ['Confirm the workbench and server versions match.'],
+      )
+    }
+    return result.outcome.value
+  },
   createProject: (name: string) =>
     request<Project>('/api/v1/projects', {
       method: 'POST',

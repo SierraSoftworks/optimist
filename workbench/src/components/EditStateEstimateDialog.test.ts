@@ -46,7 +46,7 @@ describe('EditStateEstimateDialog', () => {
       },
     } as GraphNode
     const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node: existing, projectId: 'A', edges: [] },
+      props: { open: true, pending: false, node: existing, projectId: 'A', edges: [], catalogue: [], dependence: null },
       global: { stubs: { Teleport: true } },
     })
     await wrapper.get('form').trigger('submit')
@@ -74,7 +74,7 @@ describe('EditStateEstimateDialog', () => {
       },
     } as GraphNode
     const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [] },
+      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [], catalogue: [], dependence: null },
       global: { stubs: { Teleport: true } },
     })
 
@@ -107,7 +107,7 @@ describe('EditStateEstimateDialog', () => {
       },
     } as GraphNode
     const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [] },
+      props: { open: true, pending: false, node: metric, projectId: 'A', edges: [], catalogue: [], dependence: null },
       global: { stubs: { Teleport: true } },
     })
 
@@ -129,7 +129,7 @@ describe('EditStateEstimateDialog', () => {
       },
     } as GraphNode
     const wrapper = mount(EditStateEstimateDialog, {
-      props: { open: true, pending: false, node: native, projectId: 'A', edges: [] },
+      props: { open: true, pending: false, node: native, projectId: 'A', edges: [], catalogue: [], dependence: null },
       global: { stubs: { Teleport: true } },
     })
 
