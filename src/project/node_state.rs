@@ -24,14 +24,18 @@ pub(super) fn set(
         }
         .into());
     }
-    match &node.payload {
-        NodePayload::Factor(_) | NodePayload::Outcome(_) => {}
+    match &mut node.payload {
+        NodePayload::Metric(metric) => {
+            *metric = metric.clone().with_quantity_replacement(command.quantity)?;
+        }
+        NodePayload::Factor(_) | NodePayload::Outcome(_) => {
+            node.native_state = Some(match node.native_state.take() {
+                Some(state) => state.with_quantity(command.quantity)?,
+                None => QuantityState::new(command.quantity, None, None)?,
+            });
+        }
         _ => return Err(ProjectError::NativeStateUnsupported(node.id)),
     }
-    node.native_state = Some(match node.native_state.take() {
-        Some(state) => state.with_quantity(command.quantity)?,
-        None => QuantityState::new(command.quantity, None, None)?,
-    });
     node.revision = node
         .revision
         .checked_add(1)
@@ -409,5 +413,79 @@ mod tests {
             broken,
             Err(ProjectError::StateQuantityBreaksRelation { .. })
         ));
+    }
+
+    /// A metric's unit is a modelling decision that can turn out to be wrong.
+    #[test]
+    fn moves_a_metric_onto_a_corrected_unit_and_reassesses_its_estimate() {
+        use crate::domain::{Distribution, Estimate, Metric};
+
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Metrics".to_owned()).unwrap().id;
+        catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    0,
+                    GraphCommand::CreateNode(CreateNode {
+                        name: "ttm".to_owned(),
+                        title: "Time to mitigate".to_owned(),
+                        payload: NodePayload::Metric(
+                            Metric::with_quantity(
+                                QuantityDefinition::with_dimension(
+                                    "minutes",
+                                    Some(Unit::base("minute").unwrap()),
+                                    None,
+                                    QuantitySupport::NonNegative,
+                                )
+                                .unwrap(),
+                                Some(
+                                    Estimate::new(
+                                        EstimateId::new(0),
+                                        Distribution::point(90.0).unwrap(),
+                                    )
+                                    .unwrap(),
+                                ),
+                            )
+                            .unwrap(),
+                        ),
+                    }),
+                ),
+            )
+            .unwrap();
+        let result = catalog
+            .execute(
+                &project,
+                CommandRequest::new(
+                    1,
+                    GraphCommand::SetNodeQuantityState(SetNodeQuantityState {
+                        node: EntityId::new(0),
+                        expected_revision: 0,
+                        quantity: QuantityDefinition::with_dimension(
+                            "minutes/outage",
+                            Some(Unit::from_exponents([("minute", 1), ("outage", -1)]).unwrap()),
+                            Some("mean per incident".to_owned()),
+                            QuantitySupport::NonNegative,
+                        )
+                        .unwrap(),
+                    }),
+                ),
+            )
+            .unwrap();
+        let crate::command::CommandOutcome::NodeQuantityStateSet(node) = result.outcome else {
+            panic!("expected a retargeted metric")
+        };
+        let NodePayload::Metric(metric) = node.payload else {
+            panic!("expected a metric payload")
+        };
+        assert_eq!(metric.quantity.unit, "minutes/outage");
+        let estimate = metric.current.expect("the estimate survives the move");
+        let crate::domain::EstimateSource::Squiggle { definition } = estimate.source;
+        assert_eq!(
+            definition.target_unit,
+            Unit::from_exponents([("minute", 1), ("outage", -1)]).unwrap(),
+            "the stored source must be reassessed against the corrected unit"
+        );
+        assert_eq!(estimate.distribution.mean(), 90.0);
     }
 }

@@ -3,6 +3,7 @@ import { computed, reactive, watch } from 'vue'
 import { X } from '@lucide/vue'
 import type { GraphNode, QuantitySupport, SetNodeQuantityStateInput } from '../api/types'
 import { parseUnitExpression } from '../domain/unitExpression'
+import { nodeQuantity } from '../domain/stateRelation'
 
 const props = defineProps<{ open: boolean; pending: boolean; node: GraphNode | null }>()
 const emit = defineEmits<{ close: []; submit: [input: SetNodeQuantityStateInput] }>()
@@ -21,7 +22,7 @@ watch(
   () => props.open,
   (open) => {
     if (!open) return
-    const quantity = props.node?.native_state?.quantity
+    const quantity = props.node ? nodeQuantity(props.node) : undefined
     const support = quantity?.support
     Object.assign(form, {
       unit: quantity?.unit ?? '',

@@ -13,7 +13,7 @@ import type {
 import { calibratedState, calibrationLabel } from '../domain/measurementCalibration'
 import { readinessLabel, simulationReadiness } from '../domain/simulationReadiness'
 import { edgeMetadataLabel } from '../domain/edgePresentation'
-import { canOwnRelation, nodeRelation } from '../domain/stateRelation'
+import { canOwnRelation, nodeQuantity, nodeRelation } from '../domain/stateRelation'
 
 const props = defineProps<{ node: GraphNode | null; edges: GraphEdge[] }>()
 const emit = defineEmits<{
@@ -39,8 +39,8 @@ const incidentEdges = computed(() =>
     : [],
 )
 const canEditNativeState = computed(() => {
-  const node = props.node
-  return Boolean(node && (node.payload.kind === 'factor' || node.payload.kind === 'outcome'))
+  const kind = props.node?.payload.kind
+  return kind === 'factor' || kind === 'outcome' || kind === 'metric'
 })
 const measurementEdges = computed(() =>
   props.node?.payload.kind === 'metric'
@@ -132,7 +132,7 @@ function replacement(edge: GraphEdge, observation: Observation) {
           type="button"
           class="secondary-button"
           @click="emit('quantity')"
-        ><Gauge :size="14" /> {{ node.native_state ? 'State type' : 'Native state' }}</button>
+        ><Gauge :size="14" /> {{ nodeQuantity(node) ? 'State type' : 'Native state' }}</button>
       </div>
 
       <section class="readiness-panel" :data-level="readiness?.level">

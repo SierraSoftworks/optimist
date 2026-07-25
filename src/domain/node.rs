@@ -122,6 +122,24 @@ impl Metric {
         self
     }
 
+    /// Replaces the measured quantity, reassessing the estimate against it.
+    ///
+    /// A metric's unit is as revisable as a factor's: an operational definition
+    /// that turns out to be per-incident rather than per-month is a modelling
+    /// correction, not a reason to rebuild the node and lose its relationships.
+    pub(crate) fn with_quantity_replacement(
+        self,
+        quantity: QuantityDefinition,
+    ) -> Result<Self, QuantityError> {
+        let quantity = quantity.validated()?;
+        let (_, unit) = quantity.estimate_target()?;
+        Ok(Self {
+            current: super::quantity_state::retarget_estimate(self.current, &quantity, &unit)?,
+            quantity,
+            relation: self.relation,
+        })
+    }
+
     fn validated(self) -> Result<Self, QuantityError> {
         let relation = self.relation;
         Self::with_quantity(self.quantity, self.current)

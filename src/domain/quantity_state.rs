@@ -99,7 +99,13 @@ impl QuantityState {
     }
 }
 
-fn retarget_estimate(
+/// Re-evaluates an estimate against a replacement quantity's unit and support.
+///
+/// Changing a unit changes what the stored Squiggle source has to produce, so
+/// the source is reassessed rather than merely relabelled: a calculation that
+/// pinned the old unit in its own annotations fails here instead of silently
+/// claiming to be measured in something it never computed.
+pub(super) fn retarget_estimate(
     estimate: Option<Estimate<QuantityValue>>,
     quantity: &QuantityDefinition,
     unit: &crate::domain::Unit,
