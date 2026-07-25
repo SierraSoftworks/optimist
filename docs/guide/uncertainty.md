@@ -147,8 +147,8 @@ Two estimates that stand for the *same* real quantity are a dependence problem, 
   "revision": 0,
   "residual_groups": [{
     "members": [
-      "A/node/C/estimate/A",
-      "A/edge/H-changes-E/estimate/A"
+      {"project": "A", "owner": {"kind": "node", "id": "C"}, "estimate": "A"},
+      {"project": "A", "owner": {"kind": "edge", "id": {"source": "H", "kind": "changes", "destination": "E"}}, "estimate": "A"}
     ],
     "correlation": {"scale": "latent", "matrix": [[1.0, 1.0], [1.0, 1.0]]}
   }]
@@ -156,6 +156,8 @@ Two estimates that stand for the *same* real quantity are a dependence problem, 
 ```
 
 Every draw then gives both members the same value, so they behave as one variable without either estimate having to reference the other. Members with a correlation of 1 but *different* marginals are comonotonic rather than equal: they take the same quantile of their own distribution, which is usually what you want when the same driver is expressed in two units.
+
+The workbench writes this document for you. Open an estimate, choose another estimate of the same unit under **Shared quantity**, and it copies that definition across and couples the two. It warns when a coupled definition later drifts from its partner, since coupled estimates with different definitions are comonotonic rather than equal.
 
 State the shared driver in each member's provenance. Coupling records that two estimates move together; it does not record why, and a reviewer needs both.
 

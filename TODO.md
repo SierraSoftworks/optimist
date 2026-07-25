@@ -163,6 +163,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
   - [x] Persist and reopen Squiggle source while deriving symbolic or seeded empirical runtime projections for every estimate slot.
   - [x] Use Squiggle as the only persisted estimate authoring source in every editor and command.
   - [x] Metric-to-state calibration with visible observation translation and explicit estimate adoption.
+  - [x] Share one quantity between same-unit estimates by copying its definition and coupling them at correlation one.
 - [x] Direct graph/property editing through typed commands.
 - [x] Deterministic command bar with autocomplete, diagnostics, preview, and apply.
 - [x] Explore, Impediments, Feedback, and Optimize analysis modes.
