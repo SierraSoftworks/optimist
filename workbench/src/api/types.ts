@@ -249,7 +249,8 @@ export interface EffectAftereffect {
 export interface EffectProfile {
   ramp?: Estimate | null
   hold?: Estimate | null
-  release: EffectRelease
+  /** Absent when the effect stops abruptly, which the server omits as the default. */
+  release?: EffectRelease | null
   aftereffect?: EffectAftereffect | null
 }
 

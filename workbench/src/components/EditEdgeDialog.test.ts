@@ -29,4 +29,43 @@ describe('EditEdgeDialog', () => {
       calibration: { type: 'linear', state_zero: 20, state_one: 5 },
     }])
   })
+
+  it('reopens a time-boxed effect whose ending was stored as the default', async () => {
+    const periods = (value: number) => ({
+      id: 'A',
+      revision: 0,
+      source: { type: 'squiggle' as const, definition: { source: `pointMass(${value})`, seed: 42, sample_count: 256, target_unit: { duration: 1 } } },
+    })
+    const timeBoxed: GraphEdge = {
+      ...edge,
+      source_kind: 'intervention',
+      payload: {
+        kind: 'changes',
+        properties: {
+          response: periods(0.25),
+          lag: null,
+          mechanism: 'A code yellow suspends discretionary change.',
+          evidence: [],
+          // An abrupt ending is the server's default, so it omits `release`.
+          transience: {
+            profile: {
+              hold: periods(3),
+              aftereffect: { hold: periods(1), release: { type: 'immediate' } },
+            },
+            rebound: periods(1.25),
+          },
+        },
+      },
+    }
+    const wrapper = mount(EditEdgeDialog, {
+      props: { open: true, pending: false, edge: timeBoxed },
+      global: { stubs: { Teleport: true } },
+    })
+    const timeBox = wrapper.get('.effect-profile input[type="checkbox"]')
+    expect((timeBox.element as HTMLInputElement).checked).toBe(true)
+    const holdField = wrapper.findAll('.effect-profile input[type="number"]')[1]!
+    expect((holdField.element as HTMLInputElement).value).toBe('3')
+    expect((wrapper.get('.effect-profile select').element as HTMLSelectElement).value).toBe('immediate')
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toContain('code yellow')
+  })
 })

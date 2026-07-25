@@ -67,6 +67,7 @@ watch(
     }
     confirmDelete.value = false
   },
+  { immediate: true },
 )
 
 function saveClaim() {
@@ -85,6 +86,11 @@ function saveClaim() {
  * Point-mass durations round-trip exactly; richer Squiggle schedules fall back to
  * the nearest whole-period shape so the editor never silently discards them
  * without the author seeing the substitution in the preview.
+ *
+ * An abrupt ending arrives as an absent `release` rather than an explicit one,
+ * because the server omits the default, so every field here is read defensively:
+ * a profile that fails to seed leaves the editor claiming the effect is
+ * permanent, which is the opposite of what was stored.
  */
 function seedProfile(edge: GraphEdge): EffectProfileForm {
   const form = emptyEffectProfileForm()
@@ -95,10 +101,10 @@ function seedProfile(edge: GraphEdge): EffectProfileForm {
   form.ramp = periodsOf(transience.profile.ramp) ?? 0
   form.hold = periodsOf(transience.profile.hold) ?? 0
   const release = transience.profile.release
-  if (release.type === 'linear') {
+  if (release?.type === 'linear') {
     form.release = 'linear'
     form.releaseSpan = periodsOf(release.over) ?? 1
-  } else if (release.type === 'exponential') {
+  } else if (release?.type === 'exponential') {
     form.release = 'exponential'
     form.releaseSpan = periodsOf(release.half_life) ?? 1
   }

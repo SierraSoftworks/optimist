@@ -34,11 +34,14 @@ function releaseOf(release: { type: string; over?: unknown; half_life?: unknown 
 function transience(profile: Record<string, any> | null) {
   if (!profile) return null
   const aftereffect = profile.aftereffect
+  const release = releaseOf(profile.release)
   return {
     profile: {
       ramp: estimateOf(profile.ramp),
       hold: estimateOf(profile.hold),
-      release: releaseOf(profile.release),
+      // A profile's immediate release is its default, which the server omits.
+      // An aftereffect's release is always written, so it stays explicit here.
+      ...(release.type === 'immediate' ? {} : { release }),
       aftereffect: aftereffect
         ? { hold: estimateOf(aftereffect.hold), release: releaseOf(aftereffect.release) }
         : null,
