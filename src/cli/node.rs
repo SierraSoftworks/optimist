@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::domain::{EntityId, ProjectId, QuantityDefinition};
+use crate::domain::{EntityId, ProjectId, QuantityDefinition, StateRelation};
 
 use super::{client::ProjectClient, node_payload, output::OutputFormat};
 
@@ -69,6 +69,23 @@ enum NodeCommand {
         #[arg(long)]
         definition: String,
     },
+    /// Replaces the node equation computing a state from its parents.
+    ///
+    /// Parents bind by node name at the value they held one relationship lag
+    /// ago, interventions reaching the state bind their activation, and the
+    /// equation replaces proportional composition for this state.
+    Relation {
+        id: EntityId,
+        /// Squiggle source over parent names, activations, `baseline`, and parameters.
+        #[arg(long, conflicts_with = "clear")]
+        source: Option<String>,
+        /// JSON object of named uncertain coefficients keyed by binding name.
+        #[arg(long, default_value = "{}")]
+        parameters: String,
+        /// Removes the equation and restores proportional composition.
+        #[arg(long)]
+        clear: bool,
+    },
 }
 
 pub(super) async fn run(
@@ -115,6 +132,16 @@ pub(super) async fn run(
                 .set_node_quantity_state(project, id, parse_quantity_definition(&definition)?)
                 .await?,
         )?,
+        NodeCommand::Relation {
+            id,
+            source,
+            parameters,
+            clear,
+        } => output.node(
+            &client
+                .set_state_relation(project, id, parse_relation(source, &parameters, clear)?)
+                .await?,
+        )?,
     };
     println!("{rendered}");
     Ok(())
@@ -126,6 +153,41 @@ fn parse_quantity_definition(value: &str) -> Result<QuantityDefinition, human_er
             error,
             "The quantity definition is not valid QuantityDefinition JSON.",
             &["Include `unit`, canonical `dimension`, `aggregation`, and `support` fields."],
+        )
+    })
+}
+
+/// Builds the equation to store, or `None` when the caller is clearing it.
+fn parse_relation(
+    source: Option<String>,
+    parameters: &str,
+    clear: bool,
+) -> Result<Option<StateRelation>, human_errors::Error> {
+    if clear {
+        return Ok(None);
+    }
+    let source = source.ok_or_else(|| {
+        human_errors::user(
+            "A node equation requires a calculation.",
+            &["Pass `--source '<squiggle>'`, or `--clear` to restore proportional composition."],
+        )
+    })?;
+    let parameters = serde_json::from_str(parameters).map_err(|error| {
+        human_errors::wrap_user(
+            error,
+            "Equation parameters are not a valid JSON object of named coefficients.",
+            &[
+                "Pass `--parameters` an object keyed by binding name, each with `quantity` and `value` fields.",
+            ],
+        )
+    })?;
+    StateRelation::new(source, parameters).map(Some).map_err(|error| {
+        human_errors::wrap_user(
+            error,
+            "The node equation could not be prepared.",
+            &[
+                "Use valid binding names, and keep uncertainty in named parameters rather than in the source.",
+            ],
         )
     })
 }
@@ -214,6 +276,62 @@ mod tests {
                 r#"{"unit":"days","dimension":{"day":1},"aggregation":null}"#,
             ])
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn parses_node_equations_and_rejects_a_source_beside_clear() {
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "node",
+                "relation",
+                "B",
+                "--source",
+                "outage_frequency * impact_duration",
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "node",
+                "relation",
+                "B",
+                "--clear"
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "optimist",
+                "--project",
+                "A",
+                "node",
+                "relation",
+                "B",
+                "--clear",
+                "--source",
+                "baseline",
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn requires_a_calculation_unless_the_equation_is_cleared() {
+        assert!(super::parse_relation(None, "{}", true).unwrap().is_none());
+        assert!(super::parse_relation(None, "{}", false).is_err());
+        assert_eq!(
+            super::parse_relation(Some("baseline".to_owned()), "{}", false)
+                .unwrap()
+                .unwrap()
+                .source,
+            "baseline"
         );
     }
 }

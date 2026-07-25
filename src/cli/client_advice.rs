@@ -121,6 +121,13 @@ pub(super) fn for_error(code: &str, status: reqwest::StatusCode) -> &'static [&'
         "invalid_analysis" => {
             &["Use positive cycle limits and select a scenario which still exists."]
         }
+        "invalid_state_relation" => &[
+            "Reference only parents the graph already connects to this node, plus `baseline` and the equation's own parameters.",
+            "Check the arithmetic produces the node's own unit, and keep uncertainty in named parameters rather than in the source.",
+        ],
+        "state_quantity_breaks_relation" => &[
+            "Update the node equation that reads this quantity before changing its canonical unit terms.",
+        ],
         "scenario_analysis_unavailable" => {
             &["Set current estimates on every objective and causal factor used by the scenario."]
         }

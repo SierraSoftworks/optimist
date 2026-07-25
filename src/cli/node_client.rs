@@ -1,14 +1,48 @@
 use crate::{
     command::{
         CommandOutcome, CommandRequest, CommandResult, CreateNode, DeleteNode, GraphCommand,
-        SetNodeQuantityState,
+        SetNodeQuantityState, SetStateRelation,
     },
-    domain::{EntityId, Node, NodePayload, ProjectId, QuantityDefinition},
+    domain::{EntityId, Node, NodePayload, ProjectId, QuantityDefinition, StateRelation},
 };
 
 use super::client::{ProjectClient, decode};
 
 impl ProjectClient {
+    /// Attaches or clears the equation computing one state's value each period.
+    pub(super) async fn set_state_relation(
+        &self,
+        project: &ProjectId,
+        node: EntityId,
+        relation: Option<StateRelation>,
+    ) -> Result<Node, human_errors::Error> {
+        let expected_revision = self.show_node(project, node).await?.revision;
+        let revision = self.show(project).await?.revision;
+        let request = CommandRequest::new(
+            revision,
+            GraphCommand::SetStateRelation(SetStateRelation {
+                node,
+                expected_revision,
+                relation,
+            }),
+        );
+        let response = self
+            .client
+            .post(self.endpoint(&format!("api/v1/projects/{project}/commands"))?)
+            .json(&request)
+            .send()
+            .await
+            .map_err(node_network_error)?;
+        let result: CommandResult = decode(response).await?;
+        match result.outcome {
+            CommandOutcome::StateRelationSet(node) => Ok(node),
+            _ => Err(human_errors::system(
+                "The Optimist server returned an unexpected node equation result.",
+                &["Confirm the CLI and server versions match, then inspect the server logs."],
+            )),
+        }
+    }
+
     pub(super) async fn set_node_quantity_state(
         &self,
         project: &ProjectId,
