@@ -18,7 +18,7 @@ pub(super) fn set(
     match (&mut edge.payload, slot.clone()) {
         (EdgePayload::Contributes(value) | EdgePayload::Changes(value), EstimateSlot::Response) => {
             estimate_support::replacement(
-                Some(&value.response.destination_change),
+                Some(&value.response),
                 address,
                 slot,
                 count,
@@ -26,7 +26,7 @@ pub(super) fn set(
                 metadata,
             )
             .map(|(estimate, result)| {
-                value.response.destination_change = estimate;
+                value.response = estimate;
                 result
             })
         }
@@ -69,11 +69,11 @@ pub(super) fn find(
     }
     match &edge.payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            if value.response.destination_change.id == address.estimate {
+            if value.response.id == address.estimate {
                 Some(PrimitiveEstimate::from_typed(
                     address.clone(),
                     EstimateSlot::Response,
-                    &value.response.destination_change,
+                    &value.response,
                 ))
             } else {
                 value
@@ -115,7 +115,7 @@ pub(super) fn remove(
 fn count_id(payload: &EdgePayload, id: EstimateId) -> usize {
     match payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            usize::from(value.response.destination_change.id == id)
+            usize::from(value.response.id == id)
                 + usize::from(value.lag.as_ref().is_some_and(|item| item.id == id))
         }
         EdgePayload::Blocks(value) => usize::from(value.degree.id == id),

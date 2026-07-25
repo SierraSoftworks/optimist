@@ -1,8 +1,7 @@
 use optimist::domain::{
-    AnalysisLimits, AnalysisRevisionKey, CausalEffect, Edge, EdgePayload, EntityId, Estimate,
-    EstimateId, Factor, LinearResponse, Node, NodeKind, NodePayload, ProjectId, QuantityDefinition,
-    QuantityState, QuantitySupport, QuantityValue, SquiggleEstimateDefinition, StructuralAnalysis,
-    Unit,
+    AnalysisLimits, AnalysisRevisionKey, CausalEffect, Edge, EdgePayload, Elasticity, EntityId,
+    Estimate, EstimateId, Factor, Node, NodeKind, NodePayload, ProjectId, QuantityDefinition,
+    QuantityState, QuantitySupport, SquiggleEstimateDefinition, StructuralAnalysis, Unit,
 };
 
 fn factor(id: u64, name: &str, title: &str) -> Node {
@@ -42,30 +41,22 @@ fn contributes(source: u64, destination: u64, estimate_id: u64) -> Edge {
         NodeKind::Factor,
         EntityId::new(destination),
         NodeKind::Factor,
-        EdgePayload::Contributes(
-            CausalEffect::linear(
-                LinearResponse {
-                    source_change: 1.0,
-                    source_unit: Unit::base("score").expect("valid unit"),
-                    destination_change: Estimate::<QuantityValue>::from_squiggle(
-                        EstimateId::new(estimate_id),
-                        SquiggleEstimateDefinition {
-                            source: "beta(8, 2)".to_owned(),
-                            seed: 42,
-                            sample_count: 256,
-                            target_unit: Unit::base("score").expect("valid unit"),
-                        },
-                        &Unit::base("score").expect("valid unit"),
-                    )
-                    .expect("valid response estimate"),
-                    destination_unit: Unit::base("score").expect("valid unit"),
+        EdgePayload::Contributes(CausalEffect::proportional(
+            Estimate::<Elasticity>::from_squiggle(
+                EstimateId::new(estimate_id),
+                SquiggleEstimateDefinition {
+                    source: "beta(8, 2)".to_owned(),
+                    seed: 42,
+                    sample_count: 256,
+                    target_unit: Unit::dimensionless(),
                 },
-                None,
-                "Improvement reinforces the next delivery capability.".to_owned(),
-                vec!["Team retrospective".to_owned()],
+                &Unit::dimensionless(),
             )
-            .expect("valid causal response"),
-        ),
+            .expect("valid response estimate"),
+            None,
+            "Improvement reinforces the next delivery capability.".to_owned(),
+            vec!["Team retrospective".to_owned()],
+        )),
     )
     .expect("factor-to-factor contribution is valid")
 }

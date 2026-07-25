@@ -166,9 +166,8 @@ const fn endpoints_are_valid(kind: EdgeKind, source: NodeKind, destination: Node
 mod tests {
     use super::{Edge, EdgeError};
     use crate::domain::{
-        CausalEffect, EdgePayload, EntityId, Estimate, EstimateId, LinearResponse, Measurement,
+        CausalEffect, EdgePayload, EntityId, Estimate, EstimateId, Measurement,
         MeasurementCalibration, MeasurementCalibrationError, MeasurementPolarity, NodeKind,
-        QuantityValue, Unit,
     };
 
     #[test]
@@ -246,25 +245,23 @@ mod tests {
     }
 
     #[test]
-    fn metrics_can_use_unit_aware_contributes_edges() {
-        let response = LinearResponse {
-            source_change: 1.0,
-            source_unit: Unit::base("day").unwrap(),
-            destination_change: Estimate::<QuantityValue>::new(
-                EstimateId::new(0),
-                crate::domain::Distribution::point(-2.0).unwrap(),
-            )
-            .unwrap(),
-            destination_unit: Unit::base("incident").unwrap(),
-        };
+    fn metrics_can_use_proportional_contributes_edges() {
+        let response = Estimate::<crate::domain::Elasticity>::new(
+            EstimateId::new(0),
+            crate::domain::Distribution::point(-2.0).unwrap(),
+        )
+        .unwrap();
         let edge = Edge::new(
             EntityId::new(0),
             NodeKind::Metric,
             EntityId::new(1),
             NodeKind::Metric,
-            EdgePayload::Contributes(
-                CausalEffect::linear(response, None, String::new(), vec![]).unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                response,
+                None,
+                String::new(),
+                vec![],
+            )),
         );
         assert!(edge.is_ok());
     }

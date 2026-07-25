@@ -284,7 +284,7 @@ impl Distribution {
         }
     }
 
-    fn is_quantity_value(&self) -> bool {
+    fn is_any_finite(&self) -> bool {
         true
     }
 
@@ -392,6 +392,12 @@ dimension!(
     is_signed_influence,
     "A bounded causal effect on `[-1, 1]`, where sign gives direction and magnitude gives local strength."
 );
+dimension!(
+    Elasticity,
+    "elasticity",
+    is_any_finite,
+    "A dimensionless proportional response.\n\nMultiplying the source by `r` multiplies the destination by `r^elasticity`, so `1` is a\nplain product, `0` is no response, and negative values invert the direction. Because it\nis a ratio of fractional changes it carries no unit, which is what lets one relationship\nconnect quantities measured in different things."
+);
 /// A scalar value whose support and unit are supplied by its owning quantity definition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QuantityValue;
@@ -402,7 +408,7 @@ impl EstimateDimension for QuantityValue {
     const NAME: &'static str = "quantity_value";
 
     fn accepts(distribution: &Distribution) -> bool {
-        distribution.is_quantity_value()
+        distribution.is_any_finite()
     }
 
     fn accepts_explicit_quantity() -> bool {

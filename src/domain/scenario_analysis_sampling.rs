@@ -32,6 +32,7 @@ pub(super) fn project_candidate(
     let mut attempted = 0;
     let mut invalid = InvalidSampleCounts::default();
     let mut clamped_state_updates = 0_u64;
+    let mut undefined_responses = 0_u64;
     while attempted < config.maximum_samples() {
         attempted += 1;
         match scenario_analysis_draw::draw(graph, scenario, &execution, &mut rng) {
@@ -45,6 +46,7 @@ pub(super) fn project_candidate(
                 }
                 clamped_state_updates =
                     clamped_state_updates.saturating_add(draw.clamped_state_updates);
+                undefined_responses = undefined_responses.saturating_add(draw.undefined_responses);
             }
             Err(ScenarioAnalysisError::NonFinitePrimitive) => invalid.non_finite_primitive += 1,
             Err(ScenarioAnalysisError::NonFiniteResult) => invalid.non_finite_result += 1,
@@ -117,6 +119,7 @@ pub(super) fn project_candidate(
         objectives,
         improvement_covariance,
         clamped_state_updates,
+        undefined_responses,
         diagnostics: MonteCarloDiagnostics {
             seed: config.seed(),
             attempted_samples: attempted,

@@ -95,10 +95,10 @@ mod tests {
             SetNodeQuantityState,
         },
         domain::{
-            CausalEffect, Distribution, EdgeId, EdgeKind, EdgePayload, EntityId, Estimate,
-            EstimateId, Factor, Intervention, LinearResponse, Measurement, MeasurementCalibration,
+            CausalEffect, Distribution, EdgeId, EdgeKind, EdgePayload, Elasticity, EntityId,
+            Estimate, EstimateId, Factor, Intervention, Measurement, MeasurementCalibration,
             MeasurementCalibrationError, MeasurementPolarity, Metric, NewObservation, NodePayload,
-            QuantityDefinition, QuantitySupport, QuantityValue, Requirement, Unit,
+            QuantityDefinition, QuantitySupport, Requirement, Unit,
         },
     };
 
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn requires_matching_linear_responses_for_metric_causal_edges() {
+    fn connects_causal_edges_across_unrelated_units() {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Delivery".to_owned()).unwrap();
         catalog.execute(&project.id, create_node(0)).unwrap();
@@ -382,38 +382,17 @@ mod tests {
             )
             .unwrap();
 
-        let response = |destination_unit| {
-            CausalEffect::linear(
-                LinearResponse {
-                    source_change: 0.1,
-                    source_unit: Unit::dimensionless(),
-                    destination_change: Estimate::<QuantityValue>::new(
-                        EstimateId::new(0),
-                        Distribution::point(-2.0).unwrap(),
-                    )
+        let response = || {
+            CausalEffect::proportional(
+                Estimate::<Elasticity>::new(EstimateId::new(0), Distribution::point(-2.0).unwrap())
                     .unwrap(),
-                    destination_unit,
-                },
                 None,
                 String::new(),
                 vec![],
             )
-            .unwrap()
         };
-        assert!(matches!(
-            catalog.execute(
-                &project.id,
-                CommandRequest::new(
-                    3,
-                    GraphCommand::CreateEdge(CreateEdge {
-                        source: EntityId::new(0),
-                        destination: EntityId::new(1),
-                        payload: EdgePayload::Contributes(response(Unit::base("hour").unwrap())),
-                    }),
-                ),
-            ),
-            Err(ProjectError::CausalResponseUnitMismatch { .. })
-        ));
+        // A proportional response is a ratio of fractional changes, so a state
+        // measured in one unit may drive a metric measured in another.
         let created = catalog
             .execute(
                 &project.id,
@@ -422,7 +401,7 @@ mod tests {
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(0),
                         destination: EntityId::new(1),
-                        payload: EdgePayload::Contributes(response(Unit::base("day").unwrap())),
+                        payload: EdgePayload::Contributes(response()),
                     }),
                 ),
             )
@@ -455,7 +434,7 @@ mod tests {
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(2),
                         destination: EntityId::new(1),
-                        payload: EdgePayload::Changes(response(Unit::base("day").unwrap())),
+                        payload: EdgePayload::Changes(response()),
                     }),
                 ),
             )

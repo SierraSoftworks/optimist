@@ -63,7 +63,7 @@ fn matches_estimate<T: crate::domain::EstimateDimension>(
 fn edge_contains(payload: &EdgePayload, id: EstimateId) -> bool {
     match payload {
         EdgePayload::Contributes(value) | EdgePayload::Changes(value) => {
-            value.response.destination_change.id == id || matches_estimate(&value.lag, id)
+            value.response.id == id || matches_estimate(&value.lag, id)
         }
         EdgePayload::Blocks(value) => value.degree.id == id,
         _ => false,

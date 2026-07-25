@@ -1,8 +1,8 @@
 use optimist::domain::{
     BlockingEffect, CausalEffect, Edge, EdgePayload, EntityId, Estimate, EstimateId, Factor,
-    Intervention, LinearResponse, Measurement, MeasurementPolarity, Metric, Node, NodeKind,
-    NodePayload, Observation, Outcome, OutcomeDirection, QuantityDefinition, QuantityState,
-    QuantitySupport, QuantityValue, Requirement, SignedInfluence, SquiggleEstimateDefinition, Unit,
+    Intervention, Measurement, MeasurementPolarity, Metric, Node, NodeKind, NodePayload,
+    Observation, Outcome, OutcomeDirection, QuantityDefinition, QuantityState, QuantitySupport,
+    QuantityValue, Requirement, SignedInfluence, SquiggleEstimateDefinition, Unit,
 };
 use proptest::prelude::*;
 
@@ -213,17 +213,20 @@ fn signed_estimate(value: f64) -> Estimate<SignedInfluence> {
     .expect("generated signed estimate")
 }
 
-fn causal_effect(value: f64, source_unit: Unit) -> CausalEffect {
-    CausalEffect::linear(
-        LinearResponse {
-            source_change: 1.0,
-            source_unit,
-            destination_change: quantity_estimate(value),
-            destination_unit: Unit::base("ratio").unwrap(),
+fn causal_effect(value: f64, _source_unit: Unit) -> CausalEffect {
+    CausalEffect::proportional(elasticity_estimate(value), None, String::new(), Vec::new())
+}
+
+fn elasticity_estimate(value: f64) -> Estimate<optimist::domain::Elasticity> {
+    Estimate::from_squiggle(
+        EstimateId::new(0),
+        SquiggleEstimateDefinition {
+            source: format!("pointMass({value})"),
+            seed: 42,
+            sample_count: 256,
+            target_unit: Unit::dimensionless(),
         },
-        None,
-        String::new(),
-        Vec::new(),
+        &Unit::dimensionless(),
     )
-    .expect("generated causal response")
+    .expect("generated elasticity estimate")
 }

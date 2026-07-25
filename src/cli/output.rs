@@ -388,6 +388,7 @@ mod tests {
                 }],
                 improvement_covariance: vec![vec![Some(0.0)]],
                 clamped_state_updates: 3,
+                undefined_responses: 0,
                 diagnostics: MonteCarloDiagnostics {
                     seed: 1,
                     attempted_samples: 2,

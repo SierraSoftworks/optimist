@@ -2,6 +2,7 @@ use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
 use super::effect_activation::{self, SampledEffectProfile};
+use super::scenario_analysis_accumulator::Accumulator;
 use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
 use super::{Scenario, ScenarioAnalysisError, UtilityDirection};
 
@@ -24,6 +25,7 @@ pub(super) struct ScenarioDraw {
     pub(super) values: Vec<f64>,
     pub(super) trajectories: Vec<Vec<[f64; 2]>>,
     pub(super) clamped_state_updates: u64,
+    pub(super) undefined_responses: u64,
 }
 
 pub(super) fn draw(
@@ -75,7 +77,7 @@ pub(super) fn draw(
             for edge in &step.edges {
                 interventions.push(SampledInterventionEdge {
                     destination: edge.destination,
-                    effect: edge.effect.sample(rng) / edge.source_change,
+                    effect: edge.effect.sample(rng),
                     arrival: completion
                         .saturating_add(
                             edge.lag
@@ -86,10 +88,7 @@ pub(super) fn draw(
                         )
                         .saturating_add(1),
                     profile: effect_activation::sample(&edge.profile, rng)?,
-                    rebound: edge
-                        .rebound
-                        .as_ref()
-                        .map(|rebound| rebound.sample(rng) / edge.source_change),
+                    rebound: edge.rebound.as_ref().map(|rebound| rebound.sample(rng)),
                 });
             }
         }
@@ -101,7 +100,7 @@ pub(super) fn draw(
             Ok(SampledPropagationEdge {
                 source: edge.source,
                 destination: edge.destination,
-                effect: edge.effect.sample(rng) / edge.source_change,
+                effect: edge.effect.sample(rng),
                 delay: edge
                     .lag
                     .as_ref()
@@ -114,24 +113,43 @@ pub(super) fn draw(
         .collect::<Result<Vec<_>, ScenarioAnalysisError>>()?;
     let mut history = vec![baselines.clone()];
     let mut clamped_state_updates = 0_u64;
+    let mut undefined_responses = 0_u64;
     for period in 1..=scenario.draft.planning_horizon {
-        let mut current = baselines.clone();
+        let mut accumulator = Accumulator::new(&graph.states);
         for edge in &interventions {
             if period >= edge.arrival {
                 let elapsed = period - edge.arrival;
-                let mut movement = edge.effect * edge.profile.activation(elapsed);
+                let state = &graph.states[edge.destination];
+                accumulator.multiplier(
+                    state,
+                    edge.destination,
+                    edge.effect,
+                    edge.profile.activation(elapsed),
+                );
                 if let Some(rebound) = edge.rebound {
-                    movement += rebound * edge.profile.rebound(elapsed);
+                    accumulator.multiplier(
+                        state,
+                        edge.destination,
+                        rebound,
+                        edge.profile.rebound(elapsed),
+                    );
                 }
-                current[edge.destination] += movement;
             }
         }
         for edge in &causal {
             if period >= edge.delay {
                 let source = history[(period - edge.delay) as usize][edge.source];
-                current[edge.destination] += edge.effect * (source - baselines[edge.source]);
+                accumulator.elasticity(
+                    &graph.states[edge.destination],
+                    edge.destination,
+                    edge.effect,
+                    source,
+                    baselines[edge.source],
+                );
             }
         }
+        undefined_responses = undefined_responses.saturating_add(accumulator.undefined);
+        let mut current = accumulator.resolve(&graph.states, &baselines);
         if current.iter().any(|value| !value.is_finite()) {
             return Err(ScenarioAnalysisError::NonFiniteResult);
         }
@@ -186,5 +204,6 @@ pub(super) fn draw(
         values,
         trajectories,
         clamped_state_updates,
+        undefined_responses,
     })
 }

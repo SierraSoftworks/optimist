@@ -42,6 +42,7 @@ pub use likelihood::{BayesianUpdateError, BetaBinomialLikelihood, NormalNormalLi
 mod quantiles;
 mod scenario;
 mod scenario_analysis;
+mod scenario_analysis_accumulator;
 mod scenario_analysis_draw;
 mod scenario_analysis_edges;
 mod scenario_analysis_graph;
@@ -58,15 +59,15 @@ mod unit_ops;
 pub use edge::{Edge, EdgeError};
 pub use edge_id::{EdgeId, EdgeIdError, EdgeKind};
 pub use edge_payload::{
-    BlockingEffect, CausalEffect, CausalResponseError, EdgePayload, LinearResponse, Measurement,
-    MeasurementPolarity, Observation, Requirement,
+    BlockingEffect, CausalEffect, EdgePayload, Measurement, MeasurementPolarity, Observation,
+    Requirement,
 };
 pub use effect_profile::{
     EffectAftereffect, EffectProfile, EffectProfileError, EffectRelease, EffectTransience,
 };
 pub use estimate::{
-    Distribution, DistributionError, Duration, Estimate, EstimateDimension, EstimateError,
-    EstimateId, EstimateSource, Money, Probability, QuantityValue, SignedInfluence,
+    Distribution, DistributionError, Duration, Elasticity, Estimate, EstimateDimension,
+    EstimateError, EstimateId, EstimateSource, Money, Probability, QuantityValue, SignedInfluence,
 };
 pub use estimate_address::{EstimateAddress, EstimateAddressError, EstimateOwner};
 pub use estimate_slot::{EstimateSlot, EstimateSlotError, PrimitiveEstimate};

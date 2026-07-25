@@ -8,7 +8,6 @@ pub(super) struct PropagationEdge {
     pub(super) source: usize,
     pub(super) destination: usize,
     pub(super) effect: Distribution,
-    pub(super) source_change: f64,
     pub(super) lag: Option<Distribution>,
 }
 
@@ -17,7 +16,6 @@ pub(super) struct InterventionEdge {
     pub(super) effect: Distribution,
     pub(super) rebound: Option<Distribution>,
     pub(super) profile: EffectProfile,
-    pub(super) source_change: f64,
     pub(super) lag: Option<Distribution>,
 }
 
@@ -31,23 +29,19 @@ pub(super) fn propagation(
             indices.contains_key(&edge.source) && indices.contains_key(&edge.destination)
         })
         .filter_map(|edge| match &edge.payload {
-            EdgePayload::Contributes(effect) => Some((
-                edge,
-                &effect.response.destination_change.distribution,
-                effect.response.source_change,
-                effect.lag.as_ref(),
-            )),
+            EdgePayload::Contributes(effect) => {
+                Some((edge, &effect.response.distribution, effect.lag.as_ref()))
+            }
             EdgePayload::Blocks(effect) if edge.destination_kind != NodeKind::Intervention => {
-                Some((edge, &effect.degree.distribution, 1.0, None))
+                Some((edge, &effect.degree.distribution, None))
             }
             _ => None,
         })
-        .map(|(edge, effect, source_change, lag)| {
+        .map(|(edge, effect, lag)| {
             Ok(PropagationEdge {
                 source: indices[&edge.source],
                 destination: indices[&edge.destination],
                 effect: effect.clone(),
-                source_change,
                 lag: lag.map(|estimate| estimate.distribution.clone()),
             })
         })
@@ -67,7 +61,7 @@ pub(super) fn intervention(
             {
                 Some(InterventionEdge {
                     destination: indices[&edge.destination],
-                    effect: effect.response.destination_change.distribution.clone(),
+                    effect: effect.response.distribution.clone(),
                     rebound: effect
                         .transience
                         .as_ref()
@@ -78,7 +72,6 @@ pub(super) fn intervention(
                         .as_ref()
                         .map(|transience| transience.profile.clone())
                         .unwrap_or_default(),
-                    source_change: effect.response.source_change,
                     lag: effect.lag.as_ref().map(|lag| lag.distribution.clone()),
                 })
             }

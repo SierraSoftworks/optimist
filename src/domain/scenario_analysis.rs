@@ -6,20 +6,29 @@ use super::{
 impl ScenarioAnalysis {
     /// Propagates every candidate intervention over a finite synchronous horizon.
     ///
-    /// For state $i$, sampled baseline $b_i$, intervention forcing $u_i(t)$,
-    /// local response $\beta_{ji}$, and integer delay $d_{ji}\geq1$, each period applies
-    /// $x_i(t)=\operatorname{clamp}_i(b_i+u_i(t)+\sum_j
-    /// \beta_{ji}(x_j(t-d_{ji})-b_j))$, where counterfactual responses sample
-    /// $\beta=\Delta y/\Delta x$ with destination-unit/source-unit dimension.
-    /// $\operatorname{clamp}_i$ uses each quantity's declared support. The one-period minimum
+    /// Responses are dimensionless proportional claims, so a state moves relative to
+    /// its own sampled baseline rather than by an amount expressed in its unit. The
+    /// combination rule follows each quantity's declared support. A strictly
+    /// non-negative state composes multiplicatively,
+    /// $x_i(t)=\operatorname{clamp}_i\left(b_i\prod_j\left(\frac{x_j(t-d_{ji})}{b_j}\right)^{\varepsilon_{ji}}\right)$,
+    /// which stays non-negative for free and makes a plain product expressible with
+    /// unit elasticities. A state that may be zero or negative has no ratio scale, so
+    /// its responses accumulate,
+    /// $x_i(t)=\operatorname{clamp}_i\left(b_i\left(1+\sum_j\varepsilon_{ji}\left(\frac{x_j(t-d_{ji})}{b_j}-1\right)\right)\right)$.
+    /// A source whose sampled baseline is zero has no fractional movement, so its
+    /// responses are dropped and reported as undefined rather than propagating an
+    /// infinity. The one-period minimum
     /// delay makes updates
     /// synchronous: a zero-lag edge consumes its source at $t-1$, while explicit
     /// duration and lag samples are interpreted as planning periods, rounded up,
     /// and added to that one-period transport delay.
     ///
-    /// Each `changes` effect contributes $\beta_k a_k(t)+\rho_k b_k(t)$ to $u_i(t)$, where
-    /// $a_k$ and $b_k$ are the activation and rebound of its temporal profile and $\rho_k$
-    /// is the sampled rebound magnitude. Effects without a profile hold $a_k=1$ and
+    /// A `changes` effect has no source level to take a ratio of, so its response is
+    /// the multiplier $m_k$ applied while the intervention is fully active, and its
+    /// temporal activation $a_k(t)$ enters as the exponent: it contributes
+    /// $m_k^{a_k(t)}$ multiplicatively, or the share $(m_k-1)a_k(t)$ additively, with
+    /// the sampled rebound magnitude $\rho_k$ applied the same way against $b_k(t)$.
+    /// Effects without a profile hold $a_k=1$ and
     /// $b_k=0$ after arrival, which is the monotone step a permanent intervention applies.
     /// Shaping an effect therefore changes only its schedule, never its magnitude.
     ///
@@ -70,8 +79,8 @@ mod tests {
     use super::*;
     use crate::domain::{
         CausalEffect, Distribution, Duration, EdgePayload, EffectAftereffect, EffectProfile,
-        EffectRelease, EffectTransience, EntityId, Estimate, EstimateId, Factor, Intervention,
-        LinearResponse, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome, OutcomeDirection,
+        EffectRelease, EffectTransience, Elasticity, EntityId, Estimate, EstimateId, Factor,
+        Intervention, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome, OutcomeDirection,
         ProjectId, QuantityDefinition, QuantityState, QuantitySupport, QuantityValue, Requirement,
         ScenarioDraft, ScenarioId, ScenarioObjective, Unit, UtilityDirection,
     };
@@ -146,20 +155,12 @@ mod tests {
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 1.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, 0.3),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Changes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 1.6),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let contributes = Edge::new(
@@ -167,20 +168,12 @@ mod tests {
             NodeKind::Factor,
             outcome.id,
             NodeKind::Outcome,
-            EdgePayload::Contributes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 1.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, 0.2),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 0.2),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let scenario = Scenario::new(
@@ -248,20 +241,12 @@ mod tests {
             NodeKind::Intervention,
             nodes[1].id,
             NodeKind::Factor,
-            EdgePayload::Changes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 1.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, 0.1),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Changes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 1.2),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let requires = Edge::new(
@@ -326,7 +311,7 @@ mod tests {
 
     fn shaped(
         planning_horizon: u64,
-        rebound: Option<Estimate<QuantityValue>>,
+        rebound: Option<Estimate<Elasticity>>,
         profile: EffectProfile,
     ) -> ScenarioAnalysis {
         let (scenario, nodes, mut edges, revision) = point_fixture(planning_horizon);
@@ -371,7 +356,7 @@ mod tests {
     fn applies_a_rebound_when_a_time_boxed_intervention_ends() {
         let result = shaped(
             4,
-            Some(estimate::<QuantityValue>(3, -0.1)),
+            Some(estimate::<Elasticity>(3, 0.8)),
             pulse(Some(EffectAftereffect {
                 hold: Some(estimate::<Duration>(2, 1.0)),
                 release: EffectRelease::Immediate,
@@ -445,9 +430,9 @@ mod tests {
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        effect.response.destination_change = Estimate::new(
+        effect.response = Estimate::new(
             EstimateId::new(0),
-            Distribution::scaled_beta(2.0, 2.0, -1.0, 1.0).unwrap(),
+            Distribution::scaled_beta(2.0, 2.0, 0.0, 2.0).unwrap(),
         )
         .unwrap();
         let first = ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges).unwrap();
@@ -460,7 +445,7 @@ mod tests {
         let EdgePayload::Changes(effect) = &mut edges[0].payload else {
             unreachable!()
         };
-        effect.response.destination_change = estimate(0, 1.0);
+        effect.response = estimate(0, 3.0);
         let saturated =
             ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges).unwrap();
         assert!(saturated.candidates[0].clamped_state_updates > 0);
@@ -497,20 +482,12 @@ mod tests {
             NodeKind::Factor,
             metric.id,
             NodeKind::Metric,
-            EdgePayload::Contributes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 0.1,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, -2.0),
-                        destination_unit: Unit::base("day").unwrap(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, -0.5),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let metric_to_outcome = Edge::new(
@@ -518,20 +495,12 @@ mod tests {
             NodeKind::Metric,
             outcome.id,
             NodeKind::Outcome,
-            EdgePayload::Contributes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: -2.0,
-                        source_unit: Unit::base("day").unwrap(),
-                        destination_change: estimate::<QuantityValue>(0, 0.1),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, -1.0),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         nodes.push(metric);
@@ -543,8 +512,8 @@ mod tests {
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert_eq!(objective.baseline.mean, Some(0.5));
-        assert!((objective.final_state.mean.unwrap() - 0.8).abs() < 1e-12);
-        assert!((objective.improvement.mean.unwrap() - 0.3).abs() < 1e-12);
+        assert!((objective.final_state.mean.unwrap() - 0.65).abs() < 1e-12);
+        assert!((objective.improvement.mean.unwrap() - 0.15).abs() < 1e-12);
         assert_eq!(result.candidates[0].clamped_state_updates, 0);
     }
 
@@ -579,20 +548,12 @@ mod tests {
             NodeKind::Intervention,
             metric.id,
             NodeKind::Metric,
-            EdgePayload::Changes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 2.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, -2.0),
-                        destination_unit: Unit::base("day").unwrap(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Changes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 0.7),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let metric_to_outcome = Edge::new(
@@ -600,20 +561,12 @@ mod tests {
             NodeKind::Metric,
             outcome.id,
             NodeKind::Outcome,
-            EdgePayload::Contributes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: -2.0,
-                        source_unit: Unit::base("day").unwrap(),
-                        destination_change: estimate::<QuantityValue>(0, 0.1),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, -1.0),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         scenario.draft.planning_horizon = 2;
@@ -624,9 +577,9 @@ mod tests {
         let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges).unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
-        assert!((objective.final_state.mean.unwrap() - 0.55).abs() < 1e-12);
-        assert!((objective.improvement.mean.unwrap() - 0.05).abs() < 1e-12);
-        let expected = [(0, 0.5, 0.0), (1, 0.5, 0.0), (2, 0.55, 0.05)];
+        assert!((objective.final_state.mean.unwrap() - 0.65).abs() < 1e-12);
+        assert!((objective.improvement.mean.unwrap() - 0.15).abs() < 1e-12);
+        let expected = [(0, 0.5, 0.0), (1, 0.5, 0.0), (2, 0.65, 0.15)];
         for (point, (period, state, improvement)) in objective.trajectory.iter().zip(expected) {
             assert_eq!(point.period, period);
             assert!((point.state.mean.unwrap() - state).abs() < 1e-12);
@@ -680,20 +633,12 @@ mod tests {
             NodeKind::Intervention,
             factor.id,
             NodeKind::Factor,
-            EdgePayload::Changes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 1.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, 0.3),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Changes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 1.6),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap();
         let contributes = contributes(factor.id, outcome.id, 0.2);
@@ -736,20 +681,12 @@ mod tests {
             NodeKind::Factor,
             destination,
             NodeKind::Outcome,
-            EdgePayload::Contributes(
-                CausalEffect::linear(
-                    LinearResponse {
-                        source_change: 1.0,
-                        source_unit: Unit::dimensionless(),
-                        destination_change: estimate::<QuantityValue>(0, effect),
-                        destination_unit: Unit::dimensionless(),
-                    },
-                    None,
-                    String::new(),
-                    vec![],
-                )
-                .unwrap(),
-            ),
+            EdgePayload::Contributes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, effect),
+                None,
+                String::new(),
+                vec![],
+            )),
         )
         .unwrap()
     }

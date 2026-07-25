@@ -80,12 +80,9 @@ pub enum ProjectError {
     /// Only intervention `changes` effects carry a temporal profile.
     #[error("edge {0} is not an intervention effect edge")]
     NotInterventionEffectEdge(EdgeId),
-    /// Only `contributes` and `changes` relationships own a counterfactual response.
+    /// Only `contributes` and `changes` relationships own a proportional response.
     #[error("edge {0} is not a causal edge")]
     NotCausalEdge(EdgeId),
-    /// A causal response anchor is zero or non-finite.
-    #[error(transparent)]
-    CausalResponse(#[from] crate::domain::CausalResponseError),
     /// A structural relationship cannot declare a transient shape.
     #[error("edge {0} is ongoing and cannot declare a temporal profile")]
     OngoingEffectCannotBeTransient(EdgeId),

@@ -4,16 +4,15 @@ use crate::{
         SetEffectProfile, UpdateCausalEffect,
     },
     domain::{
-        CausalEffect, Duration, Edge, EdgeId, EdgePayload, EffectAftereffect, EffectProfile,
-        EffectRelease, EffectTransience, Estimate, EstimateId, QuantityValue,
-        SquiggleEstimateDefinition, Unit,
+        Duration, Edge, EdgeId, EdgePayload, EffectAftereffect, EffectProfile, EffectRelease,
+        EffectTransience, Elasticity, Estimate, EstimateId, SquiggleEstimateDefinition, Unit,
     },
     store::{GraphRepository, RepositoryError},
 };
 
 use super::{AggregateUpdateError, EstimateCommandError, ProjectError, catalog::ProjectEntry};
 
-/// Replaces one causal relationship's counterfactual anchor and explanation.
+/// Replaces one causal relationship's explanation and evidence.
 pub(super) fn update(
     entry: &mut ProjectEntry,
     command: UpdateCausalEffect,
@@ -24,15 +23,8 @@ pub(super) fn update(
         EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
         _ => return Err(ProjectError::NotCausalEdge(command.edge)),
     };
-    let mut response = effect.response.clone();
-    response.source_change = command.source_change;
-    *effect = CausalEffect::linear(
-        response,
-        effect.lag.clone(),
-        command.mechanism,
-        command.evidence,
-    )?
-    .with_transience(effect.transience.clone().map(|value| *value));
+    effect.mechanism = command.mechanism;
+    effect.evidence = command.evidence;
     edge.revision = next_revision;
     entry.repository.update_edge(edge.clone())?;
     Ok(CommandOutcome::CausalEffectUpdated(edge))
@@ -47,10 +39,9 @@ pub(super) fn set(
         return Err(ProjectError::NotInterventionEffectEdge(command.edge));
     };
     let mut ids = Allocator::after(effect);
-    let destination_unit = effect.response.destination_unit.clone();
     let transience = command
         .profile
-        .map(|input| build(*input, &destination_unit, &mut ids))
+        .map(|input| build(*input, &mut ids))
         .transpose()?;
     let next_revision = next_revision(&edge, &command.edge)?;
     let EdgePayload::Changes(effect) = &mut edge.payload else {
@@ -88,11 +79,7 @@ fn next_revision(edge: &Edge, id: &EdgeId) -> Result<u64, ProjectError> {
         .ok_or_else(|| ProjectError::EdgeRevisionSpaceExhausted(id.clone()))
 }
 
-fn build(
-    input: EffectProfileInput,
-    destination_unit: &Unit,
-    ids: &mut Allocator,
-) -> Result<EffectTransience, ProjectError> {
+fn build(input: EffectProfileInput, ids: &mut Allocator) -> Result<EffectTransience, ProjectError> {
     let ramp = input.ramp.map(|value| periods(value, ids)).transpose()?;
     let hold = input.hold.map(|value| periods(value, ids)).transpose()?;
     let release = release(input.release, ids)?;
@@ -105,8 +92,9 @@ fn build(
         hold: rebound_hold,
         release: rebound_release,
     } = aftereffect;
-    let rebound = Estimate::<QuantityValue>::from_squiggle(ids.next(), magnitude, destination_unit)
-        .map_err(EstimateCommandError::from)?;
+    let rebound =
+        Estimate::<Elasticity>::from_squiggle(ids.next(), magnitude, &Unit::dimensionless())
+            .map_err(EstimateCommandError::from)?;
     let aftereffect = EffectAftereffect {
         hold: rebound_hold.map(|value| periods(value, ids)).transpose()?,
         release: self::release(rebound_release, ids)?,
@@ -146,7 +134,7 @@ struct Allocator(u64);
 
 impl Allocator {
     fn after(effect: &crate::domain::CausalEffect) -> Self {
-        let response = effect.response.destination_change.id.value();
+        let response = effect.response.id.value();
         let lag = effect
             .lag
             .as_ref()
@@ -170,9 +158,9 @@ mod tests {
             SetNodeQuantityState, UpdateCausalEffect,
         },
         domain::{
-            CausalEffect, EdgeId, EdgeKind, EdgePayload, EntityId, Estimate, EstimateId, Factor,
-            Intervention, LinearResponse, NodePayload, QuantityDefinition, QuantitySupport,
-            QuantityValue, SquiggleEstimateDefinition, Unit,
+            CausalEffect, EdgeId, EdgeKind, EdgePayload, Elasticity, EntityId, Estimate,
+            EstimateId, Factor, Intervention, NodePayload, QuantityDefinition, QuantitySupport,
+            SquiggleEstimateDefinition, Unit,
         },
         project::{ProjectCatalog, ProjectError},
     };
@@ -245,30 +233,22 @@ mod tests {
             GraphCommand::CreateEdge(CreateEdge {
                 source: EntityId::new(0),
                 destination: EntityId::new(1),
-                payload: EdgePayload::Changes(
-                    CausalEffect::linear(
-                        LinearResponse {
-                            source_change: 1.0,
-                            source_unit: Unit::dimensionless(),
-                            destination_change: Estimate::<QuantityValue>::from_squiggle(
-                                EstimateId::new(0),
-                                SquiggleEstimateDefinition {
-                                    source: "pointMass(-0.9)".to_owned(),
-                                    seed: 42,
-                                    sample_count: 256,
-                                    target_unit: ratio(),
-                                },
-                                &ratio(),
-                            )
-                            .unwrap(),
-                            destination_unit: ratio(),
+                payload: EdgePayload::Changes(CausalEffect::proportional(
+                    Estimate::<Elasticity>::from_squiggle(
+                        EstimateId::new(0),
+                        SquiggleEstimateDefinition {
+                            source: "pointMass(0.1)".to_owned(),
+                            seed: 42,
+                            sample_count: 256,
+                            target_unit: Unit::dimensionless(),
                         },
-                        None,
-                        String::new(),
-                        vec![],
+                        &Unit::dimensionless(),
                     )
                     .unwrap(),
-                ),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
             }),
         );
         let edge = EdgeId {
@@ -286,10 +266,10 @@ mod tests {
             release: EffectReleaseInput::Immediate,
             aftereffect: Some(EffectAftereffectInput {
                 magnitude: SquiggleEstimateDefinition {
-                    source: "pointMass(0.25)".to_owned(),
+                    source: "pointMass(1.25)".to_owned(),
                     seed: 42,
                     sample_count: 256,
-                    target_unit: ratio(),
+                    target_unit: Unit::dimensionless(),
                 },
                 hold: Some(periods("pointMass(1)")),
                 release: EffectReleaseInput::Immediate,
@@ -321,7 +301,6 @@ mod tests {
                     GraphCommand::UpdateCausalEffect(UpdateCausalEffect {
                         edge,
                         expected_revision: 1,
-                        source_change: 2.0,
                         mechanism: "Freezing changes suppresses the defect inflow.".to_owned(),
                         evidence: vec!["2026-Q2 freeze retrospective".to_owned()],
                     }),
@@ -334,7 +313,6 @@ mod tests {
         let EdgePayload::Changes(effect) = &stored.payload else {
             unreachable!()
         };
-        assert_eq!(effect.response.source_change, 2.0);
         assert_eq!(
             effect.mechanism,
             "Freezing changes suppresses the defect inflow."
@@ -350,22 +328,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_an_anchor_which_cannot_define_a_slope() {
-        let (mut catalog, project, edge) = fixture();
+    fn rejects_a_claim_edit_on_a_relationship_without_a_response() {
+        let (mut catalog, project, _) = fixture();
+        let measures = EdgeId {
+            source: EntityId::new(1),
+            kind: EdgeKind::Measures,
+            destination: EntityId::new(1),
+        };
         let invalid = catalog.execute(
             &project,
             CommandRequest::new(
                 4,
                 GraphCommand::UpdateCausalEffect(UpdateCausalEffect {
-                    edge,
+                    edge: measures,
                     expected_revision: 0,
-                    source_change: 0.0,
                     mechanism: String::new(),
                     evidence: vec![],
                 }),
             ),
         );
-        assert!(matches!(invalid, Err(ProjectError::CausalResponse(_))));
+        assert!(invalid.is_err());
     }
 
     #[test]
@@ -394,7 +376,7 @@ mod tests {
         let transience = effect.transience.as_ref().unwrap();
         assert!(!transience.profile.is_persistent());
         assert!(transience.rebound.is_some());
-        let response = effect.response.destination_change.id;
+        let response = effect.response.id;
         let hold = transience.profile.hold.as_ref().unwrap().id;
         let rebound = transience.rebound.as_ref().unwrap().id;
         assert_ne!(response, hold);

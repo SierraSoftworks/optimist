@@ -1,36 +1,26 @@
-use serde::{Deserialize, Deserializer, Serialize, de};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::{
-    Duration, EdgeKind, EffectTransience, Estimate, MeasurementCalibration,
-    MeasurementCalibrationError, QuantityValue, SignedInfluence, Unit,
+    Duration, EdgeKind, EffectTransience, Elasticity, Estimate, MeasurementCalibration,
+    MeasurementCalibrationError, SignedInfluence,
 };
 
-/// Unit-aware counterfactual anchor pair for one local linear response.
+/// Uncertain proportional causal effect embedded in a `contributes` or `changes` edge.
 ///
-/// If the source moves by `source_change`, the destination is expected to move by
-/// the uncertain `destination_change`. Simulation samples the local coefficient
-/// $\beta=\Delta y/\Delta x$ and applies it to source movement from baseline.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct LinearResponse {
-    /// Finite nonzero source movement expressed in [`Self::source_unit`].
-    pub source_change: f64,
-    /// Canonical unit of the source movement.
-    pub source_unit: Unit,
-    /// Uncertain destination movement; deltas may be negative regardless of level support.
-    pub destination_change: Estimate<QuantityValue>,
-    /// Canonical unit of the destination movement.
-    pub destination_unit: Unit,
-}
-
-/// Uncertain local causal effect embedded in a `contributes` or `changes` edge.
-///
-/// The response describes how strongly the destination moves. The profile
-/// describes for how long, so a time-boxed intervention can be modelled without
-/// a placeholder node standing in for its own expiry.
+/// The response says how strongly the destination moves, the profile says for how
+/// long, and the mechanism says why. Strength is a dimensionless ratio rather than
+/// a movement in the destination's unit, so one relationship can connect
+/// quantities measured in different things without the author converting between
+/// them, and re-baselining either endpoint leaves the claim intact.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CausalEffect {
-    /// Counterfactual anchor pair defining the uncertain local slope.
-    pub response: LinearResponse,
+    /// Dimensionless proportional response.
+    ///
+    /// On a `contributes` edge this is an elasticity: multiplying the source by
+    /// `r` multiplies the destination by `r^response`. On a `changes` edge the
+    /// source has no level to take a ratio of, so it is instead the multiplier
+    /// applied while the intervention is fully active.
+    pub response: Estimate<Elasticity>,
     /// Temporal shape and rebound; absent leaves the effect permanent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transience: Option<Box<EffectTransience>>,
@@ -46,7 +36,7 @@ pub struct CausalEffect {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CausalEffectWire {
-    response: LinearResponse,
+    response: Estimate<Elasticity>,
     #[serde(default)]
     transience: Option<Box<EffectTransience>>,
     lag: Option<Estimate<Duration>>,
@@ -61,32 +51,30 @@ impl<'de> Deserialize<'de> for CausalEffect {
         D: Deserializer<'de>,
     {
         let value = CausalEffectWire::deserialize(deserializer)?;
-        Self::linear(value.response, value.lag, value.mechanism, value.evidence)
-            .map(|effect| effect.with_transience(value.transience.map(|value| *value)))
-            .map_err(de::Error::custom)
+        Ok(
+            Self::proportional(value.response, value.lag, value.mechanism, value.evidence)
+                .with_transience(value.transience.map(|value| *value)),
+        )
     }
 }
 
 impl CausalEffect {
-    /// Creates a unit-aware local linear response after validating its anchor.
+    /// Creates a proportional causal effect.
     ///
     /// The effect is permanent until [`Self::with_transience`] shapes it.
-    pub fn linear(
-        response: LinearResponse,
+    pub fn proportional(
+        response: Estimate<Elasticity>,
         lag: Option<Estimate<Duration>>,
         mechanism: String,
         evidence: Vec<String>,
-    ) -> Result<Self, CausalResponseError> {
-        if !response.source_change.is_finite() || response.source_change == 0.0 {
-            return Err(CausalResponseError::InvalidSourceChange);
-        }
-        Ok(Self {
+    ) -> Self {
+        Self {
             response,
             transience: None,
             lag,
             mechanism,
             evidence,
-        })
+        }
     }
 
     /// Applies transient behaviour, or restores a permanent effect with `None`.
@@ -97,43 +85,44 @@ impl CausalEffect {
     }
 }
 
-/// Invalid counterfactual response anchors.
-#[derive(Clone, Debug, thiserror::Error, PartialEq)]
-pub enum CausalResponseError {
-    /// A local slope cannot be derived from a zero or non-finite source movement.
-    #[error("a linear response requires a finite nonzero source change")]
-    InvalidSourceChange,
-}
-
 #[cfg(test)]
 mod causal_response_tests {
     use super::*;
     use crate::domain::{Distribution, EstimateId};
 
     #[test]
-    fn linear_response_round_trips_and_rejects_zero_source_change() {
-        let response = LinearResponse {
-            source_change: 2.0,
-            source_unit: Unit::base("day").unwrap(),
-            destination_change: Estimate::<QuantityValue>::new(
-                EstimateId::new(0),
-                Distribution::point(-1.0).unwrap(),
-            )
-            .unwrap(),
-            destination_unit: Unit::base("incident").unwrap(),
-        };
-        let value = CausalEffect::linear(response, None, String::new(), vec![]).unwrap();
-        let mut json = serde_json::to_value(&value).unwrap();
-        assert_eq!(
-            serde_json::from_value::<CausalEffect>(json.clone()).unwrap(),
-            value
+    fn proportional_response_round_trips() {
+        let value = CausalEffect::proportional(
+            Estimate::<Elasticity>::new(EstimateId::new(0), Distribution::point(-0.8).unwrap())
+                .unwrap(),
+            None,
+            String::new(),
+            vec![],
         );
-        json["response"]["source_change"] = serde_json::json!(0.0);
-        assert!(serde_json::from_value::<CausalEffect>(json).is_err());
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(serde_json::from_value::<CausalEffect>(json).unwrap(), value);
     }
 
     #[test]
-    fn rejects_normalized_effect_storage() {
+    fn rejects_unit_bearing_and_normalized_response_storage() {
+        // The pre-ratio anchor pair carried units on both sides.
+        assert!(
+            serde_json::from_value::<CausalEffect>(serde_json::json!({
+                "response": {
+                    "source_change": 1.0,
+                    "source_unit": {},
+                    "destination_change": { "id": "A", "revision": 0, "source": {
+                        "type": "squiggle",
+                        "definition": { "source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {} }
+                    } },
+                    "destination_unit": {}
+                },
+                "lag": null,
+                "mechanism": "",
+                "evidence": []
+            }))
+            .is_err()
+        );
         assert!(
             serde_json::from_value::<CausalEffect>(serde_json::json!({
                 "effect": {

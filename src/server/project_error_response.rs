@@ -102,11 +102,6 @@ pub(super) fn classify(
                 "Choose a `contributes` or `changes` edge, which are the relationships that own a response.",
             ],
         ),
-        ProjectError::CausalResponse(_) => (
-            StatusCode::BAD_REQUEST,
-            "invalid_causal_response",
-            &["Anchor the response to a finite, nonzero source change."],
-        ),
         ProjectError::OngoingEffectCannotBeTransient(_) => (
             StatusCode::BAD_REQUEST,
             "ongoing_effect_cannot_be_transient",

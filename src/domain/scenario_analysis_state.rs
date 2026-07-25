@@ -15,11 +15,28 @@ impl StateBounds {
     }
 }
 
+/// How a state combines the proportional responses reaching it.
+///
+/// The rule follows the quantity's declared support rather than being authored,
+/// because support is what makes one rule sound. A strictly non-negative quantity
+/// such as a rate or a duration composes multiplicatively, which keeps it
+/// non-negative for free and makes a plain product expressible with unit
+/// elasticities. A quantity that may be zero or negative has no meaningful ratio
+/// scale, so its responses accumulate against its baseline instead.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Combination {
+    /// Responses multiply: $x_i = b_i \prod_j (x_j/b_j)^{\varepsilon_{ji}}$.
+    Multiplicative,
+    /// Responses accumulate: $x_i = b_i (1 + \sum_j \varepsilon_{ji}(x_j/b_j - 1))$.
+    Additive,
+}
+
 #[derive(Clone)]
 pub(super) struct StateNode {
     pub(super) id: EntityId,
     pub(super) baseline: Distribution,
     pub(super) bounds: StateBounds,
+    pub(super) combination: Combination,
 }
 
 pub(super) fn project(
@@ -67,9 +84,27 @@ pub(super) fn project(
                 id: node.id,
                 baseline,
                 bounds,
+                combination: combination(support(node)),
             })
         })
         .collect()
+}
+
+fn support(node: &Node) -> QuantitySupport {
+    match &node.payload {
+        NodePayload::Metric(metric) => metric.quantity.support,
+        _ => node
+            .native_state
+            .as_ref()
+            .map_or(QuantitySupport::Real, |state| state.quantity.support),
+    }
+}
+
+fn combination(support: QuantitySupport) -> Combination {
+    match support {
+        QuantitySupport::NonNegative => Combination::Multiplicative,
+        QuantitySupport::Real | QuantitySupport::Bounded { .. } => Combination::Additive,
+    }
 }
 
 fn quantity_bounds(support: QuantitySupport) -> StateBounds {

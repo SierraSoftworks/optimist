@@ -46,7 +46,6 @@ pub(super) fn command(
                 command.payload,
             )
             .map_err(RepositoryError::from)?;
-            validate_causal_units(&source, &destination, &edge)?;
             validate_effect_shape(&edge)?;
             entry.repository.create_edge(edge.clone())?;
             Ok(CommandOutcome::EdgeCreated(edge))
@@ -110,34 +109,6 @@ pub(super) fn command(
     }
 }
 
-fn validate_causal_units(
-    source: &Node,
-    destination: &Node,
-    edge: &Edge,
-) -> Result<(), ProjectError> {
-    let effect = match &edge.payload {
-        EdgePayload::Contributes(effect) | EdgePayload::Changes(effect) => effect,
-        _ => return Ok(()),
-    };
-    let response = &effect.response;
-    let source_unit = if matches!(edge.payload, EdgePayload::Changes(_)) {
-        crate::domain::Unit::dimensionless()
-    } else {
-        state_unit(source)?
-    };
-    let destination_unit = state_unit(destination)?;
-    if response.source_unit != source_unit || response.destination_unit != destination_unit {
-        return Err(ProjectError::CausalResponseUnitMismatch {
-            edge: edge.id(),
-            expected_source: source_unit,
-            actual_source: response.source_unit.clone(),
-            expected_destination: destination_unit,
-            actual_destination: response.destination_unit.clone(),
-        });
-    }
-    Ok(())
-}
-
 /// Rejects transient shapes on relationships that are always in effect.
 ///
 /// A `contributes` edge describes an ongoing structural dependency, so it has no
@@ -149,27 +120,6 @@ fn validate_effect_shape(edge: &Edge) -> Result<(), ProjectError> {
             Err(ProjectError::OngoingEffectCannotBeTransient(edge.id()))
         }
         _ => Ok(()),
-    }
-}
-
-fn state_unit(node: &Node) -> Result<crate::domain::Unit, ProjectError> {
-    if let Some(state) = &node.native_state {
-        return state
-            .quantity
-            .dimension
-            .clone()
-            .ok_or(ProjectError::MissingQuantityDimension(node.id));
-    }
-    match &node.payload {
-        NodePayload::Metric(metric) => metric
-            .quantity
-            .dimension
-            .clone()
-            .ok_or(ProjectError::MissingQuantityDimension(node.id)),
-        NodePayload::Factor(_) | NodePayload::Outcome(_) => {
-            Err(ProjectError::MissingQuantityDimension(node.id))
-        }
-        NodePayload::Intervention(_) => Err(ProjectError::MissingQuantityDimension(node.id)),
     }
 }
 

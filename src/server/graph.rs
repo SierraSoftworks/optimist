@@ -145,9 +145,8 @@ mod tests {
             RemoveProjectDependence, SetNodeQuantityState, SetProjectDependence,
         },
         domain::{
-            EdgePayload, EntityId, Factor, LinearResponse, MonteCarloConfig, NodePayload,
-            ProjectDependenceModel, QuantityDefinition, QuantitySupport, QuantityValue,
-            ScenarioDraft, Unit,
+            EdgePayload, EntityId, Factor, MonteCarloConfig, NodePayload, ProjectDependenceModel,
+            QuantityDefinition, QuantitySupport, ScenarioDraft, Unit,
         },
         server::router,
     };
@@ -417,24 +416,16 @@ mod tests {
                                 source: EntityId::new(0),
                                 destination: EntityId::new(1),
                                 payload: EdgePayload::Contributes(
-                                    crate::domain::CausalEffect::linear(
-                                        LinearResponse {
-                                            source_change: 1.0,
-                                            source_unit: Unit::dimensionless(),
-                                            destination_change: crate::domain::Estimate::<
-                                                QuantityValue,
-                                            >::new(
-                                                crate::domain::EstimateId::new(0),
-                                                crate::domain::Distribution::point(0.5).unwrap(),
-                                            )
-                                            .unwrap(),
-                                            destination_unit: Unit::dimensionless(),
-                                        },
+                                    crate::domain::CausalEffect::proportional(
+                                        crate::domain::Estimate::<crate::domain::Elasticity>::new(
+                                            crate::domain::EstimateId::new(0),
+                                            crate::domain::Distribution::point(0.5).unwrap(),
+                                        )
+                                        .unwrap(),
                                         None,
                                         String::new(),
                                         vec!["ADR-1".to_owned()],
-                                    )
-                                    .unwrap(),
+                                    ),
                                 ),
                             }),
                         ))

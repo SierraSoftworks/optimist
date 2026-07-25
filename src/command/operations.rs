@@ -127,13 +127,11 @@ pub struct SetMeasurementCalibration {
     pub calibration: Option<MeasurementCalibration>,
 }
 
-/// Revision-checked replacement of one causal relationship's reviewable claim.
+/// Revision-checked replacement of one causal relationship's stated reasoning.
 ///
-/// The anchor and its explanation are edited together because they are one
-/// argument: re-anchoring "if the source moves by X" changes what the stored
-/// destination movement means, and a reviewer needs the mechanism to say why.
-/// Units are not editable here; they are derived from the endpoints and revalidated
-/// whenever either endpoint's quantity changes.
+/// Strength is a dimensionless response estimate edited through the estimate
+/// commands; this replaces the prose and citations that justify it, which is what
+/// a reviewer reads before trusting the number.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateCausalEffect {
@@ -141,8 +139,6 @@ pub struct UpdateCausalEffect {
     pub edge: EdgeId,
     /// Edge revision observed before preparing the update.
     pub expected_revision: u64,
-    /// Finite nonzero source movement the stored destination movement answers.
-    pub source_change: f64,
     /// Markdown explanation of the mechanism, boundaries, and assumptions.
     pub mechanism: String,
     /// Evidence references supporting this relationship.

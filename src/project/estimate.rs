@@ -52,29 +52,6 @@ fn estimate_target(
     address: &EstimateAddress,
     slot: &crate::domain::EstimateSlot,
 ) -> Result<(crate::domain::SquiggleEstimateSupport, crate::domain::Unit), ProjectError> {
-    if let EstimateOwner::Edge(id) = &address.owner
-        && matches!(slot, crate::domain::EstimateSlot::Response)
-    {
-        let edge = entry
-            .repository
-            .get_edge(id)?
-            .ok_or_else(|| RepositoryError::MissingEdge(id.to_string()))?;
-        let response = match edge.payload {
-            crate::domain::EdgePayload::Contributes(value)
-            | crate::domain::EdgePayload::Changes(value) => value.response,
-            _ => {
-                return Err(EstimateCommandError::InvalidSlot {
-                    address: address.clone(),
-                    slot: slot.clone(),
-                }
-                .into());
-            }
-        };
-        return Ok((
-            crate::domain::SquiggleEstimateSupport::Real,
-            response.destination_unit,
-        ));
-    }
     let EstimateOwner::Node(id) = &address.owner else {
         return Ok((
             slot.estimate_support(),
@@ -247,9 +224,9 @@ mod tests {
         },
         domain::{
             CausalEffect, Distribution, EdgePayload, EntityId, EstimateAddress, EstimateId,
-            EstimateOwner, EstimateSlot, EstimateSource, EstimateUncertainty, Factor,
-            LinearResponse, Metric, NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
-            QuantityValue, SquiggleEstimateDefinition, Unit,
+            EstimateOwner, EstimateSlot, EstimateSource, EstimateUncertainty, Factor, Metric,
+            NodePayload, ProjectId, QuantityDefinition, QuantitySupport,
+            SquiggleEstimateDefinition, Unit,
         },
         project::{EstimateCommandError, ProjectCatalog, ProjectError},
     };
@@ -696,7 +673,7 @@ mod tests {
     #[test]
     fn removes_optional_lag_but_preserves_required_effect() {
         let (mut catalog, project) = catalog();
-        let response = crate::domain::Estimate::<QuantityValue>::new(
+        let response = crate::domain::Estimate::<crate::domain::Elasticity>::new(
             EstimateId::new(0),
             Distribution::point(0.5).unwrap(),
         )
@@ -709,20 +686,12 @@ mod tests {
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(0),
                         destination: EntityId::new(1),
-                        payload: EdgePayload::Contributes(
-                            CausalEffect::linear(
-                                LinearResponse {
-                                    source_change: 1.0,
-                                    source_unit: Unit::dimensionless(),
-                                    destination_change: response,
-                                    destination_unit: Unit::dimensionless(),
-                                },
-                                None,
-                                String::new(),
-                                vec![],
-                            )
-                            .unwrap(),
-                        ),
+                        payload: EdgePayload::Contributes(CausalEffect::proportional(
+                            response,
+                            None,
+                            String::new(),
+                            vec![],
+                        )),
                     }),
                 ),
             )
@@ -771,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn replaces_changes_response_estimates_in_the_destination_unit() {
+    fn replaces_changes_response_estimates_as_dimensionless_multipliers() {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Change frequency".to_owned()).unwrap().id;
         catalog
@@ -808,7 +777,6 @@ mod tests {
                 ),
             )
             .unwrap();
-        let unit = Unit::from_exponents([("change", 1), ("month", -1)]).unwrap();
         catalog
             .execute(
                 &project,
@@ -819,7 +787,7 @@ mod tests {
                         expected_revision: 0,
                         quantity: QuantityDefinition::with_dimension(
                             "changes/month",
-                            Some(unit.clone()),
+                            Some(Unit::from_exponents([("change", 1), ("month", -1)]).unwrap()),
                             Some("total monthly".to_owned()),
                             QuantitySupport::Real,
                         )
@@ -828,9 +796,9 @@ mod tests {
                 ),
             )
             .unwrap();
-        let response = crate::domain::Estimate::<QuantityValue>::new(
+        let response = crate::domain::Estimate::<crate::domain::Elasticity>::new(
             EstimateId::new(0),
-            Distribution::point(-100.0).unwrap(),
+            Distribution::point(0.5).unwrap(),
         )
         .unwrap();
         let created = catalog
@@ -841,20 +809,12 @@ mod tests {
                     GraphCommand::CreateEdge(CreateEdge {
                         source: EntityId::new(1),
                         destination: EntityId::new(0),
-                        payload: EdgePayload::Changes(
-                            CausalEffect::linear(
-                                LinearResponse {
-                                    source_change: 1.0,
-                                    source_unit: Unit::dimensionless(),
-                                    destination_change: response,
-                                    destination_unit: unit.clone(),
-                                },
-                                None,
-                                String::new(),
-                                vec![],
-                            )
-                            .unwrap(),
-                        ),
+                        payload: EdgePayload::Changes(CausalEffect::proportional(
+                            response,
+                            None,
+                            String::new(),
+                            vec![],
+                        )),
                     }),
                 ),
             )
@@ -872,8 +832,8 @@ mod tests {
                     set_squiggle(
                         response.clone(),
                         EstimateSlot::Response,
-                        "-truncate(normal({ p10: 40, p90: 400 }), 0, 450)",
-                        unit,
+                        "truncate(normal({ p10: 0.05, p90: 0.4 }), 0, 1)",
+                        Unit::dimensionless(),
                     ),
                 ),
             )

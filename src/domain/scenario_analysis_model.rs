@@ -74,6 +74,13 @@ pub struct InterventionProjection {
     /// diagnostic rather than treated as an invalid Monte Carlo draw. The count is
     /// accumulated across every valid draw, planning period, and relevant state.
     pub clamped_state_updates: u64,
+    /// Number of proportional responses dropped for want of a ratio scale.
+    ///
+    /// A source whose sampled baseline is zero has no fractional movement, so a
+    /// response reading from it is skipped rather than propagating an infinity.
+    /// A nonzero count means part of the model was silently inert for those draws,
+    /// which is a modelling problem to fix rather than an invalid draw to discard.
+    pub undefined_responses: u64,
     /// Reproducibility and convergence information for this candidate run.
     pub diagnostics: MonteCarloDiagnostics,
 }

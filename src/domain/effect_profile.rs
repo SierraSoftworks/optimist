@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-use super::{Duration, Estimate, QuantityValue};
+use super::{Duration, Elasticity, Estimate};
 
 /// How a transient effect returns toward zero once its hold window ends.
 ///
@@ -190,12 +190,12 @@ pub enum EffectProfileError {
 pub struct EffectTransience {
     /// Temporal shape applied to the effect across the planning horizon.
     pub profile: EffectProfile,
-    /// Destination movement contributed by the rebound once the effect releases.
+    /// Dimensionless multiplier contributed by the rebound once the effect releases.
     ///
     /// Held separately from the response because ending an intervention is its
     /// own event: a drained backlog rarely returns exactly what was withheld.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rebound: Option<Estimate<QuantityValue>>,
+    pub rebound: Option<Estimate<Elasticity>>,
 }
 
 #[derive(Deserialize)]
@@ -203,7 +203,7 @@ pub struct EffectTransience {
 struct EffectTransienceWire {
     profile: EffectProfile,
     #[serde(default)]
-    rebound: Option<Estimate<QuantityValue>>,
+    rebound: Option<Estimate<Elasticity>>,
 }
 
 impl<'de> Deserialize<'de> for EffectTransience {
@@ -225,7 +225,7 @@ impl EffectTransience {
     /// model instead of silently projecting a shape nobody authored.
     pub fn new(
         profile: EffectProfile,
-        rebound: Option<Estimate<QuantityValue>>,
+        rebound: Option<Estimate<Elasticity>>,
     ) -> Result<Self, EffectProfileError> {
         if rebound.is_some() != profile.aftereffect.is_some() {
             return Err(EffectProfileError::MismatchedAftereffect);
