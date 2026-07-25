@@ -218,6 +218,12 @@ pub enum RelationError {
     /// Parsing, unit checking, or evaluation reported a diagnostic.
     #[error("{0}")]
     Diagnostic(String),
+    /// The owning node declares no canonical unit for the relation to produce.
+    #[error("a relation requires its owner to declare a canonical quantity unit")]
+    UnknownResultUnit,
+    /// A contributing parent has no measured quantity to bind.
+    #[error("relation parent {0:?} has no canonical quantity unit to bind")]
+    UnmeasuredParent(String),
     /// The relation produced something other than a finite number.
     #[error("a relation must produce a finite number; author uncertainty as a parameter instead")]
     NonNumericResult,

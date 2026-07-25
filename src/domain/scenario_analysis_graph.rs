@@ -43,15 +43,16 @@ impl<'a> AnalysisGraph<'a> {
         let nodes_by_id: BTreeMap<_, _> = nodes.iter().map(|node| (node.id, node)).collect();
         validate_references(scenario, &nodes_by_id)?;
         let coupling = Coupling::new(project, dependence);
-        let relevant = scenario_analysis_reachability::relevant_states(scenario, edges);
-        let states = scenario_analysis_state::project(&nodes_by_id, &relevant, &coupling)?;
+        let relevant =
+            scenario_analysis_reachability::relevant_states(scenario, &nodes_by_id, edges);
+        let states = scenario_analysis_state::project(&nodes_by_id, &relevant, edges, &coupling)?;
         let state_indices = states
             .iter()
             .enumerate()
             .map(|(index, state)| (state.id, index))
             .collect::<BTreeMap<_, _>>();
         let propagation_edges =
-            scenario_analysis_edges::propagation(edges, &state_indices, &coupling)?;
+            scenario_analysis_edges::propagation(&nodes_by_id, edges, &state_indices, &coupling)?;
         Ok(Self {
             states,
             state_indices,
@@ -88,6 +89,7 @@ impl<'a> AnalysisGraph<'a> {
                         ),
                         edges: scenario_analysis_edges::intervention(
                             id,
+                            self.nodes.get(&id).map_or("", |node| node.name.as_str()),
                             self.edges,
                             &self.state_indices,
                             &self.coupling,

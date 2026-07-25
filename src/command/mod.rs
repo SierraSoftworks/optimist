@@ -81,6 +81,8 @@ pub enum GraphCommand {
     UpdateNodeMetadata(UpdateNodeMetadata),
     /// Configures empty factor or outcome state in a native quantity.
     SetNodeQuantityState(SetNodeQuantityState),
+    /// Attaches or clears the node equation computing one state's value.
+    SetStateRelation(SetStateRelation),
     /// Appends qualitative evidence to a factor or outcome.
     CreateEvidence(CreateEvidence),
     /// Replaces one evidence record under its aggregate-local revision guard.
@@ -181,6 +183,8 @@ pub enum CommandOutcome {
     NodeMetadataUpdated(Node),
     /// Complete factor or outcome after native quantity state was configured.
     NodeQuantityStateSet(Node),
+    /// Complete node aggregate after its equation was attached or cleared.
+    StateRelationSet(Node),
     /// New evidence record and complete updated owning node.
     EvidenceCreated {
         /// Complete updated factor or outcome after persistence.

@@ -123,6 +123,12 @@ pub enum ScenarioAnalysisError {
     /// A duration or lag sampler produced NaN or infinity.
     #[error("scenario propagation sampled a non-finite primitive duration or lag")]
     NonFinitePrimitive,
+    /// A node equation failed to compile or evaluate.
+    #[error("state relation could not be evaluated: {0}")]
+    Relation(String),
+    /// A node equation names a parent this scenario never projects.
+    #[error("state relation parent {0:?} is not part of this scenario's propagation")]
+    UnreachableRelationParent(String),
     /// Intervention `requires` relationships contain a dependency cycle.
     #[error("intervention dependency cycle includes {0}")]
     InterventionDependencyCycle(EntityId),

@@ -140,6 +140,14 @@ pub(super) fn classify(
                 "Check the canonical unit terms, support bounds, and operational definition, then retry.",
             ],
         ),
+        ProjectError::StateRelation(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_state_relation",
+            &[
+                "Reference only parents the graph already connects to this node, and check the arithmetic produces the node's own unit.",
+                "Author uncertain coefficients as named parameters rather than distributions inside the equation.",
+            ],
+        ),
         ProjectError::CausalResponseUnitMismatch { .. } => (
             StatusCode::BAD_REQUEST,
             "causal_response_unit_mismatch",

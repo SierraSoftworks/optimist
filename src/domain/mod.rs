@@ -49,11 +49,14 @@ mod scenario_analysis_edges;
 mod scenario_analysis_graph;
 mod scenario_analysis_model;
 mod scenario_analysis_reachability;
+mod scenario_analysis_relation;
 mod scenario_analysis_sampling;
 mod scenario_analysis_state;
 mod scenario_id;
 mod scenario_validation;
 mod squiggle_estimate;
+mod state_relation;
+pub(crate) mod state_relation_schema;
 mod unit;
 mod unit_ops;
 
@@ -109,4 +112,5 @@ pub use squiggle_estimate::{
     SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateError,
     SquiggleEstimateSupport, assess_squiggle_estimate,
 };
+pub use state_relation::{RelationParameter, StateRelation, StateRelationError};
 pub use unit::{Dimension, Unit, UnitError};

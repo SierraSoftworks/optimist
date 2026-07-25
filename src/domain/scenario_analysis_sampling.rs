@@ -4,8 +4,8 @@ use rand_chacha::ChaCha20Rng;
 use super::{
     ConvergenceStatus, EntityId, InterventionProjection, InvalidSampleCounts,
     MonteCarloDiagnostics, MonteCarloEstimate, ObjectiveProjection, ObjectiveTrajectoryPoint,
-    Scenario, ScenarioAnalysisError, online_moments::OnlineJointMoments, scenario_analysis_draw,
-    scenario_analysis_graph::AnalysisGraph,
+    RelationProgram, Scenario, ScenarioAnalysisError, online_moments::OnlineJointMoments,
+    scenario_analysis_draw, scenario_analysis_graph::AnalysisGraph,
 };
 
 pub(super) fn project_candidate(
@@ -29,13 +29,17 @@ pub(super) fn project_candidate(
         })
         .collect::<Vec<_>>();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed());
+    // Building the standard environment dominates a relation evaluation, so one
+    // runtime is reused across every draw and period rather than rebuilt.
+    let mut runtime = RelationProgram::runtime(config.seed())
+        .map_err(|error| ScenarioAnalysisError::Relation(error.to_string()))?;
     let mut attempted = 0;
     let mut invalid = InvalidSampleCounts::default();
     let mut clamped_state_updates = 0_u64;
     let mut undefined_responses = 0_u64;
     while attempted < config.maximum_samples() {
         attempted += 1;
-        match scenario_analysis_draw::draw(graph, scenario, &execution, &mut rng) {
+        match scenario_analysis_draw::draw(graph, scenario, &execution, &mut rng, &mut runtime) {
             Ok(draw) => {
                 moments.push(&draw.values);
                 for (objective, trajectory) in trajectory_moments.iter_mut().zip(draw.trajectories)

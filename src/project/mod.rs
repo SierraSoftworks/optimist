@@ -29,6 +29,7 @@ mod estimate_support;
 mod evidence;
 mod evidence_error;
 mod model;
+mod node_relation;
 mod node_state;
 mod project_archive;
 mod project_archive_export;

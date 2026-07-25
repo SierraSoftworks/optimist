@@ -1,8 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
-    EntityId, EstimateOwner, Node, NodePayload, QuantitySupport, ScenarioAnalysisError,
+    Edge, EntityId, EstimateOwner, Node, NodePayload, QuantitySupport, ScenarioAnalysisError,
     scenario_analysis_coupling::{CoupledPrimitive, Coupling},
+    scenario_analysis_relation::CompiledRelation,
+    state_relation_schema,
 };
 
 #[derive(Clone, Copy)]
@@ -40,13 +42,21 @@ pub(super) struct StateNode {
     pub(super) baseline: CoupledPrimitive,
     pub(super) bounds: StateBounds,
     pub(super) combination: Combination,
+    /// Node equation replacing proportional composition for this state.
+    pub(super) relation: Option<CompiledRelation>,
 }
 
 pub(super) fn project(
     nodes: &BTreeMap<EntityId, &Node>,
     relevant: &BTreeSet<EntityId>,
+    edges: &[Edge],
     coupling: &Coupling,
 ) -> Result<Vec<StateNode>, ScenarioAnalysisError> {
+    let indices = relevant
+        .iter()
+        .enumerate()
+        .map(|(index, id)| (*id, index))
+        .collect::<BTreeMap<_, _>>();
     relevant
         .iter()
         .map(|id| {
@@ -89,6 +99,7 @@ pub(super) fn project(
                 ),
                 bounds,
                 combination: combination(support(node)),
+                relation: relation(node, nodes, edges, &indices)?,
             })
         })
         .collect()
@@ -102,6 +113,41 @@ fn support(node: &Node) -> QuantitySupport {
             .as_ref()
             .map_or(QuantitySupport::Real, |state| state.quantity.support),
     }
+}
+
+/// Compiles a node's equation against the graph, if it has one.
+///
+/// A parent outside the projected set cannot be bound, so it is reported rather
+/// than silently dropped: an equation missing one of its inputs would compute a
+/// different quantity than the one the author wrote.
+fn relation(
+    node: &Node,
+    nodes: &BTreeMap<EntityId, &Node>,
+    edges: &[Edge],
+    indices: &BTreeMap<EntityId, usize>,
+) -> Result<Option<CompiledRelation>, ScenarioAnalysisError> {
+    let Some(relation) = state_relation_schema::relation_of(node) else {
+        return Ok(None);
+    };
+    let schema = state_relation_schema::schema(node, nodes, edges, relation)
+        .map_err(|error| ScenarioAnalysisError::Relation(error.to_string()))?;
+    let program = state_relation_schema::compile(node, nodes, edges, relation)
+        .map_err(|error| ScenarioAnalysisError::Relation(error.to_string()))?;
+    let mut parents = BTreeMap::new();
+    for name in schema.parents.keys() {
+        let parent = nodes
+            .values()
+            .find(|candidate| &candidate.name == name)
+            .and_then(|candidate| indices.get(&candidate.id))
+            .ok_or_else(|| ScenarioAnalysisError::UnreachableRelationParent(name.clone()))?;
+        parents.insert(name.clone(), *parent);
+    }
+    Ok(Some(CompiledRelation::new(
+        program,
+        parents,
+        schema.activations,
+        relation,
+    )))
 }
 
 fn combination(support: QuantitySupport) -> Combination {
@@ -172,6 +218,7 @@ mod tests {
         let state = project(
             &nodes,
             &BTreeSet::from([node.id]),
+            &[],
             &super::super::scenario_analysis_coupling::Coupling::default(),
         )
         .unwrap();

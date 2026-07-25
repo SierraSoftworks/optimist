@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
@@ -5,16 +7,19 @@ use super::effect_activation::{self, SampledEffectProfile};
 use super::scenario_analysis_accumulator::Accumulator;
 use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
 use super::{Scenario, ScenarioAnalysisError, UtilityDirection};
+use crate::squiggle::Runtime;
 
 struct SampledPropagationEdge {
     source: usize,
     destination: usize,
+    source_name: String,
     effect: f64,
     delay: u64,
 }
 
 struct SampledInterventionEdge {
     destination: usize,
+    intervention_name: String,
     effect: f64,
     rebound: Option<f64>,
     arrival: u64,
@@ -33,6 +38,7 @@ pub(super) fn draw(
     scenario: &Scenario,
     execution: &CandidateExecutionPlan,
     rng: &mut ChaCha20Rng,
+    runtime: &mut Runtime,
 ) -> Result<ScenarioDraw, ScenarioAnalysisError> {
     let coupled = graph.coupling.draw(rng);
     let baselines = graph
@@ -76,6 +82,7 @@ pub(super) fn draw(
             for edge in &step.edges {
                 interventions.push(SampledInterventionEdge {
                     destination: edge.destination,
+                    intervention_name: edge.intervention_name.clone(),
                     effect: edge.effect.sample(rng, &coupled),
                     arrival: completion
                         .saturating_add(
@@ -99,6 +106,7 @@ pub(super) fn draw(
             Ok(SampledPropagationEdge {
                 source: edge.source,
                 destination: edge.destination,
+                source_name: edge.source_name.clone(),
                 effect: edge.effect.sample(rng, &coupled),
                 delay: edge
                     .lag
@@ -110,6 +118,17 @@ pub(super) fn draw(
             })
         })
         .collect::<Result<Vec<_>, ScenarioAnalysisError>>()?;
+    let parameters = graph
+        .states
+        .iter()
+        .map(|state| {
+            state
+                .relation
+                .as_ref()
+                .map(|relation| relation.sample_parameters(rng))
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
     let mut history = vec![baselines.clone()];
     let mut clamped_state_updates = 0_u64;
     let mut undefined_responses = 0_u64;
@@ -149,6 +168,17 @@ pub(super) fn draw(
         }
         undefined_responses = undefined_responses.saturating_add(accumulator.undefined);
         let mut current = accumulator.resolve(&graph.states, &baselines);
+        relate(
+            graph,
+            &mut current,
+            &baselines,
+            &history,
+            &causal,
+            &interventions,
+            &parameters,
+            period,
+            runtime,
+        )?;
         if current.iter().any(|value| !value.is_finite()) {
             return Err(ScenarioAnalysisError::NonFiniteResult);
         }
@@ -205,4 +235,48 @@ pub(super) fn draw(
         clamped_state_updates,
         undefined_responses,
     })
+}
+
+/// Overwrites every state that owns a node equation with the equation's result.
+///
+/// A relation replaces proportional composition rather than adding to it, so the
+/// accumulator's value for that state is discarded. Parents are read from
+/// history at their relationship's lag, which the mandatory one-period transport
+/// delay guarantees is already complete, so relations within a period never
+/// depend on each other's order.
+#[allow(clippy::too_many_arguments)]
+fn relate(
+    graph: &AnalysisGraph<'_>,
+    current: &mut [f64],
+    baselines: &[f64],
+    history: &[Vec<f64>],
+    causal: &[SampledPropagationEdge],
+    interventions: &[SampledInterventionEdge],
+    parameters: &[BTreeMap<String, f64>],
+    period: u64,
+    runtime: &mut Runtime,
+) -> Result<(), ScenarioAnalysisError> {
+    for (index, state) in graph.states.iter().enumerate() {
+        let Some(relation) = state.relation.as_ref() else {
+            continue;
+        };
+        let mut bindings = relation.bindings(baselines[index], baselines, &parameters[index]);
+        for edge in causal.iter().filter(|edge| edge.destination == index) {
+            if period >= edge.delay {
+                let value = history[(period - edge.delay) as usize][edge.source];
+                relation.set_parent(&mut bindings, &edge.source_name, value);
+            }
+        }
+        for edge in interventions
+            .iter()
+            .filter(|edge| edge.destination == index)
+        {
+            if period >= edge.arrival {
+                let activation = edge.profile.activation(period - edge.arrival);
+                relation.set_activation(&mut bindings, &edge.intervention_name, activation);
+            }
+        }
+        current[index] = relation.evaluate(runtime, &bindings)?;
+    }
+    Ok(())
 }

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::{
-    Estimate, EstimateSource, QuantityDefinition, QuantityError, QuantityValue,
+    Estimate, EstimateSource, QuantityDefinition, QuantityError, QuantityValue, StateRelation,
     assess_squiggle_estimate,
 };
 
@@ -31,6 +31,9 @@ pub struct QuantityState {
     /// Optional uncertain future value before scenario interventions are applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forecast: Option<Estimate<QuantityValue>>,
+    /// Optional node equation replacing proportional composition for this state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relation: Option<StateRelation>,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +44,8 @@ struct QuantityStateWire {
     current: Option<Estimate<QuantityValue>>,
     #[serde(default)]
     forecast: Option<Estimate<QuantityValue>>,
+    #[serde(default)]
+    relation: Option<StateRelation>,
 }
 
 impl<'de> Deserialize<'de> for QuantityState {
@@ -49,7 +54,9 @@ impl<'de> Deserialize<'de> for QuantityState {
         D: Deserializer<'de>,
     {
         let value = QuantityStateWire::deserialize(deserializer)?;
-        Self::new(value.quantity, value.current, value.forecast).map_err(de::Error::custom)
+        Self::new(value.quantity, value.current, value.forecast)
+            .map(|state| state.with_relation(value.relation))
+            .map_err(de::Error::custom)
     }
 }
 
@@ -66,7 +73,18 @@ impl QuantityState {
             current: validate_estimate(current, &quantity)?,
             forecast: validate_estimate(forecast, &quantity)?,
             quantity,
+            relation: None,
         })
+    }
+
+    /// Attaches or clears the node equation computing this state each period.
+    ///
+    /// Whether the equation type-checks depends on the parents the graph gives
+    /// it, so that is verified when the owning project applies it.
+    #[must_use]
+    pub fn with_relation(mut self, relation: Option<StateRelation>) -> Self {
+        self.relation = relation;
+        self
     }
 
     pub(crate) fn with_quantity(self, quantity: QuantityDefinition) -> Result<Self, QuantityError> {
@@ -76,6 +94,7 @@ impl QuantityState {
             current: retarget_estimate(self.current, &quantity, &unit)?,
             forecast: retarget_estimate(self.forecast, &quantity, &unit)?,
             quantity,
+            relation: self.relation,
         })
     }
 }

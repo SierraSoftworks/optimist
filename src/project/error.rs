@@ -106,6 +106,9 @@ pub enum ProjectError {
     /// A native state quantity or estimate is internally inconsistent.
     #[error(transparent)]
     Quantity(#[from] QuantityError),
+    /// A node equation could not be compiled against the surrounding graph.
+    #[error(transparent)]
+    StateRelation(crate::domain::StateRelationError),
     /// A native causal response does not use the units declared by its endpoints.
     #[error("edge {edge} response units do not match its endpoints")]
     CausalResponseUnitMismatch {

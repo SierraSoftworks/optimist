@@ -6,7 +6,7 @@ use crate::{
 
 use super::{
     ProjectError, aggregate_updates, catalog::ProjectEntry, dependence, effect_profile, estimate,
-    evidence, node_state, scenarios,
+    evidence, node_relation, node_state, scenarios,
 };
 
 pub(super) fn command(
@@ -26,6 +26,7 @@ pub(super) fn command(
         }
         GraphCommand::UpdateNodeMetadata(command) => aggregate_updates::node(entry, command),
         GraphCommand::SetNodeQuantityState(command) => node_state::set(entry, command),
+        GraphCommand::SetStateRelation(command) => node_relation::set(entry, command),
         GraphCommand::CreateEvidence(command) => evidence::create(entry, command),
         GraphCommand::UpdateEvidence(command) => evidence::update(entry, command),
         GraphCommand::DeleteEvidence(command) => evidence::delete(entry, command),

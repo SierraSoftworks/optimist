@@ -1,11 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    Edge, EdgePayload, EntityId, NodeKind, Scenario, scenario_analysis_edges::PropagationEdge,
-    scenario_analysis_state::StateNode,
+    Edge, EdgePayload, EntityId, Node, NodeKind, Scenario,
+    scenario_analysis_edges::PropagationEdge, scenario_analysis_state::StateNode,
+    state_relation_schema,
 };
 
-pub(super) fn relevant_states(scenario: &Scenario, edges: &[Edge]) -> BTreeSet<EntityId> {
+pub(super) fn relevant_states(
+    scenario: &Scenario,
+    nodes: &BTreeMap<EntityId, &Node>,
+    edges: &[Edge],
+) -> BTreeSet<EntityId> {
     let causal = edges
         .iter()
         .filter(|edge| {
@@ -46,11 +51,41 @@ pub(super) fn relevant_states(scenario: &Scenario, edges: &[Edge]) -> BTreeSet<E
         .collect::<BTreeSet<_>>();
     let reachable_from_candidates = closure(starts.iter().copied(), &forward);
     let can_reach_objectives = closure(objectives.iter().copied(), &reverse);
-    reachable_from_candidates
+    let moved = reachable_from_candidates
         .intersection(&can_reach_objectives)
         .copied()
         .chain(objectives)
-        .collect()
+        .collect();
+    with_relation_parents(moved, nodes, &reverse)
+}
+
+/// Adds every parent a projected node equation reads, transitively.
+///
+/// Proportional composition can ignore a parent nothing moves, because an
+/// unchanged parent contributes a ratio of one. An equation cannot: it computes
+/// the whole value from all of its inputs, so a parent left out would change
+/// what the equation means rather than merely contributing nothing. Those
+/// parents are projected and hold their baselines.
+fn with_relation_parents(
+    mut relevant: BTreeSet<EntityId>,
+    nodes: &BTreeMap<EntityId, &Node>,
+    reverse: &BTreeMap<EntityId, Vec<EntityId>>,
+) -> BTreeSet<EntityId> {
+    let mut pending: VecDeque<_> = relevant.iter().copied().collect();
+    while let Some(id) = pending.pop_front() {
+        if nodes
+            .get(&id)
+            .is_none_or(|node| state_relation_schema::relation_of(node).is_none())
+        {
+            continue;
+        }
+        for parent in reverse.get(&id).into_iter().flatten() {
+            if relevant.insert(*parent) {
+                pending.push_back(*parent);
+            }
+        }
+    }
+    relevant
 }
 
 pub(super) fn reaches(

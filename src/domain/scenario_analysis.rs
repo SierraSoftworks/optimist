@@ -96,7 +96,7 @@ mod tests {
         Intervention, Metric, MonteCarloConfig, NodeKind, NodePayload, Outcome, OutcomeDirection,
         ProjectDependenceModel, ProjectId, QuantityDefinition, QuantityState, QuantitySupport,
         QuantityValue, Requirement, ResidualDependenceGroup, ScenarioDraft, ScenarioId,
-        ScenarioObjective, Unit, UtilityDirection,
+        ScenarioObjective, StateRelation, Unit, UtilityDirection,
     };
 
     fn estimate<T: super::super::EstimateDimension>(id: u64, value: f64) -> Estimate<T> {
@@ -701,6 +701,136 @@ mod tests {
             }],
         };
         ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, Some(&dependence)).unwrap()
+    }
+
+    /// Replaces proportional composition with an authored node equation.
+    ///
+    /// The fixture's outcome is the product of two parents, which no single
+    /// elasticity can express: a product needs both parents multiplied, not each
+    /// scaled independently against a baseline. The equation states it directly,
+    /// and the projection reproduces the arithmetic exactly.
+    #[test]
+    fn a_node_equation_replaces_proportional_composition() {
+        let (mut scenario, mut nodes, _, revision) = point_fixture(3);
+        let outcome = nodes.pop().unwrap();
+        let frequency = measured(
+            3,
+            "outage_frequency",
+            "Outage frequency",
+            Unit::base("outage").unwrap(),
+            4.0,
+        );
+        let duration = measured(
+            4,
+            "impact_duration",
+            "Impact duration",
+            Unit::from_exponents([("minute", 1), ("outage", -1)]).unwrap(),
+            30.0,
+        );
+        let mut impact = Node::new(
+            EntityId::new(5),
+            "customer_impact",
+            "Customer impact",
+            NodePayload::Outcome(Outcome {
+                direction: OutcomeDirection::Minimize,
+                evidence: vec![],
+            }),
+        )
+        .unwrap();
+        impact.native_state = Some(
+            QuantityState::new(
+                QuantityDefinition::with_dimension(
+                    "minutes",
+                    Some(Unit::base("minute").unwrap()),
+                    None,
+                    QuantitySupport::NonNegative,
+                )
+                .unwrap(),
+                Some(estimate::<QuantityValue>(0, 120.0)),
+                None,
+            )
+            .unwrap()
+            .with_relation(Some(
+                StateRelation::new(
+                    "outage_frequency * impact_duration".to_owned(),
+                    Default::default(),
+                )
+                .unwrap(),
+            )),
+        );
+
+        // The intervention halves outage frequency; nothing touches duration.
+        let changes = Edge::new(
+            nodes[0].id,
+            NodeKind::Intervention,
+            frequency.id,
+            NodeKind::Metric,
+            EdgePayload::Changes(CausalEffect::proportional(
+                estimate::<Elasticity>(0, 0.5),
+                None,
+                String::new(),
+                vec![],
+            )),
+        )
+        .unwrap();
+        let contributes = |source: EntityId| {
+            Edge::new(
+                source,
+                NodeKind::Metric,
+                impact.id,
+                NodeKind::Outcome,
+                EdgePayload::Contributes(CausalEffect::proportional(
+                    estimate::<Elasticity>(0, 1.0),
+                    None,
+                    String::new(),
+                    vec![],
+                )),
+            )
+            .unwrap()
+        };
+        let edges = vec![changes, contributes(frequency.id), contributes(duration.id)];
+        scenario.draft.objectives = vec![ScenarioObjective {
+            outcome_id: impact.id,
+            direction: UtilityDirection::Minimize,
+            importance: 1.0,
+        }];
+        nodes.pop();
+        nodes.extend([frequency, duration, impact, outcome]);
+
+        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let objective = &result.candidates[0].objectives[0];
+        // The equation computes 4 x 30 from the very first period, so the stored
+        // baseline of 120 is reproduced rather than assumed.
+        assert!((objective.baseline.mean.unwrap() - 120.0).abs() < 1e-12);
+        // Halving frequency halves the product: 2 x 30 = 60.
+        assert!(
+            (objective.final_state.mean.unwrap() - 60.0).abs() < 1e-12,
+            "the equation must multiply its parents rather than scale each one"
+        );
+        assert!((objective.improvement.mean.unwrap() - 60.0).abs() < 1e-12);
+    }
+
+    /// Builds a metric with a native unit and a point-mass current estimate.
+    fn measured(id: u64, name: &str, title: &str, unit: Unit, value: f64) -> Node {
+        Node::new(
+            EntityId::new(id),
+            name,
+            title,
+            NodePayload::Metric(
+                Metric::with_quantity(
+                    QuantityDefinition::with_dimension(
+                        name,
+                        Some(unit),
+                        None,
+                        QuantitySupport::NonNegative,
+                    )
+                    .unwrap(),
+                    Some(estimate::<QuantityValue>(0, value)),
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap()
     }
 
     fn point_fixture(

@@ -1,20 +1,24 @@
 use std::collections::BTreeMap;
 
 use super::{
-    Distribution, Edge, EdgePayload, EffectProfile, EntityId, EstimateId, EstimateOwner, NodeKind,
-    ScenarioAnalysisError,
+    Distribution, Edge, EdgePayload, EffectProfile, EntityId, EstimateId, EstimateOwner, Node,
+    NodeKind, ScenarioAnalysisError,
     scenario_analysis_coupling::{CoupledPrimitive, Coupling},
 };
 
 pub(super) struct PropagationEdge {
     pub(super) source: usize,
     pub(super) destination: usize,
+    /// Source node name, which is how a node equation binds this parent.
+    pub(super) source_name: String,
     pub(super) effect: CoupledPrimitive,
     pub(super) lag: Option<CoupledPrimitive>,
 }
 
 pub(super) struct InterventionEdge {
     pub(super) destination: usize,
+    /// Intervention node name, which is how a node equation binds its activation.
+    pub(super) intervention_name: String,
     pub(super) effect: CoupledPrimitive,
     pub(super) rebound: Option<Distribution>,
     pub(super) profile: EffectProfile,
@@ -22,6 +26,7 @@ pub(super) struct InterventionEdge {
 }
 
 pub(super) fn propagation(
+    nodes: &BTreeMap<EntityId, &Node>,
     edges: &[Edge],
     indices: &BTreeMap<EntityId, usize>,
     coupling: &Coupling,
@@ -48,6 +53,10 @@ pub(super) fn propagation(
             Ok(PropagationEdge {
                 source: indices[&edge.source],
                 destination: indices[&edge.destination],
+                source_name: nodes
+                    .get(&edge.source)
+                    .map(|node| node.name.clone())
+                    .unwrap_or_default(),
                 effect: coupling.primitive(&owner, effect, distribution),
                 lag: lag.map(|(id, lag)| coupling.primitive(&owner, id, lag)),
             })
@@ -57,6 +66,7 @@ pub(super) fn propagation(
 
 pub(super) fn intervention(
     candidate: EntityId,
+    name: &str,
     edges: &[Edge],
     indices: &BTreeMap<EntityId, usize>,
     coupling: &Coupling,
@@ -73,6 +83,7 @@ pub(super) fn intervention(
                 };
                 Some(InterventionEdge {
                     destination: indices[&edge.destination],
+                    intervention_name: name.to_owned(),
                     effect: coupled(effect.response.id, &effect.response.distribution),
                     rebound: effect
                         .transience

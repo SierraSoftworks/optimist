@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{
     EdgeId, EdgePayload, EntityId, EstimateAddress, EstimateSlot, MeasurementCalibration,
     NewObservation, NodePayload, ProjectDependenceModel, QuantityDefinition, ScenarioDraft,
-    ScenarioId, SquiggleEstimateDefinition,
+    ScenarioId, SquiggleEstimateDefinition, StateRelation,
 };
 
 use super::EffectProfileInput;
@@ -39,6 +39,23 @@ pub struct SetNodeQuantityState {
     pub expected_revision: u64,
     /// Canonical native unit, support, and operational definition.
     pub quantity: QuantityDefinition,
+}
+
+/// Revision-checked replacement of one state's node equation.
+///
+/// The equation is compiled against the graph before it is stored, so a name it
+/// cannot bind or arithmetic whose units do not work out is rejected here rather
+/// than surfacing later as a failed projection. Passing `None` restores
+/// proportional composition from the relationship responses.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetStateRelation {
+    /// Factor, outcome, or metric whose value the equation computes.
+    pub node: EntityId,
+    /// Node revision observed before preparing the equation.
+    pub expected_revision: u64,
+    /// Complete equation, or `None` to restore proportional composition.
+    pub relation: Option<StateRelation>,
 }
 
 /// Data required to append qualitative evidence to a factor or outcome.

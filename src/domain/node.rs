@@ -6,7 +6,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{
     Duration, EntityId, Estimate, Money, Probability, QuantityDefinition, QuantityError,
-    QuantityState, QuantitySupport, QuantityValue,
+    QuantityState, QuantitySupport, QuantityValue, StateRelation,
 };
 
 /// The four structural concepts rendered as vertices in an Optimist graph.
@@ -79,6 +79,9 @@ pub struct Metric {
     /// Optional uncertain current or forecast value in [`QuantityDefinition::unit`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<Estimate<QuantityValue>>,
+    /// Optional node equation replacing proportional composition for this metric.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relation: Option<StateRelation>,
 }
 
 impl Metric {
@@ -105,11 +108,24 @@ impl Metric {
         {
             return Err(QuantityError::EstimateOutsideSupport);
         }
-        Ok(Self { quantity, current })
+        Ok(Self {
+            quantity,
+            current,
+            relation: None,
+        })
+    }
+
+    /// Attaches or clears the node equation computing this metric each period.
+    #[must_use]
+    pub fn with_relation(mut self, relation: Option<StateRelation>) -> Self {
+        self.relation = relation;
+        self
     }
 
     fn validated(self) -> Result<Self, QuantityError> {
+        let relation = self.relation;
         Self::with_quantity(self.quantity, self.current)
+            .map(|metric| metric.with_relation(relation))
     }
 }
 
@@ -119,6 +135,8 @@ struct MetricWire {
     quantity: QuantityDefinition,
     #[serde(default)]
     current: Option<Estimate<QuantityValue>>,
+    #[serde(default)]
+    relation: Option<StateRelation>,
 }
 
 impl<'de> Deserialize<'de> for Metric {
@@ -127,7 +145,9 @@ impl<'de> Deserialize<'de> for Metric {
         D: Deserializer<'de>,
     {
         let value = MetricWire::deserialize(deserializer)?;
-        Self::with_quantity(value.quantity, value.current).map_err(de::Error::custom)
+        Self::with_quantity(value.quantity, value.current)
+            .map(|metric| metric.with_relation(value.relation))
+            .map_err(de::Error::custom)
     }
 }
 
