@@ -15,8 +15,8 @@ test('confirms Delete-key removal for graph nodes and relationships', async ({ p
   await page.getByRole('button', { name: 'Relationship', exact: true }).click()
   const relationship = page.getByRole('form', { name: 'Add relationship' })
   await relationship.getByRole('combobox').first().selectOption('part_of')
-  await page.getByLabel('Source').selectOption('A')
-  await page.getByLabel('Destination').selectOption('B')
+  await relationship.getByRole('group', { name: 'Source' }).getByText('Fast feedback', { exact: true }).click()
+  await relationship.getByRole('group', { name: 'Target' }).getByText('Learning rate', { exact: true }).click()
   await relationship.getByRole('button', { name: 'Add relationship' }).click()
 
   await page.getByRole('button', { name: /Fast feedback/ }).click()

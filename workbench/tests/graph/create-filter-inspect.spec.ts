@@ -18,15 +18,19 @@ test('creates nodes and a relationship, then filters and inspects the model', as
   await page.getByRole('button', { name: 'Add node' }).last().click()
 
   await page.getByRole('button', { name: 'Relationship', exact: true }).click()
-  await page.getByRole('form', { name: 'Add relationship' }).getByRole('combobox').first().selectOption('part_of')
-  await page.getByLabel('Source').selectOption('A')
-  await page.getByLabel('Destination').selectOption('B')
-  await page.getByRole('button', { name: 'Add relationship' }).click()
+  const relationship = page.getByRole('form', { name: 'Add relationship' })
+  await relationship.getByRole('combobox').first().selectOption('part_of')
+  await relationship.getByRole('group', { name: 'Source' }).getByText('Fast feedback', { exact: true }).click()
+  await relationship.getByRole('group', { name: 'Target' }).getByText('Learning rate', { exact: true }).click()
+  await relationship.getByRole('button', { name: 'Add relationship' }).click()
 
   await expect(page.getByTestId('graph-surface')).toBeVisible()
   await page.getByRole('button', { name: /Fast feedback/ }).click()
   await expect(page.getByRole('heading', { name: 'Fast feedback' })).toBeVisible()
-  await expect(page.getByText('Controllable')).toBeVisible()
+  const inspector = page.getByRole('complementary', { name: 'Selection inspector' })
+  // A factor created without a quantity cannot be simulated yet, and the
+  // inspector must say so rather than looking complete.
+  await expect(inspector.getByText('Simulation blocked: State quantity')).toBeVisible()
   await expect(page.getByText('1 relationships')).toBeVisible()
   const selectedOutlineNode = page.getByLabel('Node outline').getByRole('button', { name: /Fast feedback/ })
   await selectedOutlineNode.focus()

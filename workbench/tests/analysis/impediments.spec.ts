@@ -1,42 +1,39 @@
 import { test, expect, mockApi } from '../support/mock-api'
+import { causalEdge, factorNode, interventionNode, outcomeNode } from '../support/fixtures'
 
-test('separates topology and evidence impediment orders', async ({ page }, testInfo) => {
+test('ranks intervention readiness with execution plans and blockers', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
-  const factor = (id: string, title: string, evidence: unknown[]) => ({
-    id, revision: 0, name: title.toLocaleLowerCase().replaceAll(' ', '_'), normalized_name: title.toLocaleLowerCase().replaceAll(' ', '_'), title,
-    description: '', aliases: [], metadata: {},
-    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: id === 'A', evidence } },
-  })
-  const outcome = (id: string) => ({
-    id, revision: 0, name: `outcome_${id}`, normalized_name: `outcome_${id}`, title: `Outcome ${id}`,
-    description: '', aliases: [], metadata: {},
-    payload: { kind: 'outcome', properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
-  })
-  const estimate = { id: 'A', revision: 0, distribution: { type: 'point', value: 0.5 }, provenance: [] }
-  const edge = (source: string, destination: string, evidence: string[]) => ({
-    source, source_kind: 'factor', destination, destination_kind: 'outcome', revision: 0,
-    description: '', metadata: {},
-    payload: { kind: 'contributes', properties: { effect: estimate, lag: null, mechanism: '', evidence } },
-  })
   await page.unroute('**/api/v1/**')
   await mockApi(page, {
-    project: { id: 'A', name: 'Impediment model', revision: 0 }, revision: 5,
+    project: { id: 'A', name: 'Impediment model', revision: 0 },
+    revision: 5,
     nodes: [
-      factor('A', 'Wide reach', []),
-      factor('B', 'Documented', [{ id: 0, revision: 0, summary: 'Observed', source: null }]),
-      outcome('C'), outcome('D'),
+      interventionNode('A', 'Wide reach', { duration: 3, probability: 0.8 }),
+      interventionNode('B', 'Documented', { duration: 1, probability: 0.9 }),
+      factorNode('C', 'Review flow', { controllable: true, current: 0.4 }),
+      outcomeNode('D', 'Reliable delivery', { current: 0.5 }),
     ],
-    edges: [edge('A', 'C', []), edge('A', 'D', []), edge('B', 'C', ['ADR-1'])],
+    edges: [
+      causalEdge('A', 'intervention', 'C', 'factor', { kind: 'changes', response: 0.3 }),
+      causalEdge('C', 'factor', 'D', 'outcome', { response: 0.6 }),
+    ],
   })
   await page.goto('/')
   await page.getByRole('button', { name: 'Impediments', exact: true }).click()
+
   const panel = page.getByLabel('Impediments analysis')
-  await expect(panel.locator('.impediment-title strong').first()).toHaveText('Wide reach')
-  await expect(panel.getByText('2 path edges lack typed evidence.')).toBeVisible()
-  await panel.getByRole('button', { name: /Evidence/ }).click()
-  await expect(panel.locator('.impediment-title strong').first()).toHaveText('Documented')
-  await panel.locator('.impediment-list > li > button').first().click()
-  await expect(page.getByText('Analysis highlights 2 nodes and 1 relationships.')).toBeAttached()
-  await expect(panel.getByText(/Neither is a causal confidence score/)).toBeVisible()
+  await expect(panel).toBeVisible()
+
+  // Candidates are ranked in server order, and the priority badge must reflect it.
+  const cards = panel.locator('.readiness-card')
+  await expect(cards).toHaveCount(2)
+  await expect(cards.first().getByRole('heading', { name: 'Wide reach' })).toBeVisible()
+  await expect(cards.first().locator('.priority')).toHaveText('1')
+  await expect(cards.nth(1).getByRole('heading', { name: 'Documented' })).toBeVisible()
+
+  // Nothing blocks either candidate, so both must read as executable.
+  await expect(cards.first().locator('.readiness-badge')).toHaveText(/Executable/)
+  await expect(cards.nth(1).locator('.readiness-badge')).toHaveText(/Executable/)
+
   await page.screenshot({ path: 'artifacts/workbench-impediments.png', fullPage: true })
 })

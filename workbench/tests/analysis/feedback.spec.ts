@@ -1,21 +1,13 @@
 import { test, expect, mockApi } from '../support/mock-api'
+import { causalEdge, factorNode } from '../support/fixtures'
 
 test('analyzes and highlights causal feedback loops', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop workflow assertion')
-  const estimate = { id: 'A', revision: 0, distribution: { type: 'point', value: 0.5 }, provenance: [] }
-  const nodes = ['A', 'B'].map((id) => ({
-    id, revision: 0, name: `factor_${id}`, normalized_name: `factor_${id}`, title: `Factor ${id}`,
-    description: '', aliases: [], metadata: {},
-    payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
-  }))
+  const nodes = ['A', 'B'].map((id) => factorNode(id, `Factor ${id}`, { current: 0.5 }))
   const edges = [
-    { source: 'A', destination: 'B' },
-    { source: 'B', destination: 'A' },
-  ].map(({ source, destination }) => ({
-    source, source_kind: 'factor', destination, destination_kind: 'factor', revision: 0,
-    description: '', metadata: {},
-    payload: { kind: 'contributes', properties: { effect: estimate, lag: null, mechanism: '', evidence: [] } },
-  }))
+    causalEdge('A', 'factor', 'B', 'factor'),
+    causalEdge('B', 'factor', 'A', 'factor'),
+  ]
   await page.unroute('**/api/v1/**')
   await mockApi(page, {
     project: { id: 'A', name: 'Feedback model', revision: 0 },

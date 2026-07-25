@@ -9,7 +9,7 @@ test('creates a typed relationship directly from a right-clicked source node', a
       {
         id: 'A', revision: 0, name: 'delivery_risk', normalized_name: 'delivery_risk', title: 'Delivery risk',
         description: '', aliases: [], metadata: {},
-        payload: { kind: 'factor', properties: { current: null, desired: null, controllable: false, evidence: [] } },
+        payload: { kind: 'factor', properties: { controllable: false, evidence: [] } },
       },
       {
         id: 'B', revision: 0, name: 'automation', normalized_name: 'automation', title: 'Automation',
@@ -58,10 +58,13 @@ test('creates a typed relationship directly from a right-clicked source node', a
   await menu.getByRole('menuitem', { name: 'Blocks' }).click()
 
   const form = page.getByRole('form', { name: 'Add relationship' })
-  await expect(form.getByLabel('Source')).toBeDisabled()
-  await expect(form.getByLabel('Source')).toHaveValue('A')
+  const source = form.getByRole('group', { name: 'Source' })
+  // A locked source stays visible but uneditable, so the menu's intent is obvious.
+  await expect(source.getByRole('radio')).toBeDisabled()
+  await expect(source.getByRole('radio')).toBeChecked()
+  await expect(source.getByText('Delivery risk', { exact: true })).toBeVisible()
   await expect(form.getByLabel('Relationship')).toHaveValue('blocks')
-  await form.getByLabel('Destination').selectOption('B')
+  await form.getByRole('group', { name: 'Target' }).getByText('Automation', { exact: true }).click()
   await form.getByRole('button', { name: 'Add relationship' }).click()
 
   await expect(page.getByText('1 relationships')).toBeVisible()

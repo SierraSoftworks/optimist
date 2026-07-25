@@ -1,11 +1,5 @@
 import { expect, mockApi, test, type FixtureState } from '../support/mock-api'
-
-const estimate = (id: string, value: number) => ({
-  id,
-  revision: 0,
-  distribution: { type: 'point', value },
-  source: { type: 'distribution' },
-})
+import { causalEdge, factorNode, interventionNode, outcomeNode } from '../support/fixtures'
 
 test('orders causal hierarchy and exposes focused relationship metadata', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'desktop hierarchy assertion')
@@ -13,28 +7,20 @@ test('orders causal hierarchy and exposes focused relationship metadata', async 
     project: { id: 'A', name: 'Hierarchy review', revision: 0 },
     revision: 0,
     nodes: [
-      {
-        id: 'A', revision: 0, name: 'pair_review', normalized_name: 'pair_review', title: 'Pair review', description: '', aliases: [], metadata: {},
-        payload: { kind: 'intervention', properties: { costs: [], duration: estimate('A', 2), probability_of_success: estimate('B', 0.8), acceptance_criteria: [] } },
-      },
-      {
-        id: 'B', revision: 0, name: 'review_flow', normalized_name: 'review_flow', title: 'Review flow', description: '', aliases: [], metadata: {},
-        payload: { kind: 'factor', properties: { current: estimate('A', 0.45), desired: null, controllable: true, evidence: [] } },
-      },
-      {
-        id: 'C', revision: 0, name: 'delivery', normalized_name: 'delivery', title: 'Reliable delivery', description: '', aliases: [], metadata: {},
-        payload: { kind: 'outcome', properties: { direction: 'maximize', current: null, desired: null, evidence: [] } },
-      },
+      interventionNode('A', 'Pair review', { duration: 2, probability: 0.8 }),
+      factorNode('B', 'Review flow', { controllable: true, current: 0.45 }),
+      outcomeNode('C', 'Reliable delivery'),
     ],
     edges: [
-      {
-        source: 'A', source_kind: 'intervention', destination: 'B', destination_kind: 'factor', revision: 0, description: '', metadata: {},
-        payload: { kind: 'changes', properties: { effect: estimate('A', 0.35), lag: null, mechanism: 'Automates checks', evidence: [] } },
-      },
-      {
-        source: 'B', source_kind: 'factor', destination: 'C', destination_kind: 'outcome', revision: 0, description: '', metadata: {},
-        payload: { kind: 'contributes', properties: { effect: estimate('A', 0.6), lag: null, mechanism: 'Shortens review', evidence: [] } },
-      },
+      causalEdge('A', 'intervention', 'B', 'factor', {
+        kind: 'changes',
+        response: 0.35,
+        mechanism: 'Automates checks',
+      }),
+      causalEdge('B', 'factor', 'C', 'outcome', {
+        response: 0.6,
+        mechanism: 'Shortens review',
+      }),
     ],
   }
   await page.unroute('**/api/v1/**')
@@ -57,8 +43,8 @@ test('orders causal hierarchy and exposes focused relationship metadata', async 
   await page.screenshot({ path: 'artifacts/graph-kind-clusters.png', fullPage: true })
   await page.getByRole('button', { name: 'Hierarchy layout' }).click()
   const focused = page.getByRole('region', { name: 'Focused relationships' })
-  await expect(focused.getByText('changes · mean effect +0.35')).toBeVisible()
-  await expect(focused.getByText('contributes · mean effect +0.60')).toBeVisible()
+  await expect(focused.getByText('changes · Squiggle response')).toBeVisible()
+  await expect(focused.getByText('contributes · Squiggle response')).toBeVisible()
 
   const centers = await page.locator('.graph-canvas canvas[data-id="layer2-node"]').evaluate((element) => {
     const canvas = element as HTMLCanvasElement

@@ -16,6 +16,14 @@ test('keeps project and graph controls usable on mobile', async ({ page }, testI
   await expect(page.getByTestId('graph-surface')).toBeVisible()
   await expectCanvasPainted(page)
   await page.getByRole('button', { name: /Customer trust/ }).click()
+
+  // An outcome only accepts estimates once it declares a native quantity, so the
+  // mobile layout has to carry both steps.
+  await page.getByRole('button', { name: 'Native state', exact: true }).click()
+  const quantity = page.getByRole('form', { name: 'Configure native state' })
+  await quantity.getByLabel('Unit').fill('incidents/week')
+  await quantity.getByRole('button', { name: 'Use native state' }).click()
+
   await page.getByRole('button', { name: 'Estimate', exact: true }).click()
   const editor = page.getByLabel('Squiggle editor and distribution viewer')
   await expect(editor).toBeVisible()

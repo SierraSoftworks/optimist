@@ -263,6 +263,18 @@ export async function mockApi(page: Page, state: FixtureState) {
         const type = command.command.type === 'set_effect_profile' ? 'effect_profile_set' : 'causal_effect_updated'
         return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type, value: edge } }, 201)
       }
+      if (command.command.type === 'set_node_quantity_state') {
+        const node = state.nodes.find((node) => node.id === input.node)!
+        const existing = node.native_state as { current?: unknown; forecast?: unknown } | undefined
+        node.native_state = {
+          quantity: input.quantity,
+          current: existing?.current ?? null,
+          forecast: existing?.forecast ?? null,
+        }
+        node.revision = (node.revision as number) + 1
+        state.revision += 1
+        return json({ request_id: command.request_id, project_revision: state.revision, outcome: { type: 'node_quantity_state_set', value: node } }, 201)
+      }
       if (command.command.type === 'delete_node') {
         const index = state.nodes.findIndex((node) => node.id === input.id)
         const [node] = state.nodes.splice(index, 1)

@@ -34,9 +34,18 @@ test('creates, connects, and navigates through the command bar', async ({ page }
   await expect(relationshipKinds.getByRole('option', { name: /Requires/ })).toBeVisible()
   await expect(relationshipKinds.getByRole('option', { name: /Conflicts with/ })).toHaveCount(0)
   await expect(relationshipKinds.getByRole('option', { name: /Synergizes with/ })).toHaveCount(0)
-  await apply(page, 'connect A changes B 0.35')
+  await contextualBar.getByRole('button', { name: 'Cancel' }).click()
+
+  // A causal relationship needs canonical units on both endpoints, and only a
+  // metric can declare its unit while being created.
+  await page.keyboard.press('ControlOrMeta+K')
+  await apply(page, 'add metric "Deploy rate" deployments/week')
+  await expect(page.getByRole('heading', { name: 'Deploy rate' })).toBeVisible()
+
+  await page.keyboard.press('ControlOrMeta+K')
+  await apply(page, 'connect A changes C 1 0.35')
   await expect(page.getByText('1 relationships')).toBeVisible()
-  await expect(page.getByText('changes · mean effect +0.35')).toBeVisible()
+  await expect(page.getByText('changes · Squiggle response')).toBeVisible()
 
   await page.keyboard.press('ControlOrMeta+K')
   await apply(page, 'select B')
