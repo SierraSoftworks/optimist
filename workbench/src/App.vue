@@ -72,6 +72,7 @@ import type {
   UpdateNodeInput,
 } from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
+import { useWorkbenchRoute } from './composables/useWorkbenchRoute'
 import {
   useCreateNode,
   useCreateEdge,
@@ -159,6 +160,7 @@ const mutationError = ref<Error | null>(null)
 const createProjectOption = '__create_project__'
 
 const projects = computed(() => projectsQuery.data.value ?? [])
+useWorkbenchRoute(projects)
 const nodes = computed(() => graph.nodes.data.value ?? [])
 const edges = computed(() => graph.edges.data.value ?? [])
 const visibleNodes = computed(() => nodes.value.filter(store.matches))
@@ -296,12 +298,25 @@ const modes: Array<{ id: WorkbenchMode; label: string; available: boolean }> = [
   { id: 'optimize', label: 'Optimize', available: true },
 ]
 
+/**
+ * Reconciles the open project against the projects this server actually has.
+ *
+ * The selection now arrives from the address bar as well as from the switcher,
+ * so this watches the selection too: a link naming a project that has since been
+ * deleted has to land somewhere real. An empty list is left alone rather than
+ * treated as "no such project", because the list is empty while its query is
+ * still in flight and discarding the link's project then would lose it.
+ */
 watch(
-  projects,
-  (next) => {
-    if (!selectedProjectId.value && next[0]) store.selectProject(next[0].id)
-    if (selectedProjectId.value && !next.some((project) => project.id === selectedProjectId.value)) {
-      store.selectProject(next[0]?.id ?? null)
+  [projects, selectedProjectId],
+  ([next]) => {
+    if (!next.length) return
+    if (!selectedProjectId.value) {
+      store.selectProject(next[0]!.id)
+      return
+    }
+    if (!next.some((project) => project.id === selectedProjectId.value)) {
+      store.selectProject(next[0]!.id)
     }
   },
   { immediate: true },
