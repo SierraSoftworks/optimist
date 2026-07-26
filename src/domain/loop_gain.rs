@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Edge, EdgePayload, EntityId, Node, NodeKind, NodePayload, RelationBindings, RelationProgram,
-    state_relation_schema,
+    Edge, EdgePayload, EntityId, Node, NodeKind, NodePayload, QuantitySupport, RelationBindings,
+    RelationProgram, state_relation_schema,
 };
 
 /// Relative step used to differentiate an equation at its baseline.
@@ -119,6 +119,10 @@ pub(super) fn baselines(nodes: &[Node], edges: &[Edge]) -> Baselines {
             if !value.is_finite() {
                 continue;
             }
+            // Propagation clamps every period to the state's declared support,
+            // so a rest point that ignored it would put the elasticity somewhere
+            // the projection can never go.
+            let value = clamp_to_support(node, value);
             let previous = settled.insert(*id, value);
             if previous.is_none_or(|was| (was - value).abs() > was.abs().max(1.0) * 1e-9) {
                 moved = true;
@@ -237,6 +241,22 @@ fn equation_elasticity(
     let low = nudge(1.0 - STEP)?;
     let elasticity = (high - low) / (2.0 * STEP * centre);
     elasticity.is_finite().then_some(elasticity)
+}
+
+/// Holds a value inside the support its state declares.
+fn clamp_to_support(node: &Node, value: f64) -> f64 {
+    let support = match &node.payload {
+        NodePayload::Metric(metric) => metric.quantity.support,
+        _ => node
+            .native_state
+            .as_ref()
+            .map_or(QuantitySupport::Real, |state| state.quantity.support),
+    };
+    match support {
+        QuantitySupport::Real => value,
+        QuantitySupport::NonNegative => value.max(0.0),
+        QuantitySupport::Bounded { lower, upper } => value.clamp(lower, upper),
+    }
 }
 
 /// Binds every name an equation declares to its baseline, with nothing intervening.

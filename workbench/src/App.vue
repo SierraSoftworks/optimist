@@ -221,8 +221,14 @@ const structuralAnalysis = useStructuralAnalysis(
   projectRevision,
   feedbackModeEnabled,
 )
-const optimizeModeEnabled = computed(() => mode.value === 'optimize')
-const scenariosQuery = useScenarios(selectedProjectId, optimizeModeEnabled)
+/**
+ * Loop gain is a property of the graph rather than of a plan, so the feedback
+ * view wants it too. It is only computed alongside a scenario projection, so
+ * that projection is fetched in feedback mode as well and the loops are matched
+ * back onto the structural cycles.
+ */
+const weighsLoops = computed(() => mode.value === 'optimize' || mode.value === 'feedback')
+const scenariosQuery = useScenarios(selectedProjectId, weighsLoops)
 const dependenceQuery = useDependence(selectedProjectId)
 const setDependence = useSetDependence(projectQuery.data)
 const dependence = computed(() => dependenceQuery.data.value ?? null)
@@ -239,7 +245,7 @@ const scenarioAnalysis = useScenarioAnalysis(
   selectedProjectId,
   selectedScenarioId,
   selectedScenarioRevision,
-  optimizeModeEnabled,
+  weighsLoops,
 )
 const createScenario = useCreateScenario(projectQuery.data)
 const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)
@@ -960,6 +966,8 @@ function retry() {
       <FeedbackAnalysisPanel
         v-if="mode === 'feedback'"
         :analysis="structuralAnalysis.data.value"
+        :loops="scenarioAnalysis.data.value?.feedback_loops ?? []"
+        :nodes="nodes"
         :pending="structuralAnalysis.isPending.value || structuralAnalysis.isFetching.value"
         :error="structuralAnalysis.error.value as Error | null"
         :selected-cycle="selectedFeedbackCycle"
