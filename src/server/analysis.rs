@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -144,8 +146,12 @@ async fn impediments(
     State(state): State<AppState>,
     Path(project): Path<ProjectId>,
 ) -> Result<Json<ImpedimentAnalysis>, ApiError> {
+    let catalog = Arc::clone(&state.catalog).read_owned().await;
     Ok(Json(
-        state.catalog.write().await.analyze_impediments(&project)?,
+        state
+            .projection_worker
+            .run(move || catalog.analyze_impediments(&project))
+            .await?,
     ))
 }
 
@@ -156,6 +162,14 @@ struct AnalysisQuery {
     maximum_cycles: Option<usize>,
 }
 
+/// Runs graph analysis off the async runtime, on a snapshot nothing can change.
+///
+/// Projecting a scenario is seconds of arithmetic. Left on a runtime worker it
+/// stalls every other request that worker was multiplexing, so it goes to the
+/// blocking pool instead. The read guard is acquired before the hand-off and
+/// moved into the blocking task, which both pins the snapshot the analysis is
+/// keyed to and lets concurrent readers through -- the analysis mutates nothing,
+/// so it never needed exclusive access to begin with.
 async fn structure(
     State(state): State<AppState>,
     Path(project): Path<ProjectId>,
@@ -169,23 +183,25 @@ async fn structure(
         query.maximum_cycles.unwrap_or(defaults.maximum_cycles),
     )
     .map_err(ProjectError::from)?;
-    Ok(Json(state.catalog.write().await.analyze_structure(
-        &project,
-        query.scenario,
-        limits,
-    )?))
+    let catalog = Arc::clone(&state.catalog).read_owned().await;
+    Ok(Json(
+        state
+            .projection_worker
+            .run(move || catalog.analyze_structure(&project, query.scenario, limits))
+            .await?,
+    ))
 }
 
 async fn scenario(
     State(state): State<AppState>,
     Path((project, scenario)): Path<(ProjectId, ScenarioId)>,
 ) -> Result<Json<ScenarioAnalysis>, ApiError> {
+    let catalog = Arc::clone(&state.catalog).read_owned().await;
     Ok(Json(
         state
-            .catalog
-            .write()
-            .await
-            .analyze_scenario(&project, scenario)?,
+            .projection_worker
+            .run(move || catalog.analyze_scenario(&project, scenario))
+            .await?,
     ))
 }
 
@@ -198,13 +214,51 @@ mod tests {
     use serde_json::json;
     use tower::ServiceExt;
 
-    use crate::{project::ProjectCatalog, server::router_with_catalog};
+    use crate::{
+        project::ProjectCatalog,
+        server::{router_with_catalog, router_with_state, state::AppState},
+    };
 
     fn app() -> axum::Router {
         let mut catalog = ProjectCatalog::new();
         let project = catalog.create("Delivery".to_owned()).unwrap();
         assert_eq!(project.id.to_string(), "A");
         router_with_catalog(catalog)
+    }
+
+    /// Analysis reads a snapshot and changes nothing, so it must not lock others out.
+    ///
+    /// Holding a read guard for the whole request would be indistinguishable from
+    /// holding a write guard if the handler asked for exclusive access, so this
+    /// takes one first: the request can only be served if analysis is content to
+    /// share. That is also what makes moving it to the blocking pool worthwhile,
+    /// since a request the runtime cannot start is no more responsive than one it
+    /// cannot finish.
+    #[tokio::test]
+    async fn analyzes_while_another_reader_holds_the_catalog() {
+        let mut catalog = ProjectCatalog::new();
+        let project = catalog.create("Delivery".to_owned()).unwrap();
+        let state = AppState::new(catalog);
+        let app = router_with_state(state.clone());
+        let reader = state.catalog.read().await;
+
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            app.oneshot(
+                Request::get(format!(
+                    "/api/v1/projects/{}/analysis/structure",
+                    project.id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+            ),
+        )
+        .await
+        .expect("analysis must not wait for exclusive access to the catalog")
+        .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        drop(reader);
     }
 
     #[tokio::test]

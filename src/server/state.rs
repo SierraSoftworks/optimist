@@ -27,6 +27,10 @@ mod command;
 const ANALYSIS_WORKERS: usize = 4;
 const ANALYSIS_QUEUE_TIMEOUT: Duration = Duration::from_millis(100);
 const ANALYSIS_EXECUTION_TIMEOUT: Duration = Duration::from_secs(2);
+/// Whole-graph projection is legitimately longer work than assessing one
+/// expression, so it gets its own deadline rather than sharing a limit sized for
+/// a keystroke-latency response.
+const PROJECTION_EXECUTION_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub(super) struct AppState {
@@ -38,6 +42,7 @@ pub(super) struct AppState {
     persistence_status: Arc<StdRwLock<PersistenceStatus>>,
     generation: Arc<AtomicU64>,
     pub(super) analysis_worker: BoundedWorker,
+    pub(super) projection_worker: BoundedWorker,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -93,6 +98,11 @@ impl AppState {
                 ANALYSIS_WORKERS,
                 ANALYSIS_QUEUE_TIMEOUT,
                 ANALYSIS_EXECUTION_TIMEOUT,
+            ),
+            projection_worker: BoundedWorker::new(
+                ANALYSIS_WORKERS,
+                ANALYSIS_QUEUE_TIMEOUT,
+                PROJECTION_EXECUTION_TIMEOUT,
             ),
         }
     }

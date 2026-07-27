@@ -15,12 +15,12 @@ impl ProjectCatalog {
     /// method does not infer causal effects from evidence or combine evidence into
     /// a scalar confidence score.
     pub fn analyze_impediments(
-        &mut self,
+        &self,
         project_id: &crate::domain::ProjectId,
     ) -> Result<ImpedimentAnalysis, ProjectError> {
         let entry = self
             .projects
-            .get_mut(project_id)
+            .get(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
         let revision = AnalysisRevisionKey {
             project: project_id.clone(),
@@ -39,14 +39,14 @@ impl ProjectCatalog {
     /// selected scenario and current dependence document revision. The
     /// current implementation computes eagerly and returns no cached stale result.
     pub fn analyze_structure(
-        &mut self,
+        &self,
         project_id: &crate::domain::ProjectId,
         scenario_id: Option<ScenarioId>,
         limits: AnalysisLimits,
     ) -> Result<StructuralAnalysis, ProjectError> {
         let entry = self
             .projects
-            .get_mut(project_id)
+            .get(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
         let scenario = match scenario_id {
             Some(id) => Some((
@@ -78,13 +78,13 @@ impl ProjectCatalog {
     /// including the residual dependence document whose copulas couple the
     /// estimates it names.
     pub fn analyze_scenario(
-        &mut self,
+        &self,
         project_id: &crate::domain::ProjectId,
         scenario_id: ScenarioId,
     ) -> Result<ScenarioAnalysis, ProjectError> {
         let entry = self
             .projects
-            .get_mut(project_id)
+            .get(project_id)
             .ok_or_else(|| ProjectError::NotFound(project_id.clone()))?;
         let scenario = entry
             .scenarios
