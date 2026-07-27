@@ -63,7 +63,10 @@ channels:
     expression: min([offered, capacity])
   concurrency:
     unit: op
-    summary: Requests in flight, by Little's Law.
+    summary: >
+      Requests in flight, queueing and in service, by Little's Law. Reported
+      rather than constrained: a saturated pool has an unbounded number in
+      system, and the limit that actually binds is the capacity below.
     expression: Little.occupancy(throughput, residence)
 outputs:
   rate: throughput
@@ -73,12 +76,8 @@ constraints:
     summary: >
       Offered load against sustainable throughput. This is the constraint that
       turns a latency problem into an outage, because queueing delay rises
-      without bound as it approaches saturation.
+      without bound as it approaches saturation. Requests in service are the
+      offered rate times the service time, so a separate limit on concurrent
+      slots would restate this one rather than add to it.
     demand: offered
     limit: capacity
-  concurrency:
-    summary: >
-      Requests in flight against available slots. Saturating means callers block
-      or are refused at admission even when the workers are not compute-bound.
-    demand: concurrency
-    limit: servers

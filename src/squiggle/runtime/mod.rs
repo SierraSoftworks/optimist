@@ -189,10 +189,37 @@ impl Runtime {
         program: &Program,
         bindings: impl IntoIterator<Item = (&'a str, f64)>,
     ) -> Result<Value, Diagnostic> {
+        self.evaluate_values(
+            program,
+            bindings
+                .into_iter()
+                .map(|(name, value)| (name, Value::Number(value))),
+        )
+    }
+
+    /// Evaluates a program against named values supplied by the caller.
+    ///
+    /// Bindings may carry whole distributions and dictionaries, which is what
+    /// lets a caller pass an already-sampled quantity in rather than having the
+    /// program construct it. The random stream restarts on every call, so
+    /// re-evaluating one program against the same bindings returns the same
+    /// answer. A caller iterating toward a fixed point depends on that: draws
+    /// that shifted between passes would leave the iteration chasing sampling
+    /// noise it could never converge against.
+    ///
+    /// Crate-internal for the same reason as [`Runtime::evaluate_bound`]: the
+    /// caller is expected to have compiled its program against a declared
+    /// schema, so that a name it did not supply is reported as unbound rather
+    /// than silently resolving to a leftover from an earlier call.
+    pub(crate) fn evaluate_values<'a>(
+        &mut self,
+        program: &Program,
+        bindings: impl IntoIterator<Item = (&'a str, Value)>,
+    ) -> Result<Value, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
         for (name, value) in bindings {
-            self.bindings.rebind(name, Value::Number(value));
+            self.bindings.rebind(name, value);
         }
         let environment = self.bindings.child();
         self.eval_program(program, &environment)

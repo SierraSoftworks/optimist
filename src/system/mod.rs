@@ -35,13 +35,21 @@
 //! whatever a manifest says it is, and a constraint called `iops` is ranked by
 //! exactly the same arithmetic as one called `bandwidth`.
 
+mod bottleneck;
 mod catalogue;
+mod compile;
+mod evaluate;
 mod expression;
 mod manifest;
+mod model;
 mod validate;
+mod values;
 
+pub use bottleneck::{Bottleneck, bottlenecks};
 pub use catalogue::{CatalogueError, builtin_catalogue};
+pub use evaluate::{ComponentState, Evaluation, EvaluationConfig, EvaluationError, Step, evaluate};
 pub use manifest::{
     Channel, ComponentType, ComponentTypeId, Constraint, Port, PortArity, Property,
 };
+pub use model::{Component, ComponentId, Relationship, ScratchpadEntry, SystemModel};
 pub use validate::ComponentTypeError;
