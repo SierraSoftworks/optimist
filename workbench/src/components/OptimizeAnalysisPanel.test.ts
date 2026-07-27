@@ -85,7 +85,7 @@ describe('OptimizeAnalysisPanel', () => {
         .get('figure[aria-label="Reliability over time, with and without this intervention"]')
         .text(),
     ).toContain('resting level')
-    await wrapper.get('.candidate-header').trigger('click')
+    await wrapper.get('.candidate-summary').trigger('click')
     expect(wrapper.emitted('selectCandidate')![0]).toEqual(['B', ['B', 'A']])
   })
 
@@ -157,13 +157,14 @@ describe('OptimizeAnalysisPanel', () => {
       },
     })
 
-    const impacts = wrapper.findAll('.relative-impact')
+    // The rail carries every candidate's change so they can be compared at once.
+    const summaries = wrapper.findAll('.summary-change')
     // Against the surge's 0.2 the mitigation's 0.4 doubles the outcome; against
     // the resting 0.5 it would have read as a loss.
-    expect(impacts[0]!.text()).toBe('100.0% better')
-    expect(impacts[0]!.attributes('data-impact')).toBe('positive')
+    expect(summaries[0]!.text()).toBe('100.0% better')
+    expect(summaries[0]!.attributes('data-impact')).toBe('positive')
     // The surge itself requires nothing, so it is still read against rest.
-    expect(impacts[1]!.text()).toBe('60.0% worse')
+    expect(summaries[1]!.text()).toBe('60.0% worse')
     expect(wrapper.findAll('.trajectory')[0]!.text()).toContain('prerequisites alone')
   })
 

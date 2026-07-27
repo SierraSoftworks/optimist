@@ -8,6 +8,10 @@ export type WorkbenchMode = 'explore' | 'impediments' | 'feedback' | 'optimize'
 export const useWorkbenchStore = defineStore('workbench', () => {
   const selectedProjectId = ref<string | null>(null)
   const selectedNodeId = ref<string | null>(null)
+  /** Scenario the optimize view is reading; addressable, so it lives here. */
+  const selectedScenarioId = ref<string | null>(null)
+  /** Candidate intervention whose detail the optimize view is showing. */
+  const selectedCandidateId = ref<string | null>(null)
   const search = ref('')
   const mode = ref<WorkbenchMode>('explore')
   const setupOnly = ref(false)
@@ -20,6 +24,18 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   function selectProject(id: string | null) {
     selectedProjectId.value = id
     selectedNodeId.value = null
+    selectedScenarioId.value = null
+    selectedCandidateId.value = null
+  }
+
+  /** Opens a scenario, dropping a candidate selected under the previous one. */
+  function selectScenario(id: string | null) {
+    selectedScenarioId.value = id
+    selectedCandidateId.value = null
+  }
+
+  function selectCandidate(id: string | null) {
+    selectedCandidateId.value = id
   }
 
   function selectNode(id: string | null) {
@@ -50,11 +66,15 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   return {
     selectedProjectId,
     selectedNodeId,
+    selectedScenarioId,
+    selectedCandidateId,
     search,
     mode,
     setupOnly,
     visibleKinds,
     selectProject,
+    selectScenario,
+    selectCandidate,
     selectNode,
     toggleKind,
     toggleSetupOnly,

@@ -29,7 +29,8 @@ test('creates and compares finite-horizon scenario candidates', async ({ page },
   await expect.poll(() => scenarioForm.evaluate((form) => (form as HTMLFormElement).checkValidity())).toBe(true)
   await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
   const panel = page.getByLabel('Optimize analysis')
-  await expect(panel.getByText('Automate', { exact: true })).toBeVisible()
+  // The rail names every candidate; the pane heads the one being read.
+  await expect(panel.getByRole('heading', { name: 'Automate' })).toBeVisible()
   await expect(panel.getByRole('cell', { name: '24.0% better' })).toBeVisible()
   await expect(panel.getByRole('columnheader', { name: 'Without' })).toBeVisible()
   // Scope prose is one click away rather than competing with the result.

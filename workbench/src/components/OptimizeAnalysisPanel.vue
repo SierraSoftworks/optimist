@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
+import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
 import type { FeedbackLoop, GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
 import { impactTone } from '../domain/optimizationImpact'
 import { formatSiNumber } from '../domain/humanNumber'
@@ -28,6 +28,19 @@ const emit = defineEmits<{
 const selectedScenario = computed(() =>
   props.scenarios.find((scenario) => scenario.id === props.selectedScenarioId) ?? null,
 )
+/**
+ * Candidate whose detail the pane shows.
+ *
+ * Falls back to the first so the pane is never empty while candidates exist:
+ * the selection is reconciled asynchronously once the projection arrives, and
+ * showing nothing in two thirds of the view in the meantime helps no one.
+ */
+const selectedCandidate = computed(() => {
+  const candidates = props.analysis?.candidates ?? []
+  return candidates.find((candidate) => candidate.intervention === props.selectedCandidateId)
+    ?? candidates[0]
+    ?? null
+})
 const nodeTitles = computed(() => new Map(props.nodes.map((node) => [node.id, node.title])))
 
 /**
@@ -228,97 +241,138 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
           <span>A deviation entering these loops is not shown to decay, so it grows each period until the destination's declared support clamps it and the projection reports that bound more than the intervention. A mean gain below one is not on its own a guarantee: what matters is how often the sampled responses multiply past it. An unknown gain means a node equation sits on the loop, which admits no elasticity to multiply rather than being safe.</span>
         </div>
       </div>
-      <div v-if="analysis.candidates.length" class="candidate-list">
-        <article v-for="candidate in analysis.candidates" :key="candidate.intervention" :class="{ selected: selectedCandidateId === candidate.intervention }">
-          <button type="button" class="candidate-header" :aria-pressed="selectedCandidateId === candidate.intervention" @click="selectCandidate(candidate)">
-            <span><strong>{{ title(candidate.intervention) }}</strong><small>{{ candidate.intervention }}</small></span>
+      <div v-if="analysis.candidates.length" class="optimize-workspace">
+        <nav class="candidate-rail" aria-label="Intervention candidates">
+          <button
+            v-for="candidate in analysis.candidates"
+            :key="candidate.intervention"
+            type="button"
+            class="candidate-summary"
+            :class="{ selected: selectedCandidateId === candidate.intervention }"
+            :aria-pressed="selectedCandidateId === candidate.intervention"
+            @click="selectCandidate(candidate)"
+          >
+            <span class="candidate-name">
+              <strong>{{ title(candidate.intervention) }}</strong>
+              <small>{{ candidate.intervention }}</small>
+            </span>
             <span
               v-if="candidate.diagnostics.status !== 'converged'"
               class="diagnostic-status"
               :data-status="candidate.diagnostics.status"
             >{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</span>
-          </button>
-          <dl class="candidate-diagnostics">
-            <div><dt><Clock3 :size="13" /> Total duration</dt><dd>{{ number(candidate.execution_duration.mean) }} periods</dd></div>
-            <div><dt><CheckCircle2 :size="13" /> Plan success</dt><dd>{{ candidate.execution_success.mean === null ? 'Unavailable' : `${(candidate.execution_success.mean * 100).toFixed(1)}%` }}</dd></div>
-            <div v-for="concern in concerns(candidate)" :key="concern.label" class="negative">
-              <dt><AlertTriangle :size="13" /> {{ concern.label }}</dt><dd>{{ concern.value }}</dd>
-            </div>
-          </dl>
-          <details class="detail-disclosure">
-            <summary><ChevronRight :size="13" /> Run detail</summary>
-            <dl class="fact-list">
-              <div><dt>Valid draws</dt><dd>{{ candidate.diagnostics.valid_samples }} / {{ candidate.diagnostics.attempted_samples }}</dd></div>
-              <div><dt>Invalid draws</dt><dd>{{ invalidSamples(candidate) }}</dd></div>
-              <div><dt>Clamped updates</dt><dd>{{ candidate.clamped_state_updates }}</dd></div>
-              <div><dt>Undefined responses</dt><dd>{{ candidate.undefined_responses }}</dd></div>
-              <div><dt>Convergence</dt><dd>{{ candidate.diagnostics.status.replaceAll('_', ' ') }}</dd></div>
-              <div><dt>Seed</dt><dd>{{ candidate.diagnostics.seed }}</dd></div>
-            </dl>
-          </details>
-          <div v-if="candidate.prerequisites.length || candidate.blocking_requirements.length || candidate.synergies.length || candidate.conflicts.length" class="execution-context">
-            <span v-if="candidate.prerequisites.length"><GitBranch :size="12" /> Requires first: {{ candidate.prerequisites.map(title).join(' → ') }}</span>
-            <span v-if="candidate.blocking_requirements.length" class="negative"><AlertTriangle :size="12" /> {{ candidate.blocking_requirements.length }} factor requirement{{ candidate.blocking_requirements.length === 1 ? '' : 's' }}</span>
-            <span v-if="candidate.synergies.length" class="positive"><Sparkles :size="12" /> Synergy: {{ candidate.synergies.map(title).join(', ') }}</span>
-            <span v-if="candidate.conflicts.length" class="negative"><AlertTriangle :size="12" /> Conflicts: {{ candidate.conflicts.map(title).join(', ') }}</span>
-          </div>
-          <table class="projection-table">
-            <caption class="sr-only">Objective projections for {{ title(candidate.intervention) }}</caption>
-            <thead><tr><th scope="col">Objective</th><th scope="col">Without</th><th scope="col">With</th><th scope="col">Change</th></tr></thead>
-            <tbody>
-              <tr v-for="objective in candidate.objectives" :key="objective.outcome" :class="{ unreachable: !objective.reachable }">
-                <th scope="row"><span>{{ title(objective.outcome) }}</span><small>{{ objective.reachable ? objective.direction : 'unreachable' }}</small></th>
-                <td class="settled">{{ quantity(withoutValue(candidate, objective), objective.outcome) }}</td>
-                <td class="settled">{{ quantity(objective.final_state.mean, objective.outcome) }}</td>
-                <td class="relative-impact" :data-impact="changeTone(candidate, objective)">{{ changeLabel(candidate, objective) }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-if="truncated(candidate).length" class="horizon-warning">
-            <Clock3 :size="13" />
-            <span>
-              {{ truncated(candidate).map((objective) => title(objective.outcome)).join(', ') }}
-              {{ truncated(candidate).length === 1 ? 'needs' : 'need' }} at least
-              {{ Math.max(...truncated(candidate).map((objective) => objective.periods_to_effect!)) }}
-              periods to respond, beyond this scenario's {{ analysis.planning_horizon }}. Their flat
-              result means the horizon ended first, not that the intervention failed.
-            </span>
-          </p>
-          <div class="trajectory-list">
-            <OutcomeTrajectory
-              v-for="objective in candidate.objectives.filter((objective) => objective.reachable)"
+            <span
+              v-for="objective in candidate.objectives"
               :key="objective.outcome"
-              :points="objective.trajectory"
-              :reference="referenceStates(
-                candidate,
-                objective.outcome,
-                referenceCandidate(candidate, analysis.candidates),
-                objective.trajectory.length,
-              )"
-              :label="title(objective.outcome)"
-              :unit="unit(objective.outcome)"
-              :direction="objective.direction"
-              :projected-reference="referenceCandidate(candidate, analysis.candidates) !== null"
-            />
-          </div>
-          <details v-if="candidate.states?.length" class="detail-disclosure state-traces">
-            <summary>Model states under this plan ({{ candidate.states.length }})</summary>
-            <p class="muted-note">
-              Every propagated state, in the order the graph settles them. A path that never
-              moves, or moves somewhere the unit cannot mean, is where a surprising projection
-              usually starts.
+              class="summary-objective"
+            >
+              <span class="summary-outcome">{{ title(objective.outcome) }}</span>
+              <span class="summary-shift">
+                <span>{{ quantity(withoutValue(candidate, objective), objective.outcome) }}</span>
+                <ArrowRight :size="11" />
+                <span>{{ quantity(objective.final_state.mean, objective.outcome) }}</span>
+              </span>
+              <span class="summary-change" :data-impact="changeTone(candidate, objective)">
+                {{ changeLabel(candidate, objective) }}
+              </span>
+            </span>
+          </button>
+        </nav>
+        <section v-if="selectedCandidate" class="candidate-detail" :aria-label="`${title(selectedCandidate.intervention)} projection detail`">
+          <article :key="selectedCandidate.intervention">
+            <header class="detail-header">
+              <div>
+                <span class="eyebrow">Candidate</span>
+                <h3>{{ title(selectedCandidate.intervention) }}</h3>
+              </div>
+              <span
+                v-if="selectedCandidate.diagnostics.status !== 'converged'"
+                class="diagnostic-status"
+                :data-status="selectedCandidate.diagnostics.status"
+              >{{ selectedCandidate.diagnostics.status.replaceAll('_', ' ') }}</span>
+            </header>
+            <dl class="candidate-diagnostics">
+              <div><dt><Clock3 :size="13" /> Total duration</dt><dd>{{ number(selectedCandidate.execution_duration.mean) }} periods</dd></div>
+              <div><dt><CheckCircle2 :size="13" /> Plan success</dt><dd>{{ selectedCandidate.execution_success.mean === null ? 'Unavailable' : `${(selectedCandidate.execution_success.mean * 100).toFixed(1)}%` }}</dd></div>
+              <div v-for="concern in concerns(selectedCandidate)" :key="concern.label" class="negative">
+                <dt><AlertTriangle :size="13" /> {{ concern.label }}</dt><dd>{{ concern.value }}</dd>
+              </div>
+            </dl>
+            <div v-if="selectedCandidate.prerequisites.length || selectedCandidate.blocking_requirements.length || selectedCandidate.synergies.length || selectedCandidate.conflicts.length" class="execution-context">
+              <span v-if="selectedCandidate.prerequisites.length"><GitBranch :size="12" /> Requires first: {{ selectedCandidate.prerequisites.map(title).join(' → ') }}</span>
+              <span v-if="selectedCandidate.blocking_requirements.length" class="negative"><AlertTriangle :size="12" /> {{ selectedCandidate.blocking_requirements.length }} factor requirement{{ selectedCandidate.blocking_requirements.length === 1 ? '' : 's' }}</span>
+              <span v-if="selectedCandidate.synergies.length" class="positive"><Sparkles :size="12" /> Synergy: {{ selectedCandidate.synergies.map(title).join(', ') }}</span>
+              <span v-if="selectedCandidate.conflicts.length" class="negative"><AlertTriangle :size="12" /> Conflicts: {{ selectedCandidate.conflicts.map(title).join(', ') }}</span>
+            </div>
+            <table class="projection-table">
+              <caption class="sr-only">Objective projections for {{ title(selectedCandidate.intervention) }}</caption>
+              <thead><tr><th scope="col">Objective</th><th scope="col">Without</th><th scope="col">With</th><th scope="col">Change</th></tr></thead>
+              <tbody>
+                <tr v-for="objective in selectedCandidate.objectives" :key="objective.outcome" :class="{ unreachable: !objective.reachable }">
+                  <th scope="row"><span>{{ title(objective.outcome) }}</span><small>{{ objective.reachable ? objective.direction : 'unreachable' }}</small></th>
+                  <td class="settled">{{ quantity(withoutValue(selectedCandidate, objective), objective.outcome) }}</td>
+                  <td class="settled">{{ quantity(objective.final_state.mean, objective.outcome) }}</td>
+                  <td class="relative-impact" :data-impact="changeTone(selectedCandidate, objective)">{{ changeLabel(selectedCandidate, objective) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-if="truncated(selectedCandidate).length" class="horizon-warning">
+              <Clock3 :size="13" />
+              <span>
+                {{ truncated(selectedCandidate).map((objective) => title(objective.outcome)).join(', ') }}
+                {{ truncated(selectedCandidate).length === 1 ? 'needs' : 'need' }} at least
+                {{ Math.max(...truncated(selectedCandidate).map((objective) => objective.periods_to_effect!)) }}
+                periods to respond, beyond this scenario's {{ analysis.planning_horizon }}. Their flat
+                result means the horizon ended first, not that the intervention failed.
+              </span>
             </p>
-            <div class="state-grid">
-              <StateTrace
-                v-for="path in candidate.states"
-                :key="path.state"
-                :points="path.points"
-                :label="title(path.state)"
-                :unit="unit(path.state)"
+            <div class="trajectory-list">
+              <OutcomeTrajectory
+                v-for="objective in selectedCandidate.objectives.filter((objective) => objective.reachable)"
+                :key="objective.outcome"
+                :points="objective.trajectory"
+                :reference="referenceStates(
+                  selectedCandidate,
+                  objective.outcome,
+                  referenceCandidate(selectedCandidate, analysis.candidates),
+                  objective.trajectory.length,
+                )"
+                :label="title(objective.outcome)"
+                :unit="unit(objective.outcome)"
+                :direction="objective.direction"
+                :projected-reference="referenceCandidate(selectedCandidate, analysis.candidates) !== null"
               />
             </div>
-          </details>
-        </article>
+            <details class="detail-disclosure">
+              <summary><ChevronRight :size="13" /> Run detail</summary>
+              <dl class="fact-list">
+                <div><dt>Valid draws</dt><dd>{{ selectedCandidate.diagnostics.valid_samples }} / {{ selectedCandidate.diagnostics.attempted_samples }}</dd></div>
+                <div><dt>Invalid draws</dt><dd>{{ invalidSamples(selectedCandidate) }}</dd></div>
+                <div><dt>Clamped updates</dt><dd>{{ selectedCandidate.clamped_state_updates }}</dd></div>
+                <div><dt>Undefined responses</dt><dd>{{ selectedCandidate.undefined_responses }}</dd></div>
+                <div><dt>Convergence</dt><dd>{{ selectedCandidate.diagnostics.status.replaceAll('_', ' ') }}</dd></div>
+                <div><dt>Seed</dt><dd>{{ selectedCandidate.diagnostics.seed }}</dd></div>
+              </dl>
+            </details>
+            <details v-if="selectedCandidate.states?.length" class="detail-disclosure state-traces">
+              <summary><ChevronRight :size="13" /> Model states under this plan ({{ selectedCandidate.states.length }})</summary>
+              <p class="muted-note">
+                Every propagated state, in the order the graph settles them. A path that never
+                moves, or moves somewhere the unit cannot mean, is where a surprising projection
+                usually starts.
+              </p>
+              <div class="state-grid">
+                <StateTrace
+                  v-for="path in selectedCandidate.states"
+                  :key="path.state"
+                  :points="path.points"
+                  :label="title(path.state)"
+                  :unit="unit(path.state)"
+                />
+              </div>
+            </details>
+          </article>
+        </section>
       </div>
       <div v-else class="analysis-empty">
         <BarChart3 :size="22" />
@@ -336,18 +390,10 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
 .projection-scope { margin-top: var(--space-3); }
 .projection-scope .analysis-boundary { margin-top: var(--space-2); }
 .scenario-edit-button { width: 36px; height: 36px; margin-bottom: 4px; border: 1px solid var(--line); background: white; }
-.candidate-list { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
-.candidate-list article { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; }
-.candidate-list article.selected { border-color: #285c91; box-shadow: 0 0 0 1px #285c91; }
-.candidate-header { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 0; background: transparent; text-align: left; }
-.candidate-header:hover, .candidate-header[aria-pressed='true'] { background: #edf3f9; }
-.candidate-header > span:first-child { display: grid; gap: 2px; }
-.candidate-header strong { font-size: var(--text-lg); }
-.candidate-header small { color: var(--muted); font: var(--text-2xs) var(--mono); }
 .diagnostic-status { flex: none; padding: 4px 7px; border-radius: var(--radius-sm); background: #edf0eb; color: var(--muted); font-size: var(--text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .diagnostic-status[data-status='maximum_samples_reached'], .diagnostic-status[data-status='insufficient_valid_samples'] { background: #fff2df; color: #8a5b00; }
-.candidate-diagnostics { grid-template-columns: 1fr; gap: 0; padding: 0 var(--space-4) var(--space-2); }
-.candidate-diagnostics div { grid-template-columns: 1fr auto; padding: 6px 0; border-bottom: 1px solid #eef0ec; font-size: var(--text-md); }
+.candidate-diagnostics { display: grid; grid-template-columns: 1fr; gap: 0; padding: 0 var(--space-4) var(--space-2); }
+.candidate-diagnostics div { display: grid; grid-template-columns: 1fr auto; padding: 6px 0; border-bottom: 1px solid #eef0ec; font-size: var(--text-md); }
 .candidate-diagnostics dt { display: flex; align-items: center; gap: 6px; }
 .candidate-diagnostics dd { font-family: var(--mono); font-size: var(--text-sm); }
 .candidate-diagnostics .negative dt, .candidate-diagnostics .negative dd { color: #984335; }
@@ -382,8 +428,33 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
 .state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: var(--space-2); }
 .optimize-panel { border: 0; background: #f4f6f1; }
 /*
- * Cards get wider before they get more numerous, so a large display shows two
- * readable comparisons rather than four cramped ones.
+ * The rail carries the comparison and the pane carries the reading.
+ *
+ * Every candidate's with/without/change is visible at once, which is the
+ * question a scenario exists to answer, while the charts and diagnostics that
+ * explain one of them get the room they need instead of being cropped into a
+ * card grid.
  */
-.candidate-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); align-items: start; }
+.optimize-workspace { display: grid; grid-template-columns: minmax(248px, 1fr) 2fr; align-items: start; gap: var(--space-4); margin-top: var(--space-4); }
+.candidate-rail { display: grid; align-content: start; gap: var(--space-2); }
+.candidate-summary { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: white; text-align: left; }
+.candidate-summary:hover { border-color: #b6c6d8; }
+.candidate-summary.selected { border-color: #285c91; box-shadow: 0 0 0 1px #285c91; }
+.candidate-name { display: grid; gap: 1px; }
+.candidate-name strong { font-size: var(--text-md); }
+.candidate-name small { color: var(--muted); font: var(--text-2xs) var(--mono); }
+.summary-objective { display: grid; gap: 1px; padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.summary-outcome { color: var(--muted); font-size: var(--text-2xs); }
+.summary-shift { display: flex; align-items: center; gap: 5px; color: var(--ink); font: var(--text-2xs) var(--mono); }
+.summary-shift svg { flex: none; color: var(--muted); }
+.summary-change { font-size: var(--text-xs); font-weight: 650; }
+.summary-change[data-impact='positive'] { color: #277445; }
+.summary-change[data-impact='negative'] { color: #a34335; }
+.summary-change[data-impact='neutral'] { color: var(--muted); }
+.candidate-detail article { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: white; }
+.detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-4) var(--space-4) var(--space-2); }
+.detail-header h3 { margin: 0; font-size: var(--text-xl); }
+@media (max-width: 900px) {
+  .optimize-workspace { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

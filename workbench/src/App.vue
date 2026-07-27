@@ -69,6 +69,7 @@ import type {
   SetNodeQuantityStateInput,
   SetStateRelationInput,
   ScenarioDraft,
+  ScenarioAnalysis,
   UpdateNodeInput,
 } from './api/types'
 import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
@@ -115,7 +116,7 @@ import { readRelationshipDraft, writeRelationshipDraft } from './domain/relation
 const restoredRelationshipDraft = readRelationshipDraft(sessionStorage)
 const store = useWorkbenchStore()
 const commandShortcutHint = commandShortcutLabel()
-const { mode, search, selectedNodeId, selectedProjectId, setupOnly, visibleKinds } = storeToRefs(store)
+const { mode, search, selectedNodeId, selectedProjectId, selectedScenarioId, selectedCandidateId, setupOnly, visibleKinds } = storeToRefs(store)
 const projectsQuery = useProjects()
 const projectQuery = useProject(selectedProjectId)
 const graph = useGraph(selectedProjectId)
@@ -151,9 +152,7 @@ const selectedObservation = ref<Observation | null>(null)
 const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
 const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
 const selectedFeedbackCycle = ref<number | null>(null)
-const selectedScenarioId = ref<string | null>(null)
 const scenarioDialogScenario = ref<import('./api/types').Scenario | null>(null)
-const selectedCandidateId = ref<string | null>(null)
 const highlightedNodeIds = ref<string[]>([])
 const highlightedEdgeIds = ref<string[]>([])
 const mutationError = ref<Error | null>(null)
@@ -337,20 +336,52 @@ watch(visibleNodes, (next) => {
 })
 
 watch([mode, selectedProjectId], () => clearFeedbackSelection())
+/**
+ * Reconciles the open scenario against the ones this project has.
+ *
+ * The selection arrives from the address bar as well as from the picker, so a
+ * link naming a scenario that has since been deleted has to land somewhere real.
+ * An undefined list is the query in flight rather than a project without
+ * scenarios, and discarding the link's scenario then would lose it.
+ */
 watch(
-  () => scenariosQuery.data.value,
-  (scenarios) => {
-    if (!scenarios?.length) {
-      selectedScenarioId.value = null
+  [() => scenariosQuery.data.value, selectedScenarioId],
+  ([scenarios]) => {
+    if (!scenarios) return
+    if (!scenarios.length) {
+      store.selectScenario(null)
       return
     }
-    if (!selectedScenarioId.value || !scenarios.some((scenario) => scenario.id === selectedScenarioId.value)) {
-      selectedScenarioId.value = scenarios[0]!.id
+    if (
+      !selectedScenarioId.value
+      || !scenarios.some((scenario) => scenario.id === selectedScenarioId.value)
+    ) {
+      store.selectScenario(scenarios[0]!.id)
     }
   },
   { immediate: true },
 )
-watch([mode, selectedProjectId, selectedScenarioId], () => clearOptimizeSelection())
+/**
+ * Opens a candidate as soon as the projection offers one, defaulting to the
+ * first, and replaces a selection the projection no longer contains.
+ *
+ * The detail pane shows one candidate at a time, so leaving nothing selected
+ * would show an empty two thirds of the view for no reason.
+ */
+watch(
+  [() => scenarioAnalysis.data.value, selectedCandidateId],
+  ([analysis]) => {
+    const candidates = analysis?.candidates ?? []
+    if (!candidates.length) return
+    if (
+      !selectedCandidateId.value
+      || !candidates.some((candidate) => candidate.intervention === selectedCandidateId.value)
+    ) {
+      selectCandidate(candidates[0]!.intervention, highlightsFor(candidates[0]!))
+    }
+  },
+  { immediate: true },
+)
 watch([mode, selectedProjectId], () => clearImpedimentSelection())
 watch(selectedProjectId, () => { commandBarOpen.value = false })
 watch(
@@ -472,22 +503,23 @@ function clearFeedbackSelection() {
 }
 
 function selectScenario(id: string) {
-  selectedScenarioId.value = id
+  store.selectScenario(id)
 }
 
 function selectCandidate(id: string, nodes: string[]) {
-  selectedCandidateId.value = id
+  store.selectCandidate(id)
   highlightedNodeIds.value = nodes
   highlightedEdgeIds.value = []
-  store.selectNode(id)
 }
 
-function clearOptimizeSelection() {
-  selectedCandidateId.value = null
-  if (mode.value === 'optimize') {
-    highlightedNodeIds.value = []
-    highlightedEdgeIds.value = []
-  }
+/** Nodes a candidate lights up in the graph: itself and the outcomes it reaches. */
+function highlightsFor(candidate: ScenarioAnalysis['candidates'][number]) {
+  return [
+    candidate.intervention,
+    ...candidate.objectives
+      .filter((objective) => objective.reachable)
+      .map((objective) => objective.outcome),
+  ]
 }
 
 function clearImpedimentSelection() {

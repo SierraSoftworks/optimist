@@ -5,7 +5,7 @@ import { useWorkbenchStore } from '../stores/workbench'
 import { parseRoute, routePath } from '../domain/route'
 
 /**
- * Binds the open project and the current view to the address bar.
+ * Binds the addressable workbench state to the address bar.
  *
  * The address bar is read once on load and again on every history entry, and it
  * is rewritten whenever the workbench moves. Writing compares against the
@@ -25,22 +25,41 @@ import { parseRoute, routePath } from '../domain/route'
  */
 export function useWorkbenchRoute(projects: Ref<Project[]>) {
   const store = useWorkbenchStore()
-  const { mode, selectedProjectId } = storeToRefs(store)
+  const { mode, selectedProjectId, selectedScenarioId, selectedCandidateId } = storeToRefs(store)
 
+  /**
+   * Applies the address bar to the workbench.
+   *
+   * Order matters: opening a project drops the scenario chosen under the last
+   * one, and opening a scenario drops the candidate chosen under that, so each
+   * is set after whatever would have cleared it.
+   */
   function adopt() {
     const route = parseRoute(window.location.pathname)
     if (route.projectId && route.projectId !== selectedProjectId.value) {
       store.selectProject(route.projectId)
     }
     mode.value = route.mode
+    if (route.scenarioId && route.scenarioId !== selectedScenarioId.value) {
+      store.selectScenario(route.scenarioId)
+    }
+    if (route.candidateId) store.selectCandidate(route.candidateId)
   }
 
   adopt()
   window.addEventListener('popstate', adopt)
   onScopeDispose(() => window.removeEventListener('popstate', adopt))
 
-  watch([selectedProjectId, mode], () => {
-    const path = routePath({ projectId: selectedProjectId.value, mode: mode.value })
+  watch([selectedProjectId, mode, selectedScenarioId, selectedCandidateId], () => {
+    const path = routePath({
+      projectId: selectedProjectId.value,
+      mode: mode.value,
+      // Only the optimize view reads a scenario, so only it says so in the
+      // address bar; carrying one through explore would name state that view
+      // cannot act on.
+      scenarioId: mode.value === 'optimize' ? selectedScenarioId.value : null,
+      candidateId: mode.value === 'optimize' ? selectedCandidateId.value : null,
+    })
     if (path === window.location.pathname) return
     const leaving = parseRoute(window.location.pathname).projectId
     const navigating = leaving !== null && projects.value.some((project) => project.id === leaving)
