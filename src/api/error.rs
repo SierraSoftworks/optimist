@@ -79,20 +79,27 @@ impl From<WorkspaceError> for Rejected {
         let status = match error {
             WorkspaceError::NotFound { .. } => StatusCode::NOT_FOUND,
             WorkspaceError::UnsafeIdentifier { .. } => StatusCode::BAD_REQUEST,
-            WorkspaceError::Root { .. } | WorkspaceError::Unreadable { .. } => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            WorkspaceError::AlreadyExists { .. } => StatusCode::CONFLICT,
+            WorkspaceError::Root { .. }
+            | WorkspaceError::Unreadable { .. }
+            | WorkspaceError::Malformed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let advice = match error {
             WorkspaceError::NotFound { .. } => "List the workspace to see which designs exist.",
             WorkspaceError::UnsafeIdentifier { .. } => {
                 "Use the directory name of a design, in lower case."
             }
+            WorkspaceError::AlreadyExists { .. } => {
+                "Open the existing design, or choose another identifier."
+            }
             WorkspaceError::Root { .. } => {
                 "Check that the server can read the directory it was given."
             }
             WorkspaceError::Unreadable { .. } => {
                 "Fix the file named in the message, then reload the design."
+            }
+            WorkspaceError::Malformed { .. } => {
+                "This is a defect in the server rather than in the design."
             }
         };
         Self(

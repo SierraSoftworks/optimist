@@ -46,6 +46,9 @@ struct Controls {
     step: Option<f64>,
     #[serde(default)]
     intervention: Option<String>,
+    /// Whether to return every step rather than only the one it settled on.
+    #[serde(default)]
+    series: bool,
 }
 
 impl Controls {
@@ -83,6 +86,13 @@ impl Controls {
 /// draws on each is the answer.
 const DRAW_BUDGET: usize = 256;
 
+/// Draws returned for each quantity within a step of a series.
+///
+/// Smaller than [`DRAW_BUDGET`] because a series multiplies every quantity by
+/// the number of steps, and a chart of a value over time needs only enough draws
+/// per point to show the shape when somebody stops on one.
+const SERIES_DRAW_BUDGET: usize = 96;
+
 /// One solved quantity, summarised and sampled.
 #[derive(Serialize)]
 struct Quantity {
@@ -108,12 +118,12 @@ impl Quantity {
         }
     }
 
-    fn read(value: &Value) -> Option<Self> {
+    fn read(value: &Value, budget: usize) -> Option<Self> {
         match value {
             Value::Number(number) => Some(Self::certain(*number)),
             Value::Distribution(distribution) => {
                 let draws = distribution.samples().map_or_else(Vec::new, |samples| {
-                    samples.iter().take(DRAW_BUDGET).copied().collect()
+                    samples.iter().take(budget).copied().collect()
                 });
                 Some(Self {
                     mean: distribution.mean().ok()?,
@@ -126,6 +136,36 @@ impl Quantity {
             _ => None,
         }
     }
+}
+
+/// Every solved channel at one moment, by component and then by channel.
+type Solved = BTreeMap<String, BTreeMap<String, Quantity>>;
+
+fn solved(step: &crate::system::Step, budget: usize) -> Solved {
+    step.components
+        .iter()
+        .map(|(id, state)| {
+            let channels = state
+                .channels
+                .iter()
+                .filter_map(|(name, value)| {
+                    Quantity::read(value, budget).map(|quantity| (name.clone(), quantity))
+                })
+                .collect();
+            (id.to_string(), channels)
+        })
+        .collect()
+}
+
+/// One moment in a design's history.
+#[derive(Serialize)]
+struct Frame {
+    /// Elapsed seconds.
+    time: f64,
+    /// Whether relaxation settled at this step.
+    converged: bool,
+    /// Solved channels at this step.
+    components: Solved,
 }
 
 /// A solved design and what constrains it.
@@ -147,7 +187,15 @@ struct Analysis {
     /// loaded something is and not why, and the quantities feeding it are what a
     /// reader needs to answer that without issuing a second request against a
     /// design that may have moved.
-    components: BTreeMap<String, BTreeMap<String, Quantity>>,
+    components: Solved,
+    /// Every step, oldest first, where the caller asked for them.
+    ///
+    /// Omitted by default. A horizon of a few hundred steps multiplies the
+    /// response by the same factor, and most requests want only the state the
+    /// design settled on. Each step carries fewer draws than the settled one for
+    /// the same reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    series: Option<Vec<Frame>>,
     /// Constraints, worst first.
     bottlenecks: Vec<Bottleneck>,
 }
@@ -160,6 +208,7 @@ async fn analysis(
     let session = open(&workspace, &design)?;
     let config = controls.config();
     let intervention = controls.intervention.clone();
+    let wanted = controls.series;
 
     let analysis = tokio::task::spawn_blocking(move || {
         let snapshot = session.snapshot();
@@ -175,25 +224,23 @@ async fn analysis(
         }?;
         let settled = evaluation.settled();
         let ranked = bottlenecks(&snapshot.model, &types, settled, config)?;
-        let components = settled
-            .components
-            .iter()
-            .map(|(id, state)| {
-                let channels = state
-                    .channels
-                    .iter()
-                    .filter_map(|(name, value)| {
-                        Quantity::read(value).map(|quantity| (name.clone(), quantity))
-                    })
-                    .collect();
-                (id.to_string(), channels)
-            })
-            .collect();
+        let series = wanted.then(|| {
+            evaluation
+                .steps
+                .iter()
+                .map(|step| Frame {
+                    time: step.time,
+                    converged: step.converged,
+                    components: solved(step, SERIES_DRAW_BUDGET),
+                })
+                .collect()
+        });
         Ok::<_, crate::system::EvaluationError>(Analysis {
             sequence: snapshot.sequence,
             converged: evaluation.converged(),
             iterations: settled.iterations,
-            components,
+            components: solved(settled, DRAW_BUDGET),
+            series,
             bottlenecks: ranked,
         })
     })

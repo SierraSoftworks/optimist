@@ -106,6 +106,18 @@ pub enum WorkspaceError {
         /// The rejected identifier.
         value: String,
     },
+    /// A design already goes by that name.
+    AlreadyExists {
+        /// The identifier requested.
+        id: String,
+    },
+    /// A design could not be written.
+    Malformed {
+        /// The identifier requested.
+        id: String,
+        /// What went wrong while rendering it.
+        message: String,
+    },
     /// The design exists but could not be read.
     Unreadable {
         /// The identifier requested.
@@ -126,6 +138,12 @@ impl std::fmt::Display for WorkspaceError {
             ),
             Self::Unreadable { id, source } => {
                 write!(formatter, "design '{id}' could not be read: {source}")
+            }
+            Self::AlreadyExists { id } => {
+                write!(formatter, "a design named '{id}' already exists")
+            }
+            Self::Malformed { id, message } => {
+                write!(formatter, "design '{id}' could not be written: {message}")
             }
         }
     }
@@ -186,6 +204,55 @@ impl Workspace {
         }
         designs.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(designs)
+    }
+
+    /// Creates an empty design and returns its session.
+    ///
+    /// The directory is written before the session is opened, so a design exists
+    /// on disk from the moment it is named rather than only once somebody edits
+    /// it. A design that is created and abandoned is then a visible empty
+    /// directory rather than nothing at all, which is the behaviour that makes
+    /// the workspace listing trustworthy.
+    ///
+    /// Refuses to overwrite. Reusing an existing identifier is far more likely to
+    /// be a mistake than an intention, and the cost of being wrong is somebody
+    /// else's design.
+    pub fn create(
+        &self,
+        id: &DesignId,
+        name: &str,
+        summary: &str,
+    ) -> Result<Arc<Session>, WorkspaceError> {
+        let directory = self.root.join(id.as_str());
+        if directory.join("_system.yaml").exists() {
+            return Err(WorkspaceError::AlreadyExists { id: id.to_string() });
+        }
+        fs::create_dir_all(directory.join("components")).map_err(|source| {
+            WorkspaceError::Root {
+                path: directory.display().to_string(),
+                source,
+            }
+        })?;
+        let document = SystemDocument {
+            schema_version: crate::system::SCHEMA_VERSION,
+            name: name.to_owned(),
+            summary: summary.to_owned(),
+            scratchpad: Vec::new(),
+            scale_units: Vec::new(),
+            interventions: Vec::new(),
+        };
+        let rendered =
+            serde_yaml_ng::to_string(&document).map_err(|error| WorkspaceError::Malformed {
+                id: id.to_string(),
+                message: error.to_string(),
+            })?;
+        fs::write(directory.join("_system.yaml"), rendered).map_err(|source| {
+            WorkspaceError::Root {
+                path: directory.display().to_string(),
+                source,
+            }
+        })?;
+        self.session(id)
     }
 
     /// Opens a design, loading it if this is the first request for it.

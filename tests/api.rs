@@ -299,6 +299,115 @@ async fn solving_returns_the_draws_behind_each_quantity() {
     assert_eq!(capacity["mean"], 400.0);
 }
 
+/// A design can be started empty and edited into existence.
+///
+/// The first thing anybody does is name the system they are about to model, so
+/// a design with nothing in it has to be storable. Requiring a component before
+/// a design can exist would mean the first edit had to carry the creation too.
+#[tokio::test]
+async fn a_design_can_be_created_and_then_edited() {
+    let root = workspace("create");
+    let address = serve(&root).await;
+
+    let (status, created) = post(
+        address,
+        "/api/v1/designs",
+        json!({ "id": "ledger", "name": "Ledger", "summary": "Books." }),
+    )
+    .await;
+    assert_eq!(status, 201);
+    assert_eq!(created["name"], "Ledger");
+    assert_eq!(
+        created["model"]["components"]
+            .as_array()
+            .expect("array")
+            .len(),
+        0
+    );
+
+    let (status, listing) = get(address, "/api/v1/designs").await;
+    assert_eq!(status, 200);
+    assert_eq!(listing.as_array().expect("array").len(), 1);
+
+    let (status, applied) = post(
+        address,
+        "/api/v1/designs/ledger/mutations",
+        json!({ "mutations": [component("users")] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{applied}");
+    assert_eq!(applied["applied"], 1);
+}
+
+/// Two designs cannot share an identifier.
+///
+/// The identifier is a directory name, so accepting a repeat would overwrite
+/// somebody else's design. A conflict is the safe answer.
+#[tokio::test]
+async fn a_design_cannot_be_created_twice() {
+    let root = workspace("create-twice");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, failure) = post(address, "/api/v1/designs", json!({ "id": "checkout" })).await;
+    assert_eq!(status, 409);
+    assert!(
+        failure["message"]
+            .as_str()
+            .expect("message")
+            .contains("checkout"),
+        "{failure}"
+    );
+
+    // A name that could climb out of the workspace is refused before it reaches
+    // the filesystem.
+    let (status, _) = post(address, "/api/v1/designs", json!({ "id": "../escape" })).await;
+    assert_eq!(status, 400);
+}
+
+/// Solving can report every step, which is what a chart over time needs.
+#[tokio::test]
+async fn a_series_is_returned_only_when_it_is_asked_for() {
+    let root = workspace("series");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (_, quiet) = get(
+        address,
+        "/api/v1/designs/checkout/analysis?samples=128&horizon=4",
+    )
+    .await;
+    assert!(
+        quiet["series"].is_null(),
+        "a series costs a horizon's worth of draws"
+    );
+
+    let (status, full) = get(
+        address,
+        "/api/v1/designs/checkout/analysis?samples=128&horizon=4&series=true",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let steps = full["series"].as_array().expect("series");
+    assert_eq!(steps.len(), 4, "one frame per step");
+    assert_eq!(steps[0]["time"], 0.0);
+    assert!(steps[0]["components"]["api"]["offered"]["mean"].is_number());
+}
+
+/// The catalogue carries the language's vocabulary for the editor to complete.
+#[tokio::test]
+async fn the_catalogue_lists_what_an_expression_may_call() {
+    let root = workspace("builtins");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, catalogue) = get(address, "/api/v1/designs/checkout/catalogue").await;
+    assert_eq!(status, 200);
+    let builtins = catalogue["builtins"].as_array().expect("builtins");
+    assert!(builtins.iter().any(|name| name == "Little.occupancy"));
+    assert!(builtins.iter().any(|name| name == "normal"));
+}
+
 /// A proposal is weighed against the design over the same surface.
 #[tokio::test]
 async fn a_proposal_can_be_compared_over_http() {

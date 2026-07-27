@@ -18,7 +18,7 @@ use super::error::Rejected;
 
 pub(super) fn router() -> Router<Arc<Workspace>> {
     Router::new()
-        .route("/api/v1/designs", get(list))
+        .route("/api/v1/designs", get(list).post(create))
         .route("/api/v1/designs/{design}", get(show))
         .route("/api/v1/designs/{design}/catalogue", get(catalogue))
         .route("/api/v1/designs/{design}/mutations", post(mutate))
@@ -28,6 +28,37 @@ async fn list(
     State(workspace): State<Arc<Workspace>>,
 ) -> Result<Json<Vec<crate::session::DesignSummary>>, Rejected> {
     Ok(Json(workspace.designs()?))
+}
+
+/// What a client must say to start a design.
+#[derive(Deserialize)]
+struct NewDesign {
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    summary: String,
+}
+
+/// Starts an empty design.
+///
+/// The identifier becomes a directory name, so it is checked against the same
+/// rule that guards every other path this server builds. A design with no
+/// components is a valid design: it is what somebody has after naming the thing
+/// they are about to model, and refusing to store it would mean the first edit
+/// had to carry the creation too.
+async fn create(
+    State(workspace): State<Arc<Workspace>>,
+    Json(request): Json<NewDesign>,
+) -> Result<(axum::http::StatusCode, Json<Snapshot>), Rejected> {
+    let id = DesignId::new(request.id.clone())?;
+    let name = if request.name.trim().is_empty() {
+        request.id
+    } else {
+        request.name
+    };
+    let session = workspace.create(&id, &name, &request.summary)?;
+    Ok((axum::http::StatusCode::CREATED, Json(session.snapshot())))
 }
 
 async fn show(
@@ -42,6 +73,13 @@ async fn show(
 struct Catalogue {
     component_types: BTreeMap<String, ComponentType>,
     mutators: BTreeMap<String, Mutator>,
+    /// Every name an expression may call.
+    ///
+    /// Sent with the catalogue because an editor needs it to complete what
+    /// somebody is typing, and the alternative is a copy of the language's
+    /// vocabulary maintained in the client that drifts from the one the server
+    /// will actually evaluate against.
+    builtins: Vec<&'static str>,
 }
 
 async fn catalogue(
@@ -52,6 +90,7 @@ async fn catalogue(
     Ok(Json(Catalogue {
         component_types,
         mutators,
+        builtins: crate::squiggle::builtin_names(),
     }))
 }
 
