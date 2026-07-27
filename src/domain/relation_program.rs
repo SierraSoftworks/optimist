@@ -64,23 +64,20 @@ pub struct RelationBindings {
 }
 
 impl RelationBindings {
-    fn module(&self) -> Value {
-        Value::Dictionary(BTreeMap::from([
-            (BASELINE_BINDING.to_owned(), Value::Number(self.baseline)),
-            ("parents".to_owned(), numbers(&self.parents)),
-            ("parameters".to_owned(), numbers(&self.parameters)),
-            ("activations".to_owned(), numbers(&self.activations)),
-        ]))
+    /// Yields every bound name with its sampled value.
+    ///
+    /// Order does not matter to the evaluator, which resolves names by lookup;
+    /// it exists so the scope can be filled without allocating a map.
+    fn entries(&self) -> impl Iterator<Item = (&str, f64)> {
+        std::iter::once((BASELINE_BINDING, self.baseline))
+            .chain(map_entries(&self.parents))
+            .chain(map_entries(&self.parameters))
+            .chain(map_entries(&self.activations))
     }
 }
 
-fn numbers(values: &BTreeMap<String, f64>) -> Value {
-    Value::Dictionary(
-        values
-            .iter()
-            .map(|(name, value)| (name.clone(), Value::Number(*value)))
-            .collect(),
-    )
+fn map_entries(values: &BTreeMap<String, f64>) -> impl Iterator<Item = (&str, f64)> {
+    values.iter().map(|(name, value)| (name.as_str(), *value))
 }
 
 /// A parsed, unit-checked state relation ready for repeated evaluation.
@@ -88,9 +85,16 @@ fn numbers(values: &BTreeMap<String, f64>) -> Value {
 /// Compiling separates the expensive work, parsing and static checking, from the
 /// per-period work, so a projection pays for the syntax tree once and then
 /// evaluates it for every draw and period.
+///
+/// Only the authored calculation is retained. Unit checking runs against a
+/// generated prelude that declares and annotates every bound name, but those
+/// annotations are a static claim: the evaluator carries plain numbers and never
+/// reads them. Keeping the prelude for evaluation would mean rebuilding a nested
+/// dictionary of every binding, deep-copying it on import, and re-running one
+/// assignment per name, for every state in every period of every draw.
 #[derive(Clone, Debug)]
 pub struct RelationProgram {
-    program: Program,
+    body: Program,
 }
 
 impl RelationProgram {
@@ -113,7 +117,13 @@ impl RelationProgram {
         if let Some(diagnostic) = lint_program(&program).into_iter().next() {
             return Err(RelationError::Diagnostic(diagnostic.message));
         }
-        Ok(Self { program })
+        let body = parse(source).map_err(|diagnostics| {
+            RelationError::Diagnostic(diagnostics.first().map_or_else(
+                || "invalid relation".to_owned(),
+                |value| value.message.clone(),
+            ))
+        })?;
+        Ok(Self { body })
     }
 
     /// Creates a runtime this program can be evaluated on repeatedly.
@@ -137,9 +147,8 @@ impl RelationProgram {
         runtime: &mut Runtime,
         bindings: &RelationBindings,
     ) -> Result<f64, RelationError> {
-        runtime.register_module(BINDINGS_MODULE, bindings.module());
         let value = runtime
-            .evaluate_program(&self.program)
+            .evaluate_bound(&self.body, bindings.entries())
             .map_err(|diagnostic| RelationError::Diagnostic(diagnostic.message))?;
         match value {
             Value::Number(value) if value.is_finite() => Ok(value),

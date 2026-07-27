@@ -152,6 +152,27 @@ impl Runtime {
         let environment = self.globals.child();
         self.eval_program(program, &environment)
     }
+
+    /// Evaluates a parsed module with `bindings` already in scope as numbers.
+    ///
+    /// Registering a module and importing it copies the whole exported value into
+    /// the run's scope, which is the wrong shape for a caller that re-evaluates
+    /// one small program with different numbers thousands of times. Defining the
+    /// values directly costs one scope entry each instead.
+    pub fn evaluate_bound<'a>(
+        &mut self,
+        program: &Program,
+        bindings: impl IntoIterator<Item = (&'a str, f64)>,
+    ) -> Result<Value, Diagnostic> {
+        self.steps = 0;
+        self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
+        let environment = self.globals.child();
+        for (name, value) in bindings {
+            environment.define(name, Value::Number(value));
+        }
+        self.eval_program(program, &environment)
+            .map(|output| output.value)
+    }
 }
 
 pub(crate) fn builtin_signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {
