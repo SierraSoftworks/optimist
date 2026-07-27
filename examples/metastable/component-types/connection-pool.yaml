@@ -1,0 +1,72 @@
+id: connection-pool
+name: Connection pool
+summary: >
+  A service reached through a bounded set of connections, where a caller occupies
+  a connection for the whole call rather than only while it is being served.
+
+  That distinction moves the saturation point. A worker pool that frees its slot
+  the moment service ends saturates when arrivals reach slots divided by service
+  time. A connection held through queueing saturates at a quarter of that,
+  because every extra unit of delay is also an extra unit of occupancy, and the
+  occupancy is what produced the delay.
+
+  The component does not compute its own occupancy. It is told, by the caller that
+  holds the connections, which is what allows the deadline the caller enforces to
+  bound a loop that would otherwise run away.
+inbound:
+  arity: many
+  summary: Callers holding connections open against this service.
+outbound:
+  arity: many
+  summary: Anything this service calls in turn.
+properties:
+  connection_limit:
+    unit: op
+    summary: >
+      Connections the service will hold open at once. This is the parameter that
+      places both thresholds of the collapse, so it is worth knowing precisely
+      rather than estimating.
+  service_time:
+    unit: s
+    summary: >
+      Time to serve one call with nothing queued ahead of it. Measure it on an
+      idle service: taken under load it already contains the queueing delay, and
+      the model would then add that delay a second time.
+channels:
+  held:
+    unit: op
+    summary: Connections occupied by callers.
+    expression: inbound.occupancy
+  calls:
+    unit: op/s
+    summary: Calls arriving from all callers, retries included.
+    expression: inbound.rate
+  utilisation:
+    unit: '1'
+    summary: >
+      Connections in use against the limit. Allowed to exceed one, because a
+      caller holding more connections than the service offers is a fact worth
+      reporting rather than an impossibility worth hiding; the queueing results
+      below do their own clamping before they divide by the headroom left.
+    expression: Queue.utilisation(held, connection_limit)
+  wait:
+    unit: s
+    summary: >
+      Delay before a call is served, from the M/M/1 result. Exponential service is
+      the most variable law for a given mean, so this errs toward predicting more
+      delay rather than less.
+    expression: Queue.mm1Wait(service_time, utilisation)
+  latency:
+    unit: s
+    summary: Time a call takes end to end, queueing and service.
+    expression: wait + service_time
+outputs:
+  added_latency: latency
+constraints:
+  connections:
+    summary: >
+      Connections in use against the limit. Saturating this is not a gradual
+      degradation: the delay it produces lengthens the hold on every other
+      connection, which is the mechanism the whole design exists to study.
+    demand: held
+    limit: connection_limit

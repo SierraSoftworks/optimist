@@ -1,0 +1,12 @@
+id: shoppers
+name: Shoppers
+type: client
+properties:
+  request_rate: demand
+outgoing:
+  - to: checkout
+    summary: Checkout requests, refused above the admission limit.
+    mutators:
+      - type: load-shed
+        properties:
+          limit: admission_limit

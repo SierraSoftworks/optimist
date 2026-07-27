@@ -1,0 +1,157 @@
+schema_version: 2
+name: Metastable saturation
+summary: >
+  A checkout service whose dependency connections are held for the life of a
+  request. The design has two steady states over a band of load, and the point of
+  the model is that neither threshold is where intuition puts it: the load that
+  tips the system over is not the load it recovers at, and the deadline reached
+  for to protect requests is what makes the trap deeper.
+scratchpad:
+  - name: base_demand
+    expression: '100'
+    unit: op/s
+    summary: Checkout requests per second at rest.
+  - name: surge_factor
+    expression: '5'
+    unit: '1'
+    summary: >
+      Multiple of resting demand applied during the surge window. The design is
+      studied with the surge already in its past, because the question worth
+      asking is not whether the surge hurt but whether anything got better once
+      it was over. Rebind to one to see the design that never had one.
+  - name: surge_from
+    expression: '5'
+    unit: s
+    summary: When the surge begins.
+  - name: surge_until
+    expression: '15'
+    unit: s
+    summary: >
+      When the surge ends. What happens after this moment is the whole question:
+      demand returns to a level the design handled comfortably before.
+  - name: demand
+    expression: >
+      if t < surge_from then base_demand
+      else if t < surge_until then base_demand * surge_factor
+      else base_demand
+    unit: op/s
+    summary: Requests offered at this moment.
+  - name: connection_limit
+    expression: '220'
+    unit: op
+    summary: Connections the inventory service holds open at once.
+  - name: service_time
+    expression: 0.05 * lognormal(0, 0.1)
+    unit: s
+    summary: >
+      Time one inventory call takes unloaded. Uncertain because it is measured,
+      and the spread matters more than the mean: it decides how much of the
+      distribution sits on each side of the fold.
+  - name: call_depth
+    expression: '8'
+    unit: '1'
+    summary: Sequential inventory calls one checkout makes.
+  - name: request_deadline
+    expression: '2'
+    unit: s
+    summary: Budget for a complete checkout.
+  - name: attempt_timeout
+    expression: '1'
+    unit: s
+    summary: Time one inventory call is allowed before it is abandoned.
+  - name: max_attempts
+    expression: '3'
+    unit: '1'
+    summary: Attempts per inventory call, including the first.
+  - name: fold_load
+    expression: connection_limit / (4 * call_depth * service_time)
+    unit: op/s
+    summary: >
+      Load above which the healthy state stops existing.
+
+      Occupancy is arrivals times holding time, holding time is call depth times
+      latency, and latency is service stretched by occupancy. Writing u for
+      utilisation that is u(1-u) = load * depth * service / connections, whose
+      left side cannot exceed a quarter. Past that there is no root: no steady
+      state exists to settle into, and the system leaves for the other one.
+
+      The turning point sits at u = 1/2, so the healthy state never runs the
+      connections more than half occupied. Half occupancy is not headroom here.
+      It is the edge.
+  - name: release_load
+    expression: >
+      (connection_limit / request_deadline)
+      * max([1 - call_depth * service_time / request_deadline, 0])
+    unit: op/s
+    summary: >
+      Load below which the collapsed state stops existing.
+
+      Collapsed, every request holds a connection for the full deadline, so
+      occupancy is load times deadline. That state sustains itself only while the
+      delay it produces is bad enough to keep requests hitting the deadline, which
+      gives the expression here.
+
+      It is well below the fold, and the gap between them is the trap: demand
+      landing between the two can sit in either state, and which one it is in
+      depends on where it has been rather than on where it is.
+  - name: safe_admission
+    expression: 0.9 * release_load
+    unit: op/s
+    summary: >
+      A shedding target with margin under the release load. Shedding to just below
+      the release point recovers in theory and dithers in practice, because the
+      release point moves with the service time being measured.
+  - name: admission_limit
+    expression: '1000000'
+    unit: op/s
+    summary: >
+      Rate above which requests are refused at the front door. Effectively open
+      until an intervention closes it. Declared after the thresholds so that a
+      rebinding can be written against them rather than as a bare number.
+interventions:
+  - id: no-surge
+    name: Never have the surge
+    summary: >
+      The counterfactual. Demand holds at its resting level throughout, which is
+      the same level the design is offered after the surge ends, so this and the
+      unchanged design differ only in where they have been.
+    overrides:
+      - name: surge_factor
+        expression: '1'
+  - id: shed
+    name: Shed load
+    summary: >
+      Refuse requests above a rate chosen to sit under the release load. The only
+      lever here that acts on demand rather than on how long a request is allowed
+      to wait, and the only one that can end a collapse already underway.
+    overrides:
+      - name: admission_limit
+        expression: safe_admission
+  - id: longer-deadline
+    name: Give requests longer
+    summary: >
+      Raise the checkout budget from two seconds to five. The reflex when requests
+      start failing, and it moves the release load down rather than up, because a
+      doomed request now squats on a connection for five seconds instead of two.
+    overrides:
+      - name: request_deadline
+        expression: '5'
+  - id: fewer-retries
+    name: Cut the retry budget
+    summary: >
+      One attempt per call instead of three. Retries multiply both the calls
+      offered and the time each request holds its connection, so removing them
+      moves the fold up and away from the load being offered. Whether that helps
+      depends on which threshold the design is currently the wrong side of.
+    overrides:
+      - name: max_attempts
+        expression: '1'
+  - id: more-connections
+    name: Raise the connection limit
+    summary: >
+      Half again as many connections. Both thresholds are proportional to this
+      number, so buying capacity moves the trap rather than removing it.
+    overrides:
+      - name: connection_limit
+        expression: '330'
+scale_units: []

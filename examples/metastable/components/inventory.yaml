@@ -1,0 +1,12 @@
+id: inventory
+name: Inventory service
+type: connection-pool
+properties:
+  connection_limit: connection_limit
+  service_time: service_time
+outgoing:
+  - to: checkout
+    summary: >
+      Responses. Drawn as a relationship because the latency this service returns
+      is what decides how long the caller keeps its connection, and that is the
+      arrow closing the feedback loop.

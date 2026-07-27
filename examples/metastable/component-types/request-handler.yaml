@@ -1,0 +1,156 @@
+id: request-handler
+name: Request handler
+summary: >
+  A service that answers each request by making a sequence of calls to one
+  dependency, holding a connection for as long as the request is alive.
+
+  The connection is held through queueing, not just through service. That single
+  property is what makes this component behave unlike a worker pool: the
+  dependency's delay decides how long each connection is occupied, and the number
+  of connections occupied decides the dependency's delay. The loop closes through
+  the dependency rather than inside this component, which is why the design draws
+  a relationship in each direction.
+
+  A request that is going to fail keeps its connection until the deadline expires,
+  so the deadline is not only a promise to the caller. It is also the longest a
+  doomed request can occupy the resource that other requests are waiting for.
+inbound:
+  arity: many
+  summary: Callers offering requests, and the dependency returning its latency.
+outbound:
+  arity: many
+  summary: The dependency this service calls.
+properties:
+  call_depth:
+    unit: '1'
+    summary: >
+      Sequential dependency calls one request makes. Sequential is the load-bearing
+      word: the calls are waited out one after another, so their durations add.
+  attempt_timeout:
+    unit: s
+    summary: >
+      Time a single call is allowed before it is abandoned. Set well below the
+      request deadline, otherwise the request expires before any attempt is
+      retried and the retry budget is never spent.
+  max_attempts:
+    unit: '1'
+    summary: >
+      Attempts allowed per call, including the first. A budget of one disables
+      retrying without removing it from the model.
+  deadline:
+    unit: s
+    summary: >
+      Budget for a complete request. Longer is not safer here: it decides how long
+      a request that will fail anyway keeps occupying a dependency connection.
+channels:
+  arrivals:
+    unit: op/s
+    summary: Requests accepted from callers.
+    expression: inbound.rate
+  call_latency:
+    unit: s
+    summary: >
+      Time one call takes, as observed from the dependency. Floored just above
+      zero because the solver starts every quantity at rest, and a mean service
+      time of exactly zero has no exponential law to take a timeout against.
+    expression: max([inbound.added_latency, 0.000001])
+  attempt_success:
+    unit: '1'
+    summary: >
+      Probability one attempt returns before the timeout cuts it off. Service is
+      taken as exponential with mean `call_latency`, so this is the exponential
+      CDF evaluated at the timeout, which is the one-stage case of the deadline
+      race used below.
+    expression: Reliability.deadlineSuccess(1, call_latency, attempt_timeout)
+  attempt_duration:
+    unit: s
+    summary: >
+      Mean wall time of one attempt whether it returns or is abandoned, which for
+      an exponential cut off at the timeout is E[min(X,T)] = W(1-e^-T/W), the mean
+      times the success probability above.
+
+      This is the term that converts congestion into failure instead of into
+      waiting: it rises with latency only until it reaches the timeout, and then
+      stops. Past that point extra delay stops being visible as time spent and
+      starts being visible as attempts that failed.
+    expression: call_latency * attempt_success
+  expected_attempts:
+    unit: '1'
+    summary: >
+      Attempts actually spent per call, which approaches the full budget as the
+      chance of a single attempt succeeding falls. The dependency is asked to
+      serve this multiple of the offered call rate, so a dependency that begins
+      timing out is immediately asked to serve several times the traffic.
+    expression: Reliability.retryAttempts(attempt_success, max_attempts)
+  call_time:
+    unit: s
+    summary: Mean time one call occupies a connection, retries included.
+    expression: attempt_duration * expected_attempts
+  path_time:
+    unit: s
+    summary: >
+      Time a request would spend calling the dependency if nothing stopped it.
+      Compared against the deadline below rather than used directly.
+    expression: call_depth * call_time
+  holding:
+    unit: s
+    summary: >
+      Time a request actually occupies a connection, which is the shorter of the
+      work it has to do and the budget it is allowed. Taking the smaller per draw
+      is what bounds the feedback loop: without the deadline the occupancy this
+      component reports would grow without limit once the dependency saturates.
+    expression: min([path_time, deadline])
+  connections:
+    unit: op
+    summary: >
+      Connections occupied at any instant, by Little's Law. This is the quantity
+      the dependency reads back, and so the quantity that closes the loop.
+    expression: Little.occupancy(arrivals, holding)
+  calls:
+    unit: op/s
+    summary: Calls offered to the dependency, retries included.
+    expression: arrivals * call_depth * expected_attempts
+  call_success:
+    unit: '1'
+    summary: Probability a call succeeds within its retry budget.
+    expression: Reliability.retrySuccess(attempt_success, max_attempts)
+  path_success:
+    unit: '1'
+    summary: >
+      Probability every call in the sequence succeeds. Assumes calls fail
+      independently, which is optimistic: calls against a saturated dependency
+      fail together, so treat this as an upper bound during congestion.
+    expression: Reliability.serialSuccess(call_success, call_depth)
+  deadline_success:
+    unit: '1'
+    summary: >
+      Probability the sequence finishes inside the deadline, given every call
+      succeeded. A sum of `call_depth` exponential calls is Erlang, so this is
+      that distribution's CDF at the deadline.
+    expression: Reliability.deadlineSuccess(call_depth, call_time, deadline)
+  success_rate:
+    unit: '1'
+    summary: >
+      Share of requests answered: every call has to succeed, and the sequence has
+      to finish in time.
+    expression: path_success * deadline_success
+  served:
+    unit: op/s
+    summary: Requests answered successfully.
+    expression: arrivals * success_rate
+  failed:
+    unit: op/s
+    summary: Requests that ran out of retries or ran out of time.
+    expression: arrivals - served
+outputs:
+  rate: calls
+  occupancy: connections
+constraints:
+  deadline:
+    summary: >
+      Work the request has to do against the time it is allowed. Saturating means
+      requests are being abandoned mid-flight, and every abandoned request is
+      still holding a dependency connection for the full budget while it waits to
+      be told so.
+    demand: path_time
+    limit: deadline

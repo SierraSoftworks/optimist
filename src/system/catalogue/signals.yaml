@@ -6,6 +6,23 @@ rate:
   aggregate: sum
   extensive: true
 
+occupancy:
+  unit: op
+  summary: >
+    Operations in flight along the relationship: work a caller is holding open
+    against whatever is downstream of it. Adds across arrivals and is shared out
+    across replicas, as a rate is, because it counts work rather than describing
+    it.
+
+    Distinct from rate because a resource can be sized by either, and which one
+    binds is not a property of the resource. A connection pool is exhausted by
+    calls held at once; a service is exhausted by calls arriving per second. A
+    component that publishes this is asserting that the caller holds something
+    for the whole call, which is what allows the callee's delay to feed back into
+    the callee's own occupancy.
+  aggregate: sum
+  extensive: true
+
 added_latency:
   unit: s
   summary: >

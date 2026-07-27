@@ -1,0 +1,11 @@
+id: checkout
+name: Checkout service
+type: request-handler
+properties:
+  call_depth: call_depth
+  attempt_timeout: attempt_timeout
+  max_attempts: max_attempts
+  deadline: request_deadline
+outgoing:
+  - to: inventory
+    summary: Sequential inventory calls, each holding a connection until it returns.
