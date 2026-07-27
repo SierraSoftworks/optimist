@@ -23,3 +23,5 @@ pub mod server;
 pub mod squiggle;
 /// Backend-independent graph persistence contracts and implementations.
 pub mod store;
+/// Declarative component types for non-abstract large system design.
+pub mod system;

@@ -1,0 +1,63 @@
+id: queue
+name: Queue
+summary: >
+  A buffer that decouples a producer's arrival rate from a consumer's service
+  capacity. Absorbs bursts up to its depth, and converts sustained overload into
+  growing backlog and waiting time rather than immediate rejection.
+inbound:
+  arity: many
+  summary: Producers offering work.
+outbound:
+  arity: many
+  summary: Consumers draining work.
+properties:
+  service_rate:
+    unit: op/s
+    summary: >
+      Sustained rate at which consumers remove work. Measure at saturation, not
+      at typical load, because a consumer that is never busy reveals only the
+      arrival rate.
+  capacity:
+    unit: op
+    summary: Depth beyond which the queue rejects or sheds work.
+channels:
+  arrivals:
+    unit: op/s
+    summary: Work offered by all producers.
+    expression: inbound.rate
+  departures:
+    unit: op/s
+    summary: >
+      Work actually drained. Saturation is per draw, so the share of draws
+      pinned to the service rate is the share in which the queue is the
+      bottleneck.
+    expression: min([arrivals, service_rate])
+  backlog:
+    unit: op
+    summary: >
+      Work resident in the queue, accumulated from the imbalance between
+      arrivals and departures and floored at zero.
+    expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+  wait:
+    unit: s
+    summary: >
+      Time a unit of work waits, by Little's Law applied to the resident
+      backlog and the rate draining it.
+    expression: Little.residence(backlog, departures)
+outputs:
+  rate: departures
+  added_latency: wait
+constraints:
+  depth:
+    summary: >
+      Backlog against the queue's depth. Saturating means work is shed or
+      producers block, and is the point at which a buffer stops protecting the
+      consumer and starts hiding a capacity shortfall.
+    demand: backlog
+    limit: capacity
+  throughput:
+    summary: >
+      Arrivals against the rate consumers can drain. Sustained saturation grows
+      the backlog without bound, so no buffer depth is sufficient.
+    demand: arrivals
+    limit: service_rate

@@ -1,0 +1,84 @@
+id: compute
+name: Compute
+summary: >
+  A pool of identical workers serving requests. Capacity follows from how many
+  requests can be in flight at once and how long each occupies a worker, so
+  raising parallelism and shortening service time are interchangeable levers on
+  throughput but not on latency.
+inbound:
+  arity: many
+  summary: Callers offering requests.
+outbound:
+  arity: many
+  summary: Dependencies this pool calls in turn.
+properties:
+  service_time:
+    unit: s
+    summary: >
+      Time one request occupies one worker, excluding queueing. Measure with the
+      pool lightly loaded, otherwise queueing delay is folded into the figure and
+      capacity is understated.
+  parallelism:
+    unit: op
+    summary: >
+      Requests one replica serves concurrently. A thread pool size, a worker
+      count, or a connection limit.
+  replicas:
+    unit: '1'
+    summary: Instances sharing the offered load.
+    default: '1'
+channels:
+  offered:
+    unit: op/s
+    summary: Requests arriving from all callers.
+    expression: inbound.rate
+  servers:
+    unit: op
+    summary: Total concurrent slots across every replica.
+    expression: parallelism * replicas
+  capacity:
+    unit: op/s
+    summary: >
+      Sustainable throughput, by Little's Law: concurrent slots divided by the
+      time each request holds one.
+    expression: Little.rate(servers, service_time)
+  utilisation:
+    unit: '1'
+    summary: Share of capacity consumed by the offered load.
+    expression: Queue.utilisation(offered, capacity)
+  wait:
+    unit: s
+    summary: >
+      Queueing delay before service begins, from the M/M/c result. Assumes
+      exponential service, which is the most variable law for a given mean and
+      so errs toward predicting more delay rather than less.
+    expression: Queue.mmcWait(service_time, servers, utilisation)
+  residence:
+    unit: s
+    summary: Total time in the pool, queueing plus service.
+    expression: wait + service_time
+  throughput:
+    unit: op/s
+    summary: Requests actually served, capped per draw by capacity.
+    expression: min([offered, capacity])
+  concurrency:
+    unit: op
+    summary: Requests in flight, by Little's Law.
+    expression: Little.occupancy(throughput, residence)
+outputs:
+  rate: throughput
+  added_latency: residence
+constraints:
+  capacity:
+    summary: >
+      Offered load against sustainable throughput. This is the constraint that
+      turns a latency problem into an outage, because queueing delay rises
+      without bound as it approaches saturation.
+    demand: offered
+    limit: capacity
+  concurrency:
+    summary: >
+      Requests in flight against available slots. Saturating means callers block
+      or are refused at admission even when the workers are not compute-bound.
+    demand: concurrency
+    limit: servers

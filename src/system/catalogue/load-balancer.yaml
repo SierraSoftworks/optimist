@@ -1,0 +1,67 @@
+id: load-balancer
+name: Load balancer
+summary: >
+  Spreads offered demand across a set of downstream replicas. Models the fan-out
+  itself rather than the work, so its own limits are on connections and
+  admission rather than on compute.
+inbound:
+  arity: many
+  summary: Callers arriving at the entry point.
+outbound:
+  arity: many
+  summary: Replicas receiving a share of the demand.
+properties:
+  replicas:
+    unit: '1'
+    summary: Downstream instances sharing the load.
+  admission_limit:
+    unit: op/s
+    summary: >
+      Rate above which the balancer sheds load. Shedding acts on demand rather
+      than on how long a request waits, which is what makes it the only lever
+      that can pull a saturated system back out of congestion.
+  connection_limit:
+    unit: op
+    summary: Concurrent connections the balancer will hold open.
+  overhead:
+    unit: s
+    summary: Latency added by the hop itself.
+    default: '0'
+channels:
+  offered:
+    unit: op/s
+    summary: Demand arriving from all callers.
+    expression: inbound.rate
+  admitted:
+    unit: op/s
+    summary: >
+      Demand allowed through, capped per draw at the admission limit. Draws
+      pinned to the limit are the ones being shed.
+    expression: min([offered, admission_limit])
+  shed:
+    unit: op/s
+    summary: Demand rejected at the door.
+    expression: offered - admitted
+  per_replica:
+    unit: op/s
+    summary: Share of admitted demand each replica receives.
+    expression: admitted / replicas
+  connections:
+    unit: op
+    summary: Connections held open, by Little's Law.
+    expression: Little.occupancy(admitted, overhead)
+outputs:
+  rate: per_replica
+  added_latency: overhead
+constraints:
+  admission:
+    summary: >
+      Offered demand against the admission limit. Saturating means the system is
+      protecting itself by refusing work, which is a healthier failure than
+      queueing without bound but is still a failure to serve.
+    demand: offered
+    limit: admission_limit
+  connections:
+    summary: Concurrent connections against the balancer's ceiling.
+    demand: connections
+    limit: connection_limit

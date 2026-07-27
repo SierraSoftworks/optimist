@@ -1,0 +1,34 @@
+id: aggregator
+name: Aggregator
+summary: >
+  Collects the responses of a fan-out into a single result. Divides the
+  downstream request rate back into caller-facing requests, and pays the latency
+  of the slowest branch rather than the average one.
+inbound:
+  arity: many
+  summary: Branches returning partial results.
+outbound:
+  arity: many
+  summary: Callers awaiting the combined result.
+properties:
+  branches:
+    unit: '1'
+    summary: >
+      Responses combined into one result. A request completes only when every
+      branch has, so reliability falls and tail latency rises with this count.
+  overhead:
+    unit: s
+    summary: Time spent combining results once every branch has returned.
+    default: '0'
+channels:
+  collected:
+    unit: op/s
+    summary: Branch responses arriving.
+    expression: inbound.rate
+  completed:
+    unit: op/s
+    summary: Caller-facing requests completed, one per set of branches.
+    expression: collected / branches
+outputs:
+  rate: completed
+  added_latency: overhead

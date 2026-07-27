@@ -1,0 +1,26 @@
+id: client
+name: Client
+summary: >
+  A source of demand outside the system being designed. Carries no capacity of
+  its own, because a model cannot bound what its users choose to do.
+outbound:
+  arity: many
+  summary: Entry points this population calls.
+properties:
+  request_rate:
+    unit: op/s
+    summary: >
+      Requests offered to the system. Uncertainty here should reflect the range a
+      design must survive, not the rate observed on an average day.
+  payload:
+    unit: B/op
+    summary: Bytes carried by a request.
+    default: '0'
+channels:
+  offered:
+    unit: op/s
+    summary: Demand placed on the system.
+    expression: request_rate
+outputs:
+  rate: offered
+  payload: payload

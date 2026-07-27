@@ -1,0 +1,74 @@
+id: datastore
+name: Datastore
+summary: >
+  Durable storage with independent limits on operation rate, transfer rate, and
+  resident volume. Reaching any one of them bottlenecks the system, and which
+  one binds first depends on record size rather than on the store itself.
+inbound:
+  arity: many
+  summary: Writers and readers issuing operations.
+outbound:
+  arity: many
+  summary: Replication or downstream propagation.
+properties:
+  operation_limit:
+    unit: op/s
+    summary: Sustained operations per second, the device or service IOPS ceiling.
+  transfer_limit:
+    unit: B/s
+    summary: Sustained bytes per second across the storage path.
+  volume_limit:
+    unit: B
+    summary: Usable capacity before writes fail or eviction begins.
+  record_size:
+    unit: B/op
+    summary: >
+      Bytes moved per operation. Carries a per-operation unit so that multiplying
+      by an operation rate yields a transfer rate rather than a dimensional
+      mistake.
+  retention:
+    unit: s
+    summary: >
+      How long a record remains resident. Combined with the ingest rate this
+      fixes the steady-state volume, by Little's Law.
+channels:
+  operations:
+    unit: op/s
+    summary: Operations arriving from all callers.
+    expression: inbound.rate
+  transfer:
+    unit: B/s
+    summary: Bytes moved per second.
+    expression: operations * record_size
+  records:
+    unit: op
+    summary: >
+      Records resident in steady state, by Little's Law applied to the ingest
+      rate and the retention window.
+    expression: Little.occupancy(operations, retention)
+  volume:
+    unit: B
+    summary: Bytes resident in steady state.
+    expression: records * record_size
+outputs:
+  rate: operations
+constraints:
+  operations:
+    summary: >
+      Operation rate against the store's ceiling. Binds first for workloads of
+      many small records.
+    demand: operations
+    limit: operation_limit
+  transfer:
+    summary: >
+      Byte rate against the storage path. Binds first for workloads of few large
+      records, which is why record size decides which limit a system meets.
+    demand: transfer
+    limit: transfer_limit
+  volume:
+    summary: >
+      Resident bytes against usable capacity. Unlike the rate limits this one
+      is reached gradually, so it is the constraint most often missed until the
+      retention window has fully elapsed.
+    demand: volume
+    limit: volume_limit
