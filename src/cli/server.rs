@@ -15,6 +15,13 @@ pub(super) struct ServerArgs {
     /// Directory holding the designs to serve.
     #[arg(long, env = "OPTIMIST_DESIGNS", default_value = "designs")]
     designs: PathBuf,
+    /// A frontend build to serve instead of the one this binary would use.
+    ///
+    /// A release build carries the workbench inside it and a debug build reads
+    /// `workbench/dist`; this overrides both, which is what allows a packaged
+    /// server to be pointed at a newer frontend without recompiling.
+    #[arg(long, env = "OPTIMIST_WEB_ROOT")]
+    web_root: Option<PathBuf>,
 }
 
 pub(super) async fn run(args: ServerArgs) -> Result<(), human_errors::Error> {
@@ -22,6 +29,7 @@ pub(super) async fn run(args: ServerArgs) -> Result<(), human_errors::Error> {
     serve(ApiConfig {
         bind: args.bind,
         designs: args.designs,
+        web_root: args.web_root,
     })
     .await
     .map_err(|error| {

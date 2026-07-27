@@ -9,9 +9,12 @@ axum = { version = "0.8.4", features = ["ws"] }
 chrono = { version = "0.4.41", default-features = false }
 chumsky = "0.11.1"
 clap = { version = "4.5.41", features = ["derive", "env"] }
+include_dir = "0.7.4"
 human-errors = { version = "0.2.4", features = ["pretty"] }
+mime_guess = "2.0.5"
 rand = "=0.8.7"
 rand_chacha = "=0.3.1"
+rust-embed = "8.7.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 serde_yaml_ng = "0.10.0"

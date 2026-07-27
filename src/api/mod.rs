@@ -31,10 +31,14 @@ mod analysis;
 mod designs;
 mod error;
 mod feed;
+mod web;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
-use axum::{Json, Router, routing::get};
+use axum::{
+    Json, Router,
+    routing::{any, get},
+};
 use serde::Serialize;
 use tokio::net::TcpListener;
 
@@ -52,6 +56,8 @@ pub struct ApiConfig {
     pub bind: SocketAddr,
     /// Directory holding the designs to serve.
     pub designs: PathBuf,
+    /// A frontend build to serve, overriding whatever the binary would use.
+    pub web_root: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -72,12 +78,38 @@ struct Health {
 /// # let _ = app;
 /// ```
 pub fn router(workspace: Arc<Workspace>) -> Router {
-    Router::new()
+    routes(workspace, None)
+}
+
+/// Builds a router that also serves a frontend build.
+///
+/// The workbench is mounted as a fallback, so it is reached only by requests no
+/// API route claimed. That ordering is what keeps an unknown `/api` path a JSON
+/// error rather than a page of HTML.
+pub fn routes(workspace: Arc<Workspace>, web_root: Option<PathBuf>) -> Router {
+    let api = Router::new()
         .route("/api/v1/health", get(health))
         .merge(designs::router())
         .merge(analysis::router())
         .merge(feed::router())
-        .with_state(workspace)
+        // Claims every remaining API path so that the workbench fallback below
+        // never sees one. A mistyped endpoint answered with a page of HTML
+        // would be read by a client as a malformed success rather than as the
+        // 404 it is, and owning the refusal here means that holds whether or
+        // not a frontend is being served at all.
+        .route("/api/{*rest}", any(unknown_endpoint))
+        .with_state(workspace);
+    web::attach(api, web::Assets::new(web_root))
+}
+
+async fn unknown_endpoint() -> impl axum::response::IntoResponse {
+    (
+        axum::http::StatusCode::NOT_FOUND,
+        Json(serde_json::json!({
+            "message": "No such endpoint.",
+            "advice": "Check the path against the API reference.",
+        })),
+    )
 }
 
 async fn health(
@@ -121,7 +153,7 @@ pub async fn serve(config: ApiConfig) -> Result<(), ApiError> {
     });
 
     let served = Arc::clone(&workspace);
-    let result = axum::serve(listener, router(workspace))
+    let result = axum::serve(listener, routes(workspace, config.web_root))
         .with_graceful_shutdown(shutdown())
         .await
         .map_err(|source| ApiError::Serve { source });

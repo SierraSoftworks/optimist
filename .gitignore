@@ -4,3 +4,6 @@
 /docs/.vuepress/.temp
 /docs/.vuepress/dist
 .optimist/
+# A scratch workspace for running the server locally. Seeded from examples/ and
+# edited freely by whoever is driving the workbench, so it is not history.
+/designs

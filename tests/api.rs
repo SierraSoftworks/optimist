@@ -408,6 +408,24 @@ async fn the_catalogue_lists_what_an_expression_may_call() {
     assert!(builtins.iter().any(|name| name == "normal"));
 }
 
+/// An unmatched API path stays JSON, whatever else the server is serving.
+///
+/// The workbench is mounted as a fallback, and a browser route has to survive a
+/// reload, so anything unclaimed becomes the page. That rule must never reach
+/// the API: a client receiving HTML for a mistyped endpoint would read it as a
+/// malformed response to a request it believed had succeeded, rather than as
+/// the 404 it is.
+#[tokio::test]
+async fn an_unknown_api_path_is_not_answered_with_the_workbench() {
+    let root = workspace("api-404");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, body) = get(address, "/api/v1/nonsense").await;
+    assert_eq!(status, 404);
+    assert!(body["message"].is_string(), "{body}");
+}
+
 /// A proposal is weighed against the design over the same surface.
 #[tokio::test]
 async fn a_proposal_can_be_compared_over_http() {
