@@ -60,6 +60,9 @@ pub struct Runtime {
     pub(super) modules: BTreeMap<String, Value>,
     /// Standard globals, built once and shared by every run as a parent scope.
     pub(super) globals: Environment,
+    /// Scope holding the values passed to [`Runtime::evaluate_bound`], reused so
+    /// that repeatedly binding the same names costs only the values.
+    bindings: Environment,
 }
 
 /// The value and named exports produced by evaluating a Squiggle module.
@@ -75,12 +78,14 @@ impl Runtime {
     /// Creates a runtime with deterministic defaults.
     pub fn new() -> Self {
         let config = RuntimeConfig::default();
+        let globals = standard::environment();
         Self {
             config,
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
-            globals: standard::environment(),
+            bindings: globals.child(),
+            globals,
         }
     }
 
@@ -92,12 +97,14 @@ impl Runtime {
         if config.max_steps == 0 {
             return Err("max_steps must be greater than zero".into());
         }
+        let globals = standard::environment();
         Ok(Self {
             config,
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
-            globals: standard::environment(),
+            bindings: globals.child(),
+            globals,
         })
     }
 
@@ -159,17 +166,32 @@ impl Runtime {
     /// the run's scope, which is the wrong shape for a caller that re-evaluates
     /// one small program with different numbers thousands of times. Defining the
     /// values directly costs one scope entry each instead.
-    pub fn evaluate_bound<'a>(
+    ///
+    /// The bindings live in a scope this runtime keeps between calls, so binding
+    /// a name it has already seen writes a value over an existing key rather than
+    /// allocating a fresh one. Names left behind by an earlier program stay
+    /// visible, which is sound because a compiled program can only reference the
+    /// names its own schema declared, and those are all rebound before it runs.
+    ///
+    /// The program itself evaluates in a child of that scope so its own
+    /// intermediate bindings are discarded. Leaving them in the shared scope would
+    /// let one program's local shadow a builtin another program calls.
+    ///
+    /// Crate-internal because that reasoning rests on the caller compiling its
+    /// programs against a declared schema. A caller free to reference any name
+    /// could read one left behind by an earlier call instead of being told it is
+    /// unbound.
+    pub(crate) fn evaluate_bound<'a>(
         &mut self,
         program: &Program,
         bindings: impl IntoIterator<Item = (&'a str, f64)>,
     ) -> Result<Value, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
-        let environment = self.globals.child();
         for (name, value) in bindings {
-            environment.define(name, Value::Number(value));
+            self.bindings.rebind(name, Value::Number(value));
         }
+        let environment = self.bindings.child();
         self.eval_program(program, &environment)
             .map(|output| output.value)
     }
@@ -195,6 +217,46 @@ mod tests {
     use super::*;
 
     type TestResult = Result<(), String>;
+
+    /// Bound programs share one scope, so one must not disturb the next.
+    ///
+    /// A projection evaluates every node equation on the same runtime, and the
+    /// scope keeps whatever each of them bound. What makes that safe is that the
+    /// program itself runs one level down: a local here is called `min`, which
+    /// would break the next program's call to the builtin if the two shared a
+    /// frame.
+    #[test]
+    fn isolates_bound_programs_that_share_one_scope() -> TestResult {
+        let mut runtime = Runtime::new();
+        let shadows = parse("min = 3\nmin + baseline").map_err(|error| format!("{error:?}"))?;
+        let calls_builtin = parse("min([baseline, 10])").map_err(|error| format!("{error:?}"))?;
+
+        for _ in 0..2 {
+            let shadowed = runtime
+                .evaluate_bound(&shadows, [("baseline", 4.0)])
+                .map_err(|error| error.message.clone())?;
+            assert_eq!(shadowed.as_number(), Some(7.0));
+            let builtin = runtime
+                .evaluate_bound(&calls_builtin, [("baseline", 4.0)])
+                .map_err(|error| error.message.clone())?;
+            assert_eq!(builtin.as_number(), Some(4.0));
+        }
+        Ok(())
+    }
+
+    /// Rebinding a name the scope already holds must replace it, not accumulate.
+    #[test]
+    fn rebinds_a_name_the_scope_already_holds() -> TestResult {
+        let mut runtime = Runtime::new();
+        let program = parse("baseline * 2").map_err(|error| format!("{error:?}"))?;
+        for value in [1.0, 5.0, 2.5] {
+            let result = runtime
+                .evaluate_bound(&program, [("baseline", value)])
+                .map_err(|error| error.message.clone())?;
+            assert_eq!(result.as_number(), Some(value * 2.0));
+        }
+        Ok(())
+    }
 
     fn evaluate(source: &str) -> Result<Value, String> {
         Runtime::new()

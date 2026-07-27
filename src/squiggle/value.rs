@@ -377,6 +377,22 @@ impl Environment {
         self.0.values.borrow_mut().insert(name.into(), value);
     }
 
+    /// Writes `value` into this frame, keeping the existing key when there is one.
+    ///
+    /// [`Environment::define`] owns its name, so re-binding through it allocates a
+    /// fresh key every time. A caller that writes the same names over and over --
+    /// one node equation evaluated for every period of every draw -- can reuse the
+    /// frame instead and pay only for the value.
+    pub(crate) fn rebind(&self, name: &str, value: Value) {
+        let mut values = self.0.values.borrow_mut();
+        match values.get_mut(name) {
+            Some(slot) => *slot = value,
+            None => {
+                values.insert(name.to_owned(), value);
+            }
+        }
+    }
+
     pub(crate) fn get(&self, name: &str) -> Option<Value> {
         self.0
             .values
