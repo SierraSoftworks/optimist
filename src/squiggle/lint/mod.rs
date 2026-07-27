@@ -9,6 +9,7 @@ mod checker;
 mod expression;
 mod metadata;
 mod types;
+mod unit_registry;
 
 pub(crate) use metadata::{BuiltinSignature, Constraint, ParameterConstraint};
 

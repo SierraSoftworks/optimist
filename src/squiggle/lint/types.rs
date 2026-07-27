@@ -2,8 +2,13 @@ use std::{collections::BTreeMap, fmt};
 
 use crate::squiggle::ast::UnitType;
 
-use super::Constraint;
+use super::{Constraint, unit_registry};
 
+/// A unit as a map from canonical unit name to exponent.
+///
+/// Names are canonicalised on construction, so `rps` and `op/s` produce equal
+/// units while `ms` and `s` do not. Exponents are floating point because a
+/// ratio such as `B^0.5` is expressible even though models rarely need it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Unit(pub(super) BTreeMap<String, f64>);
 
@@ -12,10 +17,14 @@ impl Unit {
         match unit {
             UnitType::Factor { name, exponent } => {
                 if name.parse::<f64>().is_ok() {
-                    Self::default()
-                } else {
-                    Self([(name.clone(), *exponent)].into())
+                    return Self::default();
                 }
+                let mut terms = BTreeMap::new();
+                for (canonical, power) in unit_registry::canonicalise(name) {
+                    *terms.entry(canonical).or_default() += power * exponent;
+                }
+                terms.retain(|_, power: &mut f64| power.abs() > f64::EPSILON);
+                Self(terms)
             }
             UnitType::Product(left, right) => {
                 Self::from_ast(left).combine(&Self::from_ast(right), 1.0)
