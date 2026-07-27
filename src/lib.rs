@@ -7,6 +7,8 @@
 
 #![deny(missing_docs)]
 
+/// HTTP and WebSocket access to a workspace of designs.
+pub mod api;
 /// Command-line argument types and dispatch used by the `optimist` binary.
 pub mod cli;
 /// Revision-checked, idempotent graph mutation requests and outcomes.

@@ -66,7 +66,7 @@ impl Movement {
 }
 
 /// A design and a proposal, ranked and compared.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Comparison {
     /// Constraints of the unchanged design, worst first.
     pub baseline: Vec<Bottleneck>,
