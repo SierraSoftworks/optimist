@@ -46,7 +46,7 @@ use super::{
 };
 
 /// How heavily one constraint is loaded in a solved model.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Bottleneck {
     /// The component owning the constraint.
     pub component: ComponentId,

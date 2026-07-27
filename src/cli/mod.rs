@@ -34,6 +34,8 @@ mod project_changes_output;
 mod scenario;
 mod scenario_client;
 mod server;
+mod system;
+mod system_output;
 
 use clap::{Parser, Subcommand};
 
@@ -49,6 +51,7 @@ use output::OutputFormat;
 use project::ProjectArgs;
 use scenario::ScenarioArgs;
 use server::ServerArgs;
+use system::SystemArgs;
 
 use crate::domain::ProjectId;
 
@@ -100,6 +103,8 @@ enum Command {
     Apply(ApplyArgs),
     Batch(BatchArgs),
     Analysis(AnalysisArgs),
+    /// Read, solve, and compare a system design held in a directory.
+    System(SystemArgs),
 }
 
 /// Executes a parsed command using the appropriate server or HTTP-client path.
@@ -140,6 +145,7 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
         Command::Analysis(args) => {
             analysis::run(args, cli.project.as_ref(), &server_url, output).await
         }
+        Command::System(args) => system::run(args, output),
     }
 }
 
@@ -169,5 +175,41 @@ mod tests {
         ])
         .expect("parse global options");
         assert!(matches!(cli.command, Command::Node(_)));
+    }
+
+    #[test]
+    fn parses_system_design_commands() {
+        for arguments in [
+            vec!["optimist", "system", "check", "./design"],
+            vec!["optimist", "system", "catalogue", "./design"],
+            vec![
+                "optimist",
+                "system",
+                "solve",
+                "./design",
+                "--component",
+                "api",
+            ],
+            vec![
+                "optimist",
+                "system",
+                "bottlenecks",
+                "./design",
+                "--binding",
+                "--samples",
+                "4000",
+            ],
+            vec!["optimist", "system", "compare", "./design", "warm-cache"],
+        ] {
+            let cli = Cli::try_parse_from(&arguments)
+                .unwrap_or_else(|error| panic!("{arguments:?}: {error}"));
+            assert!(matches!(cli.command, Command::System(_)));
+        }
+    }
+
+    #[test]
+    fn system_commands_require_a_design_directory() {
+        assert!(Cli::try_parse_from(["optimist", "system", "check"]).is_err());
+        assert!(Cli::try_parse_from(["optimist", "system", "compare", "./design"]).is_err());
     }
 }

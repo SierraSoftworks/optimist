@@ -32,7 +32,7 @@ use super::{
 };
 
 /// How one constraint moved under a proposed change.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Movement {
     /// The component owning the constraint.
     pub component: ComponentId,

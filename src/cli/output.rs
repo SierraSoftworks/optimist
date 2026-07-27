@@ -5,7 +5,7 @@ use crate::domain::{
 };
 use crate::project::Project;
 
-use super::{output_json, output_scenario_analysis, output_table};
+use super::{output_json, output_scenario_analysis, output_table, system_output};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(super) enum OutputFormat {
@@ -131,6 +131,60 @@ impl OutputFormat {
         match self {
             Self::Table => output_table::estimate(estimate),
             Self::Json | Self::Jsonl => output_json::serialize(estimate),
+        }
+    }
+
+    pub(super) fn system_summary(
+        self,
+        loaded: &crate::system::LoadedSystem,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(system_output::summary(loaded)),
+            Self::Json | Self::Jsonl => output_json::serialize(&loaded.model),
+        }
+    }
+
+    pub(super) fn system_catalogue(
+        self,
+        loaded: &crate::system::LoadedSystem,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(system_output::catalogue(loaded)),
+            Self::Json | Self::Jsonl => output_json::serialize(&loaded.component_types),
+        }
+    }
+
+    pub(super) fn system_channels(
+        self,
+        evaluation: &crate::system::Evaluation,
+        component: Option<&str>,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(system_output::channels(evaluation, component)),
+            Self::Json | Self::Jsonl => {
+                output_json::serialize(&system_output::channel_values(evaluation, component))
+            }
+        }
+    }
+
+    pub(super) fn system_bottlenecks(
+        self,
+        ranked: &[crate::system::Bottleneck],
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(system_output::bottlenecks(ranked)),
+            Self::Json => output_json::serialize(ranked),
+            Self::Jsonl => output_json::lines(ranked),
+        }
+    }
+
+    pub(super) fn system_comparison(
+        self,
+        comparison: &crate::system::Comparison,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(system_output::comparison(comparison)),
+            Self::Json | Self::Jsonl => output_json::serialize(&comparison.movements),
         }
     }
 }

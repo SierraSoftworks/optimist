@@ -134,7 +134,7 @@ fn node_kind(kind: NodeKind) -> &'static str {
     }
 }
 
-fn rows(lines: &str, rows: impl Iterator<Item = String>) -> String {
+pub(super) fn rows(lines: &str, rows: impl Iterator<Item = String>) -> String {
     std::iter::once(lines.to_owned())
         .chain(rows)
         .collect::<Vec<_>>()

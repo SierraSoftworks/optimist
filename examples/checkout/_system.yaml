@@ -1,0 +1,32 @@
+schema_version: 2
+name: Checkout
+summary: >
+  A worked example: browsers reach an API pool that reads from a store, with
+  retries in front of the pool and a cache in front of the store.
+scratchpad:
+  - name: peak_rate
+    expression: '900'
+    unit: op/s
+    summary: Requests per second at the daily peak.
+  - name: cache_hits
+    expression: '0.5'
+    unit: '1'
+    summary: Share of reads served from cache.
+  - name: pool_size
+    expression: '8'
+    unit: op
+    summary: Concurrent requests one API replica serves.
+scale_units: []
+interventions:
+  - id: warm-cache
+    name: Warm the cache
+    summary: Raise the hit ratio by holding a larger working set.
+    overrides:
+      - name: cache_hits
+        expression: '0.95'
+  - id: bigger-pool
+    name: Enlarge the pool
+    summary: Raise the concurrency each replica serves.
+    overrides:
+      - name: pool_size
+        expression: '40'

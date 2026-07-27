@@ -1,0 +1,14 @@
+id: browsers
+name: Browsers
+type: client
+properties:
+  request_rate: peak_rate
+  payload: '512'
+outgoing:
+  - to: api
+    summary: Checkout requests arriving at the API.
+    mutators:
+      - type: retry
+        properties:
+          attempts: '3'
+          attempt_success: '0.995'
