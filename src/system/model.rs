@@ -92,6 +92,9 @@ pub struct SystemModel {
     /// Boundaries within which components are replicated together.
     #[serde(default)]
     pub scale_units: Vec<super::scale_unit::ScaleUnit>,
+    /// Proposed changes, expressed as rebindings of shared quantities.
+    #[serde(default)]
+    pub interventions: Vec<super::intervention::Intervention>,
 }
 
 /// One shared quantity available throughout a model.
@@ -133,5 +136,18 @@ impl SystemModel {
             .iter()
             .map(|component| &component.id)
             .collect()
+    }
+
+    /// Borrows one of the model's interventions.
+    pub(super) fn intervention(
+        &self,
+        id: &super::intervention::InterventionId,
+    ) -> Result<&super::intervention::Intervention, super::evaluate::EvaluationError> {
+        self.interventions
+            .iter()
+            .find(|intervention| &intervention.id == id)
+            .ok_or_else(|| super::evaluate::EvaluationError::UnknownIntervention {
+                intervention: id.to_string(),
+            })
     }
 }

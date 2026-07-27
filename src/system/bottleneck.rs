@@ -37,7 +37,7 @@ use rand_chacha::ChaCha20Rng;
 use crate::squiggle::Value;
 
 use super::{
-    compile::{prepare, runtime},
+    compile::{Timing, prepare, runtime},
     evaluate::{EvaluationConfig, EvaluationError, Step},
     expression::{INBOUND, PREVIOUS, STEP, TIME},
     manifest::ComponentType,
@@ -117,12 +117,27 @@ pub fn bottlenecks(
     step: &Step,
     config: EvaluationConfig,
 ) -> Result<Vec<Bottleneck>, EvaluationError> {
+    rank(model, catalogue, &BTreeMap::new(), step, config)
+}
+
+pub(super) fn rank(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    overrides: &BTreeMap<String, String>,
+    step: &Step,
+    config: EvaluationConfig,
+) -> Result<Vec<Bottleneck>, EvaluationError> {
     let plan = prepare(
         model,
         catalogue,
-        &super::catalogue::builtin_mutators().unwrap_or_default(),
-        config.seed,
-        config.sample_count,
+        &super::evaluate::builtin_mutators_or_empty(),
+        overrides,
+        Timing {
+            seed: config.seed,
+            sample_count: config.sample_count,
+            time: step.time,
+            step: config.step,
+        },
     )?;
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut ranked = Vec::new();

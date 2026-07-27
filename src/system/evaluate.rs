@@ -44,8 +44,9 @@ use rand_chacha::ChaCha20Rng;
 use crate::squiggle::Value;
 
 use super::{
-    compile::{Plan, PreparedComponent, PreparedMutator, prepare, runtime},
+    compile::{Plan, PreparedComponent, PreparedMutator, Timing, prepare, runtime},
     expression::{INBOUND, PREVIOUS, SIGNAL, STEP, TIME},
+    intervention::InterventionId,
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
     mutator::Mutator,
@@ -120,6 +121,16 @@ pub enum EvaluationError {
         /// A scale unit on the cycle.
         scale_unit: String,
     },
+    /// An intervention rebinds a quantity the scratchpad does not declare.
+    UnknownQuantity {
+        /// The name it tried to rebind.
+        quantity: String,
+    },
+    /// A model does not declare the requested intervention.
+    UnknownIntervention {
+        /// The identifier requested.
+        intervention: String,
+    },
     /// A required property was not supplied and has no default.
     MissingProperty {
         /// The component.
@@ -187,6 +198,16 @@ impl std::fmt::Display for EvaluationError {
             ),
             Self::ScaleUnitCycle { scale_unit } => {
                 write!(formatter, "scale unit '{scale_unit}' encloses itself")
+            }
+            Self::UnknownQuantity { quantity } => write!(
+                formatter,
+                "'{quantity}' is not a scratchpad quantity, so rebinding it would change nothing"
+            ),
+            Self::UnknownIntervention { intervention } => {
+                write!(
+                    formatter,
+                    "the model declares no intervention '{intervention}'"
+                )
             }
             Self::MissingProperty {
                 component,
@@ -270,22 +291,62 @@ pub fn evaluate(
     catalogue: &BTreeMap<String, ComponentType>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    evaluate_with_mutators(model, catalogue, &builtin_mutators_or_empty(), config)
+    evaluate_with_mutators(
+        model,
+        catalogue,
+        &builtin_mutators_or_empty(),
+        &BTreeMap::new(),
+        config,
+    )
 }
 
-/// Solves a model against explicit component type and behaviour catalogues.
+/// Solves a model with one of its interventions applied.
+///
+/// The model is otherwise untouched, so any difference from the baseline is
+/// attributable to the quantities the intervention rebinds.
+pub fn evaluate_intervention(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    intervention: &InterventionId,
+    config: EvaluationConfig,
+) -> Result<Evaluation, EvaluationError> {
+    let overrides = model.intervention(intervention)?.bindings();
+    evaluate_with_mutators(
+        model,
+        catalogue,
+        &builtin_mutators_or_empty(),
+        &overrides,
+        config,
+    )
+}
+
+/// Solves a model against explicit catalogues and scratchpad replacements.
 pub fn evaluate_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
     mutators: &BTreeMap<String, Mutator>,
+    overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    let plan = prepare(model, catalogue, mutators, config.seed, config.sample_count)?;
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut previous: BTreeMap<ComponentId, ComponentState> = BTreeMap::new();
     let mut steps = Vec::with_capacity(config.horizon.max(1));
     for index in 0..config.horizon.max(1) {
         let time = index as f64 * config.step;
+        // Shared quantities may depend on the elapsed time, so the plan is
+        // resolved afresh at each step and held fixed while it relaxes.
+        let plan = prepare(
+            model,
+            catalogue,
+            mutators,
+            overrides,
+            Timing {
+                seed: config.seed,
+                sample_count: config.sample_count,
+                time,
+                step: config.step,
+            },
+        )?;
         let step = relax(&plan, &previous, time, config, &mut rng)?;
         previous.clone_from(&step.components);
         steps.push(step);
@@ -293,7 +354,7 @@ pub fn evaluate_with_mutators(
     Ok(Evaluation { steps })
 }
 
-fn builtin_mutators_or_empty() -> BTreeMap<String, Mutator> {
+pub(super) fn builtin_mutators_or_empty() -> BTreeMap<String, Mutator> {
     super::catalogue::builtin_mutators().unwrap_or_default()
 }
 

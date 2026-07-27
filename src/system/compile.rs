@@ -18,13 +18,32 @@ use crate::squiggle::{Runtime, RuntimeConfig, Value, ast::Program, parse};
 
 use super::{
     evaluate::EvaluationError,
-    expression::free_names,
+    expression::{STEP, TIME, free_names},
     manifest::ComponentType,
     model::{Component, ComponentId, Relationship, SystemModel},
     mutator::Mutator,
     scale_unit::{Distribution as ScaleDistribution, enclosing},
     signal::{Signal, builtin_signals},
 };
+
+/// When a plan is being resolved, and with what sampling budget.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Timing {
+    pub(super) seed: u64,
+    pub(super) sample_count: usize,
+    pub(super) time: f64,
+    pub(super) step: f64,
+}
+
+impl Timing {
+    /// Returns the bindings describing when this plan is being resolved.
+    fn clock(self) -> [(&'static str, Value); 2] {
+        [
+            (TIME, Value::Number(self.time)),
+            (STEP, Value::Number(self.step)),
+        ]
+    }
+}
 
 /// One relationship arriving at a component, with its behaviours resolved.
 pub(super) struct PreparedInbound {
@@ -60,14 +79,25 @@ pub(super) struct Plan {
     pub(super) signals: BTreeMap<String, Signal>,
 }
 
+/// Resolves a model into a plan the solver can execute at one point in time.
+///
+/// Shared quantities and properties may depend on the elapsed time, so a plan
+/// describes one step rather than the whole horizon. Within a step every value
+/// is fixed, which is what lets relaxation converge instead of chasing values
+/// that moved underneath it.
+///
+/// Expressions are reparsed for each step. That is wasteful for a long horizon
+/// and is the obvious thing to hoist once profiling says it matters; separating
+/// structure from values before there is a reason to would have complicated the
+/// plan for no measured gain.
 pub(super) fn prepare(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
     mutators: &BTreeMap<String, Mutator>,
-    seed: u64,
-    sample_count: usize,
+    overrides: &BTreeMap<String, String>,
+    config: Timing,
 ) -> Result<Plan, EvaluationError> {
-    let globals = evaluate_scratchpad(model, seed, sample_count)?;
+    let globals = evaluate_scratchpad(model, overrides, config)?;
     let mut signals = builtin_signals();
     for component_type in catalogue.values() {
         for name in component_type.outputs.keys() {
@@ -79,7 +109,7 @@ pub(super) fn prepare(
             signals.entry(name.clone()).or_default();
         }
     }
-    let scaling = resolve_scaling(model, &globals, sample_count)?;
+    let scaling = resolve_scaling(model, &globals, config)?;
     let mut components = Vec::new();
     for component in &model.components {
         let component_type = catalogue
@@ -89,7 +119,7 @@ pub(super) fn prepare(
                 component_type: component.component_type.to_string(),
             })?
             .clone();
-        let properties = evaluate_properties(component, &component_type, &globals, sample_count)?;
+        let properties = evaluate_properties(component, &component_type, &globals, config)?;
         let channels = order_channels(component, &component_type)?;
         let mut constraints = BTreeMap::new();
         for (name, constraint) in &component_type.constraints {
@@ -105,7 +135,7 @@ pub(super) fn prepare(
         for relationship in model.inbound_to(&component.id) {
             upstream.push(PreparedInbound {
                 source: relationship.from.clone(),
-                mutators: prepare_mutators(relationship, mutators, &globals, sample_count)?,
+                mutators: prepare_mutators(relationship, mutators, &globals, config)?,
             });
         }
         let (replicas, share) = scaling.get(&component.id).copied().unwrap_or((1.0, 1.0));
@@ -136,7 +166,7 @@ pub(super) fn prepare(
 fn resolve_scaling(
     model: &SystemModel,
     globals: &BTreeMap<String, Value>,
-    sample_count: usize,
+    config: Timing,
 ) -> Result<BTreeMap<ComponentId, (f64, f64)>, EvaluationError> {
     validate_scale_units(model)?;
     let mut counts = BTreeMap::new();
@@ -146,17 +176,20 @@ fn resolve_scaling(
             location: location.clone(),
             message: first_message(&diagnostics),
         })?;
-        let value = runtime(derive_seed(0, "scale-unit", unit.id.as_str()), sample_count)?
-            .evaluate_values(
-                &program,
-                globals
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), value.clone())),
-            )
-            .map_err(|diagnostic| EvaluationError::Evaluation {
-                location: location.clone(),
-                message: diagnostic.message,
-            })?;
+        let value = runtime(
+            derive_seed(0, "scale-unit", unit.id.as_str()),
+            config.sample_count,
+        )?
+        .evaluate_values(
+            &program,
+            globals
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.clone())),
+        )
+        .map_err(|diagnostic| EvaluationError::Evaluation {
+            location: location.clone(),
+            message: diagnostic.message,
+        })?;
         let replicas = match value {
             Value::Number(number) => number,
             Value::Distribution(distribution) => distribution.mean().unwrap_or(1.0),
@@ -242,7 +275,7 @@ fn prepare_mutators(
     relationship: &Relationship,
     catalogue: &BTreeMap<String, Mutator>,
     globals: &BTreeMap<String, Value>,
-    sample_count: usize,
+    config: Timing,
 ) -> Result<Vec<PreparedMutator>, EvaluationError> {
     let mut prepared = Vec::new();
     for attached in &relationship.mutators {
@@ -269,7 +302,7 @@ fn prepare_mutators(
                 message: first_message(&diagnostics),
             })?;
             let seed = derive_seed(0, &format!("{owner}/{}", mutator.id), name);
-            let value = runtime(seed, sample_count)?
+            let value = runtime(seed, config.sample_count)?
                 .evaluate_values(
                     &program,
                     globals
@@ -308,28 +341,52 @@ fn prepare_mutators(
     Ok(prepared)
 }
 
+/// Evaluates the shared quantities, with any rebound by an intervention
+/// replaced before their dependants are evaluated.
+///
+/// Replacements are substituted in place rather than appended, so an entry that
+/// refers to a rebound quantity sees the new value. That is what lets one
+/// rebinding reach every part of a design that sized itself against it.
 fn evaluate_scratchpad(
     model: &SystemModel,
-    seed: u64,
-    sample_count: usize,
+    overrides: &BTreeMap<String, String>,
+    config: Timing,
 ) -> Result<BTreeMap<String, Value>, EvaluationError> {
+    let declared = model
+        .scratchpad
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect::<BTreeSet<_>>();
+    if let Some(name) = overrides
+        .keys()
+        .find(|name| !declared.contains(name.as_str()))
+    {
+        return Err(EvaluationError::UnknownQuantity {
+            quantity: name.clone(),
+        });
+    }
     let mut globals = BTreeMap::new();
     for entry in &model.scratchpad {
-        let program = parse(&entry.expression).map_err(|diagnostics| EvaluationError::Syntax {
+        let source = overrides.get(&entry.name).unwrap_or(&entry.expression);
+        let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
             location: format!("scratchpad entry '{}'", entry.name),
             message: first_message(&diagnostics),
         })?;
-        let value = runtime(derive_seed(seed, "scratchpad", &entry.name), sample_count)?
-            .evaluate_values(
-                &program,
-                globals
-                    .iter()
-                    .map(|(name, value): (&String, &Value)| (name.as_str(), value.clone())),
-            )
-            .map_err(|diagnostic| EvaluationError::Evaluation {
-                location: format!("scratchpad entry '{}'", entry.name),
-                message: diagnostic.message,
-            })?;
+        let value = runtime(
+            derive_seed(config.seed, "scratchpad", &entry.name),
+            config.sample_count,
+        )?
+        .evaluate_values(
+            &program,
+            globals
+                .iter()
+                .map(|(name, value): (&String, &Value)| (name.as_str(), value.clone()))
+                .chain(config.clock()),
+        )
+        .map_err(|diagnostic| EvaluationError::Evaluation {
+            location: format!("scratchpad entry '{}'", entry.name),
+            message: diagnostic.message,
+        })?;
         globals.insert(entry.name.clone(), value);
     }
     Ok(globals)
@@ -339,7 +396,7 @@ fn evaluate_properties(
     component: &Component,
     component_type: &ComponentType,
     globals: &BTreeMap<String, Value>,
-    sample_count: usize,
+    config: Timing,
 ) -> Result<BTreeMap<String, Value>, EvaluationError> {
     let mut properties = BTreeMap::new();
     for (name, declaration) in &component_type.properties {
@@ -357,7 +414,7 @@ fn evaluate_properties(
             message: first_message(&diagnostics),
         })?;
         let seed = derive_seed(0, component.id.as_str(), name);
-        let value = runtime(seed, sample_count)?
+        let value = runtime(seed, config.sample_count)?
             .evaluate_values(
                 &program,
                 globals

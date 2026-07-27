@@ -37,9 +37,11 @@
 
 mod bottleneck;
 mod catalogue;
+mod comparison;
 mod compile;
 mod evaluate;
 mod expression;
+mod intervention;
 mod manifest;
 mod model;
 mod mutator;
@@ -50,7 +52,12 @@ mod values;
 
 pub use bottleneck::{Bottleneck, bottlenecks};
 pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
-pub use evaluate::{ComponentState, Evaluation, EvaluationConfig, EvaluationError, Step, evaluate};
+pub use comparison::{Comparison, Movement, compare};
+pub use evaluate::{
+    ComponentState, Evaluation, EvaluationConfig, EvaluationError, Step, evaluate,
+    evaluate_intervention,
+};
+pub use intervention::{Intervention, InterventionId, Override};
 pub use manifest::{
     Channel, ComponentType, ComponentTypeId, Constraint, Port, PortArity, Property,
 };
