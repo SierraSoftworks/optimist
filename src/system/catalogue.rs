@@ -13,6 +13,7 @@ use std::{collections::BTreeMap, fmt};
 
 use super::{
     manifest::{ComponentType, ComponentTypeId},
+    mutator::Mutator,
     validate::ComponentTypeError,
 };
 
@@ -23,6 +24,15 @@ const MANIFESTS: &[&str] = &[
     include_str!("catalogue/compute.yaml"),
     include_str!("catalogue/datastore.yaml"),
     include_str!("catalogue/aggregator.yaml"),
+];
+
+const MUTATORS: &[&str] = &[
+    include_str!("catalogue/mutators/retry.yaml"),
+    include_str!("catalogue/mutators/timeout.yaml"),
+    include_str!("catalogue/mutators/fan-out.yaml"),
+    include_str!("catalogue/mutators/batch.yaml"),
+    include_str!("catalogue/mutators/cache.yaml"),
+    include_str!("catalogue/mutators/load-shed.yaml"),
 ];
 
 /// Why a catalogue could not be assembled.
@@ -88,6 +98,38 @@ pub fn builtin_catalogue() -> Result<BTreeMap<String, ComponentType>, CatalogueE
             .is_some()
         {
             return Err(CatalogueError::Duplicate { id: component.id });
+        }
+    }
+    Ok(catalogue)
+}
+
+/// Loads and validates the relationship behaviours shipped with the tool.
+///
+/// ```
+/// let mutators = optimist::system::builtin_mutators()?;
+/// assert!(mutators["retry"].transforms.contains_key("rate"));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn builtin_mutators() -> Result<BTreeMap<String, Mutator>, CatalogueError> {
+    let mut catalogue = BTreeMap::new();
+    for manifest in MUTATORS {
+        let mutator: Mutator =
+            serde_yaml_ng::from_str(manifest).map_err(|error| CatalogueError::Malformed {
+                message: error.to_string(),
+            })?;
+        mutator
+            .validate()
+            .map_err(|source| CatalogueError::Invalid {
+                id: mutator.id.to_string(),
+                source,
+            })?;
+        if catalogue
+            .insert(mutator.id.to_string(), mutator.clone())
+            .is_some()
+        {
+            return Err(CatalogueError::Duplicate {
+                id: ComponentTypeId::from(mutator.id.as_str()),
+            });
         }
     }
     Ok(catalogue)
@@ -159,6 +201,48 @@ mod tests {
             assert!(
                 !catalogue[id].constraints.is_empty(),
                 "'{id}' declares no constraint"
+            );
+        }
+    }
+
+    #[test]
+    fn every_shipped_behaviour_loads_and_validates() {
+        let mutators = builtin_mutators().expect("mutators");
+        assert_eq!(mutators.len(), MUTATORS.len());
+        for id in ["retry", "timeout", "fan-out", "batch", "cache", "load-shed"] {
+            assert!(mutators.contains_key(id), "missing '{id}'");
+        }
+    }
+
+    #[test]
+    fn every_behaviour_rewrites_something_and_explains_itself() {
+        for mutator in builtin_mutators().expect("mutators").values() {
+            assert!(
+                !mutator.transforms.is_empty(),
+                "'{}' rewrites no signal, so attaching it would do nothing",
+                mutator.id
+            );
+            assert!(!mutator.summary.trim().is_empty(), "{}", mutator.id);
+            for (name, transform) in &mutator.transforms {
+                assert!(
+                    !transform.summary.trim().is_empty(),
+                    "{}.{name} has no summary",
+                    mutator.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn behaviours_that_change_demand_say_so() {
+        // Amplification is the reason these belong in a capacity model at all,
+        // so a behaviour touching the request rate must explain what it does to
+        // the load reaching the dependency behind it.
+        let mutators = builtin_mutators().expect("mutators");
+        for id in ["retry", "fan-out", "cache", "load-shed"] {
+            assert!(
+                mutators[id].transforms.contains_key("rate"),
+                "'{id}' should rewrite the request rate"
             );
         }
     }

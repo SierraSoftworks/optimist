@@ -1,0 +1,21 @@
+id: cache
+name: Cache
+summary: >
+  Serves a share of calls without reaching the dependency. Only the misses
+  travel on, so the dependency sees demand reduced by the hit ratio while the
+  caller still sees every call.
+properties:
+  hit_ratio:
+    unit: '1'
+    summary: >
+      Share of calls served from cache. Uncertainty here should reflect how much
+      the working set may change, because a hit ratio measured on today's
+      traffic is a poor guide to tomorrow's.
+transforms:
+  rate:
+    unit: op/s
+    summary: >
+      Demand reduced to the miss rate. A cache is a capacity multiplier on the
+      dependency behind it, so a design that depends on a high hit ratio should
+      be checked against a low one.
+    expression: signal.rate * (1 - hit_ratio)

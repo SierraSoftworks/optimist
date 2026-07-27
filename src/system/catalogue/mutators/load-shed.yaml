@@ -1,0 +1,21 @@
+id: load-shed
+name: Load shedding
+summary: >
+  Refuses demand above a fixed rate. The only behaviour here that acts on demand
+  rather than on how long a call waits, which is what makes it the one lever
+  capable of pulling a congested system back out of congestion.
+properties:
+  limit:
+    unit: op/s
+    summary: >
+      Rate above which calls are refused. Setting it below the downstream
+      capacity is the point: a limit above capacity sheds nothing until the
+      dependency has already saturated.
+transforms:
+  rate:
+    unit: op/s
+    summary: >
+      Demand capped per draw at the limit. The share of draws pinned to the
+      limit is the share being refused, and it is a cost paid deliberately in
+      exchange for the rest of the traffic being served.
+    expression: min([signal.rate, limit])

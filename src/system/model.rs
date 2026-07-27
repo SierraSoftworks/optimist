@@ -69,6 +69,9 @@ pub struct Relationship {
     pub from: ComponentId,
     /// Component receiving the flow.
     pub to: ComponentId,
+    /// Behaviours applied to the flow, in the order they take effect.
+    #[serde(default)]
+    pub mutators: Vec<super::mutator::AttachedMutator>,
     /// What this connection represents.
     #[serde(default)]
     pub summary: String,
@@ -104,6 +107,14 @@ pub struct ScratchpadEntry {
 }
 
 impl SystemModel {
+    /// Returns the relationships arriving at `component`, in model order.
+    pub fn inbound_to(&self, component: &ComponentId) -> Vec<&Relationship> {
+        self.relationships
+            .iter()
+            .filter(|relationship| &relationship.to == component)
+            .collect()
+    }
+
     /// Returns the components publishing into `component`, in model order.
     pub fn upstream_of(&self, component: &ComponentId) -> Vec<&ComponentId> {
         self.relationships

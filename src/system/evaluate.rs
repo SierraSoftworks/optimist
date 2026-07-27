@@ -44,10 +44,11 @@ use rand_chacha::ChaCha20Rng;
 use crate::squiggle::Value;
 
 use super::{
-    compile::{Plan, PreparedComponent, prepare, runtime},
-    expression::{INBOUND, PREVIOUS, STEP, TIME},
+    compile::{Plan, PreparedComponent, PreparedMutator, prepare, runtime},
+    expression::{INBOUND, PREVIOUS, SIGNAL, STEP, TIME},
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
+    mutator::Mutator,
     values::{blend, distance, draws, from_draws},
 };
 
@@ -93,6 +94,13 @@ pub enum EvaluationError {
         component: String,
         /// The type it named.
         component_type: String,
+    },
+    /// A relationship attaches a behaviour the catalogue does not define.
+    UnknownMutator {
+        /// The relationship, as source and destination.
+        relationship: String,
+        /// The behaviour it named.
+        mutator: String,
     },
     /// A required property was not supplied and has no default.
     MissingProperty {
@@ -140,6 +148,13 @@ impl std::fmt::Display for EvaluationError {
             } => write!(
                 formatter,
                 "component '{component}' adopts unknown type '{component_type}'"
+            ),
+            Self::UnknownMutator {
+                relationship,
+                mutator,
+            } => write!(
+                formatter,
+                "relationship {relationship} attaches unknown behaviour '{mutator}'"
             ),
             Self::MissingProperty {
                 component,
@@ -223,7 +238,17 @@ pub fn evaluate(
     catalogue: &BTreeMap<String, ComponentType>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    let plan = prepare(model, catalogue, config.seed, config.sample_count)?;
+    evaluate_with_mutators(model, catalogue, &builtin_mutators_or_empty(), config)
+}
+
+/// Solves a model against explicit component type and behaviour catalogues.
+pub fn evaluate_with_mutators(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
+    config: EvaluationConfig,
+) -> Result<Evaluation, EvaluationError> {
+    let plan = prepare(model, catalogue, mutators, config.seed, config.sample_count)?;
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut previous: BTreeMap<ComponentId, ComponentState> = BTreeMap::new();
     let mut steps = Vec::with_capacity(config.horizon.max(1));
@@ -234,6 +259,10 @@ pub fn evaluate(
         steps.push(step);
     }
     Ok(Evaluation { steps })
+}
+
+fn builtin_mutators_or_empty() -> BTreeMap<String, Mutator> {
+    super::catalogue::builtin_mutators().unwrap_or_default()
 }
 
 fn relax(
@@ -286,7 +315,7 @@ fn evaluate_component(
     time: f64,
     config: EvaluationConfig,
 ) -> Result<ComponentState, EvaluationError> {
-    let inbound = aggregate(plan, component, current);
+    let inbound = aggregate(plan, component, current, config, time)?;
     let prior = previous.get(&component.id).cloned().unwrap_or_default();
     let mut scope = plan.globals.clone();
     scope.extend(component.properties.clone());
@@ -330,6 +359,10 @@ fn evaluate_component(
 
 /// Sums each published signal across the relationships arriving at a component.
 ///
+/// Each relationship's flow passes through its attached behaviours before being
+/// counted, so a retry policy's amplification and a cache's absorption are
+/// already reflected in what the component sees.
+///
 /// Every signal the catalogue knows about is present, defaulting to zero, so a
 /// component at the edge of a model reads no demand rather than failing on a
 /// missing key. Summation is right for rates and volumes, which is what flows
@@ -339,24 +372,32 @@ fn aggregate(
     plan: &Plan,
     component: &PreparedComponent,
     current: &BTreeMap<ComponentId, ComponentState>,
-) -> BTreeMap<String, Value> {
+    config: EvaluationConfig,
+    time: f64,
+) -> Result<BTreeMap<String, Value>, EvaluationError> {
     let mut totals = plan
         .signals
         .iter()
         .map(|signal| (signal.clone(), 0.0_f64))
         .collect::<BTreeMap<_, _>>();
     let mut uncertain: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-    for source in &component.upstream {
-        let Some(state) = current.get(source) else {
+    for inbound in &component.upstream {
+        let Some(state) = current.get(&inbound.source) else {
             continue;
         };
-        for (signal, value) in &state.outputs {
+        let mut flow = plan
+            .signals
+            .iter()
+            .map(|signal| (signal.clone(), Value::Number(0.0)))
+            .collect::<BTreeMap<_, _>>();
+        flow.extend(state.outputs.clone());
+        for mutator in &inbound.mutators {
+            flow = apply(plan, mutator, flow, config, time)?;
+        }
+        for (signal, value) in flow {
             match value {
-                Value::Number(number) => *totals.entry(signal.clone()).or_default() += number,
-                value => uncertain
-                    .entry(signal.clone())
-                    .or_default()
-                    .push(value.clone()),
+                Value::Number(number) => *totals.entry(signal).or_default() += number,
+                value => uncertain.entry(signal).or_default().push(value),
             }
         }
     }
@@ -371,7 +412,44 @@ fn aggregate(
         };
         inbound.insert(signal, sum(values, certain));
     }
-    inbound
+    Ok(inbound)
+}
+
+/// Rewrites a flow through one attached behaviour.
+///
+/// Only the signals a behaviour declares are replaced; the rest travel on
+/// untouched, so attaching a timeout does not silently discard the payload size
+/// a downstream store needs.
+fn apply(
+    plan: &Plan,
+    mutator: &PreparedMutator,
+    flow: BTreeMap<String, Value>,
+    config: EvaluationConfig,
+    time: f64,
+) -> Result<BTreeMap<String, Value>, EvaluationError> {
+    let mut scope = plan.globals.clone();
+    scope.extend(mutator.properties.clone());
+    scope.insert(TIME.to_owned(), Value::Number(time));
+    scope.insert(STEP.to_owned(), Value::Number(config.step));
+    scope.insert(SIGNAL.to_owned(), Value::Dictionary(flow.clone()));
+
+    let mut runtime = runtime(config.seed, config.sample_count)?;
+    let mut rewritten = flow;
+    for (signal, program) in &mutator.transforms {
+        let value = runtime
+            .evaluate_values(
+                program,
+                scope
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.clone())),
+            )
+            .map_err(|diagnostic| EvaluationError::Evaluation {
+                location: format!("transform '{signal}' of behaviour '{}'", mutator.id),
+                message: diagnostic.message,
+            })?;
+        rewritten.insert(signal.clone(), value);
+    }
+    Ok(rewritten)
 }
 
 fn sum(values: Vec<Value>, offset: f64) -> Value {

@@ -25,6 +25,12 @@ impl std::fmt::Display for ComponentTypeId {
     }
 }
 
+impl From<&str> for ComponentTypeId {
+    fn from(id: &str) -> Self {
+        Self(id.to_owned())
+    }
+}
+
 /// How many relationships a port accepts.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]

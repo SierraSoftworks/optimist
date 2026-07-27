@@ -112,7 +112,13 @@ pub fn bottlenecks(
     step: &Step,
     config: EvaluationConfig,
 ) -> Result<Vec<Bottleneck>, EvaluationError> {
-    let plan = prepare(model, catalogue, config.seed, config.sample_count)?;
+    let plan = prepare(
+        model,
+        catalogue,
+        &super::catalogue::builtin_mutators().unwrap_or_default(),
+        config.seed,
+        config.sample_count,
+    )?;
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut ranked = Vec::new();
     for component in &plan.components {

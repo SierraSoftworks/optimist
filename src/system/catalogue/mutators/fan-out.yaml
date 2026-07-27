@@ -1,0 +1,15 @@
+id: fan-out
+name: Fan-out
+summary: >
+  Turns one upstream call into several downstream ones. The commonest source of
+  demand a design underestimates, because the multiplier lives in application
+  code rather than anywhere a diagram shows.
+properties:
+  branches:
+    unit: '1'
+    summary: Downstream calls issued per upstream call.
+transforms:
+  rate:
+    unit: op/s
+    summary: Demand multiplied by the branch count.
+    expression: signal.rate * branches

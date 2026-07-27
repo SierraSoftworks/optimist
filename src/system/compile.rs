@@ -20,8 +20,22 @@ use super::{
     evaluate::EvaluationError,
     expression::free_names,
     manifest::ComponentType,
-    model::{Component, ComponentId, SystemModel},
+    model::{Component, ComponentId, Relationship, SystemModel},
+    mutator::Mutator,
 };
+
+/// One relationship arriving at a component, with its behaviours resolved.
+pub(super) struct PreparedInbound {
+    pub(super) source: ComponentId,
+    pub(super) mutators: Vec<PreparedMutator>,
+}
+
+/// One behaviour attached to a relationship, ready to apply.
+pub(super) struct PreparedMutator {
+    pub(super) id: String,
+    pub(super) properties: BTreeMap<String, Value>,
+    pub(super) transforms: Vec<(String, Program)>,
+}
 
 /// One component resolved against its type and ready to evaluate.
 pub(super) struct PreparedComponent {
@@ -30,7 +44,7 @@ pub(super) struct PreparedComponent {
     pub(super) properties: BTreeMap<String, Value>,
     pub(super) channels: Vec<(String, Program)>,
     pub(super) constraints: BTreeMap<String, (Program, Program)>,
-    pub(super) upstream: Vec<ComponentId>,
+    pub(super) upstream: Vec<PreparedInbound>,
 }
 
 /// A whole model resolved and ready to solve.
@@ -43,6 +57,7 @@ pub(super) struct Plan {
 pub(super) fn prepare(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
     seed: u64,
     sample_count: usize,
 ) -> Result<Plan, EvaluationError> {
@@ -51,6 +66,9 @@ pub(super) fn prepare(
     let mut signals = BTreeSet::new();
     for component_type in catalogue.values() {
         signals.extend(component_type.outputs.keys().cloned());
+    }
+    for mutator in mutators.values() {
+        signals.extend(mutator.transforms.keys().cloned());
     }
     for component in &model.components {
         let component_type = catalogue
@@ -72,17 +90,20 @@ pub(super) fn prepare(
                 ),
             );
         }
+        let mut upstream = Vec::new();
+        for relationship in model.inbound_to(&component.id) {
+            upstream.push(PreparedInbound {
+                source: relationship.from.clone(),
+                mutators: prepare_mutators(relationship, mutators, &globals, sample_count)?,
+            });
+        }
         components.push(PreparedComponent {
             id: component.id.clone(),
             component_type,
             properties,
             channels,
             constraints,
-            upstream: model
-                .upstream_of(&component.id)
-                .into_iter()
-                .cloned()
-                .collect(),
+            upstream,
         });
     }
     Ok(Plan {
@@ -90,6 +111,76 @@ pub(super) fn prepare(
         globals,
         signals,
     })
+}
+
+fn prepare_mutators(
+    relationship: &Relationship,
+    catalogue: &BTreeMap<String, Mutator>,
+    globals: &BTreeMap<String, Value>,
+    sample_count: usize,
+) -> Result<Vec<PreparedMutator>, EvaluationError> {
+    let mut prepared = Vec::new();
+    for attached in &relationship.mutators {
+        let owner = format!("{} to {}", relationship.from, relationship.to);
+        let mutator = catalogue.get(attached.mutator.as_str()).ok_or_else(|| {
+            EvaluationError::UnknownMutator {
+                relationship: owner.clone(),
+                mutator: attached.mutator.to_string(),
+            }
+        })?;
+        let mut properties = BTreeMap::new();
+        for (name, declaration) in &mutator.properties {
+            let source = attached
+                .properties
+                .get(name)
+                .or(declaration.default.as_ref())
+                .ok_or_else(|| EvaluationError::MissingProperty {
+                    component: format!("{} on relationship {owner}", mutator.id),
+                    property: name.clone(),
+                })?;
+            let location = format!("property '{name}' of {} on {owner}", mutator.id);
+            let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+                location: location.clone(),
+                message: first_message(&diagnostics),
+            })?;
+            let seed = derive_seed(0, &format!("{owner}/{}", mutator.id), name);
+            let value = runtime(seed, sample_count)?
+                .evaluate_values(
+                    &program,
+                    globals
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value.clone())),
+                )
+                .map_err(|diagnostic| EvaluationError::Evaluation {
+                    location,
+                    message: diagnostic.message,
+                })?;
+            properties.insert(name.clone(), value);
+        }
+        for name in attached.properties.keys() {
+            if !mutator.properties.contains_key(name) {
+                return Err(EvaluationError::UnknownProperty {
+                    component: format!("{} on relationship {owner}", mutator.id),
+                    property: name.clone(),
+                });
+            }
+        }
+        let mut transforms = Vec::new();
+        for (signal, transform) in &mutator.transforms {
+            let program =
+                parse(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
+                    location: format!("transform '{signal}' of {} on {owner}", mutator.id),
+                    message: first_message(&diagnostics),
+                })?;
+            transforms.push((signal.clone(), program));
+        }
+        prepared.push(PreparedMutator {
+            id: mutator.id.to_string(),
+            properties,
+            transforms,
+        });
+    }
+    Ok(prepared)
 }
 
 fn evaluate_scratchpad(

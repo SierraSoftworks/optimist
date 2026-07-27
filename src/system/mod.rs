@@ -42,14 +42,16 @@ mod evaluate;
 mod expression;
 mod manifest;
 mod model;
+mod mutator;
 mod validate;
 mod values;
 
 pub use bottleneck::{Bottleneck, bottlenecks};
-pub use catalogue::{CatalogueError, builtin_catalogue};
+pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
 pub use evaluate::{ComponentState, Evaluation, EvaluationConfig, EvaluationError, Step, evaluate};
 pub use manifest::{
     Channel, ComponentType, ComponentTypeId, Constraint, Port, PortArity, Property,
 };
 pub use model::{Component, ComponentId, Relationship, ScratchpadEntry, SystemModel};
+pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
 pub use validate::ComponentTypeError;

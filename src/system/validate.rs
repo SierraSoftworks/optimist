@@ -9,8 +9,9 @@ use std::{collections::BTreeSet, fmt};
 use crate::squiggle::parse;
 
 use super::{
-    expression::{RESERVED, free_names},
+    expression::{MUTATOR_RESERVED, RESERVED, free_names},
     manifest::{ComponentType, ComponentTypeId},
+    mutator::Mutator,
 };
 
 /// Why a component type definition cannot be used.
@@ -192,7 +193,10 @@ impl ComponentType {
 }
 
 fn validate_identifier(id: &ComponentTypeId) -> Result<(), ComponentTypeError> {
-    let value = id.as_str();
+    validate_shaped_identifier(id.as_str())
+}
+
+fn validate_shaped_identifier(value: &str) -> Result<(), ComponentTypeError> {
     let shaped = !value.is_empty()
         && value.chars().all(|character| {
             character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
@@ -204,6 +208,61 @@ fn validate_identifier(id: &ComponentTypeId) -> Result<(), ComponentTypeError> {
         .ok_or_else(|| ComponentTypeError::Identifier {
             value: value.to_owned(),
         })
+}
+
+impl Mutator {
+    /// Parses and validates a mutator from its YAML manifest.
+    ///
+    /// ```
+    /// use optimist::system::Mutator;
+    ///
+    /// let manifest = "
+    /// id: sample
+    /// name: Sampling
+    /// properties:
+    ///   ratio:
+    ///     unit: '1'
+    /// transforms:
+    ///   rate:
+    ///     unit: op/s
+    ///     expression: signal.rate * ratio
+    /// ";
+    /// let mutator = Mutator::parse(manifest)?;
+    /// assert_eq!(mutator.id.as_str(), "sample");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn parse(manifest: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let mutator: Self = serde_yaml_ng::from_str(manifest)?;
+        mutator.validate()?;
+        Ok(mutator)
+    }
+
+    /// Checks every invariant the evaluator relies on.
+    pub fn validate(&self) -> Result<(), ComponentTypeError> {
+        validate_shaped_identifier(self.id.as_str())?;
+        let mut visible = MUTATOR_RESERVED
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<BTreeSet<_>>();
+        for (name, property) in &self.properties {
+            validate_name("property", name)?;
+            validate_unit(&format!("property '{name}'"), &property.unit)?;
+            if let Some(default) = &property.default {
+                validate_syntax(&format!("property '{name}' default"), default)?;
+            }
+            visible.insert(name.clone());
+        }
+        for (name, transform) in &self.transforms {
+            validate_name("transform", name)?;
+            validate_unit(&format!("transform '{name}'"), &transform.unit)?;
+            validate_references(
+                &format!("transform '{name}'"),
+                &transform.expression,
+                &visible,
+            )?;
+        }
+        Ok(())
+    }
 }
 
 fn validate_name(location: &str, name: &str) -> Result<(), ComponentTypeError> {

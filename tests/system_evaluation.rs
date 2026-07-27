@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 
 use optimist::squiggle::Value;
 use optimist::system::{
-    Bottleneck, Component, ComponentId, EvaluationConfig, Relationship, ScratchpadEntry,
-    SystemModel, bottlenecks, builtin_catalogue, evaluate,
+    AttachedMutator, Bottleneck, Component, ComponentId, EvaluationConfig, MutatorId, Relationship,
+    ScratchpadEntry, SystemModel, bottlenecks, builtin_catalogue, evaluate,
 };
 
 fn component(id: &str, component_type: &str, properties: &[(&str, &str)]) -> Component {
@@ -28,6 +28,25 @@ fn link(from: &str, to: &str) -> Relationship {
     Relationship {
         from: ComponentId::new(from),
         to: ComponentId::new(to),
+        mutators: Vec::new(),
+        summary: String::new(),
+    }
+}
+
+fn linked(from: &str, to: &str, mutators: &[(&str, &[(&str, &str)])]) -> Relationship {
+    Relationship {
+        from: ComponentId::new(from),
+        to: ComponentId::new(to),
+        mutators: mutators
+            .iter()
+            .map(|(id, properties)| AttachedMutator {
+                mutator: MutatorId::new(*id),
+                properties: properties
+                    .iter()
+                    .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
+                    .collect(),
+            })
+            .collect(),
         summary: String::new(),
     }
 }
@@ -491,4 +510,239 @@ fn every_constraint_is_accounted_for() {
     assert!(names.contains(&"admission"), "{names:?}");
     assert!(names.contains(&"connections"), "{names:?}");
     assert!(ranked.iter().all(|entry| !entry.binds()));
+}
+
+fn amplified(attempt_success: &str) -> f64 {
+    let model = SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "100")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.001"), ("parallelism", "64")],
+            ),
+        ],
+        relationships: vec![linked(
+            "users",
+            "api",
+            &[(
+                "retry",
+                &[("attempts", "3"), ("attempt_success", attempt_success)],
+            )],
+        )],
+        ..SystemModel::default()
+    };
+    solve(&model, config())[&ComponentId::new("api")].mean("offered")
+}
+
+/// A retry policy amplifies the demand reaching the dependency behind it.
+///
+/// This is the term that turns a partial outage into a retry storm, and it is
+/// invisible on a diagram: the relationship looks identical whether or not a
+/// policy is attached.
+#[test]
+fn retrying_amplifies_downstream_demand() {
+    // A dependency that almost always succeeds is called about once per request.
+    assert!((amplified("0.999") - 100.0).abs() < 0.5);
+    // One that fails half the time is called nearly twice as often.
+    let degraded = amplified("0.5");
+    assert!(
+        (degraded - 175.0).abs() < 1.0,
+        "expected 1 + 0.5 + 0.25 attempts per request, got {degraded}"
+    );
+    // One that almost always fails is called the full budget of three times.
+    assert!((amplified("0.001") - 300.0).abs() < 1.0);
+}
+
+/// Amplification can push a healthy dependency past its capacity.
+///
+/// The pool serves the offered load comfortably until a retry policy triples it,
+/// which is the failure mode that makes retries dangerous precisely when they
+/// seem most necessary.
+#[test]
+fn amplification_can_create_the_bottleneck_it_responds_to() {
+    let pool = |mutators: Vec<Relationship>| SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "150")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "2")],
+            ),
+        ],
+        relationships: mutators,
+        ..SystemModel::default()
+    };
+    let catalogue = builtin_catalogue().expect("catalogue");
+
+    let plain = pool(vec![link("users", "api")]);
+    let evaluation = evaluate(&plain, &catalogue, config()).expect("solves");
+    let ranked = bottlenecks(&plain, &catalogue, evaluation.settled(), config()).expect("ranks");
+    assert!(!ranked[0].binds(), "200 capacity serves 150 offered");
+
+    let retried = pool(vec![linked(
+        "users",
+        "api",
+        &[("retry", &[("attempts", "3"), ("attempt_success", "0.05")])],
+    )]);
+    let evaluation = evaluate(&retried, &catalogue, config()).expect("solves");
+    let ranked = bottlenecks(&retried, &catalogue, evaluation.settled(), config()).expect("ranks");
+    assert!(
+        ranked[0].binds(),
+        "retrying must push the pool past capacity, utilisation {}",
+        ranked[0].utilisation
+    );
+}
+
+/// A cache reduces the demand reaching the component behind it.
+#[test]
+fn caching_absorbs_demand_before_the_dependency() {
+    let model = SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "1000")]),
+            component(
+                "store",
+                "datastore",
+                &[
+                    ("operation_limit", "100000"),
+                    ("transfer_limit", "1e10"),
+                    ("volume_limit", "1e14"),
+                    ("record_size", "256"),
+                    ("retention", "600"),
+                ],
+            ),
+        ],
+        relationships: vec![linked(
+            "users",
+            "store",
+            &[("cache", &[("hit_ratio", "0.9")])],
+        )],
+        ..SystemModel::default()
+    };
+    assert!(
+        (solve(&model, config())[&ComponentId::new("store")].mean("operations") - 100.0).abs()
+            < 1e-6
+    );
+}
+
+/// Batching trades operation rate for payload size, leaving byte rate alone.
+#[test]
+fn batching_trades_operations_for_payload() {
+    let model = |mutators: Vec<Relationship>| SystemModel {
+        components: vec![
+            component(
+                "writers",
+                "client",
+                &[("request_rate", "1000"), ("payload", "512")],
+            ),
+            component(
+                "store",
+                "datastore",
+                &[
+                    ("operation_limit", "100000"),
+                    ("transfer_limit", "1e10"),
+                    ("volume_limit", "1e14"),
+                    ("record_size", "512"),
+                    ("retention", "60"),
+                ],
+            ),
+        ],
+        relationships: mutators,
+        ..SystemModel::default()
+    };
+    let plain = solve(&model(vec![link("writers", "store")]), config());
+    let batched = solve(
+        &model(vec![linked(
+            "writers",
+            "store",
+            &[("batch", &[("size", "20"), ("max_delay", "0.05")])],
+        )]),
+        config(),
+    );
+    let store = ComponentId::new("store");
+    assert!((plain[&store].mean("operations") - 1000.0).abs() < 1e-6);
+    assert!((batched[&store].mean("operations") - 50.0).abs() < 1e-6);
+}
+
+/// Behaviours compose in the order they are declared.
+///
+/// Shedding before retrying caps what the policy may amplify; retrying before
+/// shedding lets the amplified demand meet the cap instead. The two orders give
+/// different answers, which is why the order is written down.
+#[test]
+fn behaviour_order_changes_the_result() {
+    let model = |mutators: &[(&str, &[(&str, &str)])]| SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "200")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.001"), ("parallelism", "64")],
+            ),
+        ],
+        relationships: vec![linked("users", "api", mutators)],
+        ..SystemModel::default()
+    };
+    let retry = (
+        "retry",
+        &[("attempts", "3"), ("attempt_success", "0.001")][..],
+    );
+    let shed = ("load-shed", &[("limit", "100")][..]);
+
+    // Shedding first caps demand at 100, which retrying then triples.
+    let shed_first = solve(&model(&[shed, retry]), config());
+    // Retrying first triples demand to 600, which shedding then caps at 100.
+    let retry_first = solve(&model(&[retry, shed]), config());
+
+    let api = ComponentId::new("api");
+    assert!((shed_first[&api].mean("offered") - 300.0).abs() < 1.0);
+    assert!((retry_first[&api].mean("offered") - 100.0).abs() < 1.0);
+}
+
+/// A timeout bounds the latency a caller observes.
+#[test]
+fn a_timeout_bounds_observed_latency() {
+    let model = SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "10")]),
+            component(
+                "slow",
+                "compute",
+                &[("service_time", "2"), ("parallelism", "64")],
+            ),
+            component(
+                "caller",
+                "compute",
+                &[("service_time", "0.001"), ("parallelism", "64")],
+            ),
+        ],
+        relationships: vec![
+            link("users", "slow"),
+            linked("slow", "caller", &[("timeout", &[("budget", "0.25")])]),
+        ],
+        ..SystemModel::default()
+    };
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
+    assert!(evaluation.converged());
+}
+
+/// An unknown behaviour is reported against the relationship that attached it.
+#[test]
+fn unknown_behaviours_are_reported() {
+    let model = SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "10")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "8")],
+            ),
+        ],
+        relationships: vec![linked("users", "api", &[("nonexistent", &[])])],
+        ..SystemModel::default()
+    };
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let error = evaluate(&model, &catalogue, config()).expect_err("unknown behaviour");
+    assert!(error.to_string().contains("unknown behaviour"), "{error}");
 }

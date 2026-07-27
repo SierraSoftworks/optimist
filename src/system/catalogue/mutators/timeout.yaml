@@ -1,0 +1,22 @@
+id: timeout
+name: Timeout
+summary: >
+  Abandons a call that has not returned within a deadline. Bounds the latency a
+  caller can observe, and converts the tail it cut off into failures rather than
+  removing it from the system.
+properties:
+  budget:
+    unit: s
+    summary: >
+      Time allowed before the call is abandoned. Set below the caller's own
+      deadline, otherwise the caller gives up first and the timeout never binds.
+transforms:
+  added_latency:
+    unit: s
+    summary: >
+      Latency capped per draw at the budget. Clamping rather than discarding is
+      deliberate: a call that timed out still occupied a connection for the full
+      budget, so the resource it held is accounted for even though the caller saw
+      no result. The share of draws sitting exactly at the budget is the share
+      that timed out.
+    expression: min([signal.added_latency, budget])

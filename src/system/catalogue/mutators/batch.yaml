@@ -1,0 +1,32 @@
+id: batch
+name: Batch
+summary: >
+  Groups several calls into one. Trades operation rate for payload size and
+  waiting time, which is the right trade against a store limited by operations
+  per second and the wrong one against a store limited by bandwidth.
+properties:
+  size:
+    unit: '1'
+    summary: Calls combined into one downstream operation.
+  max_delay:
+    unit: s
+    summary: >
+      Longest a call waits for its batch to fill. Charged in full, because a
+      batch that fills early is a property of the traffic rather than of the
+      policy.
+    default: '0'
+transforms:
+  rate:
+    unit: op/s
+    summary: Operation rate divided by the batch size.
+    expression: signal.rate / size
+  payload:
+    unit: B/op
+    summary: >
+      Bytes per operation multiplied by the batch size, so the byte rate through
+      the relationship is unchanged while the operation rate falls.
+    expression: signal.payload * size
+  added_latency:
+    unit: s
+    summary: Waiting for the batch to fill, added to the call's own latency.
+    expression: signal.added_latency + max_delay

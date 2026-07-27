@@ -1,0 +1,30 @@
+id: retry
+name: Retry
+summary: >
+  Re-issues a failed call up to a fixed number of attempts. Raises the chance a
+  call eventually succeeds, and raises the demand placed on the dependency by
+  the same mechanism, which is why a retry policy helps a healthy system and
+  harms a failing one.
+properties:
+  attempts:
+    unit: '1'
+    summary: >
+      Maximum attempts per call, including the first. A budget of one disables
+      retrying without removing the policy from the model.
+  attempt_success:
+    unit: '1'
+    summary: >
+      Probability a single attempt succeeds. Assumes attempts fail
+      independently, which is optimistic: attempts against a saturated
+      dependency fail together, and correlated failure has to be expressed
+      through shared upstream uncertainty instead.
+transforms:
+  rate:
+    unit: op/s
+    summary: >
+      Demand multiplied by the expected number of attempts. As attempt success
+      falls this term grows toward the full budget, so a dependency that starts
+      failing is immediately asked to serve several times the traffic. That
+      feedback is what turns a partial outage into a retry storm, and it is
+      invisible unless the amplification is modelled.
+    expression: signal.rate * Reliability.retryAttempts(attempt_success, attempts)

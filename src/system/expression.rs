@@ -27,9 +27,17 @@ pub(super) const STEP: &str = "dt";
 pub(super) const PREVIOUS: &str = "prev";
 /// The flows arriving on this component's inbound relationships.
 pub(super) const INBOUND: &str = "inbound";
+/// The signals currently travelling along a relationship.
+pub(super) const SIGNAL: &str = "signal";
 
 /// Bindings the evaluator supplies to every channel expression.
 pub(super) const RESERVED: &[&str] = &[TIME, STEP, PREVIOUS, INBOUND];
+
+/// Bindings the evaluator supplies to every mutator transform.
+///
+/// A mutator sees the flow passing through it rather than the components on
+/// either end, which is what keeps it reusable on any relationship.
+pub(super) const MUTATOR_RESERVED: &[&str] = &[TIME, STEP, SIGNAL];
 
 /// Parses an expression and reports the names it expects to be given.
 pub(super) fn free_names(source: &str) -> Result<BTreeSet<String>, Vec<Diagnostic>> {
