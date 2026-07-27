@@ -11,7 +11,7 @@ impl Distribution {
 
     pub(crate) fn sample(&self, rng: &mut ChaCha20Rng) -> Result<f64, String> {
         let probability = rng.gen_range(f64::EPSILON..(1.0 - f64::EPSILON));
-        match &self.0 {
+        match &self.kind {
             Kind::Samples(samples) => {
                 if samples.is_empty() {
                     return Err("cannot sample an empty empirical distribution".into());

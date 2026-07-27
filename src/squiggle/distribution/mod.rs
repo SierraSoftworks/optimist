@@ -7,20 +7,40 @@
 //! density, quantile, mean, and variance calculations delegate to `statrs` where
 //! available; logistic and empirical formulas are implemented directly.
 //!
-//! Sampling applies inverse transform sampling to one deterministic ChaCha20
-//! uniform draw. Empirical distributions use linear quantiles. Composed runtime
-//! distributions are finite Monte Carlo approximations, so their tail accuracy is
-//! limited by the configured sample count and must not be presented as exact.
+//! Sampling applies stratified inverse transform sampling to deterministic
+//! ChaCha20 uniform draws. Every distribution value owns a lazily materialised
+//! sample set shared by all of its clones, so distribution algebra composes
+//! draws elementwise and preserves dependence between references to a common
+//! binding. Composed runtime distributions are finite Monte Carlo
+//! approximations, so their tail accuracy is limited by the configured sample
+//! count and must not be presented as exact.
 //!
 //! References: NIST/SEMATECH e-Handbook of Statistical Methods, sections 1.3.6
 //! and 1.3.6.6; Luc Devroye, *Non-Uniform Random Variate Generation* (1986).
 
+mod draws;
 mod sample;
 mod stats;
 
+use draws::DrawCache;
+
 /// A validated symbolic or empirical scalar probability distribution.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Distribution(pub(super) Kind);
+///
+/// Equality compares parameters only. Two distributions with identical
+/// parameters are equal even when one has already materialised its sample set
+/// and the other has not, because materialisation is a caching detail rather
+/// than part of the value.
+#[derive(Clone, Debug)]
+pub struct Distribution {
+    kind: Kind,
+    draws: DrawCache,
+}
+
+impl PartialEq for Distribution {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Kind {
@@ -41,10 +61,17 @@ pub(super) enum Kind {
 }
 
 impl Distribution {
+    fn symbolic(kind: Kind) -> Self {
+        Self {
+            kind,
+            draws: DrawCache::default(),
+        }
+    }
+
     /// Creates a deterministic point mass.
     pub fn point(value: f64) -> Result<Self, String> {
         finite(value, "point value")?;
-        Ok(Self(Kind::Point(value)))
+        Ok(Self::symbolic(Kind::Point(value)))
     }
 
     /// Creates a Normal distribution from mean and positive standard deviation.
@@ -57,72 +84,72 @@ impl Distribution {
     pub fn normal(mean: f64, stdev: f64) -> Result<Self, String> {
         finite(mean, "mean")?;
         positive(stdev, "standard deviation")?;
-        Ok(Self(Kind::Normal(mean, stdev)))
+        Ok(Self::symbolic(Kind::Normal(mean, stdev)))
     }
 
     /// Creates a Lognormal distribution from log-space location and scale.
     pub fn lognormal(mu: f64, sigma: f64) -> Result<Self, String> {
         finite(mu, "log-space location")?;
         positive(sigma, "log-space scale")?;
-        Ok(Self(Kind::Lognormal(mu, sigma)))
+        Ok(Self::symbolic(Kind::Lognormal(mu, sigma)))
     }
 
     /// Creates a continuous Uniform distribution on `[minimum, maximum]`.
     pub fn uniform(minimum: f64, maximum: f64) -> Result<Self, String> {
         ordered(minimum, maximum)?;
-        Ok(Self(Kind::Uniform(minimum, maximum)))
+        Ok(Self::symbolic(Kind::Uniform(minimum, maximum)))
     }
 
     /// Creates a Beta distribution from positive shape parameters.
     pub fn beta(alpha: f64, beta: f64) -> Result<Self, String> {
         positive(alpha, "alpha")?;
         positive(beta, "beta")?;
-        Ok(Self(Kind::Beta(alpha, beta)))
+        Ok(Self::symbolic(Kind::Beta(alpha, beta)))
     }
 
     /// Creates a Bernoulli distribution with success probability `p`.
     pub fn bernoulli(p: f64) -> Result<Self, String> {
         probability(p)?;
-        Ok(Self(Kind::Bernoulli(p)))
+        Ok(Self::symbolic(Kind::Bernoulli(p)))
     }
 
     /// Creates a Binomial distribution for `trials` independent Bernoulli events.
     pub fn binomial(trials: u64, p: f64) -> Result<Self, String> {
         probability(p)?;
-        Ok(Self(Kind::Binomial(trials, p)))
+        Ok(Self::symbolic(Kind::Binomial(trials, p)))
     }
 
     /// Creates a Cauchy distribution from location and positive scale.
     pub fn cauchy(location: f64, scale: f64) -> Result<Self, String> {
         finite(location, "location")?;
         positive(scale, "scale")?;
-        Ok(Self(Kind::Cauchy(location, scale)))
+        Ok(Self::symbolic(Kind::Cauchy(location, scale)))
     }
 
     /// Creates an Exponential distribution with positive event rate.
     pub fn exponential(rate: f64) -> Result<Self, String> {
         positive(rate, "rate")?;
-        Ok(Self(Kind::Exponential(rate)))
+        Ok(Self::symbolic(Kind::Exponential(rate)))
     }
 
     /// Creates a Gamma distribution using Squiggle's positive shape and scale.
     pub fn gamma(shape: f64, scale: f64) -> Result<Self, String> {
         positive(shape, "shape")?;
         positive(scale, "scale")?;
-        Ok(Self(Kind::Gamma(shape, scale)))
+        Ok(Self::symbolic(Kind::Gamma(shape, scale)))
     }
 
     /// Creates a Logistic distribution from location and positive scale.
     pub fn logistic(location: f64, scale: f64) -> Result<Self, String> {
         finite(location, "location")?;
         positive(scale, "scale")?;
-        Ok(Self(Kind::Logistic(location, scale)))
+        Ok(Self::symbolic(Kind::Logistic(location, scale)))
     }
 
     /// Creates a Poisson count distribution with positive event rate.
     pub fn poisson(rate: f64) -> Result<Self, String> {
         positive(rate, "rate")?;
-        Ok(Self(Kind::Poisson(rate)))
+        Ok(Self::symbolic(Kind::Poisson(rate)))
     }
 
     /// Creates a Triangular distribution from minimum, mode, and maximum.
@@ -131,7 +158,7 @@ impl Distribution {
         if !(minimum..=maximum).contains(&mode) {
             return Err("mode must lie between minimum and maximum".into());
         }
-        Ok(Self(Kind::Triangular(minimum, mode, maximum)))
+        Ok(Self::symbolic(Kind::Triangular(minimum, mode, maximum)))
     }
 
     /// Creates an empirical distribution from finite scalar draws.
@@ -142,12 +169,12 @@ impl Distribution {
         if samples.iter().any(|sample| !sample.is_finite()) {
             return Err("empirical samples must all be finite".into());
         }
-        Ok(Self(Kind::Samples(samples)))
+        Ok(Self::symbolic(Kind::Samples(samples)))
     }
 
     /// Returns the canonical Squiggle family name.
     pub fn family(&self) -> &'static str {
-        match self.0 {
+        match self.kind {
             Kind::Point(_) => "PointMass",
             Kind::Normal(..) => "Normal",
             Kind::Lognormal(..) => "Lognormal",
@@ -167,7 +194,7 @@ impl Distribution {
 
     /// Borrows the stored draws when this is an empirical sample set.
     pub fn samples(&self) -> Option<&[f64]> {
-        if let Kind::Samples(samples) = &self.0 {
+        if let Kind::Samples(samples) = &self.kind {
             Some(samples)
         } else {
             None
@@ -176,7 +203,7 @@ impl Distribution {
 
     /// Returns the value when this distribution is a symbolic point mass.
     pub fn point_value(&self) -> Option<f64> {
-        match self.0 {
+        match self.kind {
             Kind::Point(value) => Some(value),
             _ => None,
         }
@@ -184,7 +211,7 @@ impl Distribution {
 
     /// Returns `(mean, standard_deviation)` for a symbolic Normal distribution.
     pub fn normal_parameters(&self) -> Option<(f64, f64)> {
-        match self.0 {
+        match self.kind {
             Kind::Normal(mean, standard_deviation) => Some((mean, standard_deviation)),
             _ => None,
         }
@@ -192,7 +219,7 @@ impl Distribution {
 
     /// Returns `(location, scale)` for a symbolic Lognormal distribution.
     pub fn lognormal_parameters(&self) -> Option<(f64, f64)> {
-        match self.0 {
+        match self.kind {
             Kind::Lognormal(location, scale) => Some((location, scale)),
             _ => None,
         }
@@ -200,7 +227,7 @@ impl Distribution {
 
     /// Returns `(alpha, beta)` for a symbolic Beta distribution.
     pub fn beta_parameters(&self) -> Option<(f64, f64)> {
-        match self.0 {
+        match self.kind {
             Kind::Beta(alpha, beta) => Some((alpha, beta)),
             _ => None,
         }

@@ -127,11 +127,12 @@ impl Runtime {
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        let count = Distribution::aligned_count([&distribution], self.config.sample_count);
         let samples = distribution
-            .sample_n(self.config.sample_count, &mut self.rng)
+            .draws(count, &mut self.rng)
             .map_err(|message| Diagnostic::runtime(message, span))?
-            .into_iter()
-            .map(|sample| scalar(operator, left.unwrap_or(sample), right.unwrap_or(sample)))
+            .iter()
+            .map(|draw| scalar(operator, left.unwrap_or(*draw), right.unwrap_or(*draw)))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|message| Diagnostic::runtime(message, span))?;
         Distribution::from_samples(samples)
@@ -139,6 +140,12 @@ impl Runtime {
             .map_err(|message| Diagnostic::runtime(message, span))
     }
 
+    /// Combines two distributions elementwise at matching draw indices.
+    ///
+    /// Alignment is what preserves dependence: operands that resolve to the same
+    /// binding share one sample set, so `x - x` cancels exactly, while operands
+    /// built by separate constructors hold independent sample sets and compose as
+    /// independent random variables.
     fn combine_two(
         &mut self,
         left: Distribution,
@@ -146,12 +153,17 @@ impl Runtime {
         operator: &str,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let samples = (0..self.config.sample_count)
-            .map(|_| {
-                let left = left.sample(&mut self.rng)?;
-                let right = right.sample(&mut self.rng)?;
-                scalar(operator, left, right)
-            })
+        let count = Distribution::aligned_count([&left, &right], self.config.sample_count);
+        let left = left
+            .draws(count, &mut self.rng)
+            .map_err(|message| Diagnostic::runtime(message, span))?;
+        let right = right
+            .draws(count, &mut self.rng)
+            .map_err(|message| Diagnostic::runtime(message, span))?;
+        let samples = left
+            .iter()
+            .zip(right)
+            .map(|(left, right)| scalar(operator, *left, *right))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|message| Diagnostic::runtime(message, span))?;
         Distribution::from_samples(samples)
@@ -165,11 +177,12 @@ impl Runtime {
         transform: impl Fn(f64) -> f64,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        let count = Distribution::aligned_count([&distribution], self.config.sample_count);
         let samples = distribution
-            .sample_n(self.config.sample_count, &mut self.rng)
+            .draws(count, &mut self.rng)
             .map_err(|message| Diagnostic::runtime(message, span))?
-            .into_iter()
-            .map(transform)
+            .iter()
+            .map(|draw| transform(*draw))
             .collect();
         Distribution::from_samples(samples)
             .map(Value::Distribution)

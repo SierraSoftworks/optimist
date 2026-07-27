@@ -169,10 +169,17 @@ pub fn assess_squiggle_estimate(
         Value::Distribution(value) => {
             let effective = symbolic_distribution(&value).map_or_else(
                 || {
-                    let samples = (0..definition.sample_count)
-                        .map(|index| value.sample_seeded(sample_seed(definition.seed, index)))
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(SquiggleEstimateError::InvalidDistribution)?;
+                    // A composed result is already a materialised sample set, so
+                    // its draws are retained directly. Resampling them with
+                    // replacement would discard the stratification the runtime
+                    // applied and add bootstrap noise to every statistic.
+                    let samples = match value.samples() {
+                        Some(draws) => draws.to_vec(),
+                        None => (0..definition.sample_count)
+                            .map(|index| value.sample_seeded(sample_seed(definition.seed, index)))
+                            .collect::<Result<Vec<_>, _>>()
+                            .map_err(SquiggleEstimateError::InvalidDistribution)?,
+                    };
                     Distribution::empirical(samples).map_err(|error| {
                         SquiggleEstimateError::InvalidDistribution(error.to_string())
                     })

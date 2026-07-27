@@ -9,7 +9,7 @@ use super::{Distribution, Kind};
 impl Distribution {
     /// Returns the expected value when it exists.
     pub fn mean(&self) -> Result<f64, String> {
-        match &self.0 {
+        match &self.kind {
             Kind::Point(value) => Ok(*value),
             Kind::Normal(mean, _) | Kind::Logistic(mean, _) => Ok(*mean),
             Kind::Lognormal(mu, sigma) => Ok((mu + sigma * sigma / 2.0).exp()),
@@ -28,7 +28,7 @@ impl Distribution {
 
     /// Returns the population variance when it exists.
     pub fn variance(&self) -> Result<f64, String> {
-        match &self.0 {
+        match &self.kind {
             Kind::Point(_) => Ok(0.0),
             Kind::Normal(_, sigma) => Ok(sigma * sigma),
             Kind::Lognormal(mu, sigma) => {
@@ -71,7 +71,7 @@ impl Distribution {
         if !(0.0..=1.0).contains(&p) || p.is_nan() {
             return Err("quantile probability must be between zero and one".into());
         }
-        match &self.0 {
+        match &self.kind {
             Kind::Point(value) => Ok(*value),
             Kind::Normal(mean, sigma) => {
                 Ok(validated("Normal", Normal::new(*mean, *sigma))?.inverse_cdf(p))
@@ -116,7 +116,7 @@ impl Distribution {
         if x.is_nan() {
             return Err("CDF input must not be NaN".into());
         }
-        Ok(match &self.0 {
+        Ok(match &self.kind {
             Kind::Point(value) => f64::from(x >= *value),
             Kind::Normal(mean, sigma) => validated("Normal", Normal::new(*mean, *sigma))?.cdf(x),
             Kind::Lognormal(mu, sigma) => {
@@ -167,7 +167,7 @@ impl Distribution {
         if x.is_nan() {
             return Err("density input must not be NaN".into());
         }
-        Ok(match &self.0 {
+        Ok(match &self.kind {
             Kind::Point(value) => f64::from(x == *value),
             Kind::Normal(mean, sigma) => validated("Normal", Normal::new(*mean, *sigma))?.pdf(x),
             Kind::Lognormal(mu, sigma) => {
@@ -209,7 +209,7 @@ impl Distribution {
 
     /// Returns the lower support bound, which may be negative infinity.
     pub fn minimum(&self) -> Result<f64, String> {
-        Ok(match &self.0 {
+        Ok(match &self.kind {
             Kind::Point(value) => *value,
             Kind::Normal(..) | Kind::Cauchy(..) | Kind::Logistic(..) => f64::NEG_INFINITY,
             Kind::Lognormal(..)
@@ -230,7 +230,7 @@ impl Distribution {
 
     /// Returns the upper support bound, which may be positive infinity.
     pub fn maximum(&self) -> Result<f64, String> {
-        Ok(match &self.0 {
+        Ok(match &self.kind {
             Kind::Point(value) => *value,
             Kind::Normal(..)
             | Kind::Lognormal(..)
@@ -252,7 +252,7 @@ impl Distribution {
 
     /// Returns one modal value when the family has a defined mode.
     pub fn mode(&self) -> Result<f64, String> {
-        match &self.0 {
+        match &self.kind {
             Kind::Point(value)
             | Kind::Normal(value, _)
             | Kind::Cauchy(value, _)

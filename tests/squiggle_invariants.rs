@@ -294,3 +294,104 @@ fn normal_sum_cdf_matches_convolution(#[case] value: f64) -> Result<(), String> 
     );
     Ok(())
 }
+
+/// A binding names one random variable, so its draws cancel against themselves.
+///
+/// Sample-set algebra composes draws elementwise at matching indices. Every
+/// reference to a binding resolves to the same draws, so the identities below
+/// hold to floating-point rounding rather than to sampling error. Independent
+/// resampling at each use site would instead give `x - x` the variance of a
+/// difference of two independent replicates, which is the regression this pins.
+///
+/// The residual tolerance is rounding, not Monte Carlo noise: `3x / x` differs
+/// from `3` in the last few units in the last place because multiplication and
+/// division do not associate exactly in binary floating point.
+#[rstest]
+#[case::difference("x = normal(5, 1)\nx - x", 0.0)]
+#[case::ratio("x = lognormal(1, 0.5)\nx / x", 1.0)]
+#[case::inverse_scaling("x = uniform(2, 9)\n(x * 3) / x", 3.0)]
+#[case::cancelling_sum("x = beta(2, 5)\n(x + x) - (2 * x)", 0.0)]
+fn a_binding_cancels_against_itself(
+    #[case] source: &str,
+    #[case] expected: f64,
+) -> Result<(), String> {
+    let received = evaluate_distribution(source)?;
+    assert!(
+        received.stdev()? < 1e-12,
+        "{source} must collapse to a point mass, got stdev {}",
+        received.stdev()?
+    );
+    assert!(
+        (received.mean()? - expected).abs() < 1e-9,
+        "{source}: expected {expected}, received {}",
+        received.mean()?
+    );
+    Ok(())
+}
+
+/// Distinct constructor sites stay independent even when textually identical.
+///
+/// Sharing is by value identity rather than by structure, so two separate calls
+/// to `normal(5, 1)` are two random variables. Their difference carries the
+/// convolved variance $\sigma_1^2 + \sigma_2^2$ instead of cancelling.
+#[test]
+fn distinct_constructors_remain_independent() -> Result<(), String> {
+    let received = evaluate_distribution("normal(5, 1) - normal(5, 1)")?;
+    let expected_stdev = 2.0_f64.sqrt();
+    let tolerance = 6.0 * expected_stdev / (SAMPLE_COUNT as f64).sqrt() + 1e-3;
+    assert!(
+        (received.stdev()? - expected_stdev).abs() <= tolerance,
+        "expected stdev {expected_stdev}, received {}",
+        received.stdev()?
+    );
+    assert!(received.mean()?.abs() <= tolerance);
+    Ok(())
+}
+
+/// Dependence survives an arbitrary number of intervening compositions.
+///
+/// A model is a deep chain of derived quantities, so a shared upstream variable
+/// must still cancel after passing through unrelated arithmetic. Propagating a
+/// distribution through a system graph depends on exactly this property.
+#[test]
+fn dependence_survives_intermediate_composition() -> Result<(), String> {
+    let source = "\
+        base = lognormal(0, 0.4)\n\
+        scaled = base * 7\n\
+        shifted = scaled + 12\n\
+        recovered = (shifted - 12) / 7\n\
+        recovered - base";
+    let received = evaluate_distribution(source)?;
+    assert!(
+        received.stdev()? < 1e-9 && received.mean()?.abs() < 1e-9,
+        "a recovered quantity must cancel its source exactly, got mean {} stdev {}",
+        received.mean()?,
+        received.stdev()?
+    );
+    Ok(())
+}
+
+/// Stratified draws estimate means more precisely than independent sampling.
+///
+/// Independent sampling leaves a standard error of $\sigma/\sqrt{n}$ on the
+/// mean. Stratification places exactly one draw per $1/n$ probability band, so
+/// for a monotone quantile function the error falls well below that. Asserting
+/// a tolerance an independent sampler would routinely miss keeps the variance
+/// reduction from silently regressing.
+#[rstest]
+#[case::uniform("uniform(0, 1)", 0.5)]
+#[case::normal("normal(10, 3)", 10.0)]
+#[case::exponential("exponential(2)", 0.5)]
+fn stratified_draws_track_analytical_means(
+    #[case] source: &str,
+    #[case] expected: f64,
+) -> Result<(), String> {
+    let sampled = evaluate_distribution(&format!("SampleSet.fromDist({source})"))?;
+    let independent_error = evaluate_distribution(source)?.stdev()? / (SAMPLE_COUNT as f64).sqrt();
+    assert!(
+        (sampled.mean()? - expected).abs() < independent_error,
+        "{source}: stratified mean {} missed {expected} by more than one independent standard error {independent_error}",
+        sampled.mean()?
+    );
+    Ok(())
+}
