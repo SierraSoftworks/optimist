@@ -108,7 +108,7 @@ pub use scenario::{
 };
 pub use scenario_analysis_model::{
     InterventionProjection, ObjectiveProjection, ObjectiveTrajectoryPoint, ScenarioAnalysis,
-    ScenarioAnalysisError,
+    ScenarioAnalysisError, StateDetail, StateTrajectory,
 };
 pub use scenario_analysis_stability::FeedbackLoop;
 pub use scenario_id::ScenarioId;

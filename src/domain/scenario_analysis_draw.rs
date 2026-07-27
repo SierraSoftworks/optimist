@@ -7,7 +7,7 @@ use super::effect_activation::{self, SampledEffectProfile};
 use super::scenario_analysis_accumulator::Accumulator;
 use super::scenario_analysis_baseline;
 use super::scenario_analysis_graph::{AnalysisGraph, CandidateExecutionPlan};
-use super::{Scenario, ScenarioAnalysisError, UtilityDirection};
+use super::{Scenario, ScenarioAnalysisError, StateDetail, UtilityDirection};
 use crate::squiggle::Runtime;
 
 struct SampledPropagationEdge {
@@ -30,6 +30,8 @@ struct SampledInterventionEdge {
 pub(super) struct ScenarioDraw {
     pub(super) values: Vec<f64>,
     pub(super) trajectories: Vec<Vec<[f64; 2]>>,
+    /// Every state's value at every period, when the caller asked to keep it.
+    pub(super) history: Vec<Vec<f64>>,
     pub(super) clamped_state_updates: u64,
     pub(super) undefined_responses: u64,
 }
@@ -40,6 +42,7 @@ pub(super) fn draw(
     execution: &CandidateExecutionPlan,
     rng: &mut ChaCha20Rng,
     runtime: &mut Runtime,
+    detail: StateDetail,
 ) -> Result<ScenarioDraw, ScenarioAnalysisError> {
     let coupled = graph.coupling.draw(rng);
     let mut baselines = graph
@@ -235,6 +238,11 @@ pub(super) fn draw(
     Ok(ScenarioDraw {
         values,
         trajectories,
+        history: if detail.is_included() {
+            history
+        } else {
+            Vec::new()
+        },
         clamped_state_updates,
         undefined_responses,
     })

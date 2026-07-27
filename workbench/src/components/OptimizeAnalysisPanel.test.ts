@@ -167,6 +167,77 @@ describe('OptimizeAnalysisPanel', () => {
     expect(wrapper.findAll('.trajectory')[0]!.text()).toContain('prerequisites alone')
   })
 
+  /**
+   * Debugging a model means reading every state, including the ones no objective
+   * names. A state that never moves is called out because that is usually the
+   * one at fault when a projection looks wrong.
+   */
+  it('traces every propagated state when the projection carries them', async () => {
+    const point = (mean: number) => ({ ...estimate, mean })
+    const withStates: ScenarioAnalysis = {
+      ...analysis,
+      candidates: [{
+        ...analysis.candidates[0]!,
+        states: [
+          { state: 'A', points: [point(0.5), point(0.62)] },
+          { state: 'C', points: [point(2), point(2)] },
+        ],
+      }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: withStates,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    expect(wrapper.get('details.state-traces summary').text()).toContain('2')
+    const traces = wrapper.findAll('figure.state-trace')
+    expect(traces).toHaveLength(2)
+    expect(traces[0]!.attributes('data-inert')).toBe('false')
+    expect(traces[1]!.attributes('data-inert')).toBe('true')
+  })
+
+  it('leaves the state traces out when the projection does not carry them', () => {
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+    expect(wrapper.find('details.state-traces').exists()).toBe(false)
+  })
+
+  /**
+   * An outcome that rests near zero and then saturates is a five-digit
+   * percentage of its resting level, which is the number this view existed to
+   * stop reporting. Past a factor of ten the multiple is how anyone would say it.
+   */
+  it('reads a large ratio as a multiple rather than a five-digit percentage', () => {
+    const surge: ScenarioAnalysis = {
+      ...analysis,
+      candidates: [{
+        ...analysis.candidates[0]!,
+        objectives: [{
+          ...analysis.candidates[0]!.objectives[0]!,
+          direction: 'minimize',
+          baseline: { ...estimate, mean: 0.0199 },
+          final_state: { ...estimate, mean: 95.6 },
+          improvement: { ...estimate, mean: -95.58 },
+        }],
+      }],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A', analysis: surge,
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    expect(wrapper.get('.relative-impact').text()).toBe('4.8kx worse')
+    expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('negative')
+  })
+
   it('labels direction-oriented losses as regressions', () => {
     const regressionAnalysis: ScenarioAnalysis = {
       ...analysis,

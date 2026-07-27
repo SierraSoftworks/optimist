@@ -49,6 +49,41 @@ pub struct ObjectiveProjection {
     pub trajectory: Vec<ObjectiveTrajectoryPoint>,
 }
 
+/// One state's projected path through the planning horizon.
+///
+/// Objectives answer whether a plan is worth running; these answer why it came
+/// out that way. A projection that ends somewhere surprising is usually the
+/// result of one state behaving unexpectedly several hops upstream, and without
+/// its path an author can only guess which one.
+///
+/// Reported only when the caller asks for [`StateDetail::Included`], because a
+/// model of any size carries far more states than objectives and most readers of
+/// a projection want the decision rather than the derivation.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StateTrajectory {
+    /// Factor, metric, or outcome whose value was propagated.
+    pub state: EntityId,
+    /// Value at each period from the settled baseline through the horizon.
+    pub points: Vec<MonteCarloEstimate>,
+}
+
+/// Whether a projection retains every state's path or only its objectives.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum StateDetail {
+    /// Report objectives alone, which is what a decision needs.
+    #[default]
+    Omitted,
+    /// Report every propagated state, for reading the model itself.
+    Included,
+}
+
+impl StateDetail {
+    /// Whether state paths should be accumulated and returned.
+    pub const fn is_included(self) -> bool {
+        matches!(self, Self::Included)
+    }
+}
+
 /// Finite-horizon posterior projection for one candidate intervention.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct InterventionProjection {
@@ -68,6 +103,9 @@ pub struct InterventionProjection {
     pub execution_success: MonteCarloEstimate,
     /// Per-objective projections in scenario document order.
     pub objectives: Vec<ObjectiveProjection>,
+    /// Per-state paths, empty unless the caller asked for [`StateDetail::Included`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<StateTrajectory>,
     /// Sample covariance of direction-oriented improvements in objective order.
     ///
     /// Entry $(i,j)$ estimates $\operatorname{Cov}(\Delta_i,\Delta_j)$ with

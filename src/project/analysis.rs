@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         AnalysisLimits, AnalysisRevisionKey, ImpedimentAnalysis, ScenarioAnalysis, ScenarioId,
-        StructuralAnalysis,
+        StateDetail, StructuralAnalysis,
     },
     store::GraphRepository,
 };
@@ -76,11 +76,14 @@ impl ProjectCatalog {
     ///
     /// The returned key captures every independently revisioned input document,
     /// including the residual dependence document whose copulas couple the
-    /// estimates it names.
+    /// estimates it names. `detail` decides whether every propagated state keeps
+    /// its path, which is what an author reads when a projection ends somewhere
+    /// surprising and the objectives alone do not say why.
     pub fn analyze_scenario(
         &self,
         project_id: &crate::domain::ProjectId,
         scenario_id: ScenarioId,
+        detail: StateDetail,
     ) -> Result<ScenarioAnalysis, ProjectError> {
         let entry = self
             .projects
@@ -105,6 +108,7 @@ impl ProjectCatalog {
             &nodes,
             &edges,
             entry.dependence.as_ref(),
+            detail,
         )?)
     }
 }
@@ -115,6 +119,7 @@ mod tests {
         command::{CommandRequest, CreateNode, CreateScenario, GraphCommand},
         domain::{
             AnalysisLimits, Factor, MonteCarloConfig, NodePayload, ScenarioDraft, ScenarioId,
+            StateDetail,
         },
         project::{ProjectCatalog, ProjectError},
     };
@@ -181,7 +186,7 @@ mod tests {
         assert_eq!(scenario.revision.graph_revision, 1);
         assert_eq!(scenario.revision.scenario, Some((ScenarioId::new(0), 0)));
         let projection = catalog
-            .analyze_scenario(&project.id, ScenarioId::new(0))
+            .analyze_scenario(&project.id, ScenarioId::new(0), StateDetail::Omitted)
             .unwrap();
         assert_eq!(projection.revision, scenario.revision);
         assert_eq!(projection.planning_horizon, 4);

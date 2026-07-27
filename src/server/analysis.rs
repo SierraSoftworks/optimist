@@ -8,7 +8,7 @@ use axum::{
 
 use crate::domain::{
     AnalysisLimits, ImpedimentAnalysis, ProjectId, ScenarioAnalysis, ScenarioId,
-    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateSupport,
+    SquiggleEstimateAssessment, SquiggleEstimateDefinition, SquiggleEstimateSupport, StateDetail,
     StructuralAnalysis, assess_squiggle_estimate,
 };
 use crate::project::{EstimateCommandError, ProjectError};
@@ -192,15 +192,32 @@ async fn structure(
     ))
 }
 
+/// Query controlling whether a projection returns every state's path.
+///
+/// Off by default: a model carries far more states than objectives, and most
+/// readers of a projection want the decision rather than the derivation. The
+/// workbench asks for them in the mode that reads the model.
+#[derive(serde::Deserialize)]
+struct ScenarioQuery {
+    #[serde(default)]
+    states: bool,
+}
+
 async fn scenario(
     State(state): State<AppState>,
     Path((project, scenario)): Path<(ProjectId, ScenarioId)>,
+    Query(query): Query<ScenarioQuery>,
 ) -> Result<Json<ScenarioAnalysis>, ApiError> {
+    let detail = if query.states {
+        StateDetail::Included
+    } else {
+        StateDetail::Omitted
+    };
     let catalog = Arc::clone(&state.catalog).read_owned().await;
     Ok(Json(
         state
             .projection_worker
-            .run(move || catalog.analyze_scenario(&project, scenario))
+            .run(move || catalog.analyze_scenario(&project, scenario, detail))
             .await?,
     ))
 }

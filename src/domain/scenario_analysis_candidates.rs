@@ -1,7 +1,7 @@
 use std::{num::NonZeroUsize, thread::available_parallelism};
 
 use super::{
-    InterventionProjection, Scenario, ScenarioAnalysisError,
+    InterventionProjection, Scenario, ScenarioAnalysisError, StateDetail,
     scenario_analysis_graph::AnalysisGraph, scenario_analysis_sampling,
 };
 
@@ -19,6 +19,7 @@ use super::{
 pub(super) fn project_candidates(
     graph: &AnalysisGraph<'_>,
     scenario: &Scenario,
+    detail: StateDetail,
 ) -> Result<Vec<InterventionProjection>, ScenarioAnalysisError> {
     let candidates = scenario.draft.candidate_interventions.as_slice();
     let workers = available_parallelism()
@@ -28,14 +29,14 @@ pub(super) fn project_candidates(
         return candidates
             .iter()
             .map(|candidate| {
-                scenario_analysis_sampling::project_candidate(graph, *candidate, scenario)
+                scenario_analysis_sampling::project_candidate(graph, *candidate, scenario, detail)
             })
             .collect();
     }
     std::thread::scope(|scope| {
         let handles = candidates
             .chunks(candidates.len().div_ceil(workers))
-            .map(|chunk| scope.spawn(move || project_chunk(graph, chunk, scenario)))
+            .map(|chunk| scope.spawn(move || project_chunk(graph, chunk, scenario, detail)))
             .collect::<Vec<_>>();
         let mut projections = Vec::with_capacity(candidates.len());
         for handle in handles {
@@ -52,9 +53,12 @@ fn project_chunk(
     graph: &AnalysisGraph<'_>,
     candidates: &[super::EntityId],
     scenario: &Scenario,
+    detail: StateDetail,
 ) -> Result<Vec<InterventionProjection>, ScenarioAnalysisError> {
     candidates
         .iter()
-        .map(|candidate| scenario_analysis_sampling::project_candidate(graph, *candidate, scenario))
+        .map(|candidate| {
+            scenario_analysis_sampling::project_candidate(graph, *candidate, scenario, detail)
+        })
         .collect()
 }

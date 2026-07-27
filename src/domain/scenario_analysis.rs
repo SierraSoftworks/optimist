@@ -1,7 +1,7 @@
 use super::{
     AnalysisRevisionKey, Edge, Node, ProjectDependenceModel, Scenario, ScenarioAnalysis,
-    ScenarioAnalysisError, scenario_analysis_candidates, scenario_analysis_graph::AnalysisGraph,
-    scenario_analysis_stability,
+    ScenarioAnalysisError, StateDetail, scenario_analysis_candidates,
+    scenario_analysis_graph::AnalysisGraph, scenario_analysis_stability,
 };
 
 impl ScenarioAnalysis {
@@ -66,12 +66,14 @@ impl ScenarioAnalysis {
         nodes: &[Node],
         edges: &[Edge],
         dependence: Option<&ProjectDependenceModel>,
+        detail: StateDetail,
     ) -> Result<Self, ScenarioAnalysisError> {
         if revision.scenario != Some((scenario.id, scenario.revision)) {
             return Err(ScenarioAnalysisError::RevisionMismatch(scenario.id));
         }
         let graph = AnalysisGraph::new(&revision.project, scenario, nodes, edges, dependence)?;
-        let candidates = scenario_analysis_candidates::project_candidates(&graph, scenario)?;
+        let candidates =
+            scenario_analysis_candidates::project_candidates(&graph, scenario, detail)?;
         Ok(Self {
             revision,
             planning_horizon: scenario.draft.planning_horizon,
@@ -223,6 +225,7 @@ mod tests {
             &[intervention, factor, outcome],
             &[changes, contributes],
             None,
+            StateDetail::Omitted,
         )
         .unwrap();
         let objective = &result.candidates[0].objectives[0];
@@ -277,8 +280,15 @@ mod tests {
         }
         revision.graph_revision += 1;
 
-        let together =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let together = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert_eq!(
             together
                 .candidates
@@ -290,9 +300,68 @@ mod tests {
         for (index, candidate) in scenario.draft.candidate_interventions.iter().enumerate() {
             let mut alone = scenario.clone();
             alone.draft.candidate_interventions = vec![*candidate];
-            let separately =
-                ScenarioAnalysis::compute(revision.clone(), &alone, &nodes, &edges, None).unwrap();
+            let separately = ScenarioAnalysis::compute(
+                revision.clone(),
+                &alone,
+                &nodes,
+                &edges,
+                None,
+                StateDetail::Omitted,
+            )
+            .unwrap();
             assert_eq!(together.candidates[index], separately.candidates[0]);
+        }
+    }
+
+    /// Reading the model needs every state's path, not only the objectives'.
+    ///
+    /// A projection that ends somewhere surprising is usually one state behaving
+    /// unexpectedly several hops upstream, and an objective alone cannot say
+    /// which. The paths are omitted by default because a model carries far more
+    /// states than objectives and most readers want the decision.
+    #[test]
+    fn retains_every_state_path_only_when_asked_for_it() {
+        let (scenario, nodes, edges, revision) = point_fixture(3);
+
+        let decision = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
+        assert!(decision.candidates[0].states.is_empty());
+
+        let derivation = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Included,
+        )
+        .unwrap();
+        let states = &derivation.candidates[0].states;
+        // Every propagated state, not only the one the scenario optimises for.
+        assert_eq!(states.len(), 2);
+        assert!(states.iter().any(|path| path.state == nodes[1].id));
+        for path in states {
+            assert_eq!(
+                path.points.len(),
+                scenario.draft.planning_horizon as usize + 1
+            );
+            assert!(path.points.iter().all(|point| point.mean.is_some()));
+        }
+        // The objective's own path is the one already reported alongside it.
+        let objective = &derivation.candidates[0].objectives[0];
+        let outcome = states
+            .iter()
+            .find(|path| path.state == objective.outcome)
+            .unwrap();
+        for (point, step) in outcome.points.iter().zip(&objective.trajectory) {
+            assert_eq!(point.mean, step.state.mean);
         }
     }
 
@@ -345,7 +414,15 @@ mod tests {
         scenario.draft.monte_carlo = MonteCarloConfig::new(7, 2, 2, 0.001, 0.0).unwrap();
         revision.graph_revision += 2;
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let projection = &result.candidates[0];
         assert_eq!(projection.prerequisites, vec![EntityId::new(3)]);
         assert_eq!(projection.execution_duration.mean, Some(3.0));
@@ -360,7 +437,15 @@ mod tests {
             unreachable!()
         };
         effect.lag = Some(estimate(1, 1.0));
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert!(
             (result.candidates[0].objectives[0].final_state.mean.unwrap() - 0.56).abs() < 1e-12
         );
@@ -371,8 +456,15 @@ mod tests {
             unreachable!()
         };
         effect.lag = Some(estimate(1, 1.0));
-        let result =
-            ScenarioAnalysis::compute(revision, &scenario, &nodes, &delayed, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &delayed,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert_eq!(
             result.candidates[0].objectives[0].final_state.mean,
             Some(0.5)
@@ -402,14 +494,29 @@ mod tests {
         *effect = effect
             .clone()
             .with_transience(Some(EffectTransience::new(profile, rebound).unwrap()));
-        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap()
+        ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap()
     }
 
     #[test]
     fn reverts_a_time_boxed_intervention_after_its_hold_window() {
         let (scenario, nodes, edges, revision) = point_fixture(4);
-        let persistent =
-            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let persistent = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let held = persistent.candidates[0].objectives[0]
             .final_state
             .mean
@@ -485,8 +592,15 @@ mod tests {
         });
         edges.push(contributes(unrelated.id, unrelated_outcome.id, 0.5));
         nodes.extend([unrelated, unrelated_outcome]);
-        let result =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert!(result.candidates[0].objectives[0].reachable);
         assert!(!result.candidates[0].objectives[1].reachable);
         assert_eq!(
@@ -496,7 +610,14 @@ mod tests {
 
         nodes[1].native_state.as_mut().unwrap().current = None;
         assert_eq!(
-            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None),
+            ScenarioAnalysis::compute(
+                revision,
+                &scenario,
+                &nodes,
+                &edges,
+                None,
+                StateDetail::Omitted
+            ),
             Err(ScenarioAnalysisError::MissingFactorBaseline(EntityId::new(
                 1
             )))
@@ -517,9 +638,24 @@ mod tests {
             Distribution::scaled_beta(2.0, 2.0, 0.0, 2.0).unwrap(),
         )
         .unwrap();
-        let first =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
-        let second = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let first = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
+        let second = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert_eq!(first, second);
         let projection = &first.candidates[0].objectives[0];
         assert!((0.0..=1.0).contains(&projection.final_state.mean.unwrap()));
@@ -529,9 +665,15 @@ mod tests {
             unreachable!()
         };
         effect.response = estimate(0, 3.0);
-        let saturated =
-            ScenarioAnalysis::compute(first.revision.clone(), &scenario, &nodes, &edges, None)
-                .unwrap();
+        let saturated = ScenarioAnalysis::compute(
+            first.revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert!(saturated.candidates[0].clamped_state_updates > 0);
     }
 
@@ -592,7 +734,15 @@ mod tests {
         edges.pop();
         edges.extend([factor_to_metric, metric_to_outcome]);
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert_eq!(objective.baseline.mean, Some(0.5));
@@ -658,7 +808,15 @@ mod tests {
         nodes.push(outcome);
         let edges = vec![intervention_to_metric, metric_to_outcome];
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert!((objective.final_state.mean.unwrap() - 0.65).abs() < 1e-12);
@@ -765,7 +923,15 @@ mod tests {
                 },
             }],
         };
-        ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, Some(&dependence)).unwrap()
+        ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            Some(&dependence),
+            StateDetail::Omitted,
+        )
+        .unwrap()
     }
 
     /// Replaces proportional composition with an authored node equation.
@@ -862,7 +1028,15 @@ mod tests {
         nodes.pop();
         nodes.extend([frequency, duration, impact, outcome]);
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &result.candidates[0].objectives[0];
         // The equation computes 4 x 30 from the very first period, so the stored
         // baseline of 120 is reproduced rather than assumed.
@@ -959,7 +1133,15 @@ mod tests {
         }];
         nodes.extend([root, middle, impact]);
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &result.candidates[0].objectives[0];
         assert!(
             (objective.baseline.mean.unwrap() - 4.0).abs() < 1e-12,
@@ -1123,8 +1305,15 @@ mod tests {
         };
         edges.push(returns(3.0));
 
-        let damped =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let damped = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert_eq!(damped.feedback_loops.len(), 1, "one circuit, reported once");
         let loop_ = &damped.feedback_loops[0];
         assert_eq!(
@@ -1140,8 +1329,15 @@ mod tests {
 
         edges.pop();
         edges.push(returns(6.0));
-        let amplifying =
-            ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let amplifying = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let loop_ = &amplifying.feedback_loops[0];
         assert!((loop_.gain.unwrap() - 1.2).abs() < 1e-12);
         assert!(
@@ -1188,7 +1384,15 @@ mod tests {
             .unwrap(),
         );
 
-        let result = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let result = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         assert_eq!(result.feedback_loops.len(), 1);
         let loop_ = &result.feedback_loops[0];
         assert!(
@@ -1273,8 +1477,15 @@ mod tests {
                 .unwrap(),
             );
             scenario.draft.monte_carlo = MonteCarloConfig::new(31, 2, 2, 0.5, 0.0).unwrap();
-            let result =
-                ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+            let result = ScenarioAnalysis::compute(
+                revision,
+                &scenario,
+                &nodes,
+                &edges,
+                None,
+                StateDetail::Omitted,
+            )
+            .unwrap();
             result.feedback_loops.into_iter().next().unwrap()
         };
 
@@ -1340,8 +1551,15 @@ mod tests {
         edges.push(contributes(relay.id, outcome.id, 0.2));
         nodes.extend([relay, outcome]);
 
-        let short =
-            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        let short = ScenarioAnalysis::compute(
+            revision.clone(),
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &short.candidates[0].objectives[0];
         assert!(objective.reachable);
         assert_eq!(
@@ -1356,7 +1574,15 @@ mod tests {
         assert_eq!(objective.improvement.mean, Some(0.0));
 
         scenario.draft.planning_horizon = 4;
-        let long = ScenarioAnalysis::compute(revision, &scenario, &nodes, &edges, None).unwrap();
+        let long = ScenarioAnalysis::compute(
+            revision,
+            &scenario,
+            &nodes,
+            &edges,
+            None,
+            StateDetail::Omitted,
+        )
+        .unwrap();
         let objective = &long.candidates[0].objectives[0];
         assert_eq!(objective.periods_to_effect, Some(3));
         assert!(

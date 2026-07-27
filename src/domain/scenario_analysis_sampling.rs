@@ -4,14 +4,16 @@ use rand_chacha::ChaCha20Rng;
 use super::{
     ConvergenceStatus, EntityId, InterventionProjection, InvalidSampleCounts,
     MonteCarloDiagnostics, MonteCarloEstimate, ObjectiveProjection, ObjectiveTrajectoryPoint,
-    RelationProgram, Scenario, ScenarioAnalysisError, online_moments::OnlineJointMoments,
-    scenario_analysis_draw, scenario_analysis_graph::AnalysisGraph,
+    RelationProgram, Scenario, ScenarioAnalysisError, StateDetail, StateTrajectory,
+    online_moments::OnlineJointMoments, scenario_analysis_draw,
+    scenario_analysis_graph::AnalysisGraph,
 };
 
 pub(super) fn project_candidate(
     graph: &AnalysisGraph<'_>,
     candidate: EntityId,
     scenario: &Scenario,
+    detail: StateDetail,
 ) -> Result<InterventionProjection, ScenarioAnalysisError> {
     let execution = graph.intervention_plan(candidate)?;
     let config = scenario.draft.monte_carlo;
@@ -37,15 +39,42 @@ pub(super) fn project_candidate(
     let mut invalid = InvalidSampleCounts::default();
     let mut clamped_state_updates = 0_u64;
     let mut undefined_responses = 0_u64;
+    // One accumulator per state per period, so a path can be read back with the
+    // same online moments the objectives use.
+    let mut state_moments = detail.is_included().then(|| {
+        (0..graph.states.len())
+            .map(|_| {
+                (0..=scenario.draft.planning_horizon)
+                    .map(|_| OnlineJointMoments::new(1))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    });
     while attempted < config.maximum_samples() {
         attempted += 1;
-        match scenario_analysis_draw::draw(graph, scenario, &execution, &mut rng, &mut runtime) {
+        match scenario_analysis_draw::draw(
+            graph,
+            scenario,
+            &execution,
+            &mut rng,
+            &mut runtime,
+            detail,
+        ) {
             Ok(draw) => {
                 moments.push(&draw.values);
                 for (objective, trajectory) in trajectory_moments.iter_mut().zip(draw.trajectories)
                 {
                     for (period, values) in objective.iter_mut().zip(trajectory) {
                         period.push(&values);
+                    }
+                }
+                if let Some(states) = state_moments.as_mut() {
+                    for (period, values) in draw.history.iter().enumerate() {
+                        for (index, value) in values.iter().enumerate() {
+                            if let Some(slot) = states[index].get_mut(period) {
+                                slot.push(&[*value]);
+                            }
+                        }
                     }
                 }
                 clamped_state_updates =
@@ -125,6 +154,16 @@ pub(super) fn project_candidate(
         execution_duration: estimate(&moments, objective_dimensions),
         execution_success: estimate(&moments, objective_dimensions + 1),
         objectives,
+        states: state_moments.map_or_else(Vec::new, |states| {
+            states
+                .into_iter()
+                .zip(&graph.states)
+                .map(|(periods, state)| StateTrajectory {
+                    state: state.id,
+                    points: periods.iter().map(|moments| estimate(moments, 0)).collect(),
+                })
+                .collect()
+        }),
         improvement_covariance,
         clamped_state_updates,
         undefined_responses,

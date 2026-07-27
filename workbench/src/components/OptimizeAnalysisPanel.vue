@@ -3,8 +3,10 @@ import { computed } from 'vue'
 import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
 import type { FeedbackLoop, GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
 import { impactTone } from '../domain/optimizationImpact'
+import { formatSiNumber } from '../domain/humanNumber'
 import ScenarioPicker from './ScenarioPicker.vue'
 import OutcomeTrajectory from './OutcomeTrajectory.vue'
+import StateTrace from './StateTrace.vue'
 import { referenceCandidate, referenceStates } from '../domain/optimizationReference'
 
 const props = defineProps<{
@@ -108,10 +110,18 @@ function changeLabel(
   if (shift === null) return 'Unavailable'
   if (shift === 0) return 'No change'
   const without = withoutValue(candidate, objective)
+  const settled = objective.final_state.mean
   const improves = objective.direction === 'maximize' ? shift > 0 : shift < 0
   const wording = improves ? 'better' : 'worse'
-  if (without === null || without === 0) {
+  if (without === null || without === 0 || settled === null) {
     return `${quantity(Math.abs(shift), objective.outcome)} ${wording}`
+  }
+  // A candidate with no prerequisites is read against rest, and an outcome that
+  // rests near zero then saturates is a five-digit percentage of it. Past a
+  // factor of ten the multiple is how anyone would actually say it.
+  const ratio = Math.abs(settled / without)
+  if (ratio >= 10 || (ratio > 0 && ratio <= 0.1)) {
+    return `${formatSiNumber(ratio >= 10 ? ratio : 1 / ratio)}x ${wording}`
   }
   return `${(Math.abs(shift / without) * 100).toFixed(1)}% ${wording}`
 }
@@ -291,6 +301,23 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
               :projected-reference="referenceCandidate(candidate, analysis.candidates) !== null"
             />
           </div>
+          <details v-if="candidate.states?.length" class="detail-disclosure state-traces">
+            <summary>Model states under this plan ({{ candidate.states.length }})</summary>
+            <p class="muted-note">
+              Every propagated state, in the order the graph settles them. A path that never
+              moves, or moves somewhere the unit cannot mean, is where a surprising projection
+              usually starts.
+            </p>
+            <div class="state-grid">
+              <StateTrace
+                v-for="path in candidate.states"
+                :key="path.state"
+                :points="path.points"
+                :label="title(path.state)"
+                :unit="unit(path.state)"
+              />
+            </div>
+          </details>
         </article>
       </div>
       <div v-else class="analysis-empty">
@@ -350,6 +377,9 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
 .relative-impact[data-impact='negative'] { color: #a34335; }
 .relative-impact[data-impact='neutral'] { color: var(--muted); }
 .trajectory-list { display: grid; }
+.state-traces { margin: 0 var(--space-4) var(--space-3); }
+.state-traces .muted-note { margin: var(--space-2) 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: var(--space-2); }
 .optimize-panel { border: 0; background: #f4f6f1; }
 /*
  * Cards get wider before they get more numerous, so a large display shows two

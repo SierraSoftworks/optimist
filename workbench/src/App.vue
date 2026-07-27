@@ -243,11 +243,19 @@ const selectedScenario = computed(() =>
   scenariosQuery.data.value?.find((scenario) => scenario.id === selectedScenarioId.value) ?? null,
 )
 const selectedScenarioRevision = computed(() => selectedScenario.value?.revision)
+/**
+ * Only the optimize view reads the model's own states, so only it asks for them.
+ *
+ * The feedback view shares this query for its loop gains and has no use for the
+ * paths, which are the larger part of the response on any real model.
+ */
+const readsStates = computed(() => mode.value === 'optimize')
 const scenarioAnalysis = useScenarioAnalysis(
   selectedProjectId,
   selectedScenarioId,
   selectedScenarioRevision,
   weighsLoops,
+  readsStates,
 )
 const createScenario = useCreateScenario(projectQuery.data)
 const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)

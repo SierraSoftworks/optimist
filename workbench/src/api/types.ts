@@ -435,6 +435,11 @@ export interface ObjectiveTrajectoryPoint {
   improvement: MonteCarloEstimate
 }
 
+export interface StateTrajectory {
+  state: string
+  points: MonteCarloEstimate[]
+}
+
 export interface InterventionProjection {
   intervention: string
   prerequisites: string[]
@@ -444,6 +449,8 @@ export interface InterventionProjection {
   execution_duration: MonteCarloEstimate
   execution_success: MonteCarloEstimate
   objectives: ObjectiveProjection[]
+  /** Every propagated state's path; present only when requested. */
+  states?: StateTrajectory[]
   improvement_covariance: Array<Array<number | null>>
   clamped_state_updates: number
   undefined_responses: number

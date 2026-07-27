@@ -135,12 +135,21 @@ export function useScenarioAnalysis(
   scenarioId: Ref<string | null>,
   scenarioRevision: Ref<number | undefined>,
   enabled: Ref<boolean>,
+  /**
+   * Whether to ask for every state's path as well as the objectives'.
+   *
+   * A model carries far more states than objectives, so this is requested only
+   * by the view that reads the model rather than by every consumer of the
+   * projection. It is part of the query key because it changes the response.
+   */
+  withStates: Ref<boolean>,
 ) {
   return useQuery({
     queryKey: computed(() => [
       'analysis', 'scenario', projectId.value, scenarioId.value, scenarioRevision.value,
+      withStates.value,
     ]),
-    queryFn: () => api.scenarioAnalysis(projectId.value!, scenarioId.value!),
+    queryFn: () => api.scenarioAnalysis(projectId.value!, scenarioId.value!, withStates.value),
     enabled: computed(() =>
       Boolean(projectId.value) && Boolean(scenarioId.value) && enabled.value,
     ),

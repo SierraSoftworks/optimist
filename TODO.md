@@ -182,6 +182,7 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Keyboard navigation and synchronized table/outline accessibility view.
 - [x] Delete-key confirmation for graph-selected nodes and relationships, with editable-control and connected-edge guards.
 - [x] Per-period optimization trajectories with backend Monte Carlo means and uncertainty bands.
+- [x] Read a projection in the outcome's own unit against the run without the intervention, and trace every propagated state for debugging the model behind it.
 - [x] Intervention-to-metric `changes` relationships authored as Squiggle multipliers.
 - [x] Effect profile editor with activation preview for time-boxed interventions.
 - [x] Desktop/mobile Playwright screenshots and canvas-pixel/performance checks.

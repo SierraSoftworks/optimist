@@ -258,8 +258,10 @@ export const api = {
     }),
   scenarios: (project: string) =>
     request<Scenario[]>(`/api/v1/projects/${project}/scenarios`),
-  scenarioAnalysis: (project: string, scenario: string) =>
-    request<ScenarioAnalysis>(`/api/v1/projects/${project}/scenarios/${scenario}/analysis`),
+  scenarioAnalysis: (project: string, scenario: string, withStates = false) =>
+    request<ScenarioAnalysis>(
+      `/api/v1/projects/${project}/scenarios/${scenario}/analysis${withStates ? '?states=true' : ''}`,
+    ),
   /** Reads the residual dependence document, which most projects do not have. */
   async dependence(project: string): Promise<ProjectDependenceModel | null> {
     try {

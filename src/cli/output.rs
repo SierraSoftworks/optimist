@@ -377,6 +377,7 @@ mod tests {
                 conflicts: vec![],
                 execution_duration: estimate.clone(),
                 execution_success: estimate.clone(),
+                states: vec![],
                 objectives: vec![ObjectiveProjection {
                     outcome: EntityId::new(0),
                     direction: UtilityDirection::Maximize,
