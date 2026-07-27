@@ -12,19 +12,19 @@ builtins! {
     sum(values: Array) => fold(runtime, "sum", vec![Value::Array(values.clone())], span),
     product(values: Array) => fold(runtime, "product", vec![Value::Array(values.clone())], span),
     mean(value: Distribution) => statistic("mean", vec![Value::Distribution(value.clone())], span),
-    mean(values: [Number]) => statistic("mean", vec![numbers(values)], span),
+    mean(values: [Number]) => numeric_statistic("mean", values, None, span),
     median(value: Distribution) => statistic("median", vec![Value::Distribution(value.clone())], span),
-    median(values: [Number]) => statistic("median", vec![numbers(values)], span),
+    median(values: [Number]) => numeric_statistic("median", values, None, span),
     quantile(value: Distribution, probability: Number) => statistic("quantile", vec![Value::Distribution(value.clone()), Value::Number(probability)], span),
-    quantile(values: [Number], probability: Number) => statistic("quantile", vec![numbers(values), Value::Number(probability)], span),
+    quantile(values: [Number], probability: Number) => numeric_statistic("quantile", values, Some(probability), span),
     stdev(value: Distribution) => statistic("stdev", vec![Value::Distribution(value.clone())], span),
-    stdev(values: [Number]) => statistic("stdev", vec![numbers(values)], span),
+    stdev(values: [Number]) => numeric_statistic("stdev", values, None, span),
     variance(value: Distribution) => statistic("variance", vec![Value::Distribution(value.clone())], span),
-    variance(values: [Number]) => statistic("variance", vec![numbers(values)], span),
+    variance(values: [Number]) => numeric_statistic("variance", values, None, span),
     min(value: Distribution) => statistic("min", vec![Value::Distribution(value.clone())], span),
-    min(values: [Number]) => statistic("min", vec![numbers(values)], span),
+    min(values: [Number]) => numeric_statistic("min", values, None, span),
     max(value: Distribution) => statistic("max", vec![Value::Distribution(value.clone())], span),
-    max(values: [Number]) => statistic("max", vec![numbers(values)], span),
+    max(values: [Number]) => numeric_statistic("max", values, None, span),
     mode(value: Distribution) => statistic("mode", vec![Value::Distribution(value.clone())], span),
     sort(values: [Number]) => numeric_list("sort", vec![numbers(values)], span),
     cumsum(values: [Number]) => numeric_list("cumsum", vec![numbers(values)], span),
@@ -54,6 +54,63 @@ builtins! {
 
 fn numbers(values: Vec<f64>) -> Value {
     Value::Array(values.into_iter().map(Value::Number).collect())
+}
+
+/// Computes one summary statistic over an already-extracted list of numbers.
+///
+/// The general [`statistic`] path exists for arguments that arrive as values and
+/// may hold a distribution. Routing a number list through it meant rebuilding the
+/// list into an `Array` only to take it apart again, and then sorting it
+/// regardless of which statistic was asked for. Projections pay that repeatedly,
+/// since a `min`/`max` clamp is the ordinary way to bound a state.
+///
+/// An extremum is the only case that can skip the sort, and it folds with
+/// [`f64::total_cmp`] rather than [`f64::min`] so that it agrees with taking the
+/// first or last element of the sorted list in every case, including signed zero,
+/// where the primitive comparison treats `-0.0` and `0.0` as equal and a total
+/// order does not. The remaining statistics still sort first, because summing in
+/// sorted order is part of the result: floating-point addition is not
+/// associative, so summing the list as written would round differently.
+fn numeric_statistic(
+    name: &str,
+    values: Vec<f64>,
+    probability: Option<f64>,
+    span: Span,
+) -> Result<Value, Diagnostic> {
+    let empty = || Diagnostic::runtime("list must not be empty", span);
+    if let "min" | "max" = name {
+        let extremum = if name == "min" {
+            values
+                .into_iter()
+                .reduce(|a, b| if b.total_cmp(&a).is_lt() { b } else { a })
+        } else {
+            values
+                .into_iter()
+                .reduce(|a, b| if b.total_cmp(&a).is_gt() { b } else { a })
+        };
+        return Ok(Value::Number(extremum.ok_or_else(empty)?));
+    }
+    if values.is_empty() {
+        return Err(empty());
+    }
+    let mut sorted = values;
+    sorted.sort_by(f64::total_cmp);
+    let mean = sorted.iter().sum::<f64>() / sorted.len() as f64;
+    let result = match name {
+        "mean" => mean,
+        "stdev" => dispersion(&sorted, mean).sqrt(),
+        "variance" => dispersion(&sorted, mean),
+        _ => quantile(&sorted, probability.unwrap_or(0.5)),
+    };
+    Ok(Value::Number(result))
+}
+
+fn dispersion(values: &[f64], mean: f64) -> f64 {
+    values
+        .iter()
+        .map(|value| (value - mean).powi(2))
+        .sum::<f64>()
+        / values.len() as f64
 }
 
 fn fold(
@@ -362,4 +419,38 @@ fn expected(expected: &str, value: &Value, span: Span) -> Diagnostic {
         format!("expected {expected}, received {}", value.type_name()),
         span,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::Runtime;
+
+    fn evaluate(source: &str) -> f64 {
+        Runtime::new()
+            .evaluate(source)
+            .unwrap()
+            .as_number()
+            .expect("a number")
+    }
+
+    /// The fast path for extrema must order floats exactly as sorting did.
+    ///
+    /// `f64::min` and `f64::max` treat `-0.0` and `0.0` as equal and may return
+    /// either, while taking the first or last element of a list sorted by
+    /// `total_cmp` always distinguishes them. Skipping the sort is only sound if
+    /// the fold reproduces that order.
+    #[test]
+    fn distinguishes_signed_zero_the_way_a_total_order_does() {
+        assert!(evaluate("min([0, -0])").is_sign_negative());
+        assert!(evaluate("max([-0, 0])").is_sign_positive());
+    }
+
+    #[test]
+    fn summarises_a_list_without_reordering_the_caller_visible_result() {
+        assert_eq!(evaluate("min([3, 1, 2])"), 1.0);
+        assert_eq!(evaluate("max([3, 1, 2])"), 3.0);
+        assert_eq!(evaluate("mean([1, 2, 6])"), 3.0);
+        assert_eq!(evaluate("median([3, 1, 2])"), 2.0);
+        assert_eq!(evaluate("variance([1, 2, 3])"), 2.0 / 3.0);
+    }
 }
