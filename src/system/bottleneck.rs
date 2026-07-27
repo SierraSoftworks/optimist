@@ -54,6 +54,11 @@ pub struct Bottleneck {
     pub constraint: String,
     /// What saturating this constraint does to the system.
     pub summary: String,
+    /// Replicas of the owning component across every enclosing scale unit.
+    ///
+    /// The figures below describe one replica, so a constraint that binds does
+    /// so in each of these copies.
+    pub replicas: f64,
     /// Mean of demand over limit.
     pub utilisation: f64,
     /// Utilisation at the ninetieth percentile of draws.
@@ -163,6 +168,7 @@ pub fn bottlenecks(
                 component.id.clone(),
                 name.clone(),
                 component.component_type.constraints[name].summary.clone(),
+                component.replicas,
                 &demand,
                 &limit,
             ));
@@ -183,6 +189,7 @@ fn measure(
     component: ComponentId,
     constraint: String,
     summary: String,
+    replicas: f64,
     demand: &[f64],
     limit: &[f64],
 ) -> Bottleneck {
@@ -212,6 +219,7 @@ fn measure(
         component,
         constraint,
         summary,
+        replicas,
         utilisation,
         utilisation_p90: ratios[index],
         probability_of_binding: binding as f64 / count as f64,

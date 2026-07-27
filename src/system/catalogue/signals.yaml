@@ -1,0 +1,25 @@
+rate:
+  unit: op/s
+  summary: >
+    Operations per second travelling along the relationship. The demand a
+    component places on whatever is downstream of it.
+  aggregate: sum
+  extensive: true
+
+added_latency:
+  unit: s
+  summary: >
+    Time this hop adds to a call. Arrivals take the largest rather than the sum,
+    because a caller fanning out to several dependencies waits for the slowest,
+    not for all of them end to end.
+  aggregate: max
+  extensive: false
+
+payload:
+  unit: B/op
+  summary: >
+    Bytes carried by one operation. Averaged across arrivals, which is exact when
+    callers send similar payloads and understates the spread when they do not; a
+    mix of very different payload sizes is better modelled as separate flows.
+  aggregate: mean
+  extensive: false

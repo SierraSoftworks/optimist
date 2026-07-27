@@ -49,6 +49,7 @@ use super::{
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
     mutator::Mutator,
+    signal::Aggregation,
     values::{blend, distance, draws, from_draws},
 };
 
@@ -101,6 +102,23 @@ pub enum EvaluationError {
         relationship: String,
         /// The behaviour it named.
         mutator: String,
+    },
+    /// A scale unit refers to a component or unit the model does not declare.
+    UnknownScaleUnit {
+        /// The scale unit.
+        scale_unit: String,
+        /// The name it referred to.
+        referenced: String,
+    },
+    /// A component is claimed directly by more than one scale unit.
+    SharedMembership {
+        /// The contested component.
+        component: String,
+    },
+    /// Scale units enclose each other in a cycle.
+    ScaleUnitCycle {
+        /// A scale unit on the cycle.
+        scale_unit: String,
     },
     /// A required property was not supplied and has no default.
     MissingProperty {
@@ -156,6 +174,20 @@ impl std::fmt::Display for EvaluationError {
                 formatter,
                 "relationship {relationship} attaches unknown behaviour '{mutator}'"
             ),
+            Self::UnknownScaleUnit {
+                scale_unit,
+                referenced,
+            } => write!(
+                formatter,
+                "scale unit '{scale_unit}' refers to '{referenced}', which the model does not declare"
+            ),
+            Self::SharedMembership { component } => write!(
+                formatter,
+                "component '{component}' belongs to more than one scale unit; nest the units instead"
+            ),
+            Self::ScaleUnitCycle { scale_unit } => {
+                write!(formatter, "scale unit '{scale_unit}' encloses itself")
+            }
             Self::MissingProperty {
                 component,
                 property,
@@ -368,6 +400,22 @@ fn evaluate_component(
 /// missing key. Summation is right for rates and volumes, which is what flows
 /// along a relationship today; a signal that composes some other way will need
 /// its aggregation declared before a manifest can consume it.
+/// Combines the flows arriving at a component into the figures it reads.
+///
+/// Each relationship's flow passes through its attached behaviours before being
+/// counted, so a retry policy's amplification and a cache's absorption are
+/// already reflected in what the component sees.
+///
+/// Arrivals combine as their signal declares: rates add, observed latency takes
+/// the largest, and per-operation quantities average. Extensive signals are then
+/// divided by the component's share, so a component inside a sharded scale unit
+/// reads the demand reaching one replica rather than the whole fleet's. That is
+/// what makes a constraint answer "does one cell have enough capacity", which is
+/// the question an engineer can act on.
+///
+/// Every signal the catalogue knows about is present, defaulting to zero, so a
+/// component at the edge of a model reads no demand rather than failing on a
+/// missing key.
 fn aggregate(
     plan: &Plan,
     component: &PreparedComponent,
@@ -375,19 +423,14 @@ fn aggregate(
     config: EvaluationConfig,
     time: f64,
 ) -> Result<BTreeMap<String, Value>, EvaluationError> {
-    let mut totals = plan
-        .signals
-        .iter()
-        .map(|signal| (signal.clone(), 0.0_f64))
-        .collect::<BTreeMap<_, _>>();
-    let mut uncertain: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let mut arrivals: BTreeMap<String, Vec<Value>> = BTreeMap::new();
     for inbound in &component.upstream {
         let Some(state) = current.get(&inbound.source) else {
             continue;
         };
         let mut flow = plan
             .signals
-            .iter()
+            .keys()
             .map(|signal| (signal.clone(), Value::Number(0.0)))
             .collect::<BTreeMap<_, _>>();
         flow.extend(state.outputs.clone());
@@ -395,24 +438,70 @@ fn aggregate(
             flow = apply(plan, mutator, flow, config, time)?;
         }
         for (signal, value) in flow {
-            match value {
-                Value::Number(number) => *totals.entry(signal).or_default() += number,
-                value => uncertain.entry(signal).or_default().push(value),
-            }
+            arrivals.entry(signal).or_default().push(value);
         }
     }
-    let mut inbound = totals
-        .into_iter()
-        .map(|(signal, total)| (signal, Value::Number(total)))
-        .collect::<BTreeMap<_, _>>();
-    for (signal, values) in uncertain {
-        let certain = match inbound.get(&signal) {
-            Some(Value::Number(number)) => *number,
-            _ => 0.0,
+
+    let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
+    let mut inbound = BTreeMap::new();
+    for (name, declaration) in &plan.signals {
+        let values = arrivals.remove(name).unwrap_or_default();
+        let divisor = if declaration.extensive {
+            component.share
+        } else {
+            1.0
         };
-        inbound.insert(signal, sum(values, certain));
+        inbound.insert(
+            name.clone(),
+            combine(&values, declaration.aggregate, divisor, config, &mut rng),
+        );
     }
     Ok(inbound)
+}
+
+/// Reduces several arrivals of one signal to the figure a component reads.
+fn combine(
+    values: &[Value],
+    aggregation: Aggregation,
+    divisor: f64,
+    config: EvaluationConfig,
+    rng: &mut ChaCha20Rng,
+) -> Value {
+    if values.is_empty() {
+        return Value::Number(0.0);
+    }
+    let count = values
+        .iter()
+        .filter_map(|value| match value {
+            Value::Distribution(distribution) => distribution.samples().map(<[f64]>::len),
+            _ => None,
+        })
+        .min()
+        .unwrap_or(config.sample_count.max(1));
+    let columns = values
+        .iter()
+        .filter_map(|value| draws(value, count, rng))
+        .collect::<Vec<_>>();
+    if columns.is_empty() {
+        return Value::Number(0.0);
+    }
+    let scale = if divisor > 0.0 { divisor } else { 1.0 };
+    let combined = (0..count)
+        .map(|index| {
+            let mut row = columns.iter().map(|column| column[index]);
+            let first = row.next().unwrap_or(0.0);
+            let value = match aggregation {
+                Aggregation::Sum => first + row.sum::<f64>(),
+                Aggregation::Max => row.fold(first, f64::max),
+                Aggregation::Mean => {
+                    (first + row.sum::<f64>())
+                        / f64::from(u32::try_from(columns.len()).unwrap_or(1))
+                }
+            };
+            value / scale
+        })
+        .collect::<Vec<_>>();
+    from_draws(combined).unwrap_or(Value::Number(0.0))
 }
 
 /// Rewrites a flow through one attached behaviour.
@@ -450,30 +539,6 @@ fn apply(
         rewritten.insert(signal.clone(), value);
     }
     Ok(rewritten)
-}
-
-fn sum(values: Vec<Value>, offset: f64) -> Value {
-    let count = values
-        .iter()
-        .filter_map(|value| match value {
-            Value::Distribution(distribution) => distribution.samples().map(<[f64]>::len),
-            _ => None,
-        })
-        .min();
-    let Some(count) = count else {
-        return Value::Number(offset);
-    };
-    let mut rng = ChaCha20Rng::seed_from_u64(0);
-    let mut total = vec![offset; count];
-    for value in &values {
-        let Some(draws) = draws(value, count, &mut rng) else {
-            continue;
-        };
-        for (slot, draw) in total.iter_mut().zip(draws) {
-            *slot += draw;
-        }
-    }
-    from_draws(total).unwrap_or(Value::Number(offset))
 }
 
 /// Fills in every channel the type declares so a first step reads zero.

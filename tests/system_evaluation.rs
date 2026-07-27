@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use optimist::squiggle::Value;
 use optimist::system::{
-    AttachedMutator, Bottleneck, Component, ComponentId, EvaluationConfig, MutatorId, Relationship,
-    ScratchpadEntry, SystemModel, bottlenecks, builtin_catalogue, evaluate,
+    AttachedMutator, Bottleneck, Component, ComponentId, Distribution, EvaluationConfig, MutatorId,
+    Relationship, ScaleUnit, ScaleUnitId, ScratchpadEntry, SystemModel, bottlenecks,
+    builtin_catalogue, evaluate,
 };
 
 fn component(id: &str, component_type: &str, properties: &[(&str, &str)]) -> Component {
@@ -228,6 +229,7 @@ fn scratchpad_quantities_are_shared() {
             ),
         ],
         relationships: vec![link("users", "api")],
+        ..SystemModel::default()
     };
     let solved = solve(&model, config());
     assert!((solved[&ComponentId::new("api")].mean("offered") - 250.0).abs() < 1e-9);
@@ -745,4 +747,177 @@ fn unknown_behaviours_are_reported() {
     let catalogue = builtin_catalogue().expect("catalogue");
     let error = evaluate(&model, &catalogue, config()).expect_err("unknown behaviour");
     assert!(error.to_string().contains("unknown behaviour"), "{error}");
+}
+
+fn cell(id: &str, replicas: &str, distribution: Distribution, members: &[&str]) -> ScaleUnit {
+    ScaleUnit {
+        id: ScaleUnitId::new(id),
+        name: id.to_owned(),
+        summary: String::new(),
+        replicas: replicas.to_owned(),
+        distribution,
+        members: members.iter().map(|id| ComponentId::new(*id)).collect(),
+        parent: None,
+    }
+}
+
+fn sharded_fleet(units: Vec<ScaleUnit>) -> SystemModel {
+    SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "1200")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "8")],
+            ),
+        ],
+        relationships: vec![link("users", "api")],
+        scale_units: units,
+        ..SystemModel::default()
+    }
+}
+
+/// A sharded unit divides demand, so a model describes one replica.
+///
+/// This is the question worth asking of a fleet: not whether the total capacity
+/// exceeds the total load, but whether one cell can serve the share that reaches
+/// it.
+#[test]
+fn a_sharded_scale_unit_divides_demand() {
+    let whole = solve(&sharded_fleet(Vec::new()), config());
+    assert!((whole[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+
+    let sharded = solve(
+        &sharded_fleet(vec![cell("cell", "4", Distribution::Sharded, &["api"])]),
+        config(),
+    );
+    assert!((sharded[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
+}
+
+/// A mirrored unit replicates cost without dividing load.
+///
+/// Replicating writes to every region means every region receives every write.
+/// Treating that as though it sharded would size the design for a fraction of
+/// its real demand.
+#[test]
+fn a_mirrored_scale_unit_does_not_divide_demand() {
+    let mirrored = solve(
+        &sharded_fleet(vec![cell("region", "4", Distribution::Mirrored, &["api"])]),
+        config(),
+    );
+    assert!((mirrored[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+}
+
+/// Nested units multiply, and only the sharded levels divide.
+#[test]
+fn nesting_multiplies_replicas_and_shards_divide() {
+    let mut region = cell("region", "3", Distribution::Mirrored, &[]);
+    let mut shard = cell("shard", "10", Distribution::Sharded, &["api"]);
+    shard.parent = Some(ScaleUnitId::new("region"));
+    region.members = Vec::new();
+
+    let model = sharded_fleet(vec![region, shard]);
+    let solved = solve(&model, config());
+    // Thirty copies exist, but only the ten shards divide the load.
+    assert!((solved[&ComponentId::new("api")].mean("offered") - 120.0).abs() < 1e-6);
+
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
+    let ranked = bottlenecks(&model, &catalogue, evaluation.settled(), config()).expect("ranks");
+    let capacity = ranked
+        .iter()
+        .find(|entry| entry.constraint == "capacity")
+        .expect("capacity");
+    assert!((capacity.replicas - 30.0).abs() < 1e-9, "{capacity:#?}");
+}
+
+/// Sharding can relieve a constraint that binds on an unsharded fleet.
+#[test]
+fn sharding_relieves_a_bottleneck() {
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let bound = sharded_fleet(Vec::new());
+    let evaluation = evaluate(&bound, &catalogue, config()).expect("solves");
+    let ranked = bottlenecks(&bound, &catalogue, evaluation.settled(), config()).expect("ranks");
+    assert!(ranked[0].binds(), "1200 offered against 800 served");
+
+    let spread = sharded_fleet(vec![cell("cell", "4", Distribution::Sharded, &["api"])]);
+    let evaluation = evaluate(&spread, &catalogue, config()).expect("solves");
+    let ranked = bottlenecks(&spread, &catalogue, evaluation.settled(), config()).expect("ranks");
+    assert!(!ranked[0].binds(), "each cell serves 300 against 800");
+}
+
+/// Observed latency takes the largest arrival rather than the sum.
+///
+/// A caller reaching two dependencies waits for the slower one, not for both
+/// end to end, and summing would invent delay nobody experienced.
+#[test]
+fn latency_does_not_accumulate_across_parallel_arrivals() {
+    let model = SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "10")]),
+            component(
+                "slow",
+                "compute",
+                &[("service_time", "0.2"), ("parallelism", "64")],
+            ),
+            component(
+                "quick",
+                "compute",
+                &[("service_time", "0.05"), ("parallelism", "64")],
+            ),
+            component(
+                "collector",
+                "aggregator",
+                &[("branches", "2"), ("overhead", "0.001")],
+            ),
+        ],
+        relationships: vec![
+            link("users", "slow"),
+            link("users", "quick"),
+            link("slow", "collector"),
+            link("quick", "collector"),
+        ],
+        ..SystemModel::default()
+    };
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
+    assert!(evaluation.converged());
+    // Both branches deliver 10 requests per second, combined two at a time.
+    let collector = &evaluation.settled().components[&ComponentId::new("collector")];
+    let Value::Number(completed) = collector.channels["completed"] else {
+        panic!("expected a certain rate");
+    };
+    assert!((completed - 10.0).abs() < 1e-6);
+}
+
+/// Structural mistakes in scale units are reported.
+#[test]
+fn scale_unit_mistakes_are_reported() {
+    let catalogue = builtin_catalogue().expect("catalogue");
+
+    let unknown = sharded_fleet(vec![cell("cell", "2", Distribution::Sharded, &["missing"])]);
+    let error = evaluate(&unknown, &catalogue, config()).expect_err("unknown member");
+    assert!(error.to_string().contains("does not declare"), "{error}");
+
+    let shared = sharded_fleet(vec![
+        cell("left", "2", Distribution::Sharded, &["api"]),
+        cell("right", "2", Distribution::Sharded, &["api"]),
+    ]);
+    let error = evaluate(&shared, &catalogue, config()).expect_err("shared membership");
+    assert!(
+        error.to_string().contains("more than one scale unit"),
+        "{error}"
+    );
+
+    let mut looping = cell("loop", "2", Distribution::Sharded, &["api"]);
+    looping.parent = Some(ScaleUnitId::new("loop"));
+    let error = evaluate(&sharded_fleet(vec![looping]), &catalogue, config()).expect_err("cycle");
+    assert!(error.to_string().contains("encloses itself"), "{error}");
+
+    let empty = sharded_fleet(vec![cell("cell", "0", Distribution::Sharded, &["api"])]);
+    let error = evaluate(&empty, &catalogue, config()).expect_err("no replicas");
+    assert!(
+        error.to_string().contains("at least one replica"),
+        "{error}"
+    );
 }

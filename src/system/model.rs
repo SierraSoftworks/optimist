@@ -89,6 +89,9 @@ pub struct SystemModel {
     /// How those parts are wired together.
     #[serde(default)]
     pub relationships: Vec<Relationship>,
+    /// Boundaries within which components are replicated together.
+    #[serde(default)]
+    pub scale_units: Vec<super::scale_unit::ScaleUnit>,
 }
 
 /// One shared quantity available throughout a model.

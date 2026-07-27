@@ -43,6 +43,8 @@ mod expression;
 mod manifest;
 mod model;
 mod mutator;
+mod scale_unit;
+mod signal;
 mod validate;
 mod values;
 
@@ -54,4 +56,6 @@ pub use manifest::{
 };
 pub use model::{Component, ComponentId, Relationship, ScratchpadEntry, SystemModel};
 pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
+pub use scale_unit::{Distribution, ScaleUnit, ScaleUnitId};
+pub use signal::{Aggregation, Signal};
 pub use validate::ComponentTypeError;
