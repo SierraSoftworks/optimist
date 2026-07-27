@@ -222,6 +222,80 @@ fn saturation_respects_shared_inputs() {
     assert!(bound.mean().expect("mean").abs() < 1e-12);
 }
 
+/// Clamping and truncation are different operations and must stay different.
+///
+/// Clamping moves excess draws onto the limit, leaving an atom whose mass is the
+/// share of outcomes that saturate. Truncation removes them and renormalises
+/// over what is left. A capacity model needs the first: substituting the second
+/// would delete exactly the draws that evidence a bottleneck, and report a
+/// healthy system precisely when demand had outgrown capacity.
+#[test]
+fn clamping_and_truncation_are_not_interchangeable() {
+    let clamped = distribution("min([uniform(50, 150), 100])");
+    let conditioned = distribution("truncateRight(uniform(50, 150), 100)");
+
+    // Clamping keeps every draw, so half the mass lands exactly on the limit.
+    let at_the_limit = clamped
+        .samples()
+        .expect("sample set")
+        .iter()
+        .filter(|draw| (**draw - 100.0).abs() < 1e-9)
+        .count() as f64
+        / clamped.samples().expect("sample set").len() as f64;
+    assert!(
+        (at_the_limit - 0.5).abs() < 0.02,
+        "expected half the draws to saturate, got {at_the_limit}"
+    );
+    assert!((clamped.mean().expect("mean") - 87.5).abs() < 1.0);
+
+    // Truncation discards them, leaving a uniform over the retained range.
+    assert!((conditioned.mean().expect("mean") - 75.0).abs() < 1.0);
+    assert!(conditioned.mean().expect("mean") < clamped.mean().expect("mean"));
+}
+
+/// Truncation keeps its draws aligned with the quantities it was derived from.
+///
+/// Conditioning is a monotone remap of the existing draws, so a truncated
+/// quantity stays perfectly rank-correlated with its source. Resampling until
+/// enough draws landed in range would have severed that link silently.
+#[test]
+fn truncation_preserves_dependence_on_its_source() {
+    let source = distribution(
+        "latency = lognormal(-3, 0.6)\n\
+         within = truncateRight(latency, 0.2)\n\
+         within - latency",
+    );
+    // A monotone remap can only move draws downward here, never reorder them.
+    assert!(source.maximum().expect("maximum") <= 1e-9);
+
+    let ranks = distribution(
+        "latency = lognormal(-3, 0.6)\n\
+         within = truncateRight(latency, 0.2)\n\
+         min([within, latency]) - within",
+    );
+    assert!(
+        ranks.stdev().expect("stdev") < 1e-12 && ranks.mean().expect("mean").abs() < 1e-12,
+        "the truncated draw must remain the lesser of the aligned pair"
+    );
+}
+
+/// Truncating to a bounded interval reproduces the analytic conditional mean.
+#[test]
+fn truncation_matches_the_analytical_conditional() {
+    // Conditioning U(0, 10) on [2, 6] gives U(2, 6), whose mean is 4.
+    let conditioned = distribution("truncate(uniform(0, 10), 2, 6)");
+    assert!((conditioned.mean().expect("mean") - 4.0).abs() < 0.05);
+    assert!(conditioned.minimum().expect("minimum") >= 2.0 - 1e-9);
+    assert!(conditioned.maximum().expect("maximum") <= 6.0 + 1e-9);
+}
+
+/// An interval outside the support is rejected rather than looping or emptying.
+#[test]
+fn truncation_without_retained_mass_is_rejected() {
+    assert!(fails("truncate(uniform(0, 1), 5, 6)"));
+    assert!(fails("truncate(uniform(0, 1), 0.9, 0.1)"));
+}
+
 /// The prelude composes into the model project B had to hand-write.
 ///
 /// Retries amplify demand against a dependency, that demand drives utilisation,

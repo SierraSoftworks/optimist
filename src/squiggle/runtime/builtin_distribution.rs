@@ -211,6 +211,39 @@ fn mixture(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<V
     finish(Distribution::from_samples(samples), span)
 }
 
+/// Conditions a distribution on falling inside an interval.
+///
+/// Truncation is conditioning, not clamping. The result is the law of
+/// $X \mid l \leq X \leq r$, whose distribution function is renormalised over
+/// the retained mass:
+///
+/// $$F_{Y}(y) = \frac{F_X(y) - F_X(l)}{F_X(r) - F_X(l)}, \qquad l \leq y \leq r$$
+///
+/// Draws outside the interval are therefore *removed* rather than moved to the
+/// boundary. Where a limit represents a capacity that demand piles up against,
+/// `min` and `max` are the correct operations, because the mass they leave at the
+/// boundary is exactly the share of outcomes that saturate. Truncation is right
+/// where the limit selects a subpopulation instead, such as the latency of calls
+/// that returned before their timeout expired.
+///
+/// # Preserving dependence
+///
+/// The interval is applied by remapping each existing draw through the truncated
+/// quantile function rather than by resampling until enough draws land in range:
+///
+/// $$y_i = F_X^{-1}\bigl(F_X(l) + F_X(x_i)\,[F_X(r) - F_X(l)]\bigr)$$
+///
+/// Because $F_X$ is non-decreasing, this is a monotone transform of the original
+/// draws, so the result keeps its index alignment and its dependence on every
+/// quantity upstream. Rejection sampling would have returned draws with no
+/// correspondence to the ones they replaced, silently severing a model's
+/// correlation structure. The remap is also exact and terminates, where rejection
+/// sampling degrades as the retained mass shrinks and eventually fails outright.
+///
+/// Recovering a draw's position as $F_X(x_i)$ is exact for continuous families.
+/// A discrete family maps a whole interval of positions onto each atom, so the
+/// recovered position is the top of that interval and a truncated discrete
+/// distribution is biased slightly toward its upper atoms.
 fn truncate(
     runtime: &mut Runtime,
     name: &str,
@@ -225,23 +258,41 @@ fn truncate(
         "truncateLeft" => (number(&arguments[1], span)?, f64::INFINITY),
         _ => (f64::NEG_INFINITY, number(&arguments[1], span)?),
     };
-    let mut samples = Vec::with_capacity(runtime.config.sample_count);
-    let attempts = runtime
-        .config
-        .sample_count
-        .checked_mul(20)
-        .ok_or_else(|| Diagnostic::runtime("truncate sampling limit is too large", span))?;
-    for _ in 0..attempts {
-        let value = distribution
-            .sample(&mut runtime.rng)
-            .map_err(|error| Diagnostic::runtime(error, span))?;
-        if (left..=right).contains(&value) {
-            samples.push(value);
-            if samples.len() == runtime.config.sample_count {
-                break;
-            }
-        }
+    if left > right {
+        return Err(Diagnostic::runtime(
+            "truncation requires a lower bound below its upper bound",
+            span,
+        ));
     }
+    let fail = |error: String| Diagnostic::runtime(error, span);
+    let lower = if left.is_infinite() {
+        0.0
+    } else {
+        distribution.cdf(left).map_err(fail)?
+    };
+    let upper = if right.is_infinite() {
+        1.0
+    } else {
+        distribution.cdf(right).map_err(fail)?
+    };
+    let retained = upper - lower;
+    if retained <= f64::EPSILON {
+        return Err(
+            Diagnostic::runtime("truncation interval retains no probability mass", span)
+                .with_help("widen the interval so it overlaps the distribution's support"),
+        );
+    }
+    let count = Distribution::aligned_count([distribution], runtime.config.sample_count);
+    let samples = distribution
+        .draws(count, &mut runtime.rng)
+        .map_err(fail)?
+        .iter()
+        .map(|draw| {
+            let position = distribution.cdf(*draw)?;
+            distribution.quantile(lower + position * retained)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(fail)?;
     finish(Distribution::from_samples(samples), span)
 }
 
