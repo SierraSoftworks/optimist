@@ -19,6 +19,8 @@ pub mod project;
 pub mod project_yaml;
 /// HTTP routing and server process lifecycle.
 pub mod server;
+/// One design held in memory and shared by everyone editing it.
+pub mod session;
 /// Squiggle-compatible probabilistic language parsing and evaluation.
 pub mod squiggle;
 /// Backend-independent graph persistence contracts and implementations.

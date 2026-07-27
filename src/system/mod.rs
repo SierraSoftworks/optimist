@@ -67,7 +67,7 @@ pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
 pub use scale_unit::{Distribution, ScaleUnit, ScaleUnitId};
 pub use schema::{
     ComponentDocument, LoadedSystem, OutgoingRelationship, SCHEMA_VERSION, SchemaError,
-    SystemDocument, read_system, write_system,
+    SystemDocument, read_system, safe_identifier, write_system,
 };
 pub use signal::{Aggregation, Signal};
 pub use validate::ComponentTypeError;

@@ -197,7 +197,7 @@ impl std::error::Error for SchemaError {
 /// name containing a separator or a parent reference would otherwise let a
 /// design decide where its own files land, and a design is data rather than
 /// something entitled to choose paths.
-pub(super) fn file_stem(id: &str) -> Result<&str, SchemaError> {
+pub fn safe_identifier(id: &str) -> Result<&str, SchemaError> {
     let safe = !id.is_empty()
         && id.len() <= 128
         && id.chars().all(|character| {
@@ -211,6 +211,8 @@ pub(super) fn file_stem(id: &str) -> Result<&str, SchemaError> {
             value: id.to_owned(),
         })
 }
+
+pub(super) use safe_identifier as file_stem;
 
 /// Reports the first identifier claimed twice.
 pub(super) fn duplicate<'a>(ids: impl IntoIterator<Item = &'a str>) -> Option<String> {
