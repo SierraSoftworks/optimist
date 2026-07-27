@@ -1,9 +1,15 @@
-//! Tools for collaboratively modelling causal systems and prioritizing interventions.
+//! Tools for designing large systems and finding what constrains them.
 //!
-//! Optimist separates its causal graph ([`domain`]) from project isolation
-//! ([`project`]), persistence ([`store`]), transport ([`server`]), and command-line
-//! interaction ([`cli`]). Keeping these boundaries explicit lets API clients, the web
-//! interface, and analysis code share the same validated model.
+//! A design is a graph of typed components — clients, load balancers, queues,
+//! compute pools, datastores — wired together and annotated with the properties
+//! an engineer can measure. Optimist solves that graph with uncertainty carried
+//! through it and reports which resource limits the design is closest to
+//! exhausting.
+//!
+//! The pieces are separable. [`squiggle`] is a probabilistic language that knows
+//! nothing about systems; [`system`] describes and solves designs; [`session`]
+//! holds one in memory for several people to edit; [`api`] and [`cli`] are the
+//! two ways to reach it.
 
 #![deny(missing_docs)]
 
@@ -11,21 +17,9 @@
 pub mod api;
 /// Command-line argument types and dispatch used by the `optimist` binary.
 pub mod cli;
-/// Revision-checked, idempotent graph mutation requests and outcomes.
-pub mod command;
-/// Strongly typed causal graph aggregates and embedded probabilistic values.
-pub mod domain;
-/// Project metadata and isolated graph lifecycle management.
-pub mod project;
-/// Versioned YAML project schemas, bounded parsing, and canonical rendering.
-pub mod project_yaml;
-/// HTTP routing and server process lifecycle.
-pub mod server;
-/// One design held in memory and shared by everyone editing it.
+/// Designs held in memory and shared by everyone editing them.
 pub mod session;
 /// Squiggle-compatible probabilistic language parsing and evaluation.
 pub mod squiggle;
-/// Backend-independent graph persistence contracts and implementations.
-pub mod store;
 /// Declarative component types for non-abstract large system design.
 pub mod system;

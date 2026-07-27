@@ -11,7 +11,18 @@ use crate::{
     system::{Bottleneck, Comparison, Evaluation, LoadedSystem},
 };
 
-use super::{output_table::rows, system};
+use super::system;
+
+/// Joins a header and its rows into one tab-separated table.
+///
+/// Tabs rather than padded columns so the output pipes into `cut` and `awk`
+/// unchanged, and so a long name never pushes a column out of alignment.
+fn rows(header: &str, rows: impl Iterator<Item = String>) -> String {
+    std::iter::once(header.to_owned())
+        .chain(rows)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 pub(super) fn summary(loaded: &LoadedSystem) -> String {
     let scale_units = loaded.model.scale_units.len();

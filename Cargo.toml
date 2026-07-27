@@ -3,10 +3,6 @@ name = "optimist"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-default = []
-rocksdb = ["indradb-lib/rocksdb-datastore"]
-
 [dependencies]
 ariadne = "0.5.1"
 axum = { version = "0.8.4", features = ["ws"] }
@@ -14,25 +10,17 @@ chrono = { version = "0.4.41", default-features = false }
 chumsky = "0.11.1"
 clap = { version = "4.5.41", features = ["derive", "env"] }
 human-errors = { version = "0.2.4", features = ["pretty"] }
-futures-util = "0.3.31"
-indradb-lib = "5.0.0"
-nalgebra = "=0.33.3"
-reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
 rand = "=0.8.7"
 rand_chacha = "=0.3.1"
-rand_distr = "=0.4.3"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 serde_yaml_ng = "0.10.0"
 statrs = "=0.18.0"
-thiserror = "2.0.12"
 tokio = { version = "1.46.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
-tower = { version = "0.5.2", features = ["util"] }
-tower-http = { version = "0.6.6", features = ["fs", "set-header"] }
-unicode-normalization = "0.1.24"
-uuid = { version = "1.17.0", features = ["serde", "v4", "v5"] }
 
 [dev-dependencies]
+futures-util = "0.3.31"
 proptest = "1.7.0"
+reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
 rstest = "0.26.1"
 tokio-tungstenite = "0.29.0"

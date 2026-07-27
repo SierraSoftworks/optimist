@@ -16,15 +16,9 @@ use crate::system::{
 
 use super::output::OutputFormat;
 
-/// Commands over a system design directory.
-#[derive(Debug, Args)]
-pub(super) struct SystemArgs {
-    #[command(subcommand)]
-    command: SystemCommand,
-}
-
+/// The things one can ask of a design held in a directory.
 #[derive(Debug, Subcommand)]
-enum SystemCommand {
+pub(super) enum SystemCommand {
     /// Loads a design and reports what it contains without solving it.
     Check(DesignArgs),
     /// Solves a design and reports the quantities flowing through it.
@@ -38,7 +32,7 @@ enum SystemCommand {
 }
 
 #[derive(Debug, Args)]
-struct DesignArgs {
+pub(super) struct DesignArgs {
     /// Directory holding the design.
     directory: PathBuf,
 }
@@ -73,7 +67,7 @@ impl SolveOptions {
 }
 
 #[derive(Debug, Args)]
-struct SolveArgs {
+pub(super) struct SolveArgs {
     #[command(flatten)]
     design: DesignArgs,
     #[command(flatten)]
@@ -87,7 +81,7 @@ struct SolveArgs {
 }
 
 #[derive(Debug, Args)]
-struct BottlenecksArgs {
+pub(super) struct BottlenecksArgs {
     #[command(flatten)]
     design: DesignArgs,
     #[command(flatten)]
@@ -101,7 +95,7 @@ struct BottlenecksArgs {
 }
 
 #[derive(Debug, Args)]
-struct CompareArgs {
+pub(super) struct CompareArgs {
     #[command(flatten)]
     design: DesignArgs,
     #[command(flatten)]
@@ -110,9 +104,9 @@ struct CompareArgs {
     intervention: String,
 }
 
-/// Executes one system design command.
-pub(super) fn run(args: SystemArgs, output: OutputFormat) -> Result<(), human_errors::Error> {
-    let rendered = match args.command {
+/// Executes one design command.
+pub(super) fn run(command: SystemCommand, output: OutputFormat) -> Result<(), human_errors::Error> {
+    let rendered = match command {
         SystemCommand::Check(args) => {
             let loaded = load(&args.directory)?;
             output.system_summary(&loaded)?
@@ -160,7 +154,7 @@ fn load(directory: &std::path::Path) -> Result<LoadedSystem, human_errors::Error
             ),
             &[
                 "Check that the directory holds a _system.yaml written by this version.",
-                "Run `optimist system check <directory>` after fixing the file it names.",
+                "Run `optimist check <directory>` after fixing the file it names.",
             ],
         )
     })
@@ -202,7 +196,7 @@ fn evaluation_error(error: crate::system::EvaluationError) -> human_errors::Erro
         format!("The design could not be solved: {error}"),
         &[
             "Check that every component supplies the properties its type declares.",
-            "Run `optimist system check <directory>` to validate the design without solving it.",
+            "Run `optimist check <directory>` to validate the design without solving it.",
         ],
     )
 }

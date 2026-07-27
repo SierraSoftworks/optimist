@@ -63,7 +63,7 @@ pub struct Runtime {
     pub(super) modules: BTreeMap<String, Value>,
     /// Standard globals, built once and shared by every run as a parent scope.
     pub(super) globals: Environment,
-    /// Scope holding the values passed to [`Runtime::evaluate_bound`], reused so
+    /// Scope holding the values passed to [`Runtime::evaluate_values`], reused so
     /// that repeatedly binding the same names costs only the values.
     bindings: Environment,
 }
@@ -163,12 +163,20 @@ impl Runtime {
         self.eval_program(program, &environment)
     }
 
-    /// Evaluates a parsed module with `bindings` already in scope as numbers.
+    /// Evaluates a program against named values supplied by the caller.
     ///
     /// Registering a module and importing it copies the whole exported value into
     /// the run's scope, which is the wrong shape for a caller that re-evaluates
     /// one small program with different numbers thousands of times. Defining the
     /// values directly costs one scope entry each instead.
+    ///
+    /// Bindings may carry whole distributions and dictionaries, which is what
+    /// lets a caller pass an already-sampled quantity in rather than having the
+    /// program construct it. The random stream restarts on every call, so
+    /// re-evaluating one program against the same bindings returns the same
+    /// answer. A caller iterating toward a fixed point depends on that: draws
+    /// that shifted between passes would leave the iteration chasing sampling
+    /// noise it could never converge against.
     ///
     /// The bindings live in a scope this runtime keeps between calls, so binding
     /// a name it has already seen writes a value over an existing key rather than
@@ -184,33 +192,6 @@ impl Runtime {
     /// programs against a declared schema. A caller free to reference any name
     /// could read one left behind by an earlier call instead of being told it is
     /// unbound.
-    pub(crate) fn evaluate_bound<'a>(
-        &mut self,
-        program: &Program,
-        bindings: impl IntoIterator<Item = (&'a str, f64)>,
-    ) -> Result<Value, Diagnostic> {
-        self.evaluate_values(
-            program,
-            bindings
-                .into_iter()
-                .map(|(name, value)| (name, Value::Number(value))),
-        )
-    }
-
-    /// Evaluates a program against named values supplied by the caller.
-    ///
-    /// Bindings may carry whole distributions and dictionaries, which is what
-    /// lets a caller pass an already-sampled quantity in rather than having the
-    /// program construct it. The random stream restarts on every call, so
-    /// re-evaluating one program against the same bindings returns the same
-    /// answer. A caller iterating toward a fixed point depends on that: draws
-    /// that shifted between passes would leave the iteration chasing sampling
-    /// noise it could never converge against.
-    ///
-    /// Crate-internal for the same reason as [`Runtime::evaluate_bound`]: the
-    /// caller is expected to have compiled its program against a declared
-    /// schema, so that a name it did not supply is reported as unbound rather
-    /// than silently resolving to a leftover from an earlier call.
     pub(crate) fn evaluate_values<'a>(
         &mut self,
         program: &Program,
@@ -263,11 +244,11 @@ mod tests {
 
         for _ in 0..2 {
             let shadowed = runtime
-                .evaluate_bound(&shadows, [("baseline", 4.0)])
+                .evaluate_values(&shadows, [("baseline", Value::Number(4.0))])
                 .map_err(|error| error.message.clone())?;
             assert_eq!(shadowed.as_number(), Some(7.0));
             let builtin = runtime
-                .evaluate_bound(&calls_builtin, [("baseline", 4.0)])
+                .evaluate_values(&calls_builtin, [("baseline", Value::Number(4.0))])
                 .map_err(|error| error.message.clone())?;
             assert_eq!(builtin.as_number(), Some(4.0));
         }
@@ -281,7 +262,7 @@ mod tests {
         let program = parse("baseline * 2").map_err(|error| format!("{error:?}"))?;
         for value in [1.0, 5.0, 2.5] {
             let result = runtime
-                .evaluate_bound(&program, [("baseline", value)])
+                .evaluate_values(&program, [("baseline", Value::Number(value))])
                 .map_err(|error| error.message.clone())?;
             assert_eq!(result.as_number(), Some(value * 2.0));
         }

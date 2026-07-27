@@ -1,1 +1,0 @@
-{"source":"A","source_kind":"factor","destination":"B","destination_kind":"intervention","revision":0,"payload":{"kind":"requires","properties":{"hard":true,"satisfaction_threshold":0.5}}}
