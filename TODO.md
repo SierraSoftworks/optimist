@@ -153,6 +153,9 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [x] Intervention execution readiness from recursive Requires dependencies, blockers, duration, success, synergies, and conflicts.
 - [ ] Dependency-aware multidimensional intervention cost with shared prerequisite deduplication across candidate bundles.
 - [ ] Pareto impact/cost/time/risk/uncertainty frontier.
+- [ ] Cut per-call allocation in the Squiggle evaluator, which now dominates projection time.
+  - [ ] Evaluate call arguments and list literals onto a reusable stack instead of allocating a `Vec<Value>` for each, which costs about 136ns per builtin call and needs the argument type to change through the builtin macros.
+  - [ ] Resolve identifiers to frame offsets at compile time so a lookup indexes a slot rather than searching a `BTreeMap` per frame, worth roughly a tenth of an evaluation.
 - [ ] Scalar utility only when a scenario explicitly defines conversion preferences.
 - [ ] Reference model with hand-checked exact and sampled results.
 
