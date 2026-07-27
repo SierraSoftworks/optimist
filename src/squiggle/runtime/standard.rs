@@ -241,6 +241,41 @@ const NAMESPACES: &[(&str, &[(&str, &str)])] = &[
         &[("make", "String.make"), ("split", "String.split")],
     ),
     ("System", &[("sampleCount", "System.sampleCount")]),
+    (
+        "Little",
+        &[
+            ("occupancy", "Little.occupancy"),
+            ("residence", "Little.residence"),
+            ("rate", "Little.rate"),
+        ],
+    ),
+    (
+        "Queue",
+        &[
+            ("utilisation", "Queue.utilisation"),
+            ("utilization", "Queue.utilization"),
+            ("mm1Wait", "Queue.mm1Wait"),
+            ("mmcWait", "Queue.mmcWait"),
+            ("erlangB", "Queue.erlangB"),
+            ("erlangC", "Queue.erlangC"),
+        ],
+    ),
+    (
+        "Reliability",
+        &[
+            ("retrySuccess", "Reliability.retrySuccess"),
+            ("retryAttempts", "Reliability.retryAttempts"),
+            ("serialSuccess", "Reliability.serialSuccess"),
+            ("deadlineSuccess", "Reliability.deadlineSuccess"),
+        ],
+    ),
+    (
+        "Slo",
+        &[
+            ("errorBudget", "Slo.errorBudget"),
+            ("burnRate", "Slo.burnRate"),
+        ],
+    ),
 ];
 
 pub(crate) fn builtin_names() -> Vec<&'static str> {

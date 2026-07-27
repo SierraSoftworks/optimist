@@ -2,8 +2,8 @@ use crate::squiggle::{Diagnostic, Value, ast::Span};
 
 use super::{
     Runtime, builtin_collection, builtin_common, builtin_core, builtin_dict_extra,
-    builtin_distribution, builtin_domain, builtin_list_extra, builtin_sampleset, builtin_scoring,
-    builtin_temporal,
+    builtin_distribution, builtin_domain, builtin_list_extra, builtin_queueing,
+    builtin_reliability, builtin_sampleset, builtin_scoring, builtin_temporal,
 };
 
 pub(crate) fn signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {
@@ -17,6 +17,8 @@ pub(crate) fn signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {
     signatures.extend(builtin_scoring::signatures());
     signatures.extend(builtin_sampleset::signatures());
     signatures.extend(builtin_distribution::signatures());
+    signatures.extend(builtin_queueing::signatures());
+    signatures.extend(builtin_reliability::signatures());
     signatures.extend(builtin_collection::signatures());
     signatures
 }
@@ -53,6 +55,12 @@ pub(super) fn call(
     }
     if builtin_distribution::handles(name) {
         return builtin_distribution::call(runtime, name, arguments, span);
+    }
+    if builtin_queueing::handles(name) {
+        return builtin_queueing::call(runtime, name, arguments, span);
+    }
+    if builtin_reliability::handles(name) {
+        return builtin_reliability::call(runtime, name, arguments, span);
     }
     if builtin_collection::handles(name) {
         return builtin_collection::call(runtime, name, arguments, span);

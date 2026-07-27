@@ -5,6 +5,7 @@ use crate::squiggle::{Diagnostic, Value, ast::Span};
 use super::{
     Runtime,
     builtin::{arity, number},
+    elementwise::elementwise,
 };
 
 builtins! {
@@ -23,8 +24,10 @@ builtins! {
     variance(values: [Number]) => numeric_statistic("variance", values, None, span),
     min(value: Distribution) => statistic("min", vec![Value::Distribution(value.clone())], span),
     min(values: [Number]) => numeric_statistic("min", values, None, span),
+    min(values: Array) => saturate(runtime, "min", values.clone(), span),
     max(value: Distribution) => statistic("max", vec![Value::Distribution(value.clone())], span),
     max(values: [Number]) => numeric_statistic("max", values, None, span),
+    max(values: Array) => saturate(runtime, "max", values.clone(), span),
     mode(value: Distribution) => statistic("mode", vec![Value::Distribution(value.clone())], span),
     sort(values: [Number]) => numeric_list("sort", vec![numbers(values)], span),
     cumsum(values: [Number]) => numeric_list("cumsum", vec![numbers(values)], span),
@@ -54,6 +57,43 @@ builtins! {
 
 fn numbers(values: Vec<f64>) -> Value {
     Value::Array(values.into_iter().map(Value::Number).collect())
+}
+
+/// Takes an extremum across values at matching draw indices.
+///
+/// Saturation is the defining operation of a capacity model: throughput is the
+/// lesser of offered load and capacity, and headroom is the greater of zero and
+/// the difference. Applying the extremum per draw rather than to whole
+/// distributions is what makes it meaningful, because the smaller of two
+/// distributions is not a property of their summaries. Where demand and capacity
+/// overlap, some draws saturate and others do not, and only a per-draw extremum
+/// reproduces the resulting mixture and the share of draws that bind.
+///
+/// Comparison folds with [`f64::total_cmp`] so the result agrees with the
+/// numeric path in every case, including signed zero.
+fn saturate(
+    runtime: &mut Runtime,
+    name: &str,
+    values: Vec<Value>,
+    span: Span,
+) -> Result<Value, Diagnostic> {
+    if values.is_empty() {
+        return Err(Diagnostic::runtime("list must not be empty", span));
+    }
+    let take_least = name == "min";
+    elementwise(runtime, &values, span, move |row| {
+        row.iter()
+            .copied()
+            .reduce(|left, right| {
+                let ordering = right.total_cmp(&left);
+                if (take_least && ordering.is_lt()) || (!take_least && ordering.is_gt()) {
+                    right
+                } else {
+                    left
+                }
+            })
+            .ok_or_else(|| "list must not be empty".to_owned())
+    })
 }
 
 /// Computes one summary statistic over an already-extracted list of numbers.
