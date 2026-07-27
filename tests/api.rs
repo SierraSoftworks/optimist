@@ -239,6 +239,66 @@ async fn a_design_can_be_solved_over_http() {
     assert!(worst["probability_of_binding"].as_f64().expect("number") > 0.9);
 }
 
+/// Solving carries the draws behind each quantity, not only its summary.
+///
+/// A ranking says how loaded something is; the draws say whether the load is one
+/// thing or two. A design that has settled on two branches has a spread that no
+/// mean, percentile pair, or interval can distinguish from a single wide one, so
+/// the shape has to reach the client intact for a chart to tell the difference.
+#[tokio::test]
+async fn solving_returns_the_draws_behind_each_quantity() {
+    let root = workspace("draws");
+    let directory = root.join("uncertain");
+    fs::create_dir_all(directory.join("components")).expect("design directory");
+    fs::write(
+        directory.join("_system.yaml"),
+        "schema_version: 2\nname: Uncertain\nsummary: A design.\n\
+         scratchpad:\n- name: peak_rate\n  expression: 900 * lognormal(0, 0.4)\n  \
+         unit: op/s\n  summary: ''\n",
+    )
+    .expect("writes");
+    fs::write(
+        directory.join("components/users.yaml"),
+        "id: users\nname: Users\ntype: client\nproperties:\n  request_rate: peak_rate\noutgoing:\n- to: api\n",
+    )
+    .expect("writes");
+    fs::write(
+        directory.join("components/api.yaml"),
+        "id: api\nname: API\ntype: compute\nproperties:\n  service_time: '0.02'\n  parallelism: '8'\n",
+    )
+    .expect("writes");
+    let address = serve(&root).await;
+
+    let (status, analysis) = get(address, "/api/v1/designs/uncertain/analysis?samples=2000").await;
+    assert_eq!(status, 200);
+
+    let offered = &analysis["components"]["api"]["offered"];
+    let draws = offered["draws"].as_array().expect("draws");
+    assert!(
+        !draws.is_empty() && draws.len() <= 256,
+        "draws must arrive and stay within the budget, got {}",
+        draws.len()
+    );
+    assert!(
+        draws.iter().any(|draw| draw != &draws[0]),
+        "an uncertain quantity must not arrive as one repeated value"
+    );
+    assert!(
+        offered["p10"].as_f64().expect("number") < offered["p90"].as_f64().expect("number"),
+        "and its summary must bracket that spread"
+    );
+
+    // Service time and parallelism are certain, so capacity is too. Sending no
+    // draws is how a client is told to render a point rather than a spread.
+    let capacity = &analysis["components"]["api"]["capacity"];
+    assert_eq!(
+        capacity["draws"].as_array().expect("draws").len(),
+        0,
+        "a certain quantity carries no draws"
+    );
+    assert_eq!(capacity["mean"], 400.0);
+}
+
 /// A proposal is weighed against the design over the same surface.
 #[tokio::test]
 async fn a_proposal_can_be_compared_over_http() {

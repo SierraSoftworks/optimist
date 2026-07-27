@@ -4,7 +4,7 @@
 //! thread accepting requests, so it runs on the blocking pool. A model that
 //! takes a moment then delays only the client that asked for it.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     Json, Router,
@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     session::Workspace,
+    squiggle::Value,
     system::{
         Bottleneck, Comparison, EvaluationConfig, InterventionId, bottlenecks, compare, evaluate,
         evaluate_intervention,
@@ -68,6 +69,65 @@ impl Controls {
     }
 }
 
+/// Draws returned for each solved quantity.
+///
+/// A solved model may carry twenty thousand draws per channel, which is the
+/// right number to compute against and far more than any chart can use. Clients
+/// are sent a fixed budget instead, so the size of an answer depends on the
+/// design rather than on the sampling the caller asked for.
+///
+/// The draws are subsampled by taking a prefix, which is uniform because a
+/// sample set is shuffled when it is materialised. Taking every nth draw of the
+/// sorted values would give tidier quantiles and destroy exactly the thing worth
+/// looking at: where a distribution has settled on two branches, the share of
+/// draws on each is the answer.
+const DRAW_BUDGET: usize = 256;
+
+/// One solved quantity, summarised and sampled.
+#[derive(Serialize)]
+struct Quantity {
+    mean: f64,
+    p10: f64,
+    p50: f64,
+    p90: f64,
+    /// Draws, subsampled to [`DRAW_BUDGET`].
+    ///
+    /// Empty where the quantity is certain, which a client should read as "draw
+    /// this as a point, not a spread" rather than as missing data.
+    draws: Vec<f64>,
+}
+
+impl Quantity {
+    fn certain(value: f64) -> Self {
+        Self {
+            mean: value,
+            p10: value,
+            p50: value,
+            p90: value,
+            draws: Vec::new(),
+        }
+    }
+
+    fn read(value: &Value) -> Option<Self> {
+        match value {
+            Value::Number(number) => Some(Self::certain(*number)),
+            Value::Distribution(distribution) => {
+                let draws = distribution.samples().map_or_else(Vec::new, |samples| {
+                    samples.iter().take(DRAW_BUDGET).copied().collect()
+                });
+                Some(Self {
+                    mean: distribution.mean().ok()?,
+                    p10: distribution.quantile(0.1).ok()?,
+                    p50: distribution.quantile(0.5).ok()?,
+                    p90: distribution.quantile(0.9).ok()?,
+                    draws,
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
 /// A solved design and what constrains it.
 #[derive(Serialize)]
 struct Analysis {
@@ -81,6 +141,13 @@ struct Analysis {
     converged: bool,
     /// Passes taken in the final step.
     iterations: usize,
+    /// Every solved channel, by component and then by channel.
+    ///
+    /// Sent alongside the ranking because a constraint's utilisation says how
+    /// loaded something is and not why, and the quantities feeding it are what a
+    /// reader needs to answer that without issuing a second request against a
+    /// design that may have moved.
+    components: BTreeMap<String, BTreeMap<String, Quantity>>,
     /// Constraints, worst first.
     bottlenecks: Vec<Bottleneck>,
 }
@@ -108,10 +175,25 @@ async fn analysis(
         }?;
         let settled = evaluation.settled();
         let ranked = bottlenecks(&snapshot.model, &types, settled, config)?;
+        let components = settled
+            .components
+            .iter()
+            .map(|(id, state)| {
+                let channels = state
+                    .channels
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        Quantity::read(value).map(|quantity| (name.clone(), quantity))
+                    })
+                    .collect();
+                (id.to_string(), channels)
+            })
+            .collect();
         Ok::<_, crate::system::EvaluationError>(Analysis {
             sequence: snapshot.sequence,
             converged: evaluation.converged(),
             iterations: settled.iterations,
+            components,
             bottlenecks: ranked,
         })
     })
