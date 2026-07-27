@@ -7,7 +7,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': process.env.OPTIMIST_API_URL ?? 'http://127.0.0.1:3000',
+      // `ws` is required: the change feed is a websocket under the same prefix,
+      // and without it the upgrade is answered with the index page instead.
+      '/api': {
+        target: process.env.OPTIMIST_API_URL ?? 'http://127.0.0.1:3000',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   test: {

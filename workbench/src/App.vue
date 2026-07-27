@@ -1,1350 +1,198 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
-import { stringify as stringifyYaml } from 'yaml'
-import {
-  Activity,
-  AlertTriangle,
-  ChevronDown,
-  CircleDot,
-  Gauge,
-  Goal,
-  Download,
-  Upload,
-  Link,
-  Network,
-  Plus,
-  RefreshCw,
-  Search,
-  SquareTerminal,
-  Wrench,
-} from '@lucide/vue'
-import GraphCanvas from './components/GraphCanvas.vue'
-import NodeInspector from './components/NodeInspector.vue'
-import CreateProjectDialog from './components/CreateProjectDialog.vue'
-import CreateNodeDialog from './components/CreateNodeDialog.vue'
-import CreateEdgeDialog from './components/CreateEdgeDialog.vue'
-import DeleteSelectionDialog from './components/DeleteSelectionDialog.vue'
-import ImportProjectDialog from './components/ImportProjectDialog.vue'
-import EditNodeDialog from './components/EditNodeDialog.vue'
-import EditStateEstimateDialog from './components/EditStateEstimateDialog.vue'
-import ConfigureStateQuantityDialog from './components/ConfigureStateQuantityDialog.vue'
-import NodeRelationDialog from './components/NodeRelationDialog.vue'
-import EditEdgeDialog from './components/EditEdgeDialog.vue'
-import AddObservationDialog from './components/AddObservationDialog.vue'
-import CorrectObservationDialog from './components/CorrectObservationDialog.vue'
-import EditInterventionEstimateDialog from './components/EditInterventionEstimateDialog.vue'
-import EditEdgeEstimateDialog from './components/EditEdgeEstimateDialog.vue'
-import GraphNavigator from './components/GraphNavigator.vue'
-import FeedbackAnalysisPanel from './components/FeedbackAnalysisPanel.vue'
-import OptimizeAnalysisPanel from './components/OptimizeAnalysisPanel.vue'
-import CreateScenarioDialog from './components/CreateScenarioDialog.vue'
-import ImpedimentAnalysisPanel from './components/ImpedimentAnalysisPanel.vue'
-import NodeRelationshipMenu from './components/NodeRelationshipMenu.vue'
-import CommandBar from './components/CommandBar.vue'
-import PersistenceStatus from './components/PersistenceStatus.vue'
-import { OptimistApiError } from './api/client'
-import { api } from './api/client'
-import type {
-  CreateEdgeInput,
-  AppendObservationInput,
-  CorrectObservationInput,
-  CreateNodeInput,
-  GraphNode,
-  GraphEdge,
-  Estimate,
-  EdgeEstimateSlot,
-  EdgeKind,
-  EstimateAddress,
-  InterventionEstimateSlot,
-  NodeKind,
-  Observation,
-  ProjectArchive,
-  SetStateEstimateInput,
-  SetInterventionEstimateInput,
-  SetEdgeEstimateInput,
-  SetMeasurementCalibrationInput,
-  SetEffectProfileInput,
-  UpdateCausalEffectInput,
-  SetNodeQuantityStateInput,
-  SetStateRelationInput,
-  ScenarioDraft,
-  ScenarioAnalysis,
-  UpdateNodeInput,
-} from './api/types'
-import { useWorkbenchStore, type WorkbenchMode } from './stores/workbench'
-import { useWorkbenchRoute } from './composables/useWorkbenchRoute'
-import {
-  useCreateNode,
-  useCreateEdge,
-  useCreateProject,
-  useGraph,
-  useImportProject,
-  useProject,
-  useProjects,
-  useSetNodeQuantityState,
-  useUpdateNode,
-  useDeleteEdge,
-  useDeleteNode,
-  useAppendObservation,
-  useCorrectObservation,
-  useRemoveInterventionEstimate,
-  useSetEdgeEstimate,
-  useRemoveEdgeEstimate,
-  useStructuralAnalysis,
-  useScenarios,
-  useScenarioAnalysis,
-  useCreateScenario,
-  useUpdateScenario,
-  useImpedimentAnalysis,
-  useSetMeasurementCalibration,
-  useSetEffectProfile,
-  useUpdateCausalEffect,
-  useDependence,
-  useSetDependence,
-  useSetStateRelation,
-} from './composables/useProjectData'
-import { useSetInterventionEstimate, useSetStateEstimate } from './composables/useEstimateMutations'
-import { edgeKinds, endpointsAreValid } from './domain/edgeAuthoring'
-import { estimateCatalogue, type CatalogueEntry } from './domain/estimateCatalogue'
-import { shareQuantity, stopSharing } from './domain/estimateCoupling'
-import { simulationReadiness } from './domain/simulationReadiness'
-import type { WorkbenchCommand } from './domain/commandBar'
-import { commandShortcutLabel } from './domain/platformShortcut'
-import { readRelationshipDraft, writeRelationshipDraft } from './domain/relationshipDraft'
+import { computed, watch } from 'vue'
 
-const restoredRelationshipDraft = readRelationshipDraft(sessionStorage)
+import type { Mutation } from './api/types'
+import BottlenecksPanel from './components/BottlenecksPanel.vue'
+import ComparisonPanel from './components/ComparisonPanel.vue'
+import DesignPanel from './components/DesignPanel.vue'
+import {
+  useAnalysis,
+  useCatalogue,
+  useComparison,
+  useDesign,
+  useDesigns,
+  useEditDesign,
+} from './composables/useDesign'
+import { useWorkbenchStore } from './stores/workbench'
+
 const store = useWorkbenchStore()
-const commandShortcutHint = commandShortcutLabel()
-const { mode, search, selectedNodeId, selectedProjectId, selectedScenarioId, selectedCandidateId, setupOnly, visibleKinds } = storeToRefs(store)
-const projectsQuery = useProjects()
-const projectQuery = useProject(selectedProjectId)
-const graph = useGraph(selectedProjectId)
-const createProject = useCreateProject()
-const createNode = useCreateNode(projectQuery.data)
-const createEdge = useCreateEdge(projectQuery.data)
-const importProject = useImportProject()
-const projectDialogOpen = ref(false)
-const nodeDialogOpen = ref(false)
-const edgeDialogOpen = ref(Boolean(restoredRelationshipDraft))
-const edgeDialogProjectId = ref(restoredRelationshipDraft?.projectId ?? '')
-const edgeDialogSourceId = ref(restoredRelationshipDraft?.sourceId ?? '')
-const edgeDialogDestinationId = ref(restoredRelationshipDraft?.destinationId ?? '')
-const edgeDialogKind = ref<EdgeKind>(restoredRelationshipDraft?.kind ?? 'contributes')
-const edgeDialogSourceLocked = ref(restoredRelationshipDraft?.sourceLocked ?? false)
-const relationshipMenu = ref<{ sourceId: string; x: number; y: number } | null>(null)
-const importDialogOpen = ref(false)
-const editNodeDialogOpen = ref(false)
-const estimateDialogOpen = ref(false)
-const stateQuantityDialogOpen = ref(false)
-const relationDialogOpen = ref(false)
-const edgeEditDialogOpen = ref(false)
-const observationDialogOpen = ref(false)
-const correctionDialogOpen = ref(false)
-const interventionEstimateDialogOpen = ref(false)
-const edgeEstimateDialogOpen = ref(false)
-const scenarioDialogOpen = ref(false)
-const commandBarOpen = ref(false)
-const keyboardDeleteTarget = ref<'node' | 'edge' | null>(null)
-const selectedEdge = ref<GraphEdge | null>(null)
-const selectedMeasurementEdge = ref<GraphEdge | null>(null)
-const selectedObservation = ref<Observation | null>(null)
-const selectedInterventionSlot = ref<InterventionEstimateSlot | null>(null)
-const selectedEdgeEstimateSlot = ref<EdgeEstimateSlot | null>(null)
-const selectedFeedbackCycle = ref<number | null>(null)
-const scenarioDialogScenario = ref<import('./api/types').Scenario | null>(null)
-const highlightedNodeIds = ref<string[]>([])
-const highlightedEdgeIds = ref<string[]>([])
-const mutationError = ref<Error | null>(null)
-const createProjectOption = '__create_project__'
 
-const projects = computed(() => projectsQuery.data.value ?? [])
-useWorkbenchRoute(projects)
-const nodes = computed(() => graph.nodes.data.value ?? [])
-const edges = computed(() => graph.edges.data.value ?? [])
-const visibleNodes = computed(() => nodes.value.filter(store.matches))
-const visibleEdges = computed(() => {
-  const visible = new Set(visibleNodes.value.map((node) => node.id))
-  return edges.value.filter(
-    (edge) => visible.has(edge.source) && visible.has(edge.destination),
-  )
-})
-const nodesNeedingSetup = computed(() =>
-  visibleNodes.value.filter((node) => simulationReadiness(node).level !== 'ready'),
-)
-const canCreateRelationship = computed(
-  () => nodes.value.some((source) =>
-    nodes.value.some((destination) =>
-      source.id !== destination.id &&
-      edgeKinds.some(({ kind }) =>
-        endpointsAreValid(kind, source.payload.kind, destination.payload.kind),
-      ),
-    ),
-  ),
-)
-const selectedNode = computed<GraphNode | null>(
-  () => nodes.value.find((node) => node.id === selectedNodeId.value) ?? null,
-)
-const selectedNodeEdges = computed(() => selectedNode.value
-  ? edges.value.filter((edge) => edge.source === selectedNode.value?.id || edge.destination === selectedNode.value?.id)
-  : [],
-)
-const keyboardDeleteTitle = computed(() => keyboardDeleteTarget.value === 'edge' && selectedEdge.value
-  ? `${selectedEdge.value.source} ${selectedEdge.value.payload.kind.replaceAll('_', ' ')} ${selectedEdge.value.destination}`
-  : selectedNode.value?.title ?? '',
-)
-const keyboardDeleteBlocked = computed(() => keyboardDeleteTarget.value === 'node' && selectedNodeEdges.value.length
-  ? `Delete ${selectedNodeEdges.value.length} connected relationship${selectedNodeEdges.value.length === 1 ? '' : 's'} first.`
-  : null,
-)
-const relationshipMenuSource = computed<GraphNode | null>(() =>
-  nodes.value.find((node) => node.id === relationshipMenu.value?.sourceId) ?? null,
-)
-const updateNode = useUpdateNode(projectQuery.data, selectedNode)
-const setStateEstimate = useSetStateEstimate(projectQuery.data, selectedNode)
-const setNodeQuantityState = useSetNodeQuantityState(projectQuery.data, selectedNode)
-const setStateRelation = useSetStateRelation(projectQuery.data, selectedNode)
-const setMeasurementCalibration = useSetMeasurementCalibration(projectQuery.data, selectedEdge)
-const setEffectProfile = useSetEffectProfile(projectQuery.data, selectedEdge)
-const updateCausalEffect = useUpdateCausalEffect(projectQuery.data, selectedEdge)
-const deleteEdge = useDeleteEdge(projectQuery.data, selectedEdge)
-const deleteNode = useDeleteNode(projectQuery.data, selectedNode)
-const appendObservation = useAppendObservation(projectQuery.data, selectedMeasurementEdge)
-const correctObservation = useCorrectObservation(projectQuery.data, selectedMeasurementEdge)
-const setInterventionEstimate = useSetInterventionEstimate(projectQuery.data, selectedNode)
-const removeInterventionEstimate = useRemoveInterventionEstimate(projectQuery.data, selectedNode)
-const setEdgeEstimate = useSetEdgeEstimate(projectQuery.data, selectedEdge)
-const removeEdgeEstimate = useRemoveEdgeEstimate(projectQuery.data, selectedEdge)
-const feedbackModeEnabled = computed(() => mode.value === 'feedback')
-const projectRevision = computed(() => projectQuery.data.value?.revision)
-const structuralAnalysis = useStructuralAnalysis(
-  selectedProjectId,
-  projectRevision,
-  feedbackModeEnabled,
-)
-/**
- * Loop gain is a property of the graph rather than of a plan, so the feedback
- * view wants it too. It is only computed alongside a scenario projection, so
- * that projection is fetched in feedback mode as well and the loops are matched
- * back onto the structural cycles.
- */
-const weighsLoops = computed(() => mode.value === 'optimize' || mode.value === 'feedback')
-const scenariosQuery = useScenarios(selectedProjectId, weighsLoops)
-const dependenceQuery = useDependence(selectedProjectId)
-const setDependence = useSetDependence(projectQuery.data)
-const dependence = computed(() => dependenceQuery.data.value ?? null)
-const estimateCatalogueEntries = computed(() =>
-  selectedProjectId.value
-    ? estimateCatalogue(selectedProjectId.value, nodes.value, edges.value)
-    : [],
-)
-const selectedScenario = computed(() =>
-  scenariosQuery.data.value?.find((scenario) => scenario.id === selectedScenarioId.value) ?? null,
-)
-const selectedScenarioRevision = computed(() => selectedScenario.value?.revision)
-/**
- * Only the optimize view reads the model's own states, so only it asks for them.
- *
- * The feedback view shares this query for its loop gains and has no use for the
- * paths, which are the larger part of the response on any real model.
- */
-const readsStates = computed(() => mode.value === 'optimize')
-const scenarioAnalysis = useScenarioAnalysis(
-  selectedProjectId,
-  selectedScenarioId,
-  selectedScenarioRevision,
-  weighsLoops,
-  readsStates,
-)
-const createScenario = useCreateScenario(projectQuery.data)
-const updateScenario = useUpdateScenario(projectQuery.data, selectedScenario)
-const impedimentsModeEnabled = computed(() => mode.value === 'impediments')
-const fullAnalysisMode = computed(() => mode.value === 'impediments' || mode.value === 'optimize')
-/**
- * Whether the inspector column has anything worth its width.
- *
- * Only the explore inspector can be empty; the analysis panels always have
- * content. An empty inspector gives its column back to the canvas rather than
- * holding a third of a wide display to say that nothing is selected.
- */
-const inspectorState = computed(() =>
-  !fullAnalysisMode.value && mode.value !== 'feedback' && !selectedNode.value ? 'idle' : 'active',
-)
-const impedimentAnalysis = useImpedimentAnalysis(
-  selectedProjectId,
-  projectRevision,
-  impedimentsModeEnabled,
-)
-const optimizePending = computed(() =>
-  scenariosQuery.isPending.value ||
-  (Boolean(selectedScenarioId.value) &&
-    (scenarioAnalysis.isPending.value || scenarioAnalysis.isFetching.value)),
-)
-const loading = computed(
-  () =>
-    projectsQuery.isPending.value ||
-    (Boolean(selectedProjectId.value) &&
-      (graph.nodes.isPending.value || graph.edges.isPending.value)),
-)
-const commandPending = computed(() => createNode.isPending.value || createEdge.isPending.value)
-const error = computed(() =>
-  [projectsQuery.error.value, projectQuery.error.value, graph.nodes.error.value, graph.edges.error.value]
-    .find(Boolean),
+const designs = useDesigns()
+const design = computed(() => store.design)
+const { data: snapshot, feedStatus, error: designError } = useDesign(design)
+const { data: catalogue } = useCatalogue(design)
+
+const controls = computed(() => ({ samples: store.samples, horizon: store.horizon }))
+const sequence = computed(() => snapshot.value?.sequence)
+const { data: analysis, error: analysisError, isFetching } = useAnalysis(design, controls, sequence)
+const intervention = computed(() => store.intervention)
+const { data: comparison, error: comparisonError } = useComparison(
+  design,
+  intervention,
+  controls,
+  sequence,
 )
 
-const kindOptions: Array<{ kind: NodeKind; label: string; icon: typeof Goal }> = [
-  { kind: 'outcome', label: 'Outcomes', icon: Goal },
-  { kind: 'metric', label: 'Metrics', icon: Gauge },
-  { kind: 'factor', label: 'Factors', icon: Activity },
-  { kind: 'intervention', label: 'Interventions', icon: Wrench },
-]
-const modes: Array<{ id: WorkbenchMode; label: string; available: boolean }> = [
-  { id: 'explore', label: 'Explore', available: true },
-  { id: 'impediments', label: 'Impediments', available: true },
-  { id: 'feedback', label: 'Feedback', available: true },
-  { id: 'optimize', label: 'Optimize', available: true },
-]
+const edit = useEditDesign(design)
 
-/**
- * Reconciles the open project against the projects this server actually has.
- *
- * The selection now arrives from the address bar as well as from the switcher,
- * so this watches the selection too: a link naming a project that has since been
- * deleted has to land somewhere real. An empty list is left alone rather than
- * treated as "no such project", because the list is empty while its query is
- * still in flight and discarding the link's project then would lose it.
- */
+// Open the first design so the tool is useful on arrival rather than showing an
+// empty frame and a picker.
 watch(
-  [projects, selectedProjectId],
-  ([next]) => {
-    if (!next.length) return
-    if (!selectedProjectId.value) {
-      store.selectProject(next[0]!.id)
-      return
-    }
-    if (!next.some((project) => project.id === selectedProjectId.value)) {
-      store.selectProject(next[0]!.id)
-    }
+  () => designs.data.value,
+  (available) => {
+    if (!store.design && available?.length) store.open(available[0].id)
   },
   { immediate: true },
 )
 
-watch(visibleNodes, (next) => {
-  if (selectedNodeId.value && !next.some((node) => node.id === selectedNodeId.value)) {
-    store.selectNode(null)
-  }
-})
-
-watch([mode, selectedProjectId], () => clearFeedbackSelection())
-/**
- * Reconciles the open scenario against the ones this project has.
- *
- * The selection arrives from the address bar as well as from the picker, so a
- * link naming a scenario that has since been deleted has to land somewhere real.
- * An undefined list is the query in flight rather than a project without
- * scenarios, and discarding the link's scenario then would lose it.
- */
-watch(
-  [() => scenariosQuery.data.value, selectedScenarioId],
-  ([scenarios]) => {
-    if (!scenarios) return
-    if (!scenarios.length) {
-      store.selectScenario(null)
-      return
-    }
-    if (
-      !selectedScenarioId.value
-      || !scenarios.some((scenario) => scenario.id === selectedScenarioId.value)
-    ) {
-      store.selectScenario(scenarios[0]!.id)
-    }
-  },
-  { immediate: true },
+const failure = computed(
+  () => designError.value ?? analysisError.value ?? comparisonError.value ?? edit.error.value,
 )
-/**
- * Opens a candidate as soon as the projection offers one, defaulting to the
- * first, and replaces a selection the projection no longer contains.
- *
- * The detail pane shows one candidate at a time, so leaving nothing selected
- * would show an empty two thirds of the view for no reason.
- */
-watch(
-  [() => scenarioAnalysis.data.value, selectedCandidateId],
-  ([analysis]) => {
-    const candidates = analysis?.candidates ?? []
-    if (!candidates.length) return
-    if (
-      !selectedCandidateId.value
-      || !candidates.some((candidate) => candidate.intervention === selectedCandidateId.value)
-    ) {
-      selectCandidate(candidates[0]!.intervention, highlightsFor(candidates[0]!))
-    }
-  },
-  { immediate: true },
-)
-watch([mode, selectedProjectId], () => clearImpedimentSelection())
-watch(selectedProjectId, () => { commandBarOpen.value = false })
-watch(
-  [
-    edgeDialogOpen, edgeDialogProjectId, edgeDialogSourceId,
-    edgeDialogDestinationId, edgeDialogKind, edgeDialogSourceLocked,
-  ],
-  ([open, projectId, sourceId, destinationId, kind, sourceLocked]) => {
-    writeRelationshipDraft(sessionStorage, open && projectId
-      ? { projectId, sourceId, destinationId, kind, sourceLocked }
-      : null)
-  },
-  { flush: 'sync' },
-)
-watch(selectedProjectId, (projectId) => {
-  if (
-    edgeDialogOpen.value && projectId && edgeDialogProjectId.value &&
-    projectId !== edgeDialogProjectId.value
-  ) closeRelationshipDialog()
-})
 
-function commandShortcut(event: KeyboardEvent) {
-  if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'k') return
-  event.preventDefault()
-  if (selectedProjectId.value) commandBarOpen.value = true
-}
-
-function selectionDeleteShortcut(event: KeyboardEvent) {
-  if (event.key !== 'Delete' || event.metaKey || event.ctrlKey || event.altKey) return
-  const target = event.target as HTMLElement | null
-  if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-  if (edgeEditDialogOpen.value && selectedEdge.value) {
-    event.preventDefault()
-    edgeEditDialogOpen.value = false
-    keyboardDeleteTarget.value = 'edge'
-    return
-  }
-  if (document.querySelector('.dialog-backdrop') || !selectedNode.value) return
-  event.preventDefault()
-  keyboardDeleteTarget.value = 'node'
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', commandShortcut)
-  document.addEventListener('keydown', selectionDeleteShortcut)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', commandShortcut)
-  document.removeEventListener('keydown', selectionDeleteShortcut)
-})
-
-function selectProject(event: Event) {
-  const select = event.target as HTMLSelectElement
-  if (select.value === createProjectOption) {
-    projectDialogOpen.value = true
-    select.value = selectedProjectId.value ?? ''
-    return
-  }
-  store.selectProject(select.value || null)
-}
-
-function openRelationshipDialog() {
-  edgeDialogProjectId.value = selectedProjectId.value ?? ''
-  edgeDialogSourceId.value = ''
-  edgeDialogDestinationId.value = ''
-  edgeDialogKind.value = 'contributes'
-  edgeDialogSourceLocked.value = false
-  edgeDialogOpen.value = true
-}
-
-function openNodeRelationshipMenu(event: { nodeId: string; x: number; y: number }) {
-  store.selectNode(event.nodeId)
-  relationshipMenu.value = { sourceId: event.nodeId, x: event.x, y: event.y }
-}
-
-function createRelationshipFromNode(kind: EdgeKind) {
-  edgeDialogProjectId.value = selectedProjectId.value ?? ''
-  edgeDialogSourceId.value = relationshipMenu.value?.sourceId ?? ''
-  edgeDialogDestinationId.value = ''
-  edgeDialogKind.value = kind
-  edgeDialogSourceLocked.value = true
-  relationshipMenu.value = null
-  edgeDialogOpen.value = true
-}
-
-function closeRelationshipDialog() {
-  edgeDialogOpen.value = false
-}
-
-function updateRelationshipDraft(draft: {
-  sourceId: string
-  destinationId: string
-  kind: EdgeKind
-}) {
-  edgeDialogSourceId.value = draft.sourceId
-  edgeDialogDestinationId.value = draft.destinationId
-  edgeDialogKind.value = draft.kind
-}
-
-function edgeElementId(edge: import('./api/types').EdgeIdentity) {
-  return `${edge.source}:${edge.kind}:${edge.destination}`
-}
-
-function selectFeedbackCycle(
-  index: number,
-  nodes: string[],
-  edges: import('./api/types').EdgeIdentity[],
-) {
-  selectedFeedbackCycle.value = index
-  highlightedNodeIds.value = nodes
-  highlightedEdgeIds.value = edges.map(edgeElementId)
-  store.selectNode(nodes[0] ?? null)
-}
-
-function clearFeedbackSelection() {
-  selectedFeedbackCycle.value = null
-  highlightedNodeIds.value = []
-  highlightedEdgeIds.value = []
-}
-
-function selectScenario(id: string) {
-  store.selectScenario(id)
-}
-
-function selectCandidate(id: string, nodes: string[]) {
-  store.selectCandidate(id)
-  highlightedNodeIds.value = nodes
-  highlightedEdgeIds.value = []
-}
-
-/** Nodes a candidate lights up in the graph: itself and the outcomes it reaches. */
-function highlightsFor(candidate: ScenarioAnalysis['candidates'][number]) {
-  return [
-    candidate.intervention,
-    ...candidate.objectives
-      .filter((objective) => objective.reachable)
-      .map((objective) => objective.outcome),
-  ]
-}
-
-function clearImpedimentSelection() {
-  if (mode.value === 'impediments') {
-    highlightedNodeIds.value = []
-    highlightedEdgeIds.value = []
-  }
-}
-
-async function submitScenario(scenario: ScenarioDraft) {
-  mutationError.value = null
-  try {
-    const saved = scenarioDialogScenario.value
-      ? await updateScenario.mutateAsync(scenario)
-      : await createScenario.mutateAsync(scenario)
-    selectedScenarioId.value = saved.id
-    scenarioDialogOpen.value = false
-    scenarioDialogScenario.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function createNewScenario() {
-  scenarioDialogScenario.value = null
-  scenarioDialogOpen.value = true
-}
-
-function editSelectedScenario() {
-  if (!selectedScenario.value) return
-  scenarioDialogScenario.value = selectedScenario.value
-  scenarioDialogOpen.value = true
-}
-
-async function submitProject(name: string) {
-  mutationError.value = null
-  try {
-    const project = await createProject.mutateAsync(name)
-    store.selectProject(project.id)
-    projectDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitNode(input: CreateNodeInput) {
-  mutationError.value = null
-  try {
-    const node = await createNode.mutateAsync(input)
-    store.selectNode(node.id)
-    nodeDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function applyWorkbenchCommand(command: WorkbenchCommand) {
-  mutationError.value = null
-  try {
-    if (command.type === 'create_node') {
-      const node = await createNode.mutateAsync(command.input)
-      mode.value = 'explore'
-      store.selectNode(node.id)
-    } else if (command.type === 'create_edge') {
-      await createEdge.mutateAsync(command.input)
-      mode.value = 'explore'
-      store.selectNode(command.input.source)
-    } else if (command.type === 'select_node') {
-      mode.value = 'explore'
-      store.selectNode(command.node.id)
-    } else {
-      mode.value = command.mode
-    }
-    commandBarOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitEdge(input: CreateEdgeInput) {
-  mutationError.value = null
-  try {
-    await createEdge.mutateAsync(input)
-    closeRelationshipDialog()
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function exportProject() {
-  if (!selectedProjectId.value) return
-  mutationError.value = null
-  try {
-    const archive = await api.exportProject(selectedProjectId.value)
-    const blob = new Blob([stringifyYaml(archive, { lineWidth: 0 })], {
-      type: 'application/yaml',
-    })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${archive.project.id}-${archive.project.name
-      .toLocaleLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')}.optimist.yaml`
-    link.click()
-    URL.revokeObjectURL(url)
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitImport(archive: ProjectArchive, replace: boolean) {
-  mutationError.value = null
-  try {
-    const project = await importProject.mutateAsync({ archive, replace })
-    store.selectProject(project.id)
-    importDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitNodeEdit(input: UpdateNodeInput) {
-  mutationError.value = null
-  try {
-    await updateNode.mutateAsync(input)
-    editNodeDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitStateEstimate(input: SetStateEstimateInput) {
-  mutationError.value = null
-  try {
-    await setStateEstimate.mutateAsync(input)
-    estimateDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitStateQuantity(input: SetNodeQuantityStateInput) {
-  mutationError.value = null
-  try {
-    await setNodeQuantityState.mutateAsync(input)
-    stateQuantityDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitStateRelation(input: SetStateRelationInput) {
-  mutationError.value = null
-  try {
-    await setStateRelation.mutateAsync(input)
-    relationDialogOpen.value = false
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function shareQuantityWith(input: { address: EstimateAddress; partner: CatalogueEntry }) {
-  mutationError.value = null
-  try {
-    await setDependence.mutateAsync(
-      shareQuantity(dependence.value, input.address, input.partner.address),
-    )
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function stopSharingQuantity(address: EstimateAddress) {
-  mutationError.value = null
-  if (!dependence.value) return
-  try {
-    await setDependence.mutateAsync(stopSharing(dependence.value, address))
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function editRelationship(edge: GraphEdge) {
-  selectedEdge.value = edge
-  edgeEditDialogOpen.value = true
-}
-
-function editRelationshipById(id: string) {
-  const edge = edges.value.find((candidate) => edgeElementId({
-    source: candidate.source,
-    kind: candidate.payload.kind,
-    destination: candidate.destination,
-  }) === id)
-  if (edge) editRelationship(edge)
-}
-
-async function submitMeasurementCalibration(input: SetMeasurementCalibrationInput) {
-  mutationError.value = null
-  try {
-    selectedEdge.value = await setMeasurementCalibration.mutateAsync(input)
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitEffectProfile(input: SetEffectProfileInput) {
-  mutationError.value = null
-  try {
-    selectedEdge.value = await setEffectProfile.mutateAsync(input)
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitCausalEffect(input: UpdateCausalEffectInput) {
-  mutationError.value = null
-  try {
-    selectedEdge.value = await updateCausalEffect.mutateAsync(input)
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitEdgeDelete() {
-  mutationError.value = null
-  try {
-    await deleteEdge.mutateAsync()
-    edgeEditDialogOpen.value = false
-    selectedEdge.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitNodeDelete() {
-  mutationError.value = null
-  try {
-    await deleteNode.mutateAsync()
-    store.selectNode(null)
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function confirmKeyboardDelete() {
-  if (keyboardDeleteTarget.value === 'edge') await submitEdgeDelete()
-  if (keyboardDeleteTarget.value === 'node') await submitNodeDelete()
-  if (!mutationError.value) keyboardDeleteTarget.value = null
-}
-
-function observe(edge: GraphEdge) {
-  selectedMeasurementEdge.value = edge
-  observationDialogOpen.value = true
-}
-
-async function submitObservation(input: AppendObservationInput) {
-  mutationError.value = null
-  try {
-    await appendObservation.mutateAsync(input)
-    observationDialogOpen.value = false
-    selectedMeasurementEdge.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function correct(edge: GraphEdge, observation: Observation) {
-  selectedMeasurementEdge.value = edge
-  selectedObservation.value = observation
-  correctionDialogOpen.value = true
-}
-
-async function submitCorrection(input: CorrectObservationInput) {
-  mutationError.value = null
-  try {
-    await correctObservation.mutateAsync(input)
-    correctionDialogOpen.value = false
-    selectedMeasurementEdge.value = null
-    selectedObservation.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function editInterventionEstimate(slot: InterventionEstimateSlot) {
-  selectedInterventionSlot.value = slot
-  interventionEstimateDialogOpen.value = true
-}
-
-async function submitInterventionEstimate(input: SetInterventionEstimateInput) {
-  mutationError.value = null
-  try {
-    await setInterventionEstimate.mutateAsync(input)
-    interventionEstimateDialogOpen.value = false
-    selectedInterventionSlot.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitInterventionEstimateRemove(estimate: Estimate) {
-  mutationError.value = null
-  try {
-    await removeInterventionEstimate.mutateAsync(estimate)
-    interventionEstimateDialogOpen.value = false
-    selectedInterventionSlot.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function editEdgeEstimate(slot: EdgeEstimateSlot) {
-  selectedEdgeEstimateSlot.value = slot
-  edgeEstimateDialogOpen.value = true
-}
-
-async function submitEdgeEstimate(input: SetEdgeEstimateInput) {
-  mutationError.value = null
-  try {
-    selectedEdge.value = await setEdgeEstimate.mutateAsync(input)
-    edgeEstimateDialogOpen.value = false
-    selectedEdgeEstimateSlot.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-async function submitEdgeEstimateRemove(estimate: Estimate) {
-  mutationError.value = null
-  try {
-    selectedEdge.value = await removeEdgeEstimate.mutateAsync(estimate)
-    edgeEstimateDialogOpen.value = false
-    selectedEdgeEstimateSlot.value = null
-  } catch (error) {
-    mutationError.value = error as Error
-  }
-}
-
-function errorMessage(value: Error | null) {
-  return value instanceof OptimistApiError ? value.message : value?.message
-}
-
-function errorAdvice(value: Error | null) {
-  return value instanceof OptimistApiError ? value.advice : []
-}
-
-function retry() {
-  void projectsQuery.refetch()
-  void projectQuery.refetch()
-  void graph.nodes.refetch()
-  void graph.edges.refetch()
+function apply(mutations: Mutation[]) {
+  edit.mutate(mutations)
 }
 </script>
 
 <template>
-  <main class="workbench-shell">
-    <header class="app-header">
-      <div class="brand-block">
-        <span class="brand-mark"><Network :size="19" /></span>
-        <div><strong>Optimist</strong><span>Workbench</span></div>
+  <div class="workbench">
+    <header>
+      <div class="brand">
+        <strong>Optimist</strong>
+        <span class="feed" :class="feedStatus">{{ feedStatus }}</span>
       </div>
 
-      <div class="project-switcher">
-        <select
-          :value="selectedProjectId ?? ''"
-          aria-label="Project"
-          @change="selectProject"
-        >
-          <option v-if="!projects.length" value="">No projects</option>
-          <option v-for="project in projects" :key="project.id" :value="project.id">
-            {{ project.name }}
+      <label class="picker">
+        <span class="sr-only">Design</span>
+        <select :value="store.design ?? ''" @change="store.open(($event.target as HTMLSelectElement).value)">
+          <option v-for="entry in designs.data.value ?? []" :key="entry.id" :value="entry.id">
+            {{ entry.name }}
           </option>
-          <option :value="createProjectOption">New project...</option>
         </select>
-        <ChevronDown :size="15" />
-        <span v-if="projectQuery.data.value" class="revision">r{{ projectQuery.data.value.revision }}</span>
-      </div>
+      </label>
 
-      <nav class="mode-tabs" aria-label="Analysis mode">
+      <nav class="views">
         <button
-          v-for="item in modes"
-          :key="item.id"
+          v-for="view in (['design', 'bottlenecks', 'compare'] as const)"
+          :key="view"
           type="button"
-          :class="{ active: mode === item.id }"
-          :aria-pressed="mode === item.id"
-          :disabled="!item.available"
-          :title="item.available ? undefined : 'Analysis mode not yet available'"
-          @click="mode = item.id"
+          :class="{ active: store.view === view }"
+          :aria-pressed="store.view === view"
+          @click="store.view = view"
         >
-          {{ item.label }}
+          {{ view }}
         </button>
       </nav>
 
-      <div class="header-actions">
-        <PersistenceStatus />
-        <button type="button" class="command-bar-trigger header-icon" :title="`Command bar (${commandShortcutHint})`" :aria-label="`Open command bar (${commandShortcutHint})`" :disabled="!selectedProjectId" @click="commandBarOpen = true">
-          <SquareTerminal :size="16" />
-          <kbd>{{ commandShortcutHint }}</kbd>
-        </button>
-        <button type="button" class="icon-button header-icon" title="Import project" aria-label="Import project" @click="importDialogOpen = true">
-          <Upload :size="16" />
-        </button>
-        <button type="button" class="icon-button header-icon" title="Export project" aria-label="Export project" :disabled="!selectedProjectId" @click="exportProject">
-          <Download :size="16" />
-        </button>
-        <button type="button" class="secondary-button" :disabled="!canCreateRelationship" @click="openRelationshipDialog">
-          <Link :size="16" /> Relationship
-        </button>
-        <button type="button" class="primary-button add-node-button" :disabled="!projectQuery.data.value" @click="nodeDialogOpen = true">
-          <Plus :size="17" /> Add node
-        </button>
-      </div>
+      <label class="control">
+        <span>samples</span>
+        <input v-model.number="store.samples" type="number" min="64" max="20000" step="500" />
+      </label>
+      <label class="control">
+        <span>horizon</span>
+        <input v-model.number="store.horizon" type="number" min="1" max="500" />
+      </label>
+
+      <span v-if="isFetching" class="solving">solving</span>
     </header>
 
-    <section
-      class="workbench-body"
-      :class="{ 'full-analysis-workspace': fullAnalysisMode }"
-      :data-inspector="inspectorState"
-    >
-      <aside v-if="!fullAnalysisMode" class="navigator" aria-label="Graph navigator">
-        <div class="search-field">
-          <Search :size="16" />
-          <input v-model="search" type="search" placeholder="Search graph" aria-label="Search graph" />
+    <p v-if="failure" class="failure" role="alert">
+      {{ failure.message }}
+      <span v-for="line in (failure as { advice?: string[] }).advice ?? []" :key="line" class="advice">
+        {{ line }}
+      </span>
+    </p>
+
+    <main>
+      <template v-if="snapshot">
+        <div class="title">
+          <h1>{{ snapshot.name }}</h1>
+          <p>{{ snapshot.summary }}</p>
         </div>
 
-        <div class="filter-section">
-          <span class="section-label">Show</span>
-          <button
-            type="button"
-            class="setup-filter"
-            :aria-pressed="setupOnly"
-            @click="store.toggleSetupOnly"
-          >
-            <AlertTriangle :size="14" />
-            Needs setup
-            <span>{{ nodes.filter((node) => simulationReadiness(node).level !== 'ready').length }}</span>
-          </button>
-          <button
-            v-for="item in kindOptions"
-            :key="item.kind"
-            type="button"
-            class="kind-filter"
-            :class="{ muted: !visibleKinds.has(item.kind) }"
-            :aria-pressed="visibleKinds.has(item.kind)"
-            @click="store.toggleKind(item.kind)"
-          >
-            <span class="kind-dot" :data-kind="item.kind"><component :is="item.icon" :size="14" /></span>
-            {{ item.label }}
-            <span>{{ nodes.filter((node) => node.payload.kind === item.kind).length }}</span>
-          </button>
-        </div>
-
-        <GraphNavigator :nodes="visibleNodes" :selected-node-id="selectedNodeId" @select="store.selectNode" />
-      </aside>
-
-      <section v-if="!fullAnalysisMode" class="canvas-panel">
-        <div class="canvas-status">
-          <span><strong>{{ visibleNodes.length }}</strong> nodes</span>
-          <span><strong>{{ visibleEdges.length }}</strong> relationships</span>
-          <span v-if="nodesNeedingSetup.length" class="readiness-status"><AlertTriangle :size="11" /><strong>{{ nodesNeedingSetup.length }}</strong> need setup</span>
-          <span class="mode-note">{{ mode }}</span>
-        </div>
-
-        <div v-if="error" class="state-panel error-state">
-          <AlertTriangle :size="24" />
-          <h2>Could not load the project</h2>
-          <p>{{ errorMessage(error as Error) }}</p>
-          <button type="button" class="secondary-button" @click="retry"><RefreshCw :size="16" /> Retry</button>
-        </div>
-        <div v-else-if="loading" class="state-panel">
-          <RefreshCw class="spin" :size="24" />
-          <h2>Loading model</h2>
-        </div>
-        <div v-else-if="!projects.length" class="state-panel empty-state">
-          <Network :size="28" />
-          <h2>Create your first project</h2>
-          <p>A project isolates one system model, its estimates, scenarios, and revision history.</p>
-          <button type="button" class="primary-button" @click="projectDialogOpen = true"><Plus :size="17" /> Create project</button>
-        </div>
-        <div v-else-if="!nodes.length" class="state-panel empty-state">
-          <CircleDot :size="28" />
-          <h2>Start with a system element</h2>
-          <p>Add an outcome, metric, factor, or intervention to begin shaping this model.</p>
-          <button type="button" class="primary-button" @click="nodeDialogOpen = true"><Plus :size="17" /> Add node</button>
-        </div>
-        <GraphCanvas
-          v-else
-          :nodes="visibleNodes"
-          :edges="visibleEdges"
-          :selected-node-id="selectedNodeId"
-          :highlighted-node-ids="highlightedNodeIds"
-          :highlighted-edge-ids="highlightedEdgeIds"
-          @select="store.selectNode"
-          @edit-edge="editRelationshipById"
-          @node-contextmenu="openNodeRelationshipMenu"
+        <DesignPanel
+          v-if="store.view === 'design'"
+          :model="snapshot.model"
+          :catalogue="catalogue"
+          @edit="apply"
         />
-      </section>
 
-      <FeedbackAnalysisPanel
-        v-if="mode === 'feedback'"
-        :analysis="structuralAnalysis.data.value"
-        :loops="scenarioAnalysis.data.value?.feedback_loops ?? []"
-        :nodes="nodes"
-        :pending="structuralAnalysis.isPending.value || structuralAnalysis.isFetching.value"
-        :error="structuralAnalysis.error.value as Error | null"
-        :selected-cycle="selectedFeedbackCycle"
-        @select="selectFeedbackCycle"
-        @clear="clearFeedbackSelection"
-        @retry="structuralAnalysis.refetch()"
-      />
-      <ImpedimentAnalysisPanel
-        v-else-if="mode === 'impediments'"
-        :analysis="impedimentAnalysis.data.value"
-        :pending="impedimentAnalysis.isPending.value || impedimentAnalysis.isFetching.value"
-        :error="impedimentAnalysis.error.value as Error | null"
-        :nodes="nodes"
-        @retry="impedimentAnalysis.refetch()"
-      />
-      <OptimizeAnalysisPanel
-        v-else-if="mode === 'optimize'"
-        :scenarios="scenariosQuery.data.value ?? []"
-        :selected-scenario-id="selectedScenarioId"
-        :analysis="scenarioAnalysis.data.value"
-        :pending="optimizePending"
-        :error="(scenariosQuery.error.value ?? scenarioAnalysis.error.value) as Error | null"
-        :nodes="nodes"
-        :selected-candidate-id="selectedCandidateId"
-        @select-scenario="selectScenario"
-        @select-candidate="selectCandidate"
-        @create="createNewScenario"
-        @edit="editSelectedScenario"
-        @retry="scenariosQuery.error.value ? scenariosQuery.refetch() : scenarioAnalysis.refetch()"
-      />
-      <NodeInspector
-        v-else
-        :node="selectedNode"
-        :edges="edges"
-        @edit="editNodeDialogOpen = true"
-        @estimate="estimateDialogOpen = true"
-        @quantity="stateQuantityDialogOpen = true"
-        @relation="relationDialogOpen = true"
-        @relationship="editRelationship"
-        @observe="observe"
-        @correct="correct"
-        @intervention-estimate="editInterventionEstimate"
-        @delete="submitNodeDelete"
-      />
-    </section>
+        <BottlenecksPanel v-else-if="store.view === 'bottlenecks' && analysis" :analysis="analysis" />
 
-    <div v-if="mutationError" class="toast" role="alert">
-      <AlertTriangle :size="17" />
-      <div>
-        <strong>Could not save change</strong>
-        <span>{{ errorMessage(mutationError) }}</span>
-        <ul v-if="errorAdvice(mutationError).length">
-          <li v-for="advice in errorAdvice(mutationError)" :key="advice">{{ advice }}</li>
-        </ul>
-      </div>
-      <button type="button" class="icon-button" aria-label="Dismiss error" @click="mutationError = null">×</button>
-    </div>
+        <template v-else-if="store.view === 'compare'">
+          <label class="picker wide">
+            <span class="sr-only">Proposal</span>
+            <select
+              :value="store.intervention ?? ''"
+              @change="store.intervention = ($event.target as HTMLSelectElement).value || null"
+            >
+              <option value="">Choose a proposal&hellip;</option>
+              <option v-for="entry in snapshot.model.interventions" :key="entry.id" :value="entry.id">
+                {{ entry.name }}
+              </option>
+            </select>
+          </label>
+          <p v-if="store.intervention" class="hint">
+            {{ snapshot.model.interventions.find((i) => i.id === store.intervention)?.summary }}
+          </p>
+          <ComparisonPanel v-if="comparison" :comparison="comparison" />
+        </template>
 
-    <CreateProjectDialog
-      :open="projectDialogOpen"
-      :pending="createProject.isPending.value"
-      @close="projectDialogOpen = false"
-      @submit="submitProject"
-    />
-    <CommandBar
-      :open="commandBarOpen"
-      :pending="commandPending"
-      :nodes="nodes"
-      :edges="edges"
-      @close="commandBarOpen = false"
-      @apply="applyWorkbenchCommand"
-    />
-    <DeleteSelectionDialog
-      :open="keyboardDeleteTarget !== null"
-      :pending="deleteEdge.isPending.value || deleteNode.isPending.value"
-      :kind="keyboardDeleteTarget === 'edge' ? 'relationship' : 'node'"
-      :title="keyboardDeleteTitle"
-      :blocked-reason="keyboardDeleteBlocked"
-      @close="keyboardDeleteTarget = null"
-      @confirm="confirmKeyboardDelete"
-    />
-    <CreateNodeDialog
-      :open="nodeDialogOpen"
-      :pending="createNode.isPending.value"
-      @close="nodeDialogOpen = false"
-      @submit="submitNode"
-    />
-    <CreateEdgeDialog
-      :open="edgeDialogOpen"
-      :pending="createEdge.isPending.value"
-      :project-id="selectedProjectId"
-      :nodes="nodes"
-      :source-id="edgeDialogSourceId"
-      :destination-id="edgeDialogDestinationId"
-      :kind="edgeDialogKind"
-      :source-locked="edgeDialogSourceLocked"
-      @draft-change="updateRelationshipDraft"
-      @close="closeRelationshipDialog"
-      @submit="submitEdge"
-    />
-    <NodeRelationshipMenu
-      :open="relationshipMenu !== null"
-      :source="relationshipMenuSource"
-      :nodes="nodes"
-      :x="relationshipMenu?.x ?? 0"
-      :y="relationshipMenu?.y ?? 0"
-      @close="relationshipMenu = null"
-      @select="createRelationshipFromNode"
-    />
-    <ImportProjectDialog
-      :open="importDialogOpen"
-      :pending="importProject.isPending.value"
-      :project-ids="projects.map((project) => project.id)"
-      @close="importDialogOpen = false"
-      @submit="submitImport"
-    />
-    <EditNodeDialog
-      :open="editNodeDialogOpen"
-      :pending="updateNode.isPending.value"
-      :node="selectedNode"
-      @close="editNodeDialogOpen = false"
-      @submit="submitNodeEdit"
-    />
-    <EditStateEstimateDialog
-      :open="estimateDialogOpen"
-      :pending="setStateEstimate.isPending.value || setDependence.isPending.value"
-      :node="selectedNode"
-      :project-id="selectedProjectId"
-      :edges="edges"
-      :catalogue="estimateCatalogueEntries"
-      :dependence="dependence"
-      @close="estimateDialogOpen = false"
-      @submit="submitStateEstimate"
-      @share="shareQuantityWith"
-      @unshare="stopSharingQuantity"
-    />
-    <ConfigureStateQuantityDialog
-      :open="stateQuantityDialogOpen"
-      :pending="setNodeQuantityState.isPending.value"
-      :node="selectedNode"
-      @close="stateQuantityDialogOpen = false"
-      @submit="submitStateQuantity"
-    />
-    <NodeRelationDialog
-      :open="relationDialogOpen"
-      :pending="setStateRelation.isPending.value"
-      :node="selectedNode"
-      :nodes="nodes"
-      :edges="edges"
-      @close="relationDialogOpen = false"
-      @submit="submitStateRelation"
-    />
-    <EditEdgeDialog
-      :open="edgeEditDialogOpen"
-      :pending="deleteEdge.isPending.value || setMeasurementCalibration.isPending.value || setEffectProfile.isPending.value || updateCausalEffect.isPending.value"
-      :edge="selectedEdge"
-      @close="edgeEditDialogOpen = false"
-      @delete="submitEdgeDelete"
-      @estimate="editEdgeEstimate"
-      @calibration="submitMeasurementCalibration"
-      @profile="submitEffectProfile"
-      @claim="submitCausalEffect"
-    />
-    <AddObservationDialog
-      :open="observationDialogOpen"
-      :pending="appendObservation.isPending.value"
-      :edge="selectedMeasurementEdge"
-      :unit="selectedNode?.payload.kind === 'metric' ? selectedNode.payload.properties.quantity.unit : ''"
-      @close="observationDialogOpen = false"
-      @submit="submitObservation"
-    />
-    <CorrectObservationDialog
-      :open="correctionDialogOpen"
-      :pending="correctObservation.isPending.value"
-      :edge="selectedMeasurementEdge"
-      :observation="selectedObservation"
-      @close="correctionDialogOpen = false"
-      @submit="submitCorrection"
-    />
-    <EditInterventionEstimateDialog
-      :open="interventionEstimateDialogOpen"
-      :pending="setInterventionEstimate.isPending.value || removeInterventionEstimate.isPending.value"
-      :node="selectedNode"
-      :slot="selectedInterventionSlot"
-      :project-id="selectedProjectId"
-      @close="interventionEstimateDialogOpen = false"
-      @submit="submitInterventionEstimate"
-      @remove="submitInterventionEstimateRemove"
-    />
-    <EditEdgeEstimateDialog
-      :open="edgeEstimateDialogOpen"
-      :pending="setEdgeEstimate.isPending.value || removeEdgeEstimate.isPending.value"
-      :edge="selectedEdge"
-      :slot="selectedEdgeEstimateSlot"
-      :project-id="selectedProjectId"
-      @close="edgeEstimateDialogOpen = false"
-      @submit="submitEdgeEstimate"
-      @remove="submitEdgeEstimateRemove"
-    />
-    <CreateScenarioDialog
-      :open="scenarioDialogOpen"
-      :pending="createScenario.isPending.value || updateScenario.isPending.value"
-      :nodes="nodes"
-      :scenario="scenarioDialogScenario"
-      @close="scenarioDialogOpen = false; scenarioDialogScenario = null"
-      @submit="submitScenario"
-    />
-  </main>
+        <p v-else class="empty">Solving&hellip;</p>
+      </template>
+
+      <p v-else-if="!designs.data.value?.length" class="empty">
+        This server is not holding any designs.
+      </p>
+    </main>
+  </div>
 </template>
 
 <style scoped>
-.workbench-shell { width: 100%; height: 100vh; min-height: 100vh; display: grid; grid-template-rows: 60px minmax(0, 1fr); overflow: hidden; background: #eef0eb; }
-/*
- * The mode tab column absorbs every spare pixel, so the action cluster is laid
- * out before it and can never be pushed past the right edge however long a
- * project name grows.
- */
-.app-header { display: grid; grid-template-columns: auto minmax(150px, 290px) minmax(0, 1fr) auto; align-items: center; gap: clamp(8px, 1.4vw, 22px); padding: 0 clamp(10px, 1vw, 16px); background: #fbfcf9; border-bottom: 1px solid var(--line); min-width: 0; }
-.brand-block { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand-mark { flex: none; width: 34px; height: 34px; display: grid; place-items: center; color: white; background: var(--green); border-radius: var(--radius-md); }
-.brand-block div { display: grid; line-height: 1.05; min-width: 0; }
-.brand-block strong { font-size: var(--text-lg); }
-.brand-block span:last-child { color: var(--muted); font-size: var(--text-2xs); margin-top: 3px; text-transform: uppercase; letter-spacing: .07em; }
-.project-switcher { position: relative; display: flex; align-items: center; justify-self: stretch; min-width: 0; height: 38px; border: 1px solid var(--line); border-radius: var(--radius-md); background: white; }
-.project-switcher select { appearance: none; width: 100%; height: 100%; min-width: 0; border: 0; background: transparent; padding: 0 76px 0 12px; color: var(--ink); font-size: var(--text-md); font-weight: 600; text-overflow: ellipsis; }
-.project-switcher > svg { position: absolute; right: 48px; pointer-events: none; color: var(--muted); }
-.revision { position: absolute; right: 8px; padding-left: 8px; border-left: 1px solid var(--line); font: var(--text-2xs) var(--mono); color: var(--muted); }
-.mode-tabs { display: flex; align-items: center; height: 100%; min-width: 0; overflow: hidden; }
-.mode-tabs button { align-self: stretch; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 0 clamp(8px, 1vw, 14px); font-size: var(--text-md); font-weight: 600; white-space: nowrap; }
-.mode-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
-.mode-tabs button:disabled { opacity: .4; cursor: not-allowed; }
-.add-node-button { justify-self: end; }
-.header-actions { display: flex; align-items: center; gap: 7px; justify-self: end; }
-.header-actions button:disabled { opacity: .42; cursor: not-allowed; }
-.header-icon { border: 1px solid var(--line); background: white; }
-.command-bar-trigger { min-width: 76px; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 7px; border-radius: var(--radius-sm); color: var(--muted); }
-.command-bar-trigger:hover { background: #edf0eb; color: var(--ink); }
-.command-bar-trigger kbd { min-width: 42px; padding: 2px 5px; border: 1px solid #c9cec8; border-bottom-width: 2px; border-radius: 4px; background: #f7f9f5; color: #53605a; font: var(--text-2xs) var(--mono); text-align: center; }
-/*
- * Side panels are proportional rather than fixed, so a wide display spends its
- * extra pixels on the graph instead of stretching one column of text.
- */
-.workbench-body { min-height: 0; display: grid; grid-template-columns: clamp(228px, 16vw, 320px) minmax(0, 1fr) clamp(316px, 22vw, 430px); overflow: hidden; }
-/*
- * An inspector with nothing to inspect is the largest piece of dead space in the
- * app, so it yields its column to the canvas until something is selected. The
- * inspector is always the last child of this row, whichever panel is mounted.
- */
-.workbench-body[data-inspector='idle'] { grid-template-columns: clamp(228px, 16vw, 320px) minmax(0, 1fr) 0; }
-.workbench-body[data-inspector='idle'] > :last-child { overflow: hidden; border-left: 0; opacity: 0; pointer-events: none; }
-.workbench-body.full-analysis-workspace { display: block; overflow: auto; background: #f4f6f1; }
-.full-analysis-workspace > .analysis-panel { min-height: 100%; }
-.navigator { min-height: 0; padding: var(--space-4) var(--space-3); overflow: auto; border-right: 1px solid var(--line); background: var(--surface); }
-.canvas-panel { position: relative; min-width: 0; min-height: 0; background-color: #f1f3ee; background-image: radial-gradient(#d0d5ce 0.8px, transparent 0.8px); background-size: 18px 18px; }
-.search-field { height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 12px; background: white; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--muted); }
-.search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; font-size: var(--text-md); }
-.filter-section { margin-top: var(--space-4); }
-/*
- * Filters are a scannable list, not a menu: one compact row each so all five fit
- * without scrolling and leave room for the node outline beneath them.
- */
-.kind-filter, .setup-filter { width: 100%; min-height: 32px; margin-top: 1px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: var(--space-2); padding: 0 var(--space-2) 0 4px; text-align: left; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font-size: var(--text-md); }
-.kind-filter:hover, .kind-filter.muted:hover, .setup-filter:hover { background: #ecefe9; }
-.kind-filter > span:last-child, .setup-filter > span:last-child { color: var(--muted); font: var(--text-xs) var(--mono); }
-.kind-filter .kind-dot, .kind-filter > svg, .setup-filter > svg { width: 20px; height: 20px; }
-.kind-filter.muted { opacity: .42; }
-.setup-filter { margin-bottom: var(--space-2); border: 1px solid transparent; color: #795710; }
-.setup-filter[aria-pressed='true'] { border-color: #d4b171; background: #fff8e9; }
-.canvas-status { position: absolute; top: 12px; left: 14px; z-index: 2; display: flex; flex-wrap: wrap; gap: 6px; }
-.canvas-status span { padding: 5px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.9); color: var(--muted); font-size: var(--text-xs); }
-.canvas-status strong { color: var(--ink); }
-.canvas-status .mode-note { color: var(--green); font-weight: 700; text-transform: capitalize; }
-.canvas-status .readiness-status { display: inline-flex; align-items: center; gap: 4px; border-color: #d4b171; background: #fff8e9; color: #795710; }
-.canvas-status .readiness-status strong { color: #795710; }
-.state-panel { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--muted); }
-.state-panel h2 { margin: 12px 0 5px; color: var(--ink); font-size: var(--text-xl); }
-.state-panel p { margin: 0 0 16px; max-width: 420px; font-size: var(--text-md); line-height: 1.55; }
-.error-state svg { color: #a83f31; }
-.toast { position: fixed; z-index: 30; right: 18px; bottom: 18px; display: grid; grid-template-columns: auto minmax(180px, 1fr) auto; gap: 10px; align-items: start; width: min(410px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--danger-line); border-radius: var(--radius-md); background: var(--danger-surface); color: #8c3429; box-shadow: 0 14px 38px rgba(41, 29, 26, .18); }
-.toast div { display: grid; gap: 3px; }
-.toast strong { font-size: var(--text-md); }
-.toast span { color: #654b46; font-size: var(--text-sm); line-height: 1.45; }
-.toast ul { display: grid; gap: 2px; margin: 3px 0 0; padding-left: 14px; color: #654b46; font-size: var(--text-sm); line-height: 1.45; }
-
-@media (max-width: 1180px) {
-  .brand-block div { display: none; }
-  .mode-tabs button { font-size: var(--text-sm); }
+.workbench { display: flex; flex-direction: column; height: 100vh; }
+header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+  flex-wrap: wrap;
 }
-
-/*
- * Below this the tabs cannot share a row with the project name, so they take
- * their own. Hiding them instead would leave no way to change mode at all.
- */
-@media (max-width: 1000px) {
-  .app-header { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 1fr auto; min-height: 96px; padding-bottom: 0; }
-  .project-switcher { grid-column: 2; }
-  .header-actions { grid-column: 3; }
-  .mode-tabs { grid-column: 1 / -1; grid-row: 2; height: 38px; overflow-x: auto; scrollbar-width: none; }
-  .mode-tabs::-webkit-scrollbar { display: none; }
+.brand { display: flex; align-items: baseline; gap: var(--space-2); }
+.feed { font-size: var(--text-2xs); font-family: var(--mono); color: var(--muted); }
+.feed.open { color: var(--green); }
+.feed.closed { color: var(--danger); }
+select, input { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 7px; background: var(--surface); }
+.views { display: flex; gap: 2px; }
+.views button {
+  border: 1px solid transparent;
+  background: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+  text-transform: capitalize;
 }
-
-@media (max-width: 760px) {
-  .workbench-shell { height: auto; min-height: 100svh; grid-template-rows: auto 1fr; overflow: visible; }
-  .app-header { grid-template-columns: auto 1fr; gap: 9px; min-height: 132px; padding: 10px 10px 0; }
-  .project-switcher { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
-  .header-actions { grid-column: 2; grid-row: 1; }
-  .mode-tabs { grid-row: 3; }
-  .header-actions .secondary-button { display: none; }
-  .command-bar-trigger { min-width: 32px; width: 32px; padding: 0; }
-  .command-bar-trigger kbd { display: none; }
-  .workbench-body, .workbench-body[data-inspector='idle'] { grid-template-columns: 1fr; grid-template-rows: auto minmax(340px, 52svh) auto; overflow: visible; }
-  .workbench-body[data-inspector='idle'] > :last-child { display: none; }
-  /*
-   * The navigator scrolls within a bounded height rather than growing with the
-   * model, so a large graph cannot push the canvas below the fold.
-   */
-  .navigator { max-height: 40svh; border-right: 0; border-bottom: 1px solid var(--line); padding: 10px; overflow: auto; }
-  .filter-section { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-  .filter-section > .section-label { display: none; }
-  .kind-filter { margin: 0; grid-template-columns: 22px 1fr; padding: 0 5px; }
-  .kind-filter > span:last-child { display: none; }
-  .setup-filter { grid-column: 1 / -1; margin: 0 0 4px; }
-  .canvas-panel { min-height: 340px; }
+.views button.active { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 650; }
+.control { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-2xs); color: var(--muted); }
+.control input { width: 7ch; font-family: var(--mono); }
+.solving { font-size: var(--text-2xs); color: var(--muted); font-family: var(--mono); }
+main { flex: 1; overflow: auto; padding: var(--space-5); max-width: var(--measure); width: 100%; }
+.title h1 { font-size: var(--text-2xl); margin: 0; }
+.title p { color: var(--muted); font-size: var(--text-sm); margin: var(--space-1) 0 var(--space-5); max-width: 70ch; }
+.failure {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-surface);
+  border-bottom: 1px solid var(--danger-line);
+  color: var(--danger);
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
+.advice { font-size: var(--text-xs); opacity: 0.85; }
+.picker.wide { display: block; margin-bottom: var(--space-2); }
+.hint { color: var(--muted); font-size: var(--text-xs); margin: 0 0 var(--space-4); max-width: 70ch; }
+.empty { color: var(--muted); font-size: var(--text-sm); }
 </style>

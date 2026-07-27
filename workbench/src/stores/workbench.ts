@@ -1,83 +1,31 @@
-import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { GraphNode, NodeKind } from '../api/types'
-import { simulationReadiness } from '../domain/simulationReadiness'
+import { ref } from 'vue'
 
-export type WorkbenchMode = 'explore' | 'impediments' | 'feedback' | 'optimize'
+/** Which part of a design is on screen. */
+export type View = 'design' | 'bottlenecks' | 'compare'
 
+/**
+ * What the workbench is looking at.
+ *
+ * Only the selections a URL should be able to restore live here. Everything
+ * fetched from the server — the design, the catalogue, an analysis — belongs to
+ * the query layer, so that state which can go stale is never held somewhere
+ * nothing knows to refresh it.
+ */
 export const useWorkbenchStore = defineStore('workbench', () => {
-  const selectedProjectId = ref<string | null>(null)
-  const selectedNodeId = ref<string | null>(null)
-  /** Scenario the optimize view is reading; addressable, so it lives here. */
-  const selectedScenarioId = ref<string | null>(null)
-  /** Candidate intervention whose detail the optimize view is showing. */
-  const selectedCandidateId = ref<string | null>(null)
-  const search = ref('')
-  const mode = ref<WorkbenchMode>('explore')
-  const setupOnly = ref(false)
-  const visibleKinds = ref<Set<NodeKind>>(
-    new Set(['outcome', 'metric', 'factor', 'intervention']),
-  )
+  const design = ref<string | null>(null)
+  const view = ref<View>('design')
+  const intervention = ref<string | null>(null)
+  const samples = ref(1000)
+  const horizon = ref(1)
 
-  const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase())
-
-  function selectProject(id: string | null) {
-    selectedProjectId.value = id
-    selectedNodeId.value = null
-    selectedScenarioId.value = null
-    selectedCandidateId.value = null
+  function open(id: string | null) {
+    if (design.value === id) return
+    design.value = id
+    // A proposal belongs to the design that declared it, so carrying a selection
+    // across would ask the server about something that does not exist there.
+    intervention.value = null
   }
 
-  /** Opens a scenario, dropping a candidate selected under the previous one. */
-  function selectScenario(id: string | null) {
-    selectedScenarioId.value = id
-    selectedCandidateId.value = null
-  }
-
-  function selectCandidate(id: string | null) {
-    selectedCandidateId.value = id
-  }
-
-  function selectNode(id: string | null) {
-    selectedNodeId.value = id
-  }
-
-  function toggleKind(kind: NodeKind) {
-    const next = new Set(visibleKinds.value)
-    if (next.has(kind)) next.delete(kind)
-    else next.add(kind)
-    visibleKinds.value = next
-  }
-
-  function toggleSetupOnly() {
-    setupOnly.value = !setupOnly.value
-  }
-
-  function matches(node: GraphNode) {
-    if (!visibleKinds.value.has(node.payload.kind)) return false
-    if (setupOnly.value && simulationReadiness(node).level === 'ready') return false
-    if (!normalizedSearch.value) return true
-    const query = normalizedSearch.value
-    return [node.id, node.name, node.title, ...node.aliases].some((value) =>
-      value.toLocaleLowerCase().includes(query),
-    )
-  }
-
-  return {
-    selectedProjectId,
-    selectedNodeId,
-    selectedScenarioId,
-    selectedCandidateId,
-    search,
-    mode,
-    setupOnly,
-    visibleKinds,
-    selectProject,
-    selectScenario,
-    selectCandidate,
-    selectNode,
-    toggleKind,
-    toggleSetupOnly,
-    matches,
-  }
+  return { design, view, intervention, samples, horizon, open }
 })

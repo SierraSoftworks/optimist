@@ -1,650 +1,239 @@
-export type NodeKind = 'outcome' | 'metric' | 'factor' | 'intervention'
-export type EdgeKind =
-  | 'contributes'
-  | 'measures'
-  | 'changes'
-  | 'requires'
-  | 'part_of'
-  | 'blocks'
-  | 'conflicts_with'
-  | 'synergizes_with'
+/**
+ * Wire types for the design API.
+ *
+ * These mirror the Rust structures the server serialises. Where a name differs
+ * from the Rust one it is because the JSON is snake_case and stays that way:
+ * translating field names on the way in buys nothing and makes a mismatch
+ * between client and server show up as `undefined` at render time rather than as
+ * a type error at build time.
+ */
 
-export interface Project {
+/** A design as it appears in the workspace listing. */
+export interface DesignSummary {
   id: string
   name: string
-  revision: number
-}
-
-export interface ServerHealth {
-  status: 'ok' | 'degraded'
-  version: string
-  persistence: {
-    state: 'idle' | 'pending' | 'error'
-    error?: string
-  }
-}
-
-export interface Distribution {
-  type: 'point' | 'normal' | 'log_normal' | 'beta' | 'scaled_beta' | 'empirical'
-  value?: number
-  mean?: number
-  standard_deviation?: number
-  location?: number
-  scale?: number
-  alpha?: number
-  beta?: number
-  lower?: number
-  upper?: number
-  samples?: number[]
-}
-
-export interface Estimate {
-  id: string
-  revision: number
-  distribution?: Distribution
-  quantity?: QuantityDefinition
-  source: EstimateSource
-  provenance?: string[]
-  uncertainty?: EstimateUncertainty
-}
-
-export interface EstimateUncertainty {
-  epistemic?: string
-  process?: string
-  measurement?: string
-}
-
-export interface QuantityDefinition {
-  unit: string
-  dimension?: Unit
-  aggregation: string | null
-  support?: QuantitySupport
-  operational_definition?: string
-  reference_time?: string | null
-  resolution_source?: string | null
-}
-
-/** One uncertain coefficient a node equation may reference by name. */
-export interface RelationParameter {
-  quantity: QuantityDefinition
-  value: Estimate
-}
-
-/** Authored arithmetic computing one state's value from its parents. */
-export interface StateRelation {
-  source: string
-  parameters?: Record<string, RelationParameter>
-}
-
-export interface QuantityState {
-  quantity: QuantityDefinition
-  current?: Estimate | null
-  forecast?: Estimate | null
-  relation?: StateRelation | null
-}
-
-export interface SetNodeQuantityStateInput {
-  quantity: QuantityDefinition
-}
-
-export interface SetStateRelationInput {
-  relation: StateRelation | null
-}
-
-export interface EstimateSource {
-  type: 'squiggle'
-  definition: SquiggleEstimateDefinition
-}
-
-export interface EstimateSourceInput {
-  type: 'squiggle'
-  definition: SquiggleEstimateDefinition
-}
-
-export interface Evidence {
-  id: number
-  revision: number
   summary: string
-  source: string | null
 }
 
-export interface EvidenceInput {
+/** A shared quantity every part of a design can refer to. */
+export interface ScratchpadEntry {
+  name: string
+  expression: string
+  unit: string
   summary: string
-  source: string | null
 }
 
-export interface Observation {
-  id: number
-  revision: number
-  value: number
-  unit: string
-  observed_at: string
-  source: string
-  measurement_standard_deviation: number | null
-  supersedes: number | null
+/** A behaviour attached to a relationship. */
+export interface AttachedMutator {
+  type: string
+  properties: Record<string, string>
 }
 
-export type MeasurementCalibration =
-  | { type: 'linear'; state_zero: number; state_one: number }
-  | {
-      type: 'target_range'
-      outer_lower: number
-      ideal_lower: number
-      ideal_upper: number
-      outer_upper: number
-    }
-
-export type QuantitySupport =
-  | { type: 'real' }
-  | { type: 'non_negative' }
-  | { type: 'bounded'; lower: number; upper: number }
-
-export interface AppendObservationInput {
-  value: number
-  unit: string
-  observed_at: string
-  source: string
-  measurement_standard_deviation: number | null
+/** One direction of flow between two components. */
+export interface Relationship {
+  from: string
+  to: string
+  summary: string
+  mutators: AttachedMutator[]
 }
 
-export interface CorrectObservationInput {
-  observation_id: number
-  value: number
-}
-
-export type NodePayload =
-  | {
-      kind: 'outcome'
-      properties: {
-        direction: 'maximize' | 'minimize' | 'target_range'
-        evidence: Evidence[]
-      }
-    }
-  | {
-      kind: 'metric'
-      properties: {
-        quantity: QuantityDefinition
-        current?: Estimate | null
-        relation?: StateRelation | null
-      }
-    }
-  | {
-      kind: 'factor'
-      properties: {
-        controllable: boolean
-        evidence: Evidence[]
-      }
-    }
-  | {
-      kind: 'intervention'
-      properties: {
-        costs: Array<{ dimension: string; value: Estimate }>
-        duration: Estimate | null
-        probability_of_success: Estimate | null
-        acceptance_criteria: string[]
-      }
-    }
-
-export interface GraphNode {
+/** A thing in the design that carries capacity or demand. */
+export interface Component {
   id: string
-  revision: number
   name: string
-  normalized_name: string
-  title: string
-  description: string
-  aliases: string[]
-  metadata: Record<string, unknown>
-  native_state?: QuantityState | null
-  payload: NodePayload
+  type: string
+  summary?: string
+  properties: Record<string, string>
 }
 
-export interface GraphEdge {
-  source: string
-  source_kind: NodeKind
-  destination: string
-  destination_kind: NodeKind
-  revision: number
-  description: string
-  metadata: Record<string, unknown>
-  payload:
-    | {
-        kind: 'contributes' | 'changes'
-        properties: {
-          response: Estimate
-          transience?: EffectTransience | null
-          lag: Estimate | null
-          mechanism: string
-          evidence: string[]
-        }
-      }
-    | {
-        kind: 'blocks'
-        properties: { degree: Estimate }
-      }
-    | {
-        kind: 'measures'
-        properties: {
-          polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
-          calibration?: MeasurementCalibration
-          observations: Observation[]
-        }
-      }
-    | {
-        kind: Exclude<EdgeKind, 'contributes' | 'changes' | 'blocks' | 'measures'>
-        properties?: Record<string, unknown>
-      }
-}
-
-/** How a transient effect subsides once its hold window ends. */
-export type EffectRelease =
-  | { type: 'immediate' }
-  | { type: 'linear'; over: Estimate }
-  | { type: 'exponential'; half_life: Estimate }
-
-export interface EffectAftereffect {
-  hold?: Estimate | null
-  release: EffectRelease
-}
-
-export interface EffectProfile {
-  ramp?: Estimate | null
-  hold?: Estimate | null
-  /** Absent when the effect stops abruptly, which the server omits as the default. */
-  release?: EffectRelease | null
-  aftereffect?: EffectAftereffect | null
-}
-
-/** Temporal shape and rebound of one intervention effect. */
-export interface EffectTransience {
-  profile: EffectProfile
-  rebound?: Estimate | null
-}
-
-export interface EdgeIdentity {
-  source: string
-  kind: EdgeKind
-  destination: string
-}
-
-/** Stable project-scoped address of an estimate embedded in a node or edge. */
-export interface EstimateAddress {
-  project: string
-  owner: { kind: 'node'; id: string } | { kind: 'edge'; id: EdgeIdentity }
-  estimate: string
-}
-
-/** Whether a correlation matrix holds rank or latent Normal coefficients. */
-export type CorrelationScale = 'rank' | 'latent'
-
-export interface GaussianCopulaCorrelation {
-  scale: CorrelationScale
-  matrix: number[][]
-}
-
-/** One non-overlapping set of estimates coupled by a Gaussian copula. */
-export interface ResidualDependenceGroup {
-  members: EstimateAddress[]
-  correlation: GaussianCopulaCorrelation
-}
-
-export interface ProjectDependenceModel {
-  revision: number
-  residual_groups: ResidualDependenceGroup[]
-}
-
-export interface AnalysisRevisionKey {
-  project: string
-  graph_revision: number
-  scenario: [string, number] | null
-  dependence_revision: number | null
-}
-
-export interface StronglyConnectedComponent {
-  nodes: string[]
-  edges: EdgeIdentity[]
-  is_feedback: boolean
-}
-
-export interface ElementaryCycle {
-  nodes: string[]
-  edges: EdgeIdentity[]
-}
-
-export interface StructuralAnalysis {
-  revision: AnalysisRevisionKey
-  components: StronglyConnectedComponent[]
-  cycles: ElementaryCycle[]
-  cycles_truncated: boolean
-  limits: {
-    maximum_cycle_length: number
-    maximum_cycles: number
-  }
-}
-
-export interface MonteCarloConfig {
-  seed: number
-  minimum_samples: number
-  maximum_samples: number
-  absolute_tolerance: number
-  relative_tolerance: number
-}
-
-export interface ScenarioObjective {
-  outcome_id: string
-  direction: 'maximize' | 'minimize'
-  importance: number
-}
-
-export interface ScenarioDraft {
-  name: string
-  title: string
-  rationale: string
-  objectives: ScenarioObjective[]
-  planning_horizon: number
-  budgets: Array<{ unit: Record<string, number>; amount: number }>
-  candidate_interventions: string[]
-  monte_carlo: MonteCarloConfig
-  scalar_preferences?: Array<{
-    unit: Record<string, number>
-    utility_per_unit: number
-  }>
-}
-
-export interface Scenario extends ScenarioDraft {
+/** A group of components replicated together. */
+export interface ScaleUnit {
   id: string
-  revision: number
+  name: string
+  summary: string
+  replicas: string
+  members: string[]
+  distribution: string
 }
 
-export interface MonteCarloEstimate {
-  mean: number | null
-  variance: number | null
-  mean_standard_error: number | null
-  variance_standard_error: number | null
+/** A proposal, expressed as replacements for shared quantities. */
+export interface Intervention {
+  id: string
+  name: string
+  summary: string
+  overrides: { name: string; expression: string }[]
 }
 
-export interface MonteCarloDiagnostics {
-  seed: number
-  attempted_samples: number
-  valid_samples: number
-  invalid_samples: {
-    non_finite_primitive: number
-    non_finite_result: number
-  }
-  criterion: MonteCarloConfig
-  status: 'converged' | 'maximum_samples_reached' | 'insufficient_valid_samples'
+/** The whole editable design. */
+export interface SystemModel {
+  scratchpad: ScratchpadEntry[]
+  components: Component[]
+  relationships: Relationship[]
+  scale_units: ScaleUnit[]
+  interventions: Intervention[]
 }
 
-export type Unit = Record<string, number>
-
-export type EstimateSupport =
-  | 'real'
-  | 'non_negative'
-  | 'probability'
-  | 'signed'
-  | { bounded: { lower: number; upper: number } }
-
-export interface SquiggleEstimateDefinition {
-  source: string
-  seed: number
-  sample_count: number
-  target_unit: Unit
+/** A design and where it sits in its change feed. */
+export interface Snapshot {
+  name: string
+  summary: string
+  model: SystemModel
+  sequence: number
 }
 
-export interface SquiggleEstimateAssessment {
-  family: string
-  mean: number | null
-  variance: number | null
-  p05: number
+/** A property a component type expects to be given. */
+export interface PropertyDefinition {
+  unit: string
+  summary: string
+  default?: string | null
+}
+
+/** A quantity a component type computes. */
+export interface ChannelDefinition {
+  unit: string
+  summary: string
+  expression: string
+}
+
+/** A limit a component type can reach. */
+export interface ConstraintDefinition {
+  summary: string
+  demand: string
+  limit: string
+}
+
+/** How many relationships one side of a component type accepts. */
+export interface Port {
+  arity: string
+  summary: string
+}
+
+/** A kind of component a design may use. */
+export interface ComponentType {
+  id: string
+  name: string
+  summary: string
+  inbound?: Port | null
+  outbound?: Port | null
+  properties: Record<string, PropertyDefinition>
+  channels: Record<string, ChannelDefinition>
+  constraints: Record<string, ConstraintDefinition>
+  outputs: Record<string, string>
+}
+
+/** A behaviour a relationship may carry. */
+export interface MutatorType {
+  id: string
+  name: string
+  summary: string
+  properties: Record<string, PropertyDefinition>
+  transforms: Record<string, { unit: string; summary: string; expression: string }>
+}
+
+/**
+ * Everything a design may build from.
+ *
+ * Both are keyed by identifier rather than listed, because every use of them is
+ * a lookup from a component's declared type.
+ */
+export interface Catalogue {
+  component_types: Record<string, ComponentType>
+  mutators: Record<string, MutatorType>
+}
+
+/**
+ * A solved quantity.
+ *
+ * `draws` is empty when the quantity is certain. That is a statement about the
+ * quantity rather than about the response: render it as a point, not as a
+ * spread of zero width.
+ */
+export interface Quantity {
+  mean: number
+  p10: number
   p50: number
-  p95: number
-  seed: number
-  sample_count: number
+  p90: number
+  draws: number[]
 }
 
-export interface SquiggleAssessmentResult {
-  assessment: SquiggleEstimateAssessment
-  effective_distribution: Distribution
-  predictive_checks: {
-    attempted_draws: number
-    valid_draws: number
-    invalid_draws: number
-    support_violation_draws: number
-    support_violation_probability: number
-    support_compatible: boolean
-    support_requirement: string
-    representative_outcomes: Array<{ percentile: number; value: number }>
-  }
+/** How heavily one constraint is loaded. */
+export interface Bottleneck {
+  component: string
+  constraint: string
+  summary: string
+  replicas: number
+  utilisation: number
+  utilisation_p90: number
+  probability_of_binding: number
+  headroom: number
 }
 
-export interface ObjectiveProjection {
-  outcome: string
-  direction: 'maximize' | 'minimize'
-  importance: number
-  reachable: boolean
-  /** Periods after plan completion before this objective can first move; null when unreachable. */
-  periods_to_effect: number | null
-  baseline: MonteCarloEstimate
-  final_state: MonteCarloEstimate
-  improvement: MonteCarloEstimate
-  trajectory: ObjectiveTrajectoryPoint[]
+/** A solved design and what constrains it. */
+export interface Analysis {
+  sequence: number
+  converged: boolean
+  iterations: number
+  components: Record<string, Record<string, Quantity>>
+  bottlenecks: Bottleneck[]
 }
 
-export interface ObjectiveTrajectoryPoint {
-  period: number
-  state: MonteCarloEstimate
-  improvement: MonteCarloEstimate
+/** What a proposal did to one constraint. */
+export interface Movement {
+  component: string
+  constraint: string
+  summary: string
+  utilisation_before: number
+  utilisation_after: number
+  bound_before: number
+  bound_after: number
 }
 
-export interface StateTrajectory {
-  state: string
-  points: MonteCarloEstimate[]
-}
-
-export interface InterventionProjection {
+/** A proposal weighed against the design it would replace. */
+export interface Comparison {
   intervention: string
-  prerequisites: string[]
-  blocking_requirements: InterventionRequirement[]
-  synergies: string[]
-  conflicts: string[]
-  execution_duration: MonteCarloEstimate
-  execution_success: MonteCarloEstimate
-  objectives: ObjectiveProjection[]
-  /** Every propagated state's path; present only when requested. */
-  states?: StateTrajectory[]
-  improvement_covariance: Array<Array<number | null>>
-  clamped_state_updates: number
-  undefined_responses: number
-  diagnostics: MonteCarloDiagnostics
+  movements: Movement[]
 }
 
-/** One relationship's additive share of a loop's compounding. */
-export interface LoopWeight {
-  source: string
-  destination: string
-  /** Proportional response of the destination to the source at baseline. */
-  response: number
-  /** Additive share of ln|gain|; positive where the response amplifies. */
-  contribution: number
+/**
+ * An edit to a design.
+ *
+ * The shapes match the server's tagged enum exactly, because these are also the
+ * messages other editors receive over the feed. A client that invented its own
+ * edit format would have to translate twice and would still be unable to apply
+ * someone else's.
+ */
+export type Mutation =
+  | { kind: 'set_scratchpad_entry'; entry: ScratchpadEntry }
+  | { kind: 'remove_scratchpad_entry'; name: string }
+  | { kind: 'set_component'; component: Component }
+  | { kind: 'remove_component'; id: string }
+  | { kind: 'set_relationship'; relationship: Relationship }
+  | { kind: 'remove_relationship'; from: string; to: string }
+  | { kind: 'set_scale_unit'; scale_unit: ScaleUnit }
+  | { kind: 'remove_scale_unit'; id: string }
+  | { kind: 'set_intervention'; intervention: Intervention }
+  | { kind: 'remove_intervention'; id: string }
+
+/** What the server says after an edit lands. */
+export interface Applied {
+  sequence: number
+  applied: number
 }
 
-/** A circuit in the propagation graph and the gain that decides whether it settles. */
-export interface FeedbackLoop {
-  states: string[]
-  /** Product of the mean responses around the circuit; null where a hop cannot be measured. */
-  gain: number | null
-  /** Share of sampled draws in which the circuit fails to contract; null where no hop is sampled. */
-  instability: number | null
-  /** Each relationship's share of the compounding, in circuit order. */
-  weights: LoopWeight[]
-}
-
-export interface ScenarioAnalysis {
-  revision: AnalysisRevisionKey
-  planning_horizon: number
-  candidates: InterventionProjection[]
-  feedback_loops: FeedbackLoop[]
-}
-
-export interface InterventionRequirement {
-  dependent: string
-  prerequisite: string
-  hard: boolean
-  satisfaction_threshold: number | null
-}
-
-export interface InterventionExecutionStep {
-  intervention: string
-  duration: Distribution | null
-  probability_of_success: Distribution | null
-}
-
-export interface ImpedimentCandidate {
-  intervention: string
-  execution_steps: InterventionExecutionStep[]
-  blocking_requirements: InterventionRequirement[]
-  synergies: string[]
-  conflicts: string[]
-  expected_duration: number
-  expected_success_probability: number
-}
-
-export interface ImpedimentAnalysis {
-  revision: AnalysisRevisionKey
-  candidates: ImpedimentCandidate[]
-}
-
-export interface CreateNodeInput {
-  name: string
-  title: string
-  payload: NodePayload
-}
-
-export interface UpdateNodeInput {
-  title: string
-  description: string
-  metadata: Record<string, unknown>
-}
-
-export type StateEstimateSlot = 'current' | 'forecast'
-
-export interface SetStateEstimateInput {
-  slot: StateEstimateSlot
-  source: EstimateSourceInput
-  provenance: string[]
-  uncertainty?: EstimateUncertainty
-}
-
-export type InterventionEstimateSlot =
-  | { kind: 'cost'; value: string }
-  | { kind: 'duration' }
-  | { kind: 'probability_of_success' }
-
-export interface SetInterventionEstimateInput {
-  slot: InterventionEstimateSlot
-  source: EstimateSourceInput
-  provenance: string[]
-  uncertainty?: EstimateUncertainty
-}
-
-export type EdgeEstimateSlot = { kind: 'response' | 'lag' | 'degree' }
-
-export interface SetEdgeEstimateInput {
-  slot: EdgeEstimateSlot
-  source: EstimateSourceInput
-  provenance: string[]
-  uncertainty?: EstimateUncertainty
-}
-
-export interface UpdateEdgeInput {
-  description: string
-  metadata: Record<string, unknown>
-}
-
-export interface SetMeasurementCalibrationInput {
-  calibration: MeasurementCalibration | null
-}
-
-/** Authored release form; every duration is a Squiggle program in `duration` units. */
-export type EffectReleaseInput =
-  | { type: 'immediate' }
-  | { type: 'linear'; over: SquiggleEstimateDefinition }
-  | { type: 'exponential'; half_life: SquiggleEstimateDefinition }
-
-export interface EffectAftereffectInput {
-  magnitude: SquiggleEstimateDefinition
-  hold: SquiggleEstimateDefinition | null
-  release: EffectReleaseInput
-}
-
-export interface EffectProfileInput {
-  ramp: SquiggleEstimateDefinition | null
-  hold: SquiggleEstimateDefinition | null
-  release: EffectReleaseInput
-  aftereffect: EffectAftereffectInput | null
-}
-
-export interface SetEffectProfileInput {
-  profile: EffectProfileInput | null
-}
-
-export interface UpdateCausalEffectInput {
-  mechanism: string
-  evidence: string[]
-}
-
-export type EditableEdgePayload =
-  | {
-      kind: 'contributes' | 'changes'
-      properties: {
-        response: Estimate
-        lag: Estimate | null
-        mechanism: string
-        evidence: string[]
-      }
-    }  | {
-      kind: 'measures'
-      properties: {
-        polarity: 'higher_is_better' | 'lower_is_better' | 'target_range'
-        observations: []
-      }
-    }
-  | { kind: 'part_of' }
-  | {
-      kind: 'requires'
-      properties: { hard: boolean; satisfaction_threshold: number | null }
-    }
-  | {
-      kind: 'blocks'
-      properties: { degree: Estimate }
-    }
-  | { kind: 'conflicts_with' | 'synergizes_with' }
-
-export interface CreateEdgeInput {
-  source: string
-  destination: string
-  payload: EditableEdgePayload
-}
-
-export interface ApiErrorBody {
-  code: string
-  message: string
-  advice: string[]
-}
-
-export interface ProjectArchive {
-  schema_version: number
-  project: Project
-  description?: string
-  dependence?: unknown
-  entities: Array<{
-    schema_version: number
-    base_project_revision: number
-    node: GraphNode
-    outgoing_edges?: GraphEdge[]
-  }>
-  scenarios?: Array<{
-    schema_version: number
-    base_project_revision: number
-    scenario: Scenario
-  }>
-}
+/**
+ * A message on a design's change feed.
+ *
+ * `snapshot` arrives first and describes the design as it stood when the socket
+ * opened. `change` carries somebody's edit, which a client applies to its own
+ * copy rather than refetching, so that an edit in progress elsewhere on the page
+ * is not discarded. `lagged` means the client fell far enough behind that
+ * changes were dropped and only a refetch can make it whole.
+ *
+ * The discriminator is `type` here and `kind` on a mutation. They are different
+ * enums on the server and the names follow it rather than being unified, so that
+ * a message can be passed to a mutation handler without being rewritten.
+ */
+export type FeedMessage =
+  | ({ type: 'snapshot' } & Snapshot)
+  | { type: 'change'; sequence: number; mutation: Mutation }
+  | { type: 'lagged'; missed: number }
