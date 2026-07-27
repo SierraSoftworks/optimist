@@ -123,8 +123,8 @@ export async function mockApi(page: Page, state: FixtureState) {
             importance: objective.importance,
             reachable: true,
             periods_to_effect: 2,
-            baseline: estimate,
-            final_state: estimate,
+            baseline: { ...estimate, mean: 0.5 },
+            final_state: { ...estimate, mean: 0.62 },
             improvement: estimate,
             trajectory: Array.from({ length: scenario.planning_horizon + 1 }, (_, period) => ({
               period,

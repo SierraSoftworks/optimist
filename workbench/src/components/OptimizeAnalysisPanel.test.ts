@@ -76,12 +76,15 @@ describe('OptimizeAnalysisPanel', () => {
       },
     })
     expect(wrapper.text()).toContain('Automate')
-    expect(wrapper.text()).toContain('24.0% improvement')
-    expect(wrapper.text()).toContain('0.8 pp')
+    expect(wrapper.text()).toContain('24.0% better')
     expect(wrapper.text()).toContain('118 / 120')
-    expect(wrapper.text()).toContain('Impact vs baseline')
+    expect(wrapper.text()).toContain('Without')
     expect(wrapper.text()).toContain('Plan success')
-    expect(wrapper.get('figure[aria-label="Reliability relative improvement over time"]').text()).toContain('Improvement vs baseline')
+    expect(
+      wrapper
+        .get('figure[aria-label="Reliability over time, with and without this intervention"]')
+        .text(),
+    ).toContain('resting level')
     await wrapper.get('.candidate-header').trigger('click')
     expect(wrapper.emitted('selectCandidate')![0]).toEqual(['B', ['B', 'A']])
   })
@@ -113,9 +116,55 @@ describe('OptimizeAnalysisPanel', () => {
     })
 
     expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('positive')
-    expect(wrapper.get('.relative-impact').text()).toBe('28.6% improvement')
+    expect(wrapper.get('.relative-impact').text()).toBe('28.6% better')
     expect(wrapper.get('.trajectory').attributes('data-impact')).toBe('positive')
     expect(wrapper.get('.trajectory').text()).toContain('minimize')
+  })
+
+  /**
+   * A candidate that requires a load surge runs under it either way, so crediting
+   * it with the surge is what produced the six-digit percentages this view used
+   * to report. The comparison has to be against the surge alone.
+   */
+  it('reads a candidate against the run of its prerequisites, not against rest', () => {
+    const states = (mean: number) => ({ ...estimate, mean })
+    const objective = (settled: number) => ({
+      outcome: 'A', direction: 'maximize' as const, importance: 1, reachable: true,
+      periods_to_effect: 2,
+      baseline: states(0.5), final_state: states(settled), improvement: estimate,
+      trajectory: [
+        { period: 0, state: states(0.5), improvement: states(0) },
+        { period: 12, state: states(settled), improvement: states(0) },
+      ],
+    })
+    const surge = {
+      ...analysis.candidates[0]!,
+      intervention: 'C',
+      prerequisites: [],
+      objectives: [objective(0.2)],
+    }
+    const mitigation = {
+      ...analysis.candidates[0]!,
+      intervention: 'B',
+      prerequisites: ['C'],
+      objectives: [objective(0.4)],
+    }
+    const wrapper = mount(OptimizeAnalysisPanel, {
+      props: {
+        scenarios: [scenario], selectedScenarioId: 'A',
+        analysis: { ...analysis, candidates: [mitigation, surge] },
+        pending: false, error: null, nodes, selectedCandidateId: null,
+      },
+    })
+
+    const impacts = wrapper.findAll('.relative-impact')
+    // Against the surge's 0.2 the mitigation's 0.4 doubles the outcome; against
+    // the resting 0.5 it would have read as a loss.
+    expect(impacts[0]!.text()).toBe('100.0% better')
+    expect(impacts[0]!.attributes('data-impact')).toBe('positive')
+    // The surge itself requires nothing, so it is still read against rest.
+    expect(impacts[1]!.text()).toBe('60.0% worse')
+    expect(wrapper.findAll('.trajectory')[0]!.text()).toContain('prerequisites alone')
   })
 
   it('labels direction-oriented losses as regressions', () => {
@@ -137,7 +186,7 @@ describe('OptimizeAnalysisPanel', () => {
       },
     })
 
-    expect(wrapper.get('.relative-impact').text()).toBe('20.0% regression')
+    expect(wrapper.get('.relative-impact').text()).toBe('20.0% worse')
     expect(wrapper.get('.relative-impact').attributes('data-impact')).toBe('negative')
   })
 

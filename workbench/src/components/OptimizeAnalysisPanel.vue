@@ -2,9 +2,10 @@
 import { computed } from 'vue'
 import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, GitBranch, Pencil, Plus, RefreshCw, Sparkles } from '@lucide/vue'
 import type { FeedbackLoop, GraphNode, Scenario, ScenarioAnalysis } from '../api/types'
-import { impactTone, relativeImprovement } from '../domain/optimizationImpact'
+import { impactTone } from '../domain/optimizationImpact'
 import ScenarioPicker from './ScenarioPicker.vue'
-import OptimizationTrajectory from './OptimizationTrajectory.vue'
+import OutcomeTrajectory from './OutcomeTrajectory.vue'
+import { referenceCandidate, referenceStates } from '../domain/optimizationReference'
 
 const props = defineProps<{
   scenarios: Scenario[]
@@ -27,6 +28,23 @@ const selectedScenario = computed(() =>
 )
 const nodeTitles = computed(() => new Map(props.nodes.map((node) => [node.id, node.title])))
 
+/**
+ * Native unit of each state-bearing node, so an outcome can be plotted in it.
+ *
+ * An outcome keeps its quantity in `native_state`; a metric keeps the same shape
+ * inside its payload. Reading both means the axis carries a unit whichever kind
+ * a scenario names as its objective.
+ */
+const nodeUnits = computed(() => new Map(props.nodes.map((node) => {
+  const quantity = node.native_state?.quantity
+    ?? (node.payload.kind === 'metric' ? node.payload.properties.quantity : undefined)
+  return [node.id, quantity?.unit ?? null]
+})))
+
+function unit(id: string) {
+  return nodeUnits.value.get(id) ?? null
+}
+
 function title(id: string) {
   return nodeTitles.value.get(id) ?? id
 }
@@ -47,31 +65,62 @@ function selectCandidate(candidate: ScenarioAnalysis['candidates'][number]) {
   ])
 }
 
-function objectiveImpact(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
-  const baseline = objective.baseline.mean
-  const finalState = objective.final_state.mean
-  return impactTone(
-    baseline === null || finalState === null ? null : finalState - baseline,
-    objective.direction,
-  )
+/**
+ * The run a candidate should be read against, and its settled outcome value.
+ *
+ * Measuring against the resting baseline produced the six-digit percentages this
+ * view used to show: an outcome resting near zero and settling in the hundreds is
+ * a 380,000% regression against rest, and every candidate under the same load
+ * surge reports the same uninformative number. Against the run the candidate
+ * actually deviates from, the figure is the decision.
+ */
+function withoutValue(
+  candidate: ScenarioAnalysis['candidates'][number],
+  objective: ScenarioAnalysis['candidates'][number]['objectives'][number],
+) {
+  const reference = referenceCandidate(candidate, props.analysis?.candidates ?? [])
+  const projected = reference?.objectives.find((entry) => entry.outcome === objective.outcome)
+  return projected?.final_state.mean ?? objective.baseline.mean
 }
 
-function relativeImpact(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
-  return relativeImprovement(objective.improvement.mean, objective.baseline.mean)
+function change(
+  candidate: ScenarioAnalysis['candidates'][number],
+  objective: ScenarioAnalysis['candidates'][number]['objectives'][number],
+) {
+  const without = withoutValue(candidate, objective)
+  const settled = objective.final_state.mean
+  if (without === null || settled === null) return null
+  return settled - without
 }
 
-function relativeStandardError(objective: ScenarioAnalysis['candidates'][number]['objectives'][number]) {
-  return relativeImprovement(objective.improvement.mean_standard_error, objective.baseline.mean)
+function changeTone(
+  candidate: ScenarioAnalysis['candidates'][number],
+  objective: ScenarioAnalysis['candidates'][number]['objectives'][number],
+) {
+  return impactTone(change(candidate, objective), objective.direction)
 }
 
-function impactLabel(value: number | null) {
+function changeLabel(
+  candidate: ScenarioAnalysis['candidates'][number],
+  objective: ScenarioAnalysis['candidates'][number]['objectives'][number],
+) {
+  const shift = change(candidate, objective)
+  if (shift === null) return 'Unavailable'
+  if (shift === 0) return 'No change'
+  const without = withoutValue(candidate, objective)
+  const improves = objective.direction === 'maximize' ? shift > 0 : shift < 0
+  const wording = improves ? 'better' : 'worse'
+  if (without === null || without === 0) {
+    return `${quantity(Math.abs(shift), objective.outcome)} ${wording}`
+  }
+  return `${(Math.abs(shift / without) * 100).toFixed(1)}% ${wording}`
+}
+
+function quantity(value: number | null, outcome: string) {
   if (value === null) return 'Unavailable'
-  if (value === 0) return 'No change'
-  return `${Math.abs(value * 100).toFixed(1)}% ${value > 0 ? 'improvement' : 'regression'}`
-}
-
-function percentagePoints(value: number | null) {
-  return value === null ? 'Unavailable' : `${(value * 100).toFixed(1)} pp`
+  const rounded = Number(value.toPrecision(3)).toString()
+  const suffix = unit(outcome)
+  return suffix ? `${rounded} ${suffix}` : rounded
 }
 
 /**
@@ -205,12 +254,13 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
           </div>
           <table class="projection-table">
             <caption class="sr-only">Objective projections for {{ title(candidate.intervention) }}</caption>
-            <thead><tr><th scope="col">Objective</th><th scope="col">Impact vs baseline</th><th scope="col">MC SE</th></tr></thead>
+            <thead><tr><th scope="col">Objective</th><th scope="col">Without</th><th scope="col">With</th><th scope="col">Change</th></tr></thead>
             <tbody>
               <tr v-for="objective in candidate.objectives" :key="objective.outcome" :class="{ unreachable: !objective.reachable }">
                 <th scope="row"><span>{{ title(objective.outcome) }}</span><small>{{ objective.reachable ? objective.direction : 'unreachable' }}</small></th>
-                <td class="relative-impact" :data-impact="objectiveImpact(objective)">{{ impactLabel(relativeImpact(objective)) }}</td>
-                <td>{{ percentagePoints(relativeStandardError(objective)) }}</td>
+                <td class="settled">{{ quantity(withoutValue(candidate, objective), objective.outcome) }}</td>
+                <td class="settled">{{ quantity(objective.final_state.mean, objective.outcome) }}</td>
+                <td class="relative-impact" :data-impact="changeTone(candidate, objective)">{{ changeLabel(candidate, objective) }}</td>
               </tr>
             </tbody>
           </table>
@@ -225,13 +275,20 @@ function concerns(candidate: ScenarioAnalysis['candidates'][number]) {
             </span>
           </p>
           <div class="trajectory-list">
-            <OptimizationTrajectory
+            <OutcomeTrajectory
               v-for="objective in candidate.objectives.filter((objective) => objective.reachable)"
               :key="objective.outcome"
               :points="objective.trajectory"
+              :reference="referenceStates(
+                candidate,
+                objective.outcome,
+                referenceCandidate(candidate, analysis.candidates),
+                objective.trajectory.length,
+              )"
               :label="title(objective.outcome)"
+              :unit="unit(objective.outcome)"
               :direction="objective.direction"
-              :baseline="objective.baseline.mean"
+              :projected-reference="referenceCandidate(candidate, analysis.candidates) !== null"
             />
           </div>
         </article>
