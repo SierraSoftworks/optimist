@@ -352,3 +352,205 @@ fn a_proposal_reaches_behaviours_and_scale_units() {
         .expect("capacity");
     assert!((capacity.replicas - 8.0).abs() < 1e-9);
 }
+
+fn flagged(exposure: &str, interventions: Vec<Intervention>) -> SystemModel {
+    SystemModel {
+        scratchpad: vec![shared("exposure", exposure)],
+        components: vec![
+            component("users", "client", &[("request_rate", "1000")]),
+            component(
+                "recommender",
+                "compute",
+                &[("service_time", "0.02"), ("parallelism", "8")],
+            ),
+        ],
+        relationships: vec![Relationship {
+            from: ComponentId::new("users"),
+            to: ComponentId::new("recommender"),
+            mutators: vec![AttachedMutator {
+                mutator: MutatorId::new("feature-flag"),
+                properties: [("exposure".to_owned(), "exposure".to_owned())]
+                    .into_iter()
+                    .collect(),
+            }],
+            summary: String::new(),
+        }],
+        interventions,
+        ..SystemModel::default()
+    }
+}
+
+fn offered(model: &SystemModel, intervention: Option<&str>) -> f64 {
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let evaluation = match intervention {
+        Some(id) => evaluate_intervention(model, &catalogue, &InterventionId::new(id), config()),
+        None => evaluate(model, &catalogue, config()),
+    }
+    .expect("solves");
+    match &evaluation.settled().components[&ComponentId::new("recommender")].channels["offered"] {
+        optimist::squiggle::Value::Number(value) => *value,
+        value => panic!("expected a certain rate, got {value:?}"),
+    }
+}
+
+/// A flag admits none, some, or all of the traffic along a connection.
+#[test]
+fn a_feature_flag_gates_the_traffic_behind_it() {
+    assert!((offered(&flagged("0", Vec::new()), None)).abs() < 1e-9);
+    assert!((offered(&flagged("0.05", Vec::new()), None) - 50.0).abs() < 1e-6);
+    assert!((offered(&flagged("1", Vec::new()), None) - 1_000.0).abs() < 1e-6);
+}
+
+/// A share outside zero and one is clamped rather than amplifying demand.
+#[test]
+fn a_flag_cannot_admit_more_traffic_than_arrives() {
+    assert!((offered(&flagged("2.5", Vec::new()), None) - 1_000.0).abs() < 1e-6);
+    assert!((offered(&flagged("-1", Vec::new()), None)).abs() < 1e-9);
+}
+
+/// Turning a flag on is an intervention, so its cost can be weighed beforehand.
+///
+/// This is what makes a flag worth modelling: the design is read both with and
+/// without the feature by rebinding one quantity, and the constraint the feature
+/// would introduce shows up before anyone ships it.
+#[test]
+fn enabling_a_flag_reveals_what_the_feature_would_cost() {
+    let model = flagged(
+        "0",
+        vec![
+            proposal("canary", &[("exposure", "0.05")]),
+            proposal("launch", &[("exposure", "1")]),
+        ],
+    );
+    let catalogue = builtin_catalogue().expect("catalogue");
+
+    // Dark, the recommender is untouched and nothing binds.
+    assert!((offered(&model, None)).abs() < 1e-9);
+
+    // At five percent it is comfortable: fifty requests against four hundred served.
+    let canary =
+        compare(&model, &catalogue, &InterventionId::new("canary"), config()).expect("compares");
+    assert!(!canary.proposed[0].binds(), "a canary should be survivable");
+
+    // Fully launched it is not.
+    let launch =
+        compare(&model, &catalogue, &InterventionId::new("launch"), config()).expect("compares");
+    assert!(
+        launch.proposed[0].binds(),
+        "the full rollout must expose the constraint, utilisation {}",
+        launch.proposed[0].utilisation
+    );
+    assert_eq!(launch.introduced().len(), 1);
+    assert_eq!(launch.introduced()[0].component.as_str(), "recommender");
+}
+
+/// Complementary flags route traffic between an old path and a new one.
+///
+/// A migration is not a switch but a dial, and both paths carry load while it
+/// turns. Sizing only the destination is how a migration takes down the source.
+#[test]
+fn complementary_flags_split_traffic_between_paths() {
+    let route = |share: &str| SystemModel {
+        scratchpad: vec![shared("new_share", share)],
+        components: vec![
+            component("users", "client", &[("request_rate", "800")]),
+            component(
+                "legacy",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "16")],
+            ),
+            component(
+                "replacement",
+                "compute",
+                &[("service_time", "0.005"), ("parallelism", "16")],
+            ),
+        ],
+        relationships: vec![
+            Relationship {
+                from: ComponentId::new("users"),
+                to: ComponentId::new("replacement"),
+                mutators: vec![AttachedMutator {
+                    mutator: MutatorId::new("feature-flag"),
+                    properties: [("exposure".to_owned(), "new_share".to_owned())]
+                        .into_iter()
+                        .collect(),
+                }],
+                summary: String::new(),
+            },
+            Relationship {
+                from: ComponentId::new("users"),
+                to: ComponentId::new("legacy"),
+                mutators: vec![AttachedMutator {
+                    mutator: MutatorId::new("feature-flag"),
+                    properties: [("exposure".to_owned(), "1 - new_share".to_owned())]
+                        .into_iter()
+                        .collect(),
+                }],
+                summary: String::new(),
+            },
+        ],
+        ..SystemModel::default()
+    };
+
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let split = |share: &str, component: &str| {
+        let model = route(share);
+        let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
+        match &evaluation.settled().components[&ComponentId::new(component)].channels["offered"] {
+            optimist::squiggle::Value::Number(value) => *value,
+            value => panic!("expected a certain rate, got {value:?}"),
+        }
+    };
+
+    assert!((split("0", "legacy") - 800.0).abs() < 1e-6);
+    assert!((split("0", "replacement")).abs() < 1e-9);
+
+    assert!((split("0.25", "legacy") - 600.0).abs() < 1e-6);
+    assert!((split("0.25", "replacement") - 200.0).abs() < 1e-6);
+
+    assert!((split("1", "legacy")).abs() < 1e-9);
+    assert!((split("1", "replacement") - 800.0).abs() < 1e-6);
+}
+
+/// A flag may open over time, so a staged rollout needs no extra machinery.
+#[test]
+fn a_flag_may_open_over_time() {
+    let model = flagged(
+        "0",
+        vec![proposal(
+            "staged",
+            &[("exposure", "if t < 2 then 0.1 else 1")],
+        )],
+    );
+    let catalogue = builtin_catalogue().expect("catalogue");
+    let evaluation = evaluate_intervention(
+        &model,
+        &catalogue,
+        &InterventionId::new("staged"),
+        EvaluationConfig {
+            horizon: 4,
+            ..config()
+        },
+    )
+    .expect("solves");
+
+    let rate = |step: &optimist::system::Step| match &step.components
+        [&ComponentId::new("recommender")]
+        .channels["offered"]
+    {
+        optimist::squiggle::Value::Number(value) => *value,
+        value => panic!("expected a certain rate, got {value:?}"),
+    };
+    // A step that starts from the previous one's answer settles to the solver's
+    // relative tolerance, so the check is relative rather than absolute.
+    let settled = |step: &optimist::system::Step, expected: f64| {
+        assert!(
+            (rate(step) - expected).abs() / expected < 1e-5,
+            "at t={} expected {expected}, got {}",
+            step.time,
+            rate(step)
+        );
+    };
+    settled(&evaluation.steps[0], 100.0);
+    settled(&evaluation.steps[3], 1_000.0);
+}

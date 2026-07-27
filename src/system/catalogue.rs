@@ -33,6 +33,7 @@ const MUTATORS: &[&str] = &[
     include_str!("catalogue/mutators/batch.yaml"),
     include_str!("catalogue/mutators/cache.yaml"),
     include_str!("catalogue/mutators/load-shed.yaml"),
+    include_str!("catalogue/mutators/feature-flag.yaml"),
 ];
 
 /// Why a catalogue could not be assembled.
@@ -209,7 +210,15 @@ mod tests {
     fn every_shipped_behaviour_loads_and_validates() {
         let mutators = builtin_mutators().expect("mutators");
         assert_eq!(mutators.len(), MUTATORS.len());
-        for id in ["retry", "timeout", "fan-out", "batch", "cache", "load-shed"] {
+        for id in [
+            "retry",
+            "timeout",
+            "fan-out",
+            "batch",
+            "cache",
+            "load-shed",
+            "feature-flag",
+        ] {
             assert!(mutators.contains_key(id), "missing '{id}'");
         }
     }
@@ -239,7 +248,7 @@ mod tests {
         // so a behaviour touching the request rate must explain what it does to
         // the load reaching the dependency behind it.
         let mutators = builtin_mutators().expect("mutators");
-        for id in ["retry", "fan-out", "cache", "load-shed"] {
+        for id in ["retry", "fan-out", "cache", "load-shed", "feature-flag"] {
             assert!(
                 mutators[id].transforms.contains_key("rate"),
                 "'{id}' should rewrite the request rate"

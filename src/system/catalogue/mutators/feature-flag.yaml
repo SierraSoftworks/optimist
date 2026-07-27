@@ -1,0 +1,32 @@
+id: feature-flag
+name: Feature flag
+summary: >
+  Admits a share of traffic along a connection, so a part of the design can be
+  turned off, turned on, or exposed to a fraction of requests. Lets a model
+  answer what a feature costs before it ships, and lets the same model be read
+  both with and without it by rebinding one quantity.
+properties:
+  exposure:
+    unit: '1'
+    summary: >
+      Share of traffic the flag admits. Zero leaves whatever is downstream
+      unexercised, one admits everything, and a fraction is a partial rollout.
+      Point it at a shared quantity so an intervention can move it without
+      touching the structure of the model.
+
+      Values outside zero and one are clamped rather than rejected, on the same
+      reasoning as a saturating limit: a share of traffic has no meaning above
+      all of it, and a flag that quietly amplified demand would be a stranger
+      result than one that saturates.
+transforms:
+  rate:
+    unit: op/s
+    summary: >
+      Demand reduced to the admitted share. A flag at zero starves everything
+      behind it, which is what makes it useful for asking whether a component is
+      needed at all: the rest of the design is solved exactly as it stands, with
+      that path carrying nothing.
+
+      Two connections carrying complementary shares model a routed rollout, where
+      part of the traffic takes a new path and the remainder keeps the old one.
+    expression: signal.rate * min([max([exposure, 0]), 1])
