@@ -45,6 +45,7 @@ mod scenario;
 mod scenario_analysis;
 mod scenario_analysis_accumulator;
 mod scenario_analysis_baseline;
+mod scenario_analysis_candidates;
 mod scenario_analysis_coupling;
 mod scenario_analysis_draw;
 mod scenario_analysis_edges;

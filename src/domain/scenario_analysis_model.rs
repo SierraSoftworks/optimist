@@ -147,4 +147,7 @@ pub enum ScenarioAnalysisError {
     /// Intervention `requires` relationships contain a dependency cycle.
     #[error("intervention dependency cycle includes {0}")]
     InterventionDependencyCycle(EntityId),
+    /// A worker projecting one share of the candidates panicked.
+    #[error("scenario projection panicked")]
+    Panicked,
 }

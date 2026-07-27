@@ -1,6 +1,6 @@
 use super::{
     AnalysisRevisionKey, Edge, Node, ProjectDependenceModel, Scenario, ScenarioAnalysis,
-    ScenarioAnalysisError, scenario_analysis_graph::AnalysisGraph, scenario_analysis_sampling,
+    ScenarioAnalysisError, scenario_analysis_candidates, scenario_analysis_graph::AnalysisGraph,
     scenario_analysis_stability,
 };
 
@@ -71,14 +71,7 @@ impl ScenarioAnalysis {
             return Err(ScenarioAnalysisError::RevisionMismatch(scenario.id));
         }
         let graph = AnalysisGraph::new(&revision.project, scenario, nodes, edges, dependence)?;
-        let candidates = scenario
-            .draft
-            .candidate_interventions
-            .iter()
-            .map(|candidate| {
-                scenario_analysis_sampling::project_candidate(&graph, *candidate, scenario)
-            })
-            .collect::<Result<_, _>>()?;
+        let candidates = scenario_analysis_candidates::project_candidates(&graph, scenario)?;
         Ok(Self {
             revision,
             planning_horizon: scenario.draft.planning_horizon,
@@ -238,6 +231,69 @@ mod tests {
         assert!((objective.final_state.mean.unwrap() - 0.56).abs() < 1e-12);
         assert!((objective.improvement.mean.unwrap() - 0.06).abs() < 1e-12);
         assert_eq!(result.candidates[0].clamped_state_updates, 0);
+    }
+
+    /// Candidates are projected concurrently, so the split must be invisible.
+    ///
+    /// Each candidate seeds its own stream from the scenario seed, which is what
+    /// makes them independent; this pins that property down by projecting the
+    /// same candidates alone and requiring every number to match exactly, and by
+    /// requiring the projections to arrive in the order the scenario lists them
+    /// rather than in the order the workers happen to finish.
+    #[test]
+    fn projects_candidates_concurrently_without_changing_a_draw() {
+        let (mut scenario, mut nodes, mut edges, mut revision) = point_fixture(4);
+        let factor = nodes[1].id;
+        for (offset, effect) in [(3_u64, 1.1), (4, 1.3), (5, 1.5), (6, 1.7)] {
+            let intervention = Node::new(
+                EntityId::new(offset),
+                format!("lever-{offset}"),
+                format!("Lever {offset}"),
+                NodePayload::Intervention(Intervention {
+                    costs: vec![],
+                    duration: None,
+                    probability_of_success: Some(estimate(0, 1.0)),
+                    acceptance_criteria: vec![],
+                }),
+            )
+            .unwrap();
+            edges.push(
+                Edge::new(
+                    intervention.id,
+                    NodeKind::Intervention,
+                    factor,
+                    NodeKind::Factor,
+                    EdgePayload::Changes(CausalEffect::proportional(
+                        estimate::<Elasticity>(0, effect),
+                        None,
+                        String::new(),
+                        vec![],
+                    )),
+                )
+                .unwrap(),
+            );
+            scenario.draft.candidate_interventions.push(intervention.id);
+            nodes.push(intervention);
+        }
+        revision.graph_revision += 1;
+
+        let together =
+            ScenarioAnalysis::compute(revision.clone(), &scenario, &nodes, &edges, None).unwrap();
+        assert_eq!(
+            together
+                .candidates
+                .iter()
+                .map(|candidate| candidate.intervention)
+                .collect::<Vec<_>>(),
+            scenario.draft.candidate_interventions,
+        );
+        for (index, candidate) in scenario.draft.candidate_interventions.iter().enumerate() {
+            let mut alone = scenario.clone();
+            alone.draft.candidate_interventions = vec![*candidate];
+            let separately =
+                ScenarioAnalysis::compute(revision.clone(), &alone, &nodes, &edges, None).unwrap();
+            assert_eq!(together.candidates[index], separately.candidates[0]);
+        }
     }
 
     #[test]
