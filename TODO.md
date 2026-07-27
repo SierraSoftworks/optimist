@@ -207,3 +207,54 @@ This file is the tracked delivery checklist. Mark an item complete only when its
 - [ ] Benchmark the agreed 100-node/1,000-edge dense project fixture.
 - [ ] Add tracing/metrics, automated backups, audit retention, and release packaging.
 - [ ] Add TLS/reverse-proxy guidance and production OIDC viewer/editor/admin roles.
+
+## 10. NALSD Modelling Guide
+
+Techniques found while building the system-design engine that operators cannot discover
+from the reference alone. Each is a composition of primitives rather than a feature, so
+none of them appears in an API listing. Document each with a worked example and the
+mistake it prevents.
+
+- [ ] Explain saturation against conditioning: `min` clamps demand onto a limit and leaves
+      an atom whose mass is the share of draws that saturate, while `truncate` removes
+      those draws and renormalises. The atom is the bottleneck evidence, so conditioning
+      where clamping was meant reports a healthy system exactly when demand outgrew
+      capacity. Conditioning is right for selecting a subpopulation, such as the latency
+      of calls that returned before their timeout.
+- [ ] Explain reading the probability of binding beside mean utilisation. A constraint
+      averaging well below one can already saturate in a substantial share of draws, which
+      is the failure a mean-only model cannot see and the reason ranking leads on
+      probability rather than on the mean.
+- [ ] Show retry amplification as the retry-storm mechanism: expected attempts, not success
+      probability, is what a policy multiplies demand by, so a dependency that starts
+      failing is immediately asked to serve several times the traffic.
+- [ ] Show that behaviour order changes the answer. Shedding before retrying caps what the
+      policy may amplify; retrying before shedding lets amplified demand meet the cap. Same
+      settings, threefold difference.
+- [ ] Show complementary feature flags as a routed migration: `share` on the new path and
+      `1 - share` on the old one, so both carry load while the dial turns. Sizing only the
+      destination is how a migration takes down the source.
+- [ ] Show a component held dark behind a flag at zero, then exposed through interventions
+      as canary and launch, so the constraint a feature would introduce is visible before
+      it ships.
+- [ ] Show that any shared quantity may depend on `t`, not only an intervention's
+      replacement. Staged rollouts, diurnal load curves, and traffic ramps are ordinary
+      expressions; a constant is only the simplest case.
+- [ ] Explain sharded against mirrored scale units. Sharding divides demand and gives a
+      per-replica reading; mirroring multiplies cost without dividing load. Confusing them
+      sizes a design for a fraction of its real demand.
+- [ ] Explain why a proposal that relieves the worst constraint usually promotes another,
+      and how to read `introduced` alongside `relieved` to tell a fix from a rearrangement.
+- [ ] Collect the dimensional traps the unit vocabulary catches, each of which reads as
+      obviously correct in prose: a bare core count divided by a service time yields
+      `s^-1` rather than a throughput, and a request rate times a payload in bytes yields
+      `B*op*s^-1` rather than bandwidth. Cores are in-flight operations; payload is bytes
+      per operation.
+- [ ] Explain that record size decides which storage limit binds first, so the same store
+      bottlenecks on operation rate for many small records and on transfer rate for few
+      large ones.
+- [ ] Warn against declaring a constraint that is an algebraic restatement of another. The
+      redundant one adds no information and distorts ranking when its demand derives from a
+      saturated queueing result.
+- [ ] Note that relaxation settles to a relative tolerance, so quantities read from any step
+      after the first carry a small residual and should be compared relatively.
