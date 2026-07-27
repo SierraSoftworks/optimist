@@ -2,14 +2,16 @@
 import { computed, ref } from 'vue'
 
 import type { Catalogue, Mutation, ScratchpadEntry, SystemModel } from '../api/types'
+import { useDraft, type Draft } from '../composables/useDraft'
 import type { ExpressionScope } from '../domain/squiggleLanguage'
+import FieldStatus from './FieldStatus.vue'
 import SquiggleEditor from './SquiggleEditor.vue'
 
-const props = defineProps<{ model: SystemModel; catalogue?: Catalogue }>()
-const emit = defineEmits<{ edit: [Mutation[]] }>()
-
-const adding = ref(false)
-const draft = ref<ScratchpadEntry>({ name: '', expression: '', unit: '1', summary: '' })
+const props = defineProps<{
+  model: SystemModel
+  catalogue?: Catalogue
+  apply: (mutations: Mutation[]) => Promise<unknown>
+}>()
 
 /**
  * What a shared quantity may refer to.
@@ -34,40 +36,71 @@ function scopeFor(index: number): ExpressionScope {
   }
 }
 
-const newScope = computed(() => scopeFor(props.model.scratchpad.length))
+/**
+ * One row's editing state, kept by name.
+ *
+ * Held outside the render so that a row keeps its unsaved text and its error
+ * when the design changes around it.
+ */
+const drafts = new Map<string, Draft<string>>()
 
-function update(entry: ScratchpadEntry, changes: Partial<ScratchpadEntry>) {
-  const next = { ...entry, ...changes }
-  if (JSON.stringify(next) === JSON.stringify(entry)) return
-  emit('edit', [{ kind: 'set_scratchpad_entry', entry: next }])
-}
-
-function add() {
-  const name = draft.value.name.trim()
-  if (!name) return
-  emit('edit', [{ kind: 'set_scratchpad_entry', entry: { ...draft.value, name } }])
-  draft.value = { name: '', expression: '', unit: '1', summary: '' }
-  adding.value = false
+function draftFor(name: string): Draft<string> {
+  const existing = drafts.get(name)
+  if (existing) return existing
+  const draft = useDraft<string>(
+    () => props.model.scratchpad.find((entry) => entry.name === name)?.expression ?? '',
+    async (expression) => {
+      const current = props.model.scratchpad.find((entry) => entry.name === name)
+      if (!current) return
+      await props.apply([{ kind: 'set_scratchpad_entry', entry: { ...current, expression } }])
+    },
+  )
+  drafts.set(name, draft)
+  return draft
 }
 
 function remove(name: string) {
-  emit('edit', [{ kind: 'remove_scratchpad_entry', name }])
+  drafts.delete(name)
+  void props.apply([{ kind: 'remove_scratchpad_entry', name }])
 }
 
-/** Names already taken, so a new one cannot silently replace an existing entry. */
+// Adding a quantity.
+const adding = ref(false)
+const draft = ref<ScratchpadEntry>({ name: '', expression: '', unit: '1', summary: '' })
+const failure = ref<string | null>(null)
+
+const newScope = computed(() => scopeFor(props.model.scratchpad.length))
 const taken = computed(() => new Set(props.model.scratchpad.map((entry) => entry.name)))
+
+/** The rule the server enforces, applied here so the reason is visible while typing. */
+const nameProblem = computed(() => {
+  const name = draft.value.name.trim()
+  if (!name) return null
+  if (taken.value.has(name)) return 'A quantity already goes by that name.'
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    return 'Start with a letter or underscore, then letters, digits and underscores.'
+  }
+  return null
+})
+
+async function add() {
+  const name = draft.value.name.trim()
+  if (!name || nameProblem.value) return
+  failure.value = null
+  try {
+    await props.apply([{ kind: 'set_scratchpad_entry', entry: { ...draft.value, name } }])
+    draft.value = { name: '', expression: '', unit: '1', summary: '' }
+    adding.value = false
+  } catch (error) {
+    failure.value = (error as Error).message
+  }
+}
 </script>
 
 <template>
   <section class="scratchpad">
     <header>
-      <div>
-        <h3>Shared quantities</h3>
-        <p class="hint">
-          Everything the design is sized against. A proposal works by rebinding these, so a number
-          worth arguing about belongs here rather than inside a component.
-        </p>
-      </div>
+      <h3>Shared quantities</h3>
       <el-button type="primary" size="small" data-test="add-quantity" @click="adding = true">
         <el-icon><i-plus /></el-icon>
         <span>Add</span>
@@ -75,106 +108,133 @@ const taken = computed(() => new Set(props.model.scratchpad.map((entry) => entry
     </header>
 
     <el-empty
-      v-if="!model.scratchpad.length && !adding"
-      description="No shared quantities yet."
+      v-if="!model.scratchpad.length"
+      description="Everything the design is sized against goes here."
       :image-size="60"
     />
 
     <ul class="entries">
       <li v-for="(entry, index) in model.scratchpad" :key="entry.name" class="entry">
-        <div class="line">
+        <!--
+          Name, unit and controls stack on the left so the expression gets the
+          full width of the row. The expression is the part that is read and
+          rewritten; the rest is settled once and then only referred to.
+        -->
+        <div class="label">
           <code class="name">{{ entry.name }}</code>
-          <SquiggleEditor
-            class="expression"
-            :model-value="entry.expression"
-            :scope="scopeFor(index)"
-            single-line
-            :data-test="`quantity-${entry.name}`"
-            @commit="(value) => update(entry, { expression: value })"
-          />
-          <el-input
-            class="unit"
-            size="small"
-            :model-value="entry.unit"
-            @change="(value: string) => update(entry, { unit: value })"
-          />
-          <el-button
-            text
-            circle
-            size="small"
-            :aria-label="`Remove ${entry.name}`"
-            @click="remove(entry.name)"
-          >
-            <el-icon><i-delete /></el-icon>
-          </el-button>
+          <div class="meta">
+            <!--
+              The unit is fixed after declaration. Changing it converts nothing,
+              so an edit here would silently reinterpret every number that refers
+              to this quantity rather than correct it.
+            -->
+            <el-tooltip content="Units are fixed once a quantity is declared" placement="bottom">
+              <span class="unit">{{ entry.unit || '1' }}</span>
+            </el-tooltip>
+            <el-popover
+              v-if="entry.summary"
+              trigger="hover"
+              placement="right"
+              :width="300"
+              :content="entry.summary"
+            >
+              <template #reference>
+                <el-icon class="about" tabindex="0" :aria-label="`About ${entry.name}`">
+                  <i-info-filled />
+                </el-icon>
+              </template>
+            </el-popover>
+            <el-popconfirm
+              :title="`Remove ${entry.name}?`"
+              width="240"
+              @confirm="remove(entry.name)"
+            >
+              <template #reference>
+                <el-icon class="remove" tabindex="0" :aria-label="`Remove ${entry.name}`">
+                  <i-delete />
+                </el-icon>
+              </template>
+            </el-popconfirm>
+          </div>
         </div>
-        <el-input
-          class="summary"
-          size="small"
-          :model-value="entry.summary"
-          placeholder="Why this number is what it is"
-          @change="(value: string) => update(entry, { summary: value })"
-        />
+
+        <div class="editor">
+          <SquiggleEditor
+            v-model="draftFor(entry.name).value.value"
+            :scope="scopeFor(index)"
+            :data-test="`quantity-${entry.name}`"
+            @focus="draftFor(entry.name).focus()"
+            @blur="draftFor(entry.name).blur()"
+          />
+          <FieldStatus
+            :state="draftFor(entry.name).state.value"
+            :error="draftFor(entry.name).error.value"
+            :advice="draftFor(entry.name).advice.value"
+            @revert="draftFor(entry.name).revert()"
+          />
+        </div>
       </li>
     </ul>
 
-    <el-card v-if="adding" shadow="never" class="draft">
+    <el-dialog v-model="adding" title="New shared quantity" width="480px">
       <el-form label-position="top" size="small" @submit.prevent="add">
-        <el-form-item label="Name">
-          <el-input
-            v-model="draft.name"
-            placeholder="peak_rate"
-            data-test="new-quantity-name"
-            autofocus
-          />
-          <p v-if="taken.has(draft.name.trim())" class="warn">
-            That name is taken; adding it would replace the existing quantity.
-          </p>
+        <el-form-item label="Name" :error="nameProblem ?? undefined">
+          <el-input v-model="draft.name" placeholder="peak_rate" data-test="new-quantity-name" />
         </el-form-item>
         <el-form-item label="Expression">
           <SquiggleEditor
             v-model="draft.expression"
             :scope="newScope"
-            single-line
             placeholder="900 * lognormal(0, 0.2)"
             data-test="new-quantity-expression"
           />
         </el-form-item>
         <el-form-item label="Unit">
           <el-input v-model="draft.unit" placeholder="op/s" />
+          <p class="hint">Fixed once the quantity exists, so it is worth getting right.</p>
         </el-form-item>
-        <div class="actions">
-          <el-button size="small" @click="adding = false">Cancel</el-button>
-          <el-button
-            type="primary"
-            size="small"
-            :disabled="!draft.name.trim()"
-            data-test="save-quantity"
-            @click="add"
-          >
-            Add
-          </el-button>
-        </div>
+        <el-form-item label="What this number is">
+          <el-input v-model="draft.summary" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-alert v-if="failure" type="error" :closable="false" show-icon :title="failure" />
       </el-form>
-    </el-card>
+      <template #footer>
+        <el-button size="small" @click="adding = false">Cancel</el-button>
+        <el-button
+          type="primary"
+          size="small"
+          :disabled="!draft.name.trim() || !!nameProblem"
+          data-test="save-quantity"
+          @click="add"
+        >
+          Add
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <style scoped>
 .scratchpad { display: flex; flex-direction: column; gap: var(--space-3); }
-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 h3 { font-size: var(--text-md); margin: 0; }
-.hint { color: var(--muted); font-size: var(--text-xs); margin: 2px 0 0; max-width: 62ch; }
-.entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
-.entry { border-bottom: 1px solid var(--line); padding-bottom: var(--space-3); }
-.line { display: flex; align-items: center; gap: var(--space-2); }
-.name { font-family: var(--mono); font-size: var(--text-sm); min-width: 16ch; }
-.expression { flex: 1; }
-.unit { width: 8ch; }
-.summary { margin-top: var(--space-1); }
-.summary :deep(.el-input__wrapper) { box-shadow: none; padding-left: 0; }
-.summary :deep(.el-input__inner) { font-size: var(--text-xs); color: var(--muted); }
-.draft { max-width: 460px; }
-.actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.warn { color: var(--caution); font-size: var(--text-2xs); margin: 2px 0 0; }
+.entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.entry {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+.label { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 3px; }
+.name { font-family: var(--mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.meta { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); }
+.unit { font-family: var(--mono); font-size: var(--text-2xs); cursor: help; }
+.about, .remove { font-size: 13px; cursor: pointer; }
+.about:hover { color: var(--green); }
+.remove:hover { color: var(--danger); }
+.editor { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.editor > :first-child { flex: 1; min-width: 0; }
+.hint { color: var(--muted); font-size: var(--text-2xs); margin: 2px 0 0; }
 </style>

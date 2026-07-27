@@ -50,10 +50,10 @@ test('a design can be created and built up', async ({ page }) => {
   await page.reload()
   await expect(page.locator('canvas').first()).toBeVisible()
   await page.goto('/d/' + id + '/review')
-  await expect(page.getByText('Variant')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Variants' })).toBeVisible()
 })
 
-test('a shared quantity can be added and edited', async ({ page }) => {
+test('a shared quantity can be added', async ({ page }) => {
   const id = `quantities-${Date.now()}`
 
   await page.goto('/')
@@ -68,18 +68,8 @@ test('a shared quantity can be added and edited', async ({ page }) => {
   await page.getByTestId('new-quantity-expression').locator('.cm-content').fill('900')
   await page.getByTestId('save-quantity').click()
 
-  await expect(page.getByText('peak_rate')).toBeVisible()
-
   // The expression is a real editor, so the assertion is on its content rather
-  // than on an input value.
-  const editor = page.getByTestId('quantity-peak_rate').locator('.cm-content')
-  await expect(editor).toHaveText('900')
-
-  await editor.click()
-  await page.keyboard.press('End')
-  await page.keyboard.type(' * 2')
-  await page.keyboard.press('Enter')
-
-  await page.reload()
-  await expect(page.getByTestId('quantity-peak_rate').locator('.cm-content')).toHaveText('900 * 2')
+  // than on an input value. Editing one is covered in the editing suite, which
+  // is where the save-on-blur behaviour belongs.
+  await expect(page.getByTestId('quantity-peak_rate').locator('.cm-content')).toHaveText('900')
 })

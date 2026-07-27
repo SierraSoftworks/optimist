@@ -39,10 +39,15 @@ function share(value: number): string {
       <thead>
         <tr>
           <th scope="col">Constraint</th>
-          <th scope="col" class="numeric">Utilisation</th>
-          <th scope="col" class="numeric">p90</th>
+          <th scope="col" class="numeric">Load</th>
+          <!--
+            The ninetieth percentile is dropped beside a chart. It is the column
+            most often equal to the mean, and the panel is too narrow to carry
+            every column without the numbers running off the edge.
+          -->
+          <th v-if="quantities" scope="col" class="numeric">p90</th>
           <th scope="col" class="numeric">Binds</th>
-          <th scope="col" class="numeric">Headroom</th>
+          <th scope="col" class="numeric">Spare</th>
         </tr>
       </thead>
       <tbody>
@@ -69,7 +74,7 @@ function share(value: number): string {
           <td class="numeric" :class="{ over: entry.utilisation >= 1 }">
             {{ entry.utilisation.toFixed(3) }}
           </td>
-          <td class="numeric">{{ entry.utilisation_p90.toFixed(3) }}</td>
+          <td v-if="quantities" class="numeric">{{ entry.utilisation_p90.toFixed(3) }}</td>
           <!--
             The share of draws that bind is reported next to the mean because
             they routinely disagree: a mean under one with a large share binding

@@ -25,6 +25,8 @@ const emit = defineEmits<{
   'update:modelValue': [string]
   commit: [string]
   cancel: []
+  focus: []
+  blur: []
 }>()
 
 const host = ref<HTMLElement | null>(null)
@@ -41,6 +43,20 @@ function extensions(): Extension[] {
     placeholderExtension(props.placeholder),
     EditorView.editable.of(!props.readonly),
     EditorState.readOnly.of(props.readonly),
+    // Expressions run to whatever length they need. Wrapping rather than
+    // scrolling sideways matters because the interesting part of a long
+    // expression is usually its end, and a horizontal scrollbar hides it.
+    EditorView.lineWrapping,
+    EditorView.domEventHandlers({
+      focus: () => {
+        emit('focus')
+        return false
+      },
+      blur: () => {
+        emit('blur')
+        return false
+      },
+    }),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) emit('update:modelValue', update.state.doc.toString())
     }),
@@ -122,6 +138,8 @@ defineExpose({
 .squiggle :deep(.cm-content) { padding: 5px 8px; }
 .squiggle.single :deep(.cm-content) { padding: 3px 7px; }
 .squiggle :deep(.cm-line) { padding: 0; }
+/* Wrapped lines need the gutter-free width, and a fixed height would clip them. */
+.squiggle :deep(.cm-scroller) { overflow-x: hidden; }
 .squiggle :deep(.cm-placeholder) { color: var(--muted); font-style: italic; }
 .squiggle :deep(.cm-tooltip-autocomplete) {
   border: 1px solid var(--line);

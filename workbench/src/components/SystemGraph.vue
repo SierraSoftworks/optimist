@@ -49,6 +49,7 @@ function elements(): ElementDefinition[] {
       pressure: Math.min(props.pressure?.[component.id] ?? 0, 1.5),
       strained: (props.pressure?.[component.id] ?? 0) >= 1 ? 'yes' : 'no',
     },
+    position: component.position ? { ...component.position } : undefined,
   }))
   const edges = props.model.relationships.map((edge) => ({
     data: {
@@ -114,8 +115,23 @@ const STYLE: cytoscape.StylesheetJson = [
   },
 ]
 
-function layout() {
+/**
+ * Arranges whatever has not been arranged by hand.
+ *
+ * A design somebody has laid out is left exactly as they left it, because the
+ * arrangement carries meaning no algorithm reconstructs. Automatic layout runs
+ * only when something has no position of its own, which is why adding a
+ * component to an arranged diagram does not rearrange the rest.
+ */
+function layout(force = false) {
   if (!graph) return
+  const components = props.model.components
+  const placed = components.filter((component) => component.position).length
+  if (!force && components.length > 0 && placed === components.length) {
+    graph.fit(undefined, 45)
+    return
+  }
+
   const sources = graph
     .nodes()
     .filter((node) => node.data('rank') === 0)
@@ -133,7 +149,7 @@ function layout() {
       roots: sources.length ? sources : undefined,
     })
     .run()
-  graph.fit(undefined, 40)
+  graph.fit(undefined, 45)
 }
 
 onMounted(() => {
@@ -154,9 +170,16 @@ onMounted(() => {
   graph.on('tap', (event) => {
     if (event.target === graph) emit('select', null)
   })
+  // Reported when the drag ends rather than while it moves, so one placement is
+  // one edit instead of a hundred.
+  graph.on('dragfree', 'node', (event) => {
+    const node = event.target
+    const at = node.position()
+    emit('move', { id: node.id() as string, x: Math.round(at.x), y: Math.round(at.y) })
+  })
   // The container is measured by the layout, so it has to have been laid out
   // itself first. Running immediately puts every node in one row.
-  requestAnimationFrame(layout)
+  requestAnimationFrame(() => layout())
 
   observer = new ResizeObserver(() => graph?.resize())
   observer.observe(host.value)
@@ -188,7 +211,6 @@ watch(signature, () => {
   graph.add(elements())
   layout()
 })
-
 // Pressure is pushed into existing nodes rather than rebuilding, so colours
 // update without disturbing positions.
 watch(
@@ -212,8 +234,8 @@ watch(
 )
 
 defineExpose({
-  fit: () => graph?.fit(undefined, 40),
-  relayout: layout,
+  fit: () => graph?.fit(undefined, 45),
+  relayout: () => layout(true),
 })
 </script>
 

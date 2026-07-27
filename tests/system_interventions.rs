@@ -36,6 +36,7 @@ fn component(id: &str, component_type: &str, properties: &[(&str, &str)]) -> Com
             .iter()
             .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
             .collect(),
+        position: None,
     }
 }
 

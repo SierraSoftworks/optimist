@@ -2,16 +2,21 @@
 import { computed } from 'vue'
 
 import type { Catalogue, Component, Mutation, Relationship, SystemModel } from '../api/types'
-import SquiggleEditor from './SquiggleEditor.vue'
+import { useDraft, type Draft } from '../composables/useDraft'
 import type { ExpressionScope } from '../domain/squiggleLanguage'
+import FieldStatus from './FieldStatus.vue'
+import SquiggleEditor from './SquiggleEditor.vue'
 
 const props = defineProps<{
   model: SystemModel
   catalogue?: Catalogue
   selection: { kind: 'component' | 'relationship'; id: string } | null
+  apply: (mutations: Mutation[]) => Promise<unknown>
+  /** What the solver last refused, so the component at fault can say so. */
+  problem?: { component: string | null; message: string } | null
 }>()
 
-const emit = defineEmits<{ edit: [Mutation[]]; close: [] }>()
+const emit = defineEmits<{ close: [] }>()
 
 const component = computed<Component | null>(() =>
   props.selection?.kind === 'component'
@@ -27,6 +32,11 @@ const relationship = computed<Relationship | null>(() => {
 
 const definition = computed(() =>
   component.value ? props.catalogue?.component_types[component.value.type] : undefined,
+)
+
+/** Whether the solver's complaint is about the thing on screen. */
+const blamed = computed(
+  () => !!props.problem?.component && props.problem.component === component.value?.id,
 )
 
 /**
@@ -46,46 +56,89 @@ const scope = computed<ExpressionScope>(() => ({
   locals: [],
 }))
 
-function setProperty(name: string, expression: string) {
-  const current = component.value
-  if (!current || current.properties[name] === expression) return
-  emit('edit', [
-    {
-      kind: 'set_component',
-      component: { ...current, properties: { ...current.properties, [name]: expression } },
-    },
-  ])
+/**
+ * Editing state per field.
+ *
+ * Held outside the render and keyed by what it edits, so a field keeps its
+ * unsaved text and its error while the design changes around it.
+ */
+const drafts = new Map<string, Draft<string>>()
+
+function remembered(key: string, make: () => Draft<string>): Draft<string> {
+  const existing = drafts.get(key)
+  if (existing) return existing
+  const draft = make()
+  drafts.set(key, draft)
+  return draft
 }
 
-function rename(name: string) {
-  const current = component.value
-  if (!current || current.name === name) return
-  emit('edit', [{ kind: 'set_component', component: { ...current, name } }])
+function propertyDraft(componentId: string, name: string): Draft<string> {
+  return remembered(`${componentId}.${name}`, () =>
+    useDraft<string>(
+      () => props.model.components.find((c) => c.id === componentId)?.properties[name] ?? '',
+      async (expression) => {
+        const current = props.model.components.find((c) => c.id === componentId)
+        if (!current) return
+        await props.apply([
+          {
+            kind: 'set_component',
+            component: { ...current, properties: { ...current.properties, [name]: expression } },
+          },
+        ])
+      },
+    ),
+  )
 }
+
+function nameDraft(componentId: string): Draft<string> {
+  return remembered(`${componentId}#name`, () =>
+    useDraft<string>(
+      () => props.model.components.find((c) => c.id === componentId)?.name ?? '',
+      async (name) => {
+        const current = props.model.components.find((c) => c.id === componentId)
+        if (!current) return
+        await props.apply([{ kind: 'set_component', component: { ...current, name } }])
+      },
+    ),
+  )
+}
+
+function mutatorDraft(type: string, property: string): Draft<string> {
+  return remembered(`${props.selection?.id}!${type}.${property}`, () =>
+    useDraft<string>(
+      () => relationship.value?.mutators.find((m) => m.type === type)?.properties[property] ?? '',
+      async (expression) => {
+        const edge = relationship.value
+        if (!edge) return
+        const mutators = edge.mutators.map((mutator) =>
+          mutator.type === type
+            ? { ...mutator, properties: { ...mutator.properties, [property]: expression } }
+            : mutator,
+        )
+        await props.apply([{ kind: 'set_relationship', relationship: { ...edge, mutators } }])
+      },
+    ),
+  )
+}
+
+/** Properties with nothing in them, which is what the solver refuses first. */
+const unfilled = computed(() => {
+  const current = component.value
+  const declared = definition.value?.properties
+  if (!current || !declared) return []
+  return Object.entries(declared)
+    .filter(([name, property]) => (current.properties[name] ?? property.default ?? '').trim() === '')
+    .map(([name]) => name)
+})
 
 function remove() {
-  if (component.value) emit('edit', [{ kind: 'remove_component', id: component.value.id }])
+  if (component.value) void props.apply([{ kind: 'remove_component', id: component.value.id }])
   else if (relationship.value) {
-    emit('edit', [
-      {
-        kind: 'remove_relationship',
-        from: relationship.value.from,
-        to: relationship.value.to,
-      },
+    void props.apply([
+      { kind: 'remove_relationship', from: relationship.value.from, to: relationship.value.to },
     ])
   }
   emit('close')
-}
-
-function setMutator(type: string, property: string, expression: string) {
-  const edge = relationship.value
-  if (!edge) return
-  const mutators = edge.mutators.map((mutator) =>
-    mutator.type === type
-      ? { ...mutator, properties: { ...mutator.properties, [property]: expression } }
-      : mutator,
-  )
-  emit('edit', [{ kind: 'set_relationship', relationship: { ...edge, mutators } }])
 }
 
 function addMutator(type: string) {
@@ -97,7 +150,7 @@ function addMutator(type: string) {
       property.default ?? '',
     ]),
   )
-  emit('edit', [
+  void props.apply([
     {
       kind: 'set_relationship',
       relationship: { ...edge, mutators: [...edge.mutators, { type, properties }] },
@@ -108,7 +161,7 @@ function addMutator(type: string) {
 function removeMutator(type: string) {
   const edge = relationship.value
   if (!edge) return
-  emit('edit', [
+  void props.apply([
     {
       kind: 'set_relationship',
       relationship: { ...edge, mutators: edge.mutators.filter((m) => m.type !== type) },
@@ -128,7 +181,7 @@ const available = computed(() =>
     <header>
       <div class="heading">
         <span class="kind">{{ selection.kind }}</span>
-        <strong>{{ component?.name ?? selection.id }}</strong>
+        <strong>{{ component?.name || selection.id }}</strong>
       </div>
       <el-button text circle size="small" aria-label="Close" @click="emit('close')">
         <el-icon><i-close /></el-icon>
@@ -136,13 +189,47 @@ const available = computed(() =>
     </header>
 
     <div v-if="component" class="body">
+      <!--
+        A component with an empty property cannot be solved, and until it is
+        filled in every analysis of the whole design fails. Saying so here is
+        the difference between a design that looks broken and one that is
+        obviously half-finished.
+      -->
+      <el-alert
+        v-if="unfilled.length"
+        type="warning"
+        :closable="false"
+        show-icon
+        data-test="unfilled-warning"
+        :title="`${unfilled.length} propert${unfilled.length === 1 ? 'y needs' : 'ies need'} a value`"
+        :description="`Until ${unfilled.join(', ')} ${unfilled.length === 1 ? 'has' : 'have'} a value, the design cannot be solved.`"
+      />
+      <el-alert
+        v-else-if="blamed"
+        type="error"
+        :closable="false"
+        show-icon
+        data-test="component-problem"
+        title="The solver refused this component"
+        :description="problem!.message"
+      />
+
       <el-form label-position="top" size="small">
         <el-form-item label="Name">
-          <el-input
-            :model-value="component.name"
-            @update:model-value="rename"
-            data-test="component-name"
-          />
+          <div class="row">
+            <el-input
+              v-model="nameDraft(component.id).value.value"
+              data-test="component-name"
+              @focus="nameDraft(component.id).focus()"
+              @blur="nameDraft(component.id).blur()"
+            />
+            <FieldStatus
+              :state="nameDraft(component.id).state.value"
+              :error="nameDraft(component.id).error.value"
+              :advice="nameDraft(component.id).advice.value"
+              @revert="nameDraft(component.id).revert()"
+            />
+          </div>
         </el-form-item>
       </el-form>
 
@@ -161,17 +248,32 @@ const available = computed(() =>
         <div v-for="(property, name) in definition.properties" :key="name" class="field">
           <label class="label">
             <span class="name">{{ name }}</span>
+            <span class="spacer" />
+            <el-popover trigger="hover" placement="left" :width="300" :content="property.summary">
+              <template #reference>
+                <el-icon class="about" tabindex="0" :aria-label="`About ${name}`">
+                  <i-info-filled />
+                </el-icon>
+              </template>
+            </el-popover>
             <span class="unit">{{ property.unit }}</span>
           </label>
-          <SquiggleEditor
-            :model-value="component.properties[name] ?? property.default ?? ''"
-            :scope="scope"
-            single-line
-            :placeholder="property.default ?? 'expression'"
-            :data-test="`property-${name}`"
-            @commit="(value) => setProperty(String(name), value)"
-          />
-          <p class="hint">{{ property.summary }}</p>
+          <div class="row">
+            <SquiggleEditor
+              v-model="propertyDraft(component.id, String(name)).value.value"
+              :scope="scope"
+              :placeholder="property.default ?? 'expression'"
+              :data-test="`property-${name}`"
+              @focus="propertyDraft(component.id, String(name)).focus()"
+              @blur="propertyDraft(component.id, String(name)).blur()"
+            />
+            <FieldStatus
+              :state="propertyDraft(component.id, String(name)).state.value"
+              :error="propertyDraft(component.id, String(name)).error.value"
+              :advice="propertyDraft(component.id, String(name)).advice.value"
+              @revert="propertyDraft(component.id, String(name)).revert()"
+            />
+          </div>
         </div>
       </section>
 
@@ -219,14 +321,23 @@ const available = computed(() =>
           >
             <label class="label">
               <span class="name">{{ name }}</span>
+              <span class="spacer" />
               <span class="unit">{{ property.unit }}</span>
             </label>
-            <SquiggleEditor
-              :model-value="mutator.properties[name] ?? ''"
-              :scope="scope"
-              single-line
-              @commit="(value) => setMutator(mutator.type, String(name), value)"
-            />
+            <div class="row">
+              <SquiggleEditor
+                v-model="mutatorDraft(mutator.type, String(name)).value.value"
+                :scope="scope"
+                @focus="mutatorDraft(mutator.type, String(name)).focus()"
+                @blur="mutatorDraft(mutator.type, String(name)).blur()"
+              />
+              <FieldStatus
+                :state="mutatorDraft(mutator.type, String(name)).state.value"
+                :error="mutatorDraft(mutator.type, String(name)).error.value"
+                :advice="mutatorDraft(mutator.type, String(name)).advice.value"
+                @revert="mutatorDraft(mutator.type, String(name)).revert()"
+              />
+            </div>
           </div>
         </el-card>
 
@@ -236,6 +347,7 @@ const available = computed(() =>
           size="small"
           class="attach"
           data-test="attach-mutator"
+          popper-class="pick-mutator"
           @change="addMutator"
         >
           <el-option
@@ -260,7 +372,7 @@ const available = computed(() =>
 
 <style scoped>
 .inspector {
-  width: 340px;
+  width: 360px;
   border-left: 1px solid var(--line);
   background: var(--surface-strong);
   display: flex;
@@ -277,12 +389,18 @@ header {
 .heading { display: flex; flex-direction: column; min-width: 0; }
 .kind { font-size: var(--text-2xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .body { flex: 1; overflow: auto; padding: var(--space-4); }
+.body > :deep(.el-alert) { margin-bottom: var(--space-3); }
 h4 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
 .summary, .hint { color: var(--muted); font-size: var(--text-xs); margin: 0 0 var(--space-2); }
 .field { margin-bottom: var(--space-3); }
-.label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+.label { display: flex; align-items: center; gap: var(--space-1); margin-bottom: 3px; }
 .label .name { font-family: var(--mono); font-size: var(--text-xs); }
+.label .spacer { flex: 1; }
 .label .unit { font-family: var(--mono); font-size: var(--text-2xs); color: var(--muted); }
+.about { font-size: 12px; color: var(--muted); cursor: pointer; }
+.about:hover { color: var(--green); }
+.row { display: flex; align-items: flex-start; gap: var(--space-2); }
+.row > :first-child { flex: 1; min-width: 0; }
 .channels { list-style: none; margin: 0; padding: 0; }
 .channels li { display: flex; justify-content: space-between; font-family: var(--mono); font-size: var(--text-xs); padding: 2px 0; color: var(--muted); }
 .flow { display: flex; align-items: center; gap: var(--space-2); font-family: var(--mono); font-size: var(--text-sm); margin: 0 0 var(--space-2); }

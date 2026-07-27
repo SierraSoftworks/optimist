@@ -45,6 +45,12 @@ export interface Relationship {
   mutators: AttachedMutator[]
 }
 
+/** Where a component sits on the diagram, once somebody has placed it. */
+export interface Position {
+  x: number
+  y: number
+}
+
 /** A thing in the design that carries capacity or demand. */
 export interface Component {
   id: string
@@ -52,6 +58,11 @@ export interface Component {
   type: string
   summary?: string
   properties: Record<string, string>
+  /**
+   * Absent until the component is moved, so an unarranged design is laid out
+   * automatically rather than pinned to whatever an algorithm produced first.
+   */
+  position?: Position
 }
 
 /** A group of components replicated together. */

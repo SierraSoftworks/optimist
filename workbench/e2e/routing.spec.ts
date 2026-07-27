@@ -19,7 +19,7 @@ test.describe('routing', () => {
 
   test('a deep link restores the design and its mode', async ({ page }) => {
     await page.goto('/d/checkout/review')
-    await expect(page.getByText('Variant')).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Variants' })).toBeVisible()
     await expect(page.getByRole('radio', { name: 'Review' })).toBeChecked()
   })
 
@@ -34,12 +34,12 @@ test.describe('routing', () => {
 
   test('selecting a variant is addressable', async ({ page }) => {
     await page.goto('/d/metastable/review')
-    await chooseRadio(page, 'Shed load')
+    await page.getByTestId('variant-shed').click()
     await expect(page).toHaveURL(/\/d\/metastable\/review\/shed/)
 
     // The same link, opened cold, comes back to the same variant.
     await page.goto('/d/metastable/review/shed')
-    await expect(page.getByRole('radio', { name: 'Shed load' })).toBeChecked()
+    await expect(page.getByRole('heading', { name: 'Shed load' })).toBeVisible()
   })
 
   test('an unknown address falls back to the picker', async ({ page }) => {

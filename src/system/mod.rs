@@ -62,7 +62,7 @@ pub use intervention::{Intervention, InterventionId, Override};
 pub use manifest::{
     Channel, ComponentType, ComponentTypeId, Constraint, Port, PortArity, Property,
 };
-pub use model::{Component, ComponentId, Relationship, ScratchpadEntry, SystemModel};
+pub use model::{Component, ComponentId, Position, Relationship, ScratchpadEntry, SystemModel};
 pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
 pub use scale_unit::{Distribution, ScaleUnit, ScaleUnitId};
 pub use schema::{

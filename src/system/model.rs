@@ -47,6 +47,24 @@ impl std::fmt::Display for ComponentId {
     }
 }
 
+/// Where a component sits on the diagram.
+///
+/// Layout is stored with the design because it carries meaning. Somebody who
+/// arranges a diagram is saying how the system is best read — demand at the top,
+/// the dependency that everything waits on in the middle — and that judgement is
+/// worth keeping and worth reviewing alongside the model it describes.
+///
+/// Absent until somebody moves the component, so a design nobody has arranged is
+/// laid out automatically rather than pinned to whatever an algorithm produced
+/// the first time it was opened.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub struct Position {
+    /// Horizontal position, in the diagram's own units.
+    pub x: f64,
+    /// Vertical position, in the diagram's own units.
+    pub y: f64,
+}
+
 /// One part of the system being designed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Component {
@@ -60,6 +78,9 @@ pub struct Component {
     /// Squiggle source for each property the type declares, keyed by name.
     #[serde(default)]
     pub properties: BTreeMap<String, String>,
+    /// Where this sits on the diagram, once somebody has placed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
 }
 
 /// A directed flow from one component's outputs to another's inbound port.

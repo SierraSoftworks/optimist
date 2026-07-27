@@ -28,6 +28,7 @@ fn component(id: &str, component_type: &str, properties: &[(&str, &str)]) -> Com
             .iter()
             .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
             .collect(),
+        position: None,
     }
 }
 
@@ -144,6 +145,41 @@ fn reading_is_idempotent() {
     write_system(&directory, "Checkout", "", &once.model).expect("writes");
     let twice = read_system(&directory).expect("reads");
     assert_eq!(canonical(&once.model), canonical(&twice.model));
+}
+
+/// Where a component was placed on the diagram is part of the design.
+///
+/// Somebody arranging a diagram is saying how the system is best read, and that
+/// judgement is worth keeping and worth reviewing beside the model it describes.
+/// A component nobody has placed carries no position at all, so a design that
+/// has never been arranged is laid out automatically rather than pinned to
+/// whatever an algorithm produced the first time it was opened.
+#[test]
+fn a_placement_is_stored_with_the_design() {
+    let directory = scratch("placement");
+    let mut model = full_model();
+    model.components[0].position = Some(optimist::system::Position { x: 321.0, y: 123.0 });
+    write_system(&directory, "Checkout", "", &model).expect("writes");
+
+    let placed = model.components[0].id.clone();
+    let loaded = read_system(&directory).expect("reads");
+    let component = loaded
+        .model
+        .components
+        .iter()
+        .find(|component| component.id == placed)
+        .expect("the placed component");
+    let position = component.position.expect("a position");
+    assert_eq!((position.x, position.y), (321.0, 123.0));
+
+    assert!(
+        loaded
+            .model
+            .components
+            .iter()
+            .any(|component| component.position.is_none()),
+        "a component nobody moved must not acquire a position"
+    );
 }
 
 /// A round-tripped design still solves to the same answer.

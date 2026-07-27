@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 
 import type { Frame, Quantity } from '../api/types'
-import { formatSiNumber } from '../domain/humanNumber'
 import { kernelDensity } from '../domain/density'
+import { formatSiNumber } from '../domain/humanNumber'
+import { scaleFor, showScaled, showWithUnit } from '../domain/units'
 
 const props = withDefaults(
   defineProps<{
@@ -17,7 +18,7 @@ const props = withDefaults(
 )
 
 const WIDTH = 640
-const PADDING = { left: 46, right: 8, top: 10, bottom: 20 }
+const PADDING = { left: 52, right: 10, top: 10, bottom: 20 }
 
 /** The quantity at each step, dropping steps where this channel is absent. */
 const points = computed(() =>
@@ -27,6 +28,14 @@ const points = computed(() =>
       quantity: frame.components[props.component]?.[props.channel] as Quantity | undefined,
     }))
     .filter((point): point is { time: number; quantity: Quantity } => point.quantity !== undefined),
+)
+
+/** How to read this quantity, decided once from everything on screen. */
+const scale = computed(() =>
+  scaleFor(
+    props.unit,
+    points.value.flatMap((point) => [point.quantity.p10, point.quantity.p90]),
+  ),
 )
 
 /**
@@ -40,18 +49,27 @@ const bounds = computed(() => {
   if (!values.length) return { low: 0, high: 1 }
   const low = Math.min(...values)
   const high = Math.max(...values)
+
+  // A proportion is drawn against the whole of its range. Adding breathing room
+  // above it would label the top of the axis 108%, which is not a share of
+  // anything, and it costs nothing to show the ceiling the value is approaching.
+  if (scale.value.factor === 100) return { low: 0, high: 1 }
+
   if (high === low) return { low: low - 0.5, high: high + 0.5 }
   const margin = (high - low) * 0.08
   return {
     // Nothing solved here is negative — rates, times, occupancies and shares are
     // all non-negative — so the margin is not allowed to push the axis below
-    // zero and label a probability as minus eight percent.
+    // zero and label a duration as minus twenty milliseconds.
     low: low >= 0 ? Math.max(0, low - margin) : low - margin,
     high: high + margin,
   }
 })
 
-const plot = { width: WIDTH - PADDING.left - PADDING.right, height: props.height - PADDING.top - PADDING.bottom }
+const plot = {
+  width: WIDTH - PADDING.left - PADDING.right,
+  height: props.height - PADDING.top - PADDING.bottom,
+}
 
 function x(index: number): number {
   const count = points.value.length
@@ -73,9 +91,7 @@ const median = computed(() =>
 const band = computed(() => {
   if (points.value.length < 2) return ''
   const upper = points.value.map((point, index) => `${x(index)},${y(point.quantity.p90)}`)
-  const lower = points.value
-    .map((point, index) => `${x(index)},${y(point.quantity.p10)}`)
-    .reverse()
+  const lower = points.value.map((point, index) => `${x(index)},${y(point.quantity.p10)}`).reverse()
   return `M${upper.join(' L')} L${lower.join(' L')} Z`
 })
 
@@ -102,6 +118,20 @@ function track(event: MouseEvent) {
   hovered.value = Math.max(0, Math.min(count - 1, index))
 }
 
+/**
+ * Where the readout sits, in percentages of the frame.
+ *
+ * It follows the hovered point rather than living in a fixed footer, so the eye
+ * does not have to travel between the value and the place it came from. Near the
+ * right-hand edge it flips to the other side of the cursor so it stays inside
+ * the chart.
+ */
+const anchor = computed(() => {
+  if (hovered.value === null) return null
+  const at = (x(hovered.value) / WIDTH) * 100
+  return { left: `${at}%`, flipped: at > 62 }
+})
+
 /** The hovered step's distribution, as a small density sketch. */
 const sketch = computed(() => {
   const quantity = active.value?.quantity
@@ -112,8 +142,8 @@ const sketch = computed(() => {
   const to = density.x[density.x.length - 1]
   const span = to - from || 1
   const tallest = Math.max(...density.y) || 1
-  const w = 150
-  const h = 44
+  const w = 168
+  const h = 30
   const path = density.x
     .map((value, index) => `${((value - from) / span) * w},${h - (density.y[index] / tallest) * h}`)
     .join(' L')
@@ -131,75 +161,93 @@ const ticks = computed(() => {
     <figcaption>
       <span class="channel">{{ channel }}</span>
       <span class="component">{{ component }}</span>
-      <span v-if="unit" class="unit">{{ unit }}</span>
+      <span class="unit">{{ scale.suffix || unit || '1' }}</span>
     </figcaption>
 
-    <svg
-      :viewBox="`0 0 ${WIDTH} ${height}`"
-      class="plot"
-      role="img"
-      :aria-label="`${channel} of ${component} over time`"
-      @mousemove="track"
-      @mouseleave="hovered = null"
-    >
-      <line
-        v-for="tick in ticks"
-        :key="tick.value"
-        class="gridline"
-        :x1="PADDING.left"
-        :x2="WIDTH - PADDING.right"
-        :y1="tick.y"
-        :y2="tick.y"
-      />
-      <text
-        v-for="tick in ticks"
-        :key="`label-${tick.value}`"
-        class="tick"
-        :x="PADDING.left - 6"
-        :y="tick.y + 3"
-        text-anchor="end"
+    <div class="frame">
+      <svg
+        :viewBox="`0 0 ${WIDTH} ${height}`"
+        class="plot"
+        role="img"
+        :aria-label="`${channel} of ${component} over time`"
+        @mousemove="track"
+        @mouseleave="hovered = null"
       >
-        {{ formatSiNumber(tick.value) }}
-      </text>
-
-      <path v-if="band" class="band" :d="band" />
-      <polyline v-if="median" class="median" :points="median" />
-
-      <template v-if="hovered !== null && active">
         <line
-          class="cursor"
-          :x1="x(hovered)"
-          :x2="x(hovered)"
-          :y1="PADDING.top"
-          :y2="PADDING.top + plot.height"
+          v-for="tick in ticks"
+          :key="tick.value"
+          class="gridline"
+          :x1="PADDING.left"
+          :x2="WIDTH - PADDING.right"
+          :y1="tick.y"
+          :y2="tick.y"
         />
-        <circle class="dot" :cx="x(hovered)" :cy="y(active.quantity.p50)" r="3" />
-      </template>
-    </svg>
+        <text
+          v-for="tick in ticks"
+          :key="`label-${tick.value}`"
+          class="tick"
+          :x="PADDING.left - 6"
+          :y="tick.y + 3"
+          text-anchor="end"
+        >
+          {{ showScaled(tick.value, scale) }}
+        </text>
 
-    <!--
-      The hovered step's own distribution. A line chart of medians hides whether
-      a value is one outcome or two, which for a design near a fold is the thing
-      being looked for, so stopping on a point shows the shape behind it.
-    -->
-    <div v-if="active" class="readout">
-      <div class="numbers">
-        <span class="time">t = {{ formatSiNumber(active.time) }}s</span>
-        <span class="value">{{ formatSiNumber(active.quantity.p50) }}</span>
-        <span class="range">
-          {{ formatSiNumber(active.quantity.p10) }} &ndash;
-          {{ formatSiNumber(active.quantity.p90) }}
-        </span>
-      </div>
-      <svg v-if="sketch" :viewBox="`0 0 ${sketch.width} ${sketch.height}`" class="sketch">
-        <path :d="sketch.path" />
+        <path v-if="band" class="band" :d="band" />
+        <polyline v-if="median" class="median" :points="median" />
+
+        <template v-if="hovered !== null && active">
+          <line
+            class="cursor"
+            :x1="x(hovered)"
+            :x2="x(hovered)"
+            :y1="PADDING.top"
+            :y2="PADDING.top + plot.height"
+          />
+          <circle class="dot" :cx="x(hovered)" :cy="y(active.quantity.p50)" r="3.5" />
+        </template>
       </svg>
-      <el-tag v-if="sketch && sketch.modes > 1" type="warning" size="small" effect="light">
-        {{ sketch.modes }} states
-      </el-tag>
-      <span v-else-if="!sketch" class="certain">certain</span>
+
+      <!--
+        The step's own distribution, beside the point it belongs to. A line of
+        medians hides whether a value is one outcome or two, which for a design
+        near a fold is the thing being looked for, so stopping on a point has to
+        show the shape behind it rather than a number in a footer somewhere else.
+      -->
+      <div
+        v-if="active && anchor"
+        class="readout"
+        :class="{ flipped: anchor.flipped }"
+        :style="{ left: anchor.left }"
+        data-test="step-readout"
+      >
+        <div class="head">
+          <span class="time">t = {{ formatSiNumber(active.time) }}s</span>
+          <el-tag v-if="sketch && sketch.modes > 1" type="warning" size="small" effect="light">
+            {{ sketch.modes }} states
+          </el-tag>
+        </div>
+        <div class="value">{{ showWithUnit(active.quantity.p50, scale) }}</div>
+        <svg v-if="sketch" :viewBox="`0 0 ${sketch.width} ${sketch.height}`" class="sketch">
+          <path :d="sketch.path" />
+        </svg>
+        <p v-else class="certain">certain</p>
+        <dl class="quantiles">
+          <div>
+            <dt>p10</dt>
+            <dd>{{ showScaled(active.quantity.p10, scale) }}</dd>
+          </div>
+          <div>
+            <dt>mean</dt>
+            <dd>{{ showScaled(active.quantity.mean, scale) }}</dd>
+          </div>
+          <div>
+            <dt>p90</dt>
+            <dd>{{ showScaled(active.quantity.p90, scale) }}</dd>
+          </div>
+        </dl>
+      </div>
     </div>
-    <div v-else class="readout placeholder">Hover to read a step.</div>
   </figure>
 </template>
 
@@ -215,6 +263,7 @@ figcaption { display: flex; align-items: baseline; gap: var(--space-2); margin-b
 .channel { font-family: var(--mono); font-size: var(--text-sm); font-weight: 650; }
 .component { font-size: var(--text-2xs); color: var(--muted); }
 .unit { font-family: var(--mono); font-size: var(--text-2xs); color: var(--muted); margin-left: auto; }
+.frame { position: relative; }
 .plot { width: 100%; display: block; cursor: crosshair; }
 .gridline { stroke: var(--line); stroke-width: 1; }
 .tick { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
@@ -222,20 +271,29 @@ figcaption { display: flex; align-items: baseline; gap: var(--space-2); margin-b
 .median { fill: none; stroke: var(--green); stroke-width: 1.75; stroke-linejoin: round; }
 .cursor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 2; }
 .dot { fill: var(--green); stroke: var(--surface-strong); stroke-width: 1.5; }
+
 .readout {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 52px;
-  border-top: 1px solid var(--line);
-  padding-top: var(--space-2);
+  position: absolute;
+  top: 2px;
+  transform: translateX(10px);
+  width: 182px;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: 0 6px 20px rgb(28 35 31 / 14%);
+  pointer-events: none;
+  z-index: 2;
 }
-.readout.placeholder { color: var(--muted); font-size: var(--text-xs); font-style: italic; }
-.numbers { display: flex; flex-direction: column; font-family: var(--mono); }
-.time { font-size: var(--text-2xs); color: var(--muted); }
-.value { font-size: var(--text-lg); }
-.range { font-size: var(--text-2xs); color: var(--muted); }
-.sketch { width: 150px; height: 44px; }
+.readout.flipped { transform: translateX(calc(-100% - 10px)); }
+.head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.time { font-family: var(--mono); font-size: var(--text-2xs); color: var(--muted); }
+.value { font-family: var(--mono); font-size: var(--text-md); line-height: 1.2; margin: 1px 0 2px; }
+.sketch { width: 100%; height: 30px; display: block; }
 .sketch path { fill: var(--green); fill-opacity: 0.45; stroke: var(--green); stroke-width: 1.25; }
-.certain { font-size: var(--text-2xs); color: var(--muted); }
+.certain { margin: var(--space-1) 0; font-size: var(--text-2xs); color: var(--muted); font-style: italic; }
+.quantiles { display: flex; justify-content: space-between; margin: 2px 0 0; gap: var(--space-2); }
+.quantiles div { display: flex; flex-direction: column; align-items: center; }
+.quantiles dt { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.quantiles dd { margin: 0; font-family: var(--mono); font-size: var(--text-2xs); }
 </style>

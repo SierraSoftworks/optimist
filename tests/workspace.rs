@@ -41,6 +41,7 @@ fn component(id: &str) -> Component {
         properties: [("request_rate".to_owned(), "10".to_owned())]
             .into_iter()
             .collect(),
+        position: None,
     }
 }
 
