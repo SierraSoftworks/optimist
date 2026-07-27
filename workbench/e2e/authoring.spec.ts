@@ -1,0 +1,85 @@
+import { expect, test } from '@playwright/test'
+
+import { chooseOption } from './support/controls'
+
+/**
+ * Building a design from nothing.
+ *
+ * This is the path a new user takes and the one most likely to be broken by a
+ * change elsewhere, because it touches creation, the catalogue, the graph, the
+ * inspector and the change feed in one sequence.
+ */
+test('a design can be created and built up', async ({ page }) => {
+  const id = `scratch-${Date.now()}`
+
+  await page.goto('/')
+  await page.getByTestId('new-design').click()
+  await page.getByTestId('design-name').fill('Scratch')
+  await page.getByTestId('design-id').fill(id)
+  await page.getByTestId('create-design').click()
+
+  await expect(page).toHaveURL(new RegExp(`/d/${id}/design`))
+  await expect(page.getByText('Nothing here yet')).toBeVisible()
+
+  // A component comes from the catalogue rather than being invented, so the
+  // type picker is the only way in.
+  await page.getByRole('button', { name: 'Add a component' }).click()
+  await page.getByTestId('component-type').click()
+  await chooseOption(page, 'pick-component-type', 'Client')
+  await page.getByTestId('component-id').fill('users')
+  await page.getByTestId('save-component').click()
+
+  // The inspector opens on what was just added, which is where its properties
+  // are filled in.
+  await expect(page.getByTestId('component-name')).toHaveValue('users')
+
+  await page.getByTestId('add-component').click()
+  await page.getByTestId('component-type').click()
+  await chooseOption(page, 'pick-component-type', 'Compute')
+  await page.getByTestId('component-id').fill('api')
+  await page.getByTestId('save-component').click()
+
+  await page.getByTestId('add-relationship').click()
+  await page.getByTestId('connect-from').click()
+  await chooseOption(page, 'pick-from', 'users')
+  await page.getByTestId('connect-to').click()
+  await chooseOption(page, 'pick-to', 'api')
+  await page.getByTestId('save-relationship').click()
+
+  // Reloading proves the edits reached the server rather than living in the tab.
+  await page.reload()
+  await expect(page.locator('canvas').first()).toBeVisible()
+  await page.goto('/d/' + id + '/review')
+  await expect(page.getByText('Variant')).toBeVisible()
+})
+
+test('a shared quantity can be added and edited', async ({ page }) => {
+  const id = `quantities-${Date.now()}`
+
+  await page.goto('/')
+  await page.getByTestId('new-design').click()
+  await page.getByTestId('design-name').fill('Quantities')
+  await page.getByTestId('design-id').fill(id)
+  await page.getByTestId('create-design').click()
+  await expect(page).toHaveURL(new RegExp(`/d/${id}/design`))
+
+  await page.getByTestId('add-quantity').click()
+  await page.getByTestId('new-quantity-name').fill('peak_rate')
+  await page.getByTestId('new-quantity-expression').locator('.cm-content').fill('900')
+  await page.getByTestId('save-quantity').click()
+
+  await expect(page.getByText('peak_rate')).toBeVisible()
+
+  // The expression is a real editor, so the assertion is on its content rather
+  // than on an input value.
+  const editor = page.getByTestId('quantity-peak_rate').locator('.cm-content')
+  await expect(editor).toHaveText('900')
+
+  await editor.click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' * 2')
+  await page.keyboard.press('Enter')
+
+  await page.reload()
+  await expect(page.getByTestId('quantity-peak_rate').locator('.cm-content')).toHaveText('900 * 2')
+})

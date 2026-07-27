@@ -15,6 +15,9 @@ test-results
 artifacts
 *.local
 
+# Designs the end-to-end run copies out of examples/ and then edits.
+e2e/.designs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

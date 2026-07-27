@@ -1,198 +1,168 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
-import type { Mutation } from './api/types'
-import BottlenecksPanel from './components/BottlenecksPanel.vue'
-import ComparisonPanel from './components/ComparisonPanel.vue'
-import DesignPanel from './components/DesignPanel.vue'
-import {
-  useAnalysis,
-  useCatalogue,
-  useComparison,
-  useDesign,
-  useDesigns,
-  useEditDesign,
-} from './composables/useDesign'
+import { useDesign, useDesigns } from './composables/useDesign'
 import { useWorkbenchStore } from './stores/workbench'
 
+const route = useRoute()
+const router = useRouter()
 const store = useWorkbenchStore()
 
-const designs = useDesigns()
-const design = computed(() => store.design)
-const { data: snapshot, feedStatus, error: designError } = useDesign(design)
-const { data: catalogue } = useCatalogue(design)
+const { data: designs } = useDesigns()
 
-const controls = computed(() => ({ samples: store.samples, horizon: store.horizon }))
-const sequence = computed(() => snapshot.value?.sequence)
-const { data: analysis, error: analysisError, isFetching } = useAnalysis(design, controls, sequence)
-const intervention = computed(() => store.intervention)
-const { data: comparison, error: comparisonError } = useComparison(
-  design,
-  intervention,
-  controls,
-  sequence,
-)
+/** The design in the URL, which is the only place it is recorded. */
+const design = computed(() => (route.params.design as string | undefined) ?? null)
+const { data: snapshot, feedStatus } = useDesign(design)
 
-const edit = useEditDesign(design)
+const mode = computed(() => (route.name === 'review' ? 'review' : 'design'))
 
-// Open the first design so the tool is useful on arrival rather than showing an
-// empty frame and a picker.
-watch(
-  () => designs.data.value,
-  (available) => {
-    if (!store.design && available?.length) store.open(available[0].id)
-  },
-  { immediate: true },
-)
+function go(next: 'design' | 'review') {
+  if (!design.value) return
+  void router.push({ name: next, params: { design: design.value } })
+}
 
-const failure = computed(
-  () => designError.value ?? analysisError.value ?? comparisonError.value ?? edit.error.value,
-)
-
-function apply(mutations: Mutation[]) {
-  edit.mutate(mutations)
+function open(id: string) {
+  void router.push({ name: mode.value, params: { design: id } })
 }
 </script>
 
 <template>
-  <div class="workbench">
-    <header>
-      <div class="brand">
-        <strong>Optimist</strong>
-        <span class="feed" :class="feedStatus">{{ feedStatus }}</span>
-      </div>
+  <div class="shell">
+    <header class="bar">
+      <button class="brand" data-test="home" @click="router.push({ name: 'welcome' })">
+        <el-icon :size="17"><i-data-analysis /></el-icon>
+        <span>Optimist</span>
+      </button>
 
-      <label class="picker">
-        <span class="sr-only">Design</span>
-        <select :value="store.design ?? ''" @change="store.open(($event.target as HTMLSelectElement).value)">
-          <option v-for="entry in designs.data.value ?? []" :key="entry.id" :value="entry.id">
-            {{ entry.name }}
-          </option>
-        </select>
-      </label>
-
-      <nav class="views">
-        <button
-          v-for="view in (['design', 'bottlenecks', 'compare'] as const)"
-          :key="view"
-          type="button"
-          :class="{ active: store.view === view }"
-          :aria-pressed="store.view === view"
-          @click="store.view = view"
+      <template v-if="design">
+        <el-divider direction="vertical" />
+        <el-select
+          :model-value="design"
+          size="small"
+          class="picker"
+          data-test="design-picker"
+          @change="open"
         >
-          {{ view }}
-        </button>
-      </nav>
+          <el-option
+            v-for="entry in designs ?? []"
+            :key="entry.id"
+            :label="entry.name"
+            :value="entry.id"
+            :disabled="!!entry.unreadable"
+          />
+        </el-select>
 
-      <label class="control">
-        <span>samples</span>
-        <input v-model.number="store.samples" type="number" min="64" max="20000" step="500" />
-      </label>
-      <label class="control">
-        <span>horizon</span>
-        <input v-model.number="store.horizon" type="number" min="1" max="500" />
-      </label>
+        <!--
+          Two modes rather than a row of panels. Editing a design and judging one
+          are different jobs done at different times, and the tool showing only
+          what the current job needs is the point of separating them.
+        -->
+        <el-radio-group
+          :model-value="mode"
+          size="small"
+          class="modes"
+          data-test="mode-switch"
+          @change="(value: string | number | boolean) => go(value as 'design' | 'review')"
+        >
+          <el-radio-button value="design">
+            <el-icon><i-edit-pen /></el-icon>
+            <span>Design</span>
+          </el-radio-button>
+          <el-radio-button value="review">
+            <el-icon><i-trend-charts /></el-icon>
+            <span>Review</span>
+          </el-radio-button>
+        </el-radio-group>
 
-      <span v-if="isFetching" class="solving">solving</span>
-    </header>
-
-    <p v-if="failure" class="failure" role="alert">
-      {{ failure.message }}
-      <span v-for="line in (failure as { advice?: string[] }).advice ?? []" :key="line" class="advice">
-        {{ line }}
-      </span>
-    </p>
-
-    <main>
-      <template v-if="snapshot">
-        <div class="title">
-          <h1>{{ snapshot.name }}</h1>
-          <p>{{ snapshot.summary }}</p>
-        </div>
-
-        <DesignPanel
-          v-if="store.view === 'design'"
-          :model="snapshot.model"
-          :catalogue="catalogue"
-          @edit="apply"
-        />
-
-        <BottlenecksPanel v-else-if="store.view === 'bottlenecks' && analysis" :analysis="analysis" />
-
-        <template v-else-if="store.view === 'compare'">
-          <label class="picker wide">
-            <span class="sr-only">Proposal</span>
-            <select
-              :value="store.intervention ?? ''"
-              @change="store.intervention = ($event.target as HTMLSelectElement).value || null"
-            >
-              <option value="">Choose a proposal&hellip;</option>
-              <option v-for="entry in snapshot.model.interventions" :key="entry.id" :value="entry.id">
-                {{ entry.name }}
-              </option>
-            </select>
-          </label>
-          <p v-if="store.intervention" class="hint">
-            {{ snapshot.model.interventions.find((i) => i.id === store.intervention)?.summary }}
-          </p>
-          <ComparisonPanel v-if="comparison" :comparison="comparison" />
-        </template>
-
-        <p v-else class="empty">Solving&hellip;</p>
+        <span class="title">{{ snapshot?.name }}</span>
       </template>
 
-      <p v-else-if="!designs.data.value?.length" class="empty">
-        This server is not holding any designs.
-      </p>
-    </main>
+      <span class="spacer" />
+
+      <template v-if="design">
+        <el-tooltip content="Draws carried through every uncertain quantity" placement="bottom">
+          <div class="control">
+            <span>samples</span>
+            <el-input-number
+              v-model="store.samples"
+              :min="64"
+              :max="20000"
+              :step="500"
+              size="small"
+              controls-position="right"
+              data-test="samples"
+            />
+          </div>
+        </el-tooltip>
+        <el-tooltip content="Steps to advance the model through" placement="bottom">
+          <div class="control">
+            <span>horizon</span>
+            <el-input-number
+              v-model="store.horizon"
+              :min="1"
+              :max="500"
+              size="small"
+              controls-position="right"
+              data-test="horizon"
+            />
+          </div>
+        </el-tooltip>
+        <el-tooltip :content="`Change feed ${feedStatus}`" placement="bottom">
+          <span class="feed" :class="feedStatus" :data-status="feedStatus" data-test="feed" />
+        </el-tooltip>
+      </template>
+    </header>
+
+    <router-view />
   </div>
 </template>
 
 <style scoped>
-.workbench { display: flex; flex-direction: column; height: 100vh; }
-header {
+.shell { display: flex; flex-direction: column; height: 100vh; }
+.bar {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  height: 46px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-strong);
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
-.brand { display: flex; align-items: baseline; gap: var(--space-2); }
-.feed { font-size: var(--text-2xs); font-family: var(--mono); color: var(--muted); }
-.feed.open { color: var(--green); }
-.feed.closed { color: var(--danger); }
-select, input { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 4px 7px; background: var(--surface); }
-.views { display: flex; gap: 2px; }
-.views button {
-  border: 1px solid transparent;
-  background: none;
-  border-radius: var(--radius-sm);
-  padding: 4px 10px;
-  font-size: var(--text-sm);
-  text-transform: capitalize;
-}
-.views button.active { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 650; }
-.control { display: flex; align-items: center; gap: var(--space-1); font-size: var(--text-2xs); color: var(--muted); }
-.control input { width: 7ch; font-family: var(--mono); }
-.solving { font-size: var(--text-2xs); color: var(--muted); font-family: var(--mono); }
-main { flex: 1; overflow: auto; padding: var(--space-5); max-width: var(--measure); width: 100%; }
-.title h1 { font-size: var(--text-2xl); margin: 0; }
-.title p { color: var(--muted); font-size: var(--text-sm); margin: var(--space-1) 0 var(--space-5); max-width: 70ch; }
-.failure {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  background: var(--danger-surface);
-  border-bottom: 1px solid var(--danger-line);
-  color: var(--danger);
-  font-size: var(--text-sm);
+.brand { flex: 0 0 auto; }
+.brand {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  background: none;
+  font-weight: 700;
+  font-size: var(--text-md);
+  color: var(--ink);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
 }
-.advice { font-size: var(--text-xs); opacity: 0.85; }
-.picker.wide { display: block; margin-bottom: var(--space-2); }
-.hint { color: var(--muted); font-size: var(--text-xs); margin: 0 0 var(--space-4); max-width: 70ch; }
-.empty { color: var(--muted); font-size: var(--text-sm); }
+.brand:hover { background: var(--green-soft); }
+.picker { width: 190px; flex: 0 0 auto; }
+.modes { flex: 0 0 auto; }
+.modes :deep(.el-radio-group) { flex-wrap: nowrap; }
+.modes :deep(.el-radio-button__inner) { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.title {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.spacer { flex: 1; }
+.control { display: flex; align-items: center; gap: var(--space-1); }
+.control span { font-size: var(--text-2xs); color: var(--muted); }
+.control :deep(.el-input-number) { width: 92px; }
+.feed { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.feed.open { background: #2f9e69; }
+.feed.closed { background: var(--danger); }
+.feed.connecting { background: var(--caution); }
 </style>

@@ -1,31 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-/** Which part of a design is on screen. */
-export type View = 'design' | 'bottlenecks' | 'compare'
-
 /**
- * What the workbench is looking at.
+ * How hard the solver is asked to work.
  *
- * Only the selections a URL should be able to restore live here. Everything
- * fetched from the server — the design, the catalogue, an analysis — belongs to
- * the query layer, so that state which can go stale is never held somewhere
- * nothing knows to refresh it.
+ * Which design is open, which mode it is in, and what is selected all live in
+ * the URL, because those are the things somebody sends to a colleague. What is
+ * left here describes how a screen was produced rather than what is on it, so it
+ * is deliberately not addressable: a link should not carry a sample count that
+ * silently makes the recipient's machine work harder than the sender's did.
  */
 export const useWorkbenchStore = defineStore('workbench', () => {
-  const design = ref<string | null>(null)
-  const view = ref<View>('design')
-  const intervention = ref<string | null>(null)
   const samples = ref(1000)
-  const horizon = ref(1)
+  // Long enough that a chart over time has something to show, and short enough
+  // that a design still solves while somebody is typing into it.
+  const horizon = ref(20)
+  const seed = ref(0)
 
-  function open(id: string | null) {
-    if (design.value === id) return
-    design.value = id
-    // A proposal belongs to the design that declared it, so carrying a selection
-    // across would ask the server about something that does not exist there.
-    intervention.value = null
-  }
-
-  return { design, view, intervention, samples, horizon, open }
+  return { samples, horizon, seed }
 })

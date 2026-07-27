@@ -5,7 +5,10 @@ import type { Analysis } from '../api/types'
 import { formatSiNumber } from '../domain/humanNumber'
 import DistributionChart from './DistributionChart.vue'
 
-const props = defineProps<{ analysis: Analysis }>()
+const props = withDefaults(
+  defineProps<{ analysis: Analysis; quantities?: boolean }>(),
+  { quantities: true },
+)
 
 /**
  * Constraints worst first, as the server ranked them.
@@ -46,8 +49,19 @@ function share(value: number): string {
         <tr v-for="entry in ranked" :key="`${entry.component}/${entry.constraint}`">
           <th scope="row" class="what">
             <span class="component">{{ entry.component }}</span>
-            <span class="constraint">{{ entry.constraint }}</span>
-            <span class="summary">{{ entry.summary }}</span>
+            <!--
+              Beside a chart there is no room for the prose, and squeezing it in
+              costs the numbers the width they need to stay readable. It moves to
+              a tooltip rather than being dropped: what saturating a constraint
+              does to the system is the part a reader cannot reconstruct.
+            -->
+            <el-tooltip v-if="!quantities" :content="entry.summary" placement="right" :show-after="200">
+              <span class="constraint">{{ entry.constraint }}</span>
+            </el-tooltip>
+            <template v-else>
+              <span class="constraint">{{ entry.constraint }}</span>
+              <span class="summary">{{ entry.summary }}</span>
+            </template>
             <span v-if="entry.replicas > 1" class="replicas">
               across {{ formatSiNumber(entry.replicas) }} replicas
             </span>
@@ -69,7 +83,7 @@ function share(value: number): string {
       </tbody>
     </table>
 
-    <div v-if="Object.keys(analysis.components).length" class="quantities">
+    <div v-if="quantities && Object.keys(analysis.components).length" class="quantities">
       <h3>Solved quantities</h3>
       <div class="grid">
         <article v-for="(channels, component) in analysis.components" :key="component" class="card">
@@ -98,12 +112,12 @@ function share(value: number): string {
 }
 .empty { color: var(--muted); font-size: var(--text-sm); margin: 0; }
 .ranking { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
-.ranking th, .ranking td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); vertical-align: top; }
+.ranking th, .ranking td { text-align: left; padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--line); vertical-align: top; }
 .numeric { text-align: right; font-family: var(--mono); white-space: nowrap; }
 .over { color: var(--danger); font-weight: 650; }
-.what { display: flex; flex-direction: column; gap: 2px; font-weight: 400; }
+.what { display: flex; flex-direction: column; gap: 1px; font-weight: 400; }
 .component { font-weight: 700; }
-.constraint { font-family: var(--mono); font-size: var(--text-xs); color: var(--muted); }
+.constraint { font-family: var(--mono); font-size: var(--text-xs); color: var(--muted); cursor: help; }
 .summary { color: var(--muted); font-size: var(--text-xs); max-width: 52ch; }
 .replicas { font-size: var(--text-2xs); color: var(--muted); }
 .quantities h3 { font-size: var(--text-md); margin: 0 0 var(--space-3); }

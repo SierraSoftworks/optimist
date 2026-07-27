@@ -13,6 +13,14 @@ export interface DesignSummary {
   id: string
   name: string
   summary: string
+  /**
+   * Why the design could not be read, where it could not.
+   *
+   * A design that fails to load is still listed. Hiding it would leave somebody
+   * unable to find a design they know exists, with no way to discover that its
+   * file is malformed.
+   */
+  unreadable?: string
 }
 
 /** A shared quantity every part of a design can refer to. */
@@ -133,12 +141,14 @@ export interface MutatorType {
 /**
  * Everything a design may build from.
  *
- * Both are keyed by identifier rather than listed, because every use of them is
- * a lookup from a component's declared type.
+ * Both catalogues are keyed by identifier rather than listed, because every use
+ * of them is a lookup from a component's declared type.
  */
 export interface Catalogue {
   component_types: Record<string, ComponentType>
   mutators: Record<string, MutatorType>
+  /** Every name an expression may call, for the editor to complete against. */
+  builtins: string[]
 }
 
 /**
@@ -168,12 +178,24 @@ export interface Bottleneck {
   headroom: number
 }
 
+/** Every solved channel at one moment, by component and then by channel. */
+export type Solved = Record<string, Record<string, Quantity>>
+
+/** One moment in a design's history. */
+export interface Frame {
+  time: number
+  converged: boolean
+  components: Solved
+}
+
 /** A solved design and what constrains it. */
 export interface Analysis {
   sequence: number
   converged: boolean
   iterations: number
-  components: Record<string, Record<string, Quantity>>
+  components: Solved
+  /** Present only where the caller asked for a series. */
+  series?: Frame[]
   bottlenecks: Bottleneck[]
 }
 
@@ -181,10 +203,13 @@ export interface Analysis {
 export interface Movement {
   component: string
   constraint: string
-  summary: string
-  utilisation_before: number
-  utilisation_after: number
+  /** Mean utilisation without the proposal. */
+  before: number
+  /** Mean utilisation with it. */
+  after: number
+  /** Share of draws that bound without the proposal. */
   bound_before: number
+  /** Share of draws that bind with it. */
   bound_after: number
 }
 

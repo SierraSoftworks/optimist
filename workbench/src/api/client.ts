@@ -34,6 +34,8 @@ export interface SolveControls {
   horizon?: number
   step?: number
   intervention?: string | null
+  /** Ask for every step, not only the one the design settled on. */
+  series?: boolean
 }
 
 function query(controls: SolveControls): string {
@@ -43,6 +45,7 @@ function query(controls: SolveControls): string {
   if (controls.horizon !== undefined) parameters.set('horizon', String(controls.horizon))
   if (controls.step !== undefined) parameters.set('step', String(controls.step))
   if (controls.intervention) parameters.set('intervention', controls.intervention)
+  if (controls.series) parameters.set('series', 'true')
   const rendered = parameters.toString()
   return rendered ? `?${rendered}` : ''
 }
@@ -67,6 +70,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   designs: () => request<DesignSummary[]>('/designs'),
+
+  create: (id: string, name: string, summary: string) =>
+    request<Snapshot>('/designs', {
+      method: 'POST',
+      body: JSON.stringify({ id, name, summary }),
+    }),
 
   design: (design: string) => request<Snapshot>(`/designs/${encodeURIComponent(design)}`),
 

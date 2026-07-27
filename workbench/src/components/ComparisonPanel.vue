@@ -19,7 +19,7 @@ function direction(movement: Movement): Direction {
   const after = movement.bound_after
   if (after > 0 && before === 0) return 'broken'
   if (before > 0 && after === 0) return 'relieved'
-  const shift = movement.utilisation_after - movement.utilisation_before
+  const shift = movement.after - movement.before
   if (Math.abs(shift) < 1e-9) return 'unchanged'
   return shift < 0 ? 'eased' : 'loaded'
 }
@@ -27,12 +27,7 @@ function direction(movement: Movement): Direction {
 const rows = computed(() =>
   props.comparison.movements
     .map((movement) => ({ movement, direction: direction(movement) }))
-    .sort(
-      (a, b) =>
-        b.movement.utilisation_after -
-        b.movement.utilisation_before -
-        (a.movement.utilisation_after - a.movement.utilisation_before),
-    ),
+    .sort((a, b) => b.movement.after - b.movement.before - (a.movement.after - a.movement.before)),
 )
 
 const broke = computed(() => rows.value.filter((row) => row.direction === 'broken'))
@@ -60,8 +55,8 @@ const broke = computed(() => rows.value.filter((row) => row.direction === 'broke
             <span class="component">{{ row.movement.component }}</span>
             <span class="constraint">{{ row.movement.constraint }}</span>
           </th>
-          <td class="numeric">{{ row.movement.utilisation_before.toFixed(3) }}</td>
-          <td class="numeric">{{ row.movement.utilisation_after.toFixed(3) }}</td>
+          <td class="numeric">{{ row.movement.before.toFixed(3) }}</td>
+          <td class="numeric">{{ row.movement.after.toFixed(3) }}</td>
           <td><span class="effect" :class="row.direction">{{ row.direction }}</span></td>
         </tr>
       </tbody>
