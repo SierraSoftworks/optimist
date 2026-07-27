@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ObjectiveTrajectoryPoint } from '../api/types'
 import { impactTone } from '../domain/optimizationImpact'
 import { outcomeScale, positionOn } from '../domain/outcomeScale'
+import { formatSiNumber } from '../domain/humanNumber'
 
 const props = defineProps<{
   points: ObjectiveTrajectoryPoint[]
@@ -14,11 +15,31 @@ const props = defineProps<{
   projectedReference: boolean
 }>()
 
-const width = 320
+/**
+ * The chart draws in CSS pixels rather than in a fixed coordinate space.
+ *
+ * A viewBox stretched to fill its container scales everything inside it, text
+ * included: at the width these cards reach, an 11px label was rendering at 22px
+ * and dwarfing the line it annotated. Measuring the host and drawing at 1:1 keeps
+ * a label the size the type scale says it is, whatever the card is doing.
+ */
+const host = ref<HTMLElement | null>(null)
+const width = ref(320)
 const height = 132
-const inset = { top: 12, right: 12, bottom: 24, left: 46 }
-const usableWidth = width - inset.left - inset.right
+const inset = { top: 14, right: 10, bottom: 22, left: 44 }
+const usableWidth = computed(() => width.value - inset.left - inset.right)
 const usableHeight = height - inset.top - inset.bottom
+
+let observer: ResizeObserver | null = null
+onMounted(() => {
+  if (!host.value || typeof ResizeObserver === 'undefined') return
+  observer = new ResizeObserver(([entry]) => {
+    const measured = entry?.contentRect.width ?? 0
+    if (measured > 0) width.value = Math.round(measured)
+  })
+  observer.observe(host.value)
+})
+onBeforeUnmount(() => observer?.disconnect())
 
 const states = computed(() => props.points.map((point) => point.state.mean))
 const spread = computed(() => props.points.map((point) => {
@@ -61,7 +82,7 @@ const axis = computed(() => `${format(scale.value.upper)} to ${format(scale.valu
 
 function x(index: number) {
   const count = props.points.length
-  return inset.left + (count <= 1 ? 0 : (index / (count - 1)) * usableWidth)
+  return inset.left + (count <= 1 ? 0 : (index / (count - 1)) * usableWidth.value)
 }
 
 function y(value: number) {
@@ -89,16 +110,11 @@ function area(top: Array<number | null>, bottom: Array<number | null>) {
 /**
  * Renders a value short enough for the axis gutter.
  *
- * A logarithmic axis over a saturating quantity puts a very small number at the
- * bottom, and its decimal form is wide enough to run off the chart. Exponent
- * form keeps every label the same handful of characters.
+ * A logarithmic axis over a saturating quantity reaches both ends of what plain
+ * decimals write compactly, so magnitudes are carried by an SI prefix instead.
  */
 function format(value: number) {
-  const magnitude = Math.abs(value)
-  if (magnitude >= 1e6) return `${Number((value / 1e6).toPrecision(3))}M`
-  if (magnitude >= 1e4) return `${Number((value / 1e3).toPrecision(3))}K`
-  if (magnitude > 0 && magnitude < 0.01) return value.toExponential(1)
-  return Number(value.toPrecision(3)).toString()
+  return formatSiNumber(value)
 }
 
 function describe(index: number) {
@@ -123,26 +139,28 @@ function describe(index: number) {
         <template v-else>dashed line is the resting level</template>
       </span>
     </figcaption>
-    <svg :viewBox="`0 0 ${width} ${height}`" role="img">
-      <path v-if="deviation" :d="deviation" class="deviation" />
-      <path v-if="upperLine" :d="upperLine" class="spread-line" />
-      <path v-if="lowerLine" :d="lowerLine" class="spread-line" />
-      <path v-if="referenceLine" :d="referenceLine" class="reference-line" />
-      <path v-if="candidateLine" :d="candidateLine" class="trajectory-line" />
-      <circle
-        v-for="(point, index) in points"
-        :key="point.period"
-        :cx="x(index)"
-        :cy="y(states[index] ?? scale.lower)"
-        r="2.5"
-      >
-        <title>Period {{ point.period }}: {{ describe(index) }}</title>
-      </circle>
-      <text :x="inset.left" :y="height - 6">0</text>
-      <text :x="width - inset.right" :y="height - 6" text-anchor="end">{{ points.at(-1)?.period ?? 0 }} periods</text>
-      <text x="2" :y="inset.top + 4">{{ format(scale.upper) }}</text>
-      <text x="2" :y="height - inset.bottom">{{ format(scale.lower) }}</text>
-    </svg>
+    <div ref="host" class="plot">
+      <svg :viewBox="`0 0 ${width} ${height}`" :style="{ height: `${height}px` }" role="img">
+        <path v-if="deviation" :d="deviation" class="deviation" />
+        <path v-if="upperLine" :d="upperLine" class="spread-line" />
+        <path v-if="lowerLine" :d="lowerLine" class="spread-line" />
+        <path v-if="referenceLine" :d="referenceLine" class="reference-line" />
+        <path v-if="candidateLine" :d="candidateLine" class="trajectory-line" />
+        <circle
+          v-for="(point, index) in points"
+          :key="point.period"
+          :cx="x(index)"
+          :cy="y(states[index] ?? scale.lower)"
+          r="1.75"
+        >
+          <title>Period {{ point.period }}: {{ describe(index) }}</title>
+        </circle>
+        <text :x="inset.left" :y="height - 6">0</text>
+        <text :x="width - inset.right" :y="height - 6" text-anchor="end">{{ points.at(-1)?.period ?? 0 }} periods</text>
+        <text x="0" :y="inset.top + 4">{{ format(scale.upper) }}</text>
+        <text x="0" :y="height - inset.bottom">{{ format(scale.lower) }}</text>
+      </svg>
+    </div>
     <ol class="sr-only">
       <li>Axis {{ axis }}</li>
       <li v-for="(point, index) in points" :key="point.period">Period {{ point.period }}: {{ describe(index) }}</li>
@@ -155,10 +173,11 @@ function describe(index: number) {
 .trajectory figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
 .trajectory figcaption strong { font-size: var(--text-md); }
 .trajectory figcaption span { color: var(--muted); font-size: var(--text-xs); }
-svg { display: block; width: 100%; height: auto; margin-top: var(--space-2); overflow: visible; }
+svg { display: block; width: 100%; margin-top: var(--space-2); overflow: visible; }
+.plot { min-width: 0; }
 text { fill: var(--muted); font-size: var(--text-2xs); font-family: var(--mono); }
 .reference-line { fill: none; stroke: var(--muted); stroke-width: 1.25; stroke-dasharray: 4 3; opacity: 0.85; }
-.trajectory-line { fill: none; stroke-width: 2; }
+.trajectory-line { fill: none; stroke-width: 1.75; }
 .spread-line { fill: none; stroke-width: 0.75; stroke-dasharray: 1 2; opacity: 0.55; }
 .deviation { stroke: none; opacity: 0.22; }
 circle { fill: currentColor; }

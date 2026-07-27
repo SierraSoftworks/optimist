@@ -16,3 +16,35 @@ export function formatHumanNumber(value: number) {
   }
   return Number(value.toPrecision(6)).toString()
 }
+
+const SI_PREFIXES: Array<[number, string]> = [
+  [1e12, 'T'],
+  [1e9, 'G'],
+  [1e6, 'M'],
+  [1e3, 'k'],
+  [1, ''],
+  [1e-3, 'm'],
+  [1e-6, 'µ'],
+  [1e-9, 'n'],
+  [1e-12, 'p'],
+]
+
+/**
+ * Renders a value with an SI magnitude prefix, for places with no room to spare.
+ *
+ * A chart axis has a few characters of gutter, and a quantity plotted over
+ * several decades reaches both ends of what plain decimals can write compactly:
+ * `0.000137` and `1370000` are each wide enough to run off the frame, while
+ * `137µ` and `1.37M` are not. Unlike [`formatHumanNumber`], which uses the
+ * financial `B` for billions, this follows SI so that `k`, `M`, and `G` mean what
+ * a reader of a measured quantity expects.
+ */
+export function formatSiNumber(value: number, digits = 3) {
+  if (!Number.isFinite(value)) return '—'
+  if (value === 0) return '0'
+  const magnitude = Math.abs(value)
+  if (magnitude < 1e-15) return value.toExponential(1)
+  const [factor, prefix] = SI_PREFIXES.find(([threshold]) => magnitude >= threshold)
+    ?? SI_PREFIXES[SI_PREFIXES.length - 1]!
+  return `${Number((value / factor).toPrecision(digits))}${prefix}`
+}
