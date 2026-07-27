@@ -138,6 +138,33 @@ impl SystemModel {
             .collect()
     }
 
+    /// Sorts the model into the order persistence reads and writes it in.
+    ///
+    /// Ordering carries no meaning: the graph is defined by relationships, and
+    /// the solver visits every component on every pass. It is not, however,
+    /// inert. A pass updates components as it goes, so one evaluated after its
+    /// upstream sees that upstream's new value while one evaluated before sees
+    /// the previous pass's. Order therefore changes the path an iteration takes
+    /// to its fixed point, and with a finite tolerance it changes the last
+    /// digits of where that iteration stops.
+    ///
+    /// Fixing a canonical order makes a design reproducible regardless of how it
+    /// was assembled or which files happened to be read first. A model that has
+    /// been through persistence is already in this order.
+    pub fn canonicalise(mut self) -> Self {
+        self.components
+            .sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
+        self.relationships.sort_by(|left, right| {
+            left.from
+                .as_str()
+                .cmp(right.from.as_str())
+                .then(left.to.as_str().cmp(right.to.as_str()))
+        });
+        self.scale_units
+            .sort_by(|left, right| left.id.as_str().cmp(right.id.as_str()));
+        self
+    }
+
     /// Borrows one of the model's interventions.
     pub(super) fn intervention(
         &self,
