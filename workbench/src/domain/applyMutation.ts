@@ -30,6 +30,10 @@ export function applyMutation(model: SystemModel, mutation: Mutation): SystemMod
         relationships: model.relationships.filter(
           (r) => r.from !== mutation.id && r.to !== mutation.id,
         ),
+        scale_units: model.scale_units.map((u) => ({
+          ...u,
+          members: u.members.filter((member) => member !== mutation.id),
+        })),
       }
     case 'set_relationship': {
       const rest = model.relationships.filter(
@@ -47,7 +51,14 @@ export function applyMutation(model: SystemModel, mutation: Mutation): SystemMod
     case 'set_scale_unit':
       return { ...model, scale_units: replace(model.scale_units, mutation.scale_unit, 'id') }
     case 'remove_scale_unit':
-      return { ...model, scale_units: model.scale_units.filter((u) => u.id !== mutation.id) }
+      // A unit that was nested inside the removed one becomes outermost, rather
+      // than naming an enclosure that no longer exists.
+      return {
+        ...model,
+        scale_units: model.scale_units
+          .filter((u) => u.id !== mutation.id)
+          .map((u) => (u.parent === mutation.id ? { ...u, parent: null } : u)),
+      }
     case 'set_intervention':
       return { ...model, interventions: replace(model.interventions, mutation.intervention, 'id') }
     case 'remove_intervention':

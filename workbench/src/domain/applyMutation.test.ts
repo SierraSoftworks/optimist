@@ -103,6 +103,51 @@ describe('applyMutation', () => {
     expect(next.relationships[0].mutators).toHaveLength(1)
   })
 
+  /**
+   * The server drops a removed component from every unit that held it, because
+   * a unit naming a component that is gone will not compile. Leaving it here
+   * would show a member that vanishes on the next reload.
+   */
+  it('releases a removed component from its scale unit', () => {
+    const grouped = apply(model(), {
+      kind: 'set_scale_unit',
+      scale_unit: {
+        id: 'cell',
+        name: 'Cell',
+        summary: '',
+        replicas: '12',
+        distribution: 'sharded',
+        members: ['users', 'api'],
+      },
+    })
+    const next = apply(grouped, { kind: 'remove_component', id: 'api' })
+    expect(next.scale_units[0].members).toEqual(['users'])
+  })
+
+  /**
+   * Nesting names an enclosing unit, so removing one has to release whatever
+   * sat inside it. A parent that resolves to nothing gives its members no
+   * replica count at all.
+   */
+  it('lifts a nested unit out when its enclosure is removed', () => {
+    const unit = (id: string, parent?: string) => ({
+      kind: 'set_scale_unit' as const,
+      scale_unit: {
+        id,
+        name: id,
+        summary: '',
+        replicas: '3',
+        distribution: 'sharded' as const,
+        members: [],
+        parent: parent ?? null,
+      },
+    })
+    const nested = apply(model(), unit('region'), unit('cell', 'region'))
+    const next = apply(nested, { kind: 'remove_scale_unit', id: 'region' })
+    expect(next.scale_units.map((entry) => entry.id)).toEqual(['cell'])
+    expect(next.scale_units[0].parent).toBeNull()
+  })
+
   it('sets and removes interventions', () => {
     const added = apply(model(), {
       kind: 'set_intervention',
