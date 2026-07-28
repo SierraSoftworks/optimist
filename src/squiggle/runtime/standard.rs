@@ -293,7 +293,20 @@ pub(crate) fn builtin_names() -> Vec<&'static str> {
     names
 }
 
+/// Returns the shared root scope holding every builtin binding.
+///
+/// The frame is built once per thread and handed out by reference, because
+/// assembling a couple of hundred entries costs more than evaluating the short
+/// expressions a caller re-runs thousands of times. Sharing it is sound because
+/// a run never writes here: bindings and program locals live in child scopes.
 pub(super) fn environment() -> Environment {
+    thread_local! {
+        static ROOT: Environment = build();
+    }
+    ROOT.with(Clone::clone)
+}
+
+fn build() -> Environment {
     let environment = Environment::root();
     environment.define("pi", Value::Number(std::f64::consts::PI));
     environment.define("e", Value::Number(std::f64::consts::E));

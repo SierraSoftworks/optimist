@@ -12,13 +12,16 @@
 //! property keeps the same draws on every pass. An iteration whose inputs were
 //! redrawn each time would be chasing sampling noise rather than converging.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use crate::squiggle::{Runtime, RuntimeConfig, Value, ast::Program, parse};
 
 use super::{
     evaluate::{EvaluationError, LinkId},
-    expression::{STEP, TIME, free_names},
+    expression::{STEP, TIME, references},
     manifest::ComponentType,
     model::{Component, ComponentId, Relationship, SystemModel},
     mutator::Mutator,
@@ -111,10 +114,9 @@ pub(super) struct Plan {
 /// is fixed, which is what lets relaxation converge instead of chasing values
 /// that moved underneath it.
 ///
-/// Expressions are reparsed for each step. That is wasteful for a long horizon
-/// and is the obvious thing to hoist once profiling says it matters; separating
-/// structure from values before there is a reason to would have complicated the
-/// plan for no measured gain.
+/// Expressions are resolved through a cache, so a horizon pays to parse each of
+/// them once rather than once per step. The values they produce are recomputed
+/// every step, which is the part that can actually differ.
 pub(super) fn prepare(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
@@ -246,7 +248,7 @@ fn resolve_scaling(
     let mut counts = BTreeMap::new();
     for unit in &model.scale_units {
         let location = format!("replica count of scale unit '{}'", unit.id);
-        let program = parse(&unit.replicas).map_err(|diagnostics| EvaluationError::Syntax {
+        let program = syntax(&unit.replicas).map_err(|diagnostics| EvaluationError::Syntax {
             location: location.clone(),
             message: first_message(&diagnostics),
         })?;
@@ -443,7 +445,7 @@ fn link(
     };
     let source = relationship.capacity_source();
     let location = format!("capacity of relationship {id}");
-    let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+    let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
         location: location.clone(),
         message: first_message(&diagnostics),
     })?;
@@ -488,7 +490,7 @@ fn prepare_mutators(
                     property: name.clone(),
                 })?;
             let location = format!("property '{name}' of {} on {owner}", mutator.id);
-            let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+            let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
                 location: location.clone(),
                 message: first_message(&diagnostics),
             })?;
@@ -517,7 +519,7 @@ fn prepare_mutators(
         let mut requests = Vec::new();
         for (signal, transform) in &mutator.requests {
             let program =
-                parse(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
+                syntax(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
                     location: format!("request '{signal}' of {} on {owner}", mutator.id),
                     message: first_message(&diagnostics),
                 })?;
@@ -526,7 +528,7 @@ fn prepare_mutators(
         let mut responses = Vec::new();
         for (signal, transform) in &mutator.responses {
             let program =
-                parse(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
+                syntax(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
                     location: format!("response '{signal}' of {} on {owner}", mutator.id),
                     message: first_message(&diagnostics),
                 })?;
@@ -569,7 +571,7 @@ fn evaluate_scratchpad(
     let mut globals = BTreeMap::new();
     for entry in &model.scratchpad {
         let source = overrides.get(&entry.name).unwrap_or(&entry.expression);
-        let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+        let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
             location: format!("scratchpad entry '{}'", entry.name),
             message: first_message(&diagnostics),
         })?;
@@ -610,7 +612,7 @@ fn evaluate_properties(
                 property: name.clone(),
             })?;
         let location = format!("property '{name}' of component '{}'", component.id);
-        let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+        let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
             location: location.clone(),
             message: first_message(&diagnostics),
         })?;
@@ -658,15 +660,11 @@ fn order_channels(
     for (name, channel) in &component_type.channels {
         let location = format!("channel '{name}' of component '{}'", component.id);
         let program =
-            parse(&channel.expression).map_err(|diagnostics| EvaluationError::Syntax {
+            syntax(&channel.expression).map_err(|diagnostics| EvaluationError::Syntax {
                 location: location.clone(),
                 message: first_message(&diagnostics),
             })?;
-        let references = free_names(&channel.expression)
-            .map_err(|diagnostics| EvaluationError::Syntax {
-                location,
-                message: first_message(&diagnostics),
-            })?
+        let references = references(&program)
             .into_iter()
             .filter(|reference| names.contains(reference))
             .collect::<BTreeSet<_>>();
@@ -694,9 +692,41 @@ fn order_channels(
 }
 
 fn compile(component: &ComponentId, name: &str, source: &str) -> Result<Program, EvaluationError> {
-    parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+    syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
         location: format!("constraint '{name}' of component '{component}'"),
         message: first_message(&diagnostics),
+    })
+}
+
+/// Distinct expressions remembered before the cache is emptied and refilled.
+///
+/// A design's expressions number in the tens, and a process serving many designs
+/// only ever holds the ones it has been asked about. The bound exists so that
+/// cannot grow without limit, not because reaching it is expected.
+const CACHED_PROGRAMS: usize = 4_096;
+
+thread_local! {
+    static PARSED: RefCell<BTreeMap<String, Program>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Parses an expression, reusing the syntax tree if it has been seen before.
+///
+/// A plan is resolved afresh at every step of a horizon because the values in it
+/// may depend on elapsed time, but the expressions producing those values are
+/// fixed by the model. Parsing them again each step dominated a long run; the
+/// tree is small enough that handing back a copy costs a fraction of rebuilding
+/// one.
+fn syntax(source: &str) -> Result<Program, Vec<crate::squiggle::Diagnostic>> {
+    PARSED.with_borrow_mut(|cache| {
+        if let Some(program) = cache.get(source) {
+            return Ok(program.clone());
+        }
+        let program = parse(source)?;
+        if cache.len() >= CACHED_PROGRAMS {
+            cache.clear();
+        }
+        cache.insert(source.to_owned(), program.clone());
+        Ok(program)
     })
 }
 

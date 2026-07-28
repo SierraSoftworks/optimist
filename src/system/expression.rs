@@ -16,7 +16,7 @@
 //! and `out.<port>` is what came back, so neither name can be confused for the
 //! response the component is sending or the request it is making.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::OnceLock};
 
 use crate::squiggle::{
     Diagnostic,
@@ -54,28 +54,66 @@ pub(super) const MUTATOR_RESERVED: &[&str] = &[TIME, STEP, SIGNAL, REQUEST, RESP
 
 /// Parses an expression and reports the names it expects to be given.
 pub(super) fn free_names(source: &str) -> Result<BTreeSet<String>, Vec<Diagnostic>> {
-    let program = parse(source)?;
-    let mut free = BTreeSet::new();
-    let mut bound = builtin_names()
-        .into_iter()
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>();
-    // A namespaced builtin is reached through its root, so `Queue.mm1Wait` makes
-    // `Queue` a reference the evaluator resolves rather than one a manifest owes.
-    let roots = bound
-        .iter()
-        .filter_map(|name| name.split_once('.').map(|(root, _)| root.to_owned()))
-        .collect::<Vec<_>>();
-    bound.extend(roots);
-    bound.extend(["pi", "e", "infinity"].map(str::to_owned));
-    visit_program(&program, &mut bound, &mut free);
-    Ok(free)
+    Ok(references(&parse(source)?))
 }
 
-fn visit_program(program: &Program, bound: &mut BTreeSet<String>, free: &mut BTreeSet<String>) {
+/// Reports the names an already parsed expression expects to be given.
+pub(super) fn references(program: &Program) -> BTreeSet<String> {
+    let mut free = BTreeSet::new();
+    let mut scope = Scope::default();
+    visit_program(program, &mut scope, &mut free);
+    free
+}
+
+/// The names in view at one point in an expression.
+///
+/// Only the locally bound names are owned, so entering a block or a lambda
+/// copies whatever that expression has declared rather than the whole builtin
+/// vocabulary it can also see.
+#[derive(Clone, Default)]
+struct Scope {
+    local: BTreeSet<String>,
+}
+
+impl Scope {
+    fn contains(&self, name: &str) -> bool {
+        self.local.contains(name) || resolvable().contains(name)
+    }
+
+    fn insert(&mut self, name: &str) {
+        self.local.insert(name.to_owned());
+    }
+}
+
+/// Names the evaluator resolves for itself, so a manifest never owes them.
+///
+/// Built once. Assembling it means cloning every builtin name into a set, which
+/// costs more than parsing the short expressions a component type is made of and
+/// was being paid for each of them.
+fn resolvable() -> &'static BTreeSet<String> {
+    static RESOLVABLE: OnceLock<BTreeSet<String>> = OnceLock::new();
+    RESOLVABLE.get_or_init(|| {
+        let mut bound = builtin_names()
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<BTreeSet<_>>();
+        // A namespaced builtin is reached through its root, so `Queue.mm1Wait`
+        // makes `Queue` a reference the evaluator resolves rather than one a
+        // manifest owes.
+        let roots = bound
+            .iter()
+            .filter_map(|name| name.split_once('.').map(|(root, _)| root.to_owned()))
+            .collect::<Vec<_>>();
+        bound.extend(roots);
+        bound.extend(["pi", "e", "infinity"].map(str::to_owned));
+        bound
+    })
+}
+
+fn visit_program(program: &Program, bound: &mut Scope, free: &mut BTreeSet<String>) {
     let mut scope = bound.clone();
     for import in &program.imports {
-        scope.insert(import.name.clone());
+        scope.insert(&import.name);
     }
     for statement in &program.statements {
         visit_statement(statement, &mut scope, free);
@@ -85,16 +123,12 @@ fn visit_program(program: &Program, bound: &mut BTreeSet<String>, free: &mut BTr
     }
 }
 
-fn visit_statement(
-    statement: &Statement,
-    bound: &mut BTreeSet<String>,
-    free: &mut BTreeSet<String>,
-) {
+fn visit_statement(statement: &Statement, bound: &mut Scope, free: &mut BTreeSet<String>) {
     visit(&statement.value, bound, free);
-    bound.insert(statement.name.clone());
+    bound.insert(&statement.name);
 }
 
-fn visit(expression: &Expression, bound: &BTreeSet<String>, free: &mut BTreeSet<String>) {
+fn visit(expression: &Expression, bound: &Scope, free: &mut BTreeSet<String>) {
     match &expression.kind {
         ExpressionKind::Variable(name) => {
             if !bound.contains(name) {
@@ -118,7 +152,7 @@ fn visit(expression: &Expression, bound: &BTreeSet<String>, free: &mut BTreeSet<
         } => {
             let mut scope = bound.clone();
             for parameter in parameters {
-                scope.insert(parameter.name.clone());
+                scope.insert(&parameter.name);
             }
             visit(body, &scope, free);
         }

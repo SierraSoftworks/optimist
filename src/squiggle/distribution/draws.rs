@@ -123,7 +123,7 @@ impl Distribution {
         if let Kind::Samples(samples) = &self.kind
             && samples.len() == count
         {
-            return Ok(samples);
+            return Ok(samples.as_ref());
         }
         if let Some(draws) = self.draws.get() {
             return Ok(draws);

@@ -22,6 +22,8 @@ mod draws;
 mod sample;
 mod stats;
 
+use std::sync::Arc;
+
 use draws::DrawCache;
 
 /// A validated symbolic or empirical scalar probability distribution.
@@ -57,7 +59,9 @@ pub(super) enum Kind {
     Logistic(f64, f64),
     Poisson(f64),
     Triangular(f64, f64, f64),
-    Samples(Vec<f64>),
+    /// Empirical draws, shared between clones so that passing a sampled
+    /// quantity around costs a reference count rather than a copy of every draw.
+    Samples(Arc<[f64]>),
 }
 
 impl Distribution {
@@ -169,7 +173,7 @@ impl Distribution {
         if samples.iter().any(|sample| !sample.is_finite()) {
             return Err("empirical samples must all be finite".into());
         }
-        Ok(Self::symbolic(Kind::Samples(samples)))
+        Ok(Self::symbolic(Kind::Samples(samples.into())))
     }
 
     /// Returns the canonical Squiggle family name.
@@ -195,7 +199,7 @@ impl Distribution {
     /// Borrows the stored draws when this is an empirical sample set.
     pub fn samples(&self) -> Option<&[f64]> {
         if let Kind::Samples(samples) = &self.kind {
-            Some(samples)
+            Some(samples.as_ref())
         } else {
             None
         }
