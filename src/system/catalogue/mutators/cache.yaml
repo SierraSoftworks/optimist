@@ -18,4 +18,9 @@ requests:
       Demand reduced to the miss rate. A cache is a capacity multiplier on the
       dependency behind it, so a design that depends on a high hit ratio should
       be checked against a low one.
-    expression: signal.rate * (1 - hit_ratio)
+
+      Ratios outside zero and one are clamped rather than rejected. A share of
+      calls has no meaning above all of them, and an unclamped ratio above one
+      would send negative demand downstream, which every quantity derived from it
+      would then carry without complaint.
+    expression: signal.rate * (1 - min([max([hit_ratio, 0]), 1]))

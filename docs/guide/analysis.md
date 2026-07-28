@@ -90,11 +90,16 @@ to drain, and whether it does is the whole question.
 
 `prev.<channel>` gives a component its own values from the previous step, which
 is how a component type carries state of its own. `dt` is the step length, so an
-accumulation is written as an accumulation:
+accumulation is written as an accumulation — and `steady` says which question is
+being asked, so the same channel can report where the design rests without that
+answer depending on how long a step the solver took:
 
 ```yaml
 backlog:
-  expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+  expression: >
+    if steady
+      then Queue.boundedLength(load, capacity)
+      else max([prev.backlog + (arrivals - departures) * dt, 0])
 ```
 
 ## More than one fixed point

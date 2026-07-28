@@ -46,7 +46,17 @@ use super::{
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Bottleneck {
     /// The component owning the constraint.
+    ///
+    /// For a constraint belonging to a relationship this is the component the
+    /// relationship leaves, and `link` below says which relationship.
     pub component: ComponentId,
+    /// The relationship owning the constraint, where one does.
+    ///
+    /// A wire has limits of its own that belong to neither end: how fast it
+    /// carries bytes is a fact about the link, and attributing it to either
+    /// component would send somebody to resize the wrong thing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
     /// The constraint's name within its component type.
     pub constraint: String,
     /// What saturating this constraint does to the system.

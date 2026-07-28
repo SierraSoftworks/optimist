@@ -64,6 +64,12 @@ pub struct OutgoingRelationship {
     /// Omitted to accept the default network link.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capacity: Option<String>,
+    /// Squiggle source for how fast this wire carries bytes.
+    ///
+    /// Omitted to leave the link unlimited, which is right until somebody says
+    /// what the link actually is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<AttachedMutator>,

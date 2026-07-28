@@ -11,15 +11,53 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
+    profile::count,
     squiggle::Value,
-    system::values::{draws, from_draws},
+    system::values::{Varying, aligned, all_uniform, from_draws, per_draw},
 };
 
 use super::{
     config::EvaluationConfig,
-    flow::{CAPACITY, RATE},
+    flow::{CAPACITY, PAYLOAD, RATE},
     state::LinkState,
 };
+
+/// Bytes per second crossing a wire, request and reply together.
+///
+/// One reply per request, so both payloads travel at the same operation rate and
+/// add. Reading the two together is what makes batching legible: dividing the
+/// rate while multiplying the payload leaves this figure exactly where it was,
+/// which is the whole of the trade and the reason it is the right one against an
+/// operation limit and the wrong one against a link speed.
+pub(super) fn carried(
+    request: &BTreeMap<String, Value>,
+    response: &BTreeMap<String, Value>,
+    config: EvaluationConfig,
+) -> Value {
+    let count = config.sample_count.max(1);
+    let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
+    let rate = request
+        .get(RATE)
+        .and_then(|value| Varying::of(value, count, &mut rng));
+    let sent = request
+        .get(PAYLOAD)
+        .and_then(|value| Varying::of(value, count, &mut rng));
+    let received = response
+        .get(PAYLOAD)
+        .and_then(|value| Varying::of(value, count, &mut rng));
+    let (Some(rate), Some(sent), Some(received)) = (rate, sent, received) else {
+        return Value::Number(0.0);
+    };
+    let columns = [rate, sent, received];
+    let bytes = |index: usize| {
+        columns[0].at(index).max(0.0)
+            * (columns[1].at(index).max(0.0) + columns[2].at(index).max(0.0))
+    };
+    if all_uniform(&columns) {
+        return Value::Number(bytes(0));
+    }
+    per_draw(aligned(&columns, count), bytes).unwrap_or(Value::Number(0.0))
+}
 
 /// Solves the queue on one wire for the load crossing it.
 ///
@@ -43,46 +81,81 @@ pub(super) fn queued(
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let offered = request
         .get(RATE)
-        .and_then(|value| draws(value, count, &mut rng));
+        .and_then(|value| Varying::of(value, count, &mut rng));
     let drain = response
         .get(CAPACITY)
-        .and_then(|value| draws(value, count, &mut rng));
-    let depth = draws(capacity, count, &mut rng);
+        .and_then(|value| Varying::of(value, count, &mut rng));
+    let depth = Varying::of(capacity, count, &mut rng);
     let (Some(offered), Some(drain), Some(depth)) = (offered, drain, depth) else {
         return LinkState::default();
     };
 
-    let mut backlog = Vec::with_capacity(count);
-    let mut wait = Vec::with_capacity(count);
-    let mut blocked = Vec::with_capacity(count);
-    for index in 0..count {
-        let rate = offered[index].max(0.0);
-        let served = drain[index];
-        let held = depth[index].max(0.0);
+    let columns = [offered, drain, depth];
+    let (backlog, wait, blocked) = solved(&columns, count, |[offered, drain, depth]| {
+        let rate = offered.max(0.0);
+        let served = drain;
+        let held = depth.max(0.0);
         // An unattached or unlimited dependency drains anything offered, so
         // nothing waits and nothing is refused.
         if !served.is_finite() || served <= 0.0 {
-            backlog.push(0.0);
-            wait.push(0.0);
-            blocked.push(0.0);
-            continue;
+            return [0.0; 3];
         }
         let utilisation = rate / served;
         let length = bounded_length(utilisation, held);
-        backlog.push(length);
-        wait.push(length / served);
-        blocked.push(bounded_blocking(utilisation, held));
-    }
+        [
+            length,
+            length / served,
+            bounded_blocking(utilisation, held),
+        ]
+    });
     LinkState {
-        backlog: from_draws(backlog).unwrap_or(Value::Number(0.0)),
-        wait: from_draws(wait).unwrap_or(Value::Number(0.0)),
-        blocked: from_draws(blocked).unwrap_or(Value::Number(0.0)),
+        backlog,
+        wait,
+        blocked,
         offered: request.get(RATE).cloned().unwrap_or(Value::Number(0.0)),
         drain: response
             .get(CAPACITY)
             .cloned()
             .unwrap_or(Value::Number(0.0)),
+        ..LinkState::default()
     }
+}
+
+/// Builds the three quantities a solved wire reports from one pass over its draws.
+///
+/// A wire whose inputs are all certain has a certain answer, and computing it once
+/// rather than a thousand identical times is what keeps an unloaded relationship
+/// from costing as much as a saturated one.
+fn solved<const N: usize>(
+    columns: &[Varying; N],
+    count: usize,
+    solve: impl Fn([f64; N]) -> [f64; 3],
+) -> (Value, Value, Value) {
+    let row = |index: usize| solve(std::array::from_fn(|slot| columns[slot].at(index)));
+    if all_uniform(columns) {
+        let [backlog, wait, blocked] = row(0);
+        return (
+            Value::Number(backlog),
+            Value::Number(wait),
+            Value::Number(blocked),
+        );
+    }
+    let span = aligned(columns, count);
+    let mut solved = [
+        Vec::with_capacity(span),
+        Vec::with_capacity(span),
+        Vec::with_capacity(span),
+    ];
+    for index in 0..span {
+        for (into, value) in solved.iter_mut().zip(row(index)) {
+            into.push(value);
+        }
+    }
+    let [backlog, wait, blocked] = solved.map(|draws| {
+        count!(Draws, draws.len());
+        from_draws(draws).unwrap_or(Value::Number(0.0))
+    });
+    (backlog, wait, blocked)
 }
 
 /// Advances one wire's backlog by a step, from the flows it last carried.
@@ -101,29 +174,24 @@ pub(super) fn queued(
 pub(super) fn advance(before: &LinkState, capacity: &Value, config: EvaluationConfig) -> LinkState {
     let count = config.sample_count.max(1);
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
-    let held = draws(&before.backlog, count, &mut rng);
-    let offered = draws(&before.offered, count, &mut rng);
-    let drain = draws(&before.drain, count, &mut rng);
-    let depth = draws(capacity, count, &mut rng);
+    let held = Varying::of(&before.backlog, count, &mut rng);
+    let offered = Varying::of(&before.offered, count, &mut rng);
+    let drain = Varying::of(&before.drain, count, &mut rng);
+    let depth = Varying::of(capacity, count, &mut rng);
     let (Some(held), Some(offered), Some(drain), Some(depth)) = (held, offered, drain, depth)
     else {
         return before.clone();
     };
 
     let step = config.step.max(f64::EPSILON);
-    let mut backlog = Vec::with_capacity(count);
-    let mut wait = Vec::with_capacity(count);
-    let mut blocked = Vec::with_capacity(count);
-    for index in 0..count {
-        let waiting = held[index].max(0.0);
-        let rate = offered[index].max(0.0);
-        let served = drain[index];
-        let room = depth[index].max(0.0);
+    let columns = [held, offered, drain, depth];
+    let (backlog, wait, blocked) = solved(&columns, count, |[held, offered, drain, depth]| {
+        let waiting = held.max(0.0);
+        let rate = offered.max(0.0);
+        let served = drain;
+        let room = depth.max(0.0);
         if !served.is_finite() || served <= 0.0 {
-            backlog.push(0.0);
-            wait.push(0.0);
-            blocked.push(0.0);
-            continue;
+            return [0.0; 3];
         }
         // What the wire can take this step: whatever drains, plus whatever space
         // is left to store. Anything beyond that is turned away at the door.
@@ -135,16 +203,16 @@ pub(super) fn advance(before: &LinkState, capacity: &Value, config: EvaluationCo
             0.0
         };
         let next = (waiting + (accepted - served) * step).clamp(0.0, room);
-        backlog.push(next);
-        wait.push(next / served);
-        blocked.push(refused);
-    }
+        [next, next / served, refused]
+    });
     LinkState {
-        backlog: from_draws(backlog).unwrap_or(Value::Number(0.0)),
-        wait: from_draws(wait).unwrap_or(Value::Number(0.0)),
-        blocked: from_draws(blocked).unwrap_or(Value::Number(0.0)),
+        backlog,
+        wait,
+        blocked,
         offered: before.offered.clone(),
         drain: before.drain.clone(),
+        transfer: before.transfer.clone(),
+        bandwidth: before.bandwidth.clone(),
     }
 }
 

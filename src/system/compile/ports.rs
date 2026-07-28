@@ -94,7 +94,7 @@ pub(super) fn endpoints(
     Ok((to, from))
 }
 
-/// Resolves a relationship's identity and how much it can hold.
+/// Resolves a relationship's identity, how much it can hold, and how fast it is.
 ///
 /// Both ends of a relationship prepare it independently, so the identity has to
 /// be derived from the endpoints rather than allocated, or the two ends would
@@ -105,21 +105,45 @@ pub(super) fn link(
     outbound_port: &str,
     globals: &BTreeMap<String, Value>,
     config: Timing,
-) -> Result<(LinkId, Value), EvaluationError> {
+) -> Result<(LinkId, Value, Value), EvaluationError> {
     let id = LinkId {
         from: relationship.from.clone(),
         from_port: outbound_port.to_owned(),
         to: relationship.to.clone(),
         to_port: inbound_port.to_owned(),
     };
-    let source = relationship.capacity_source();
-    let location = format!("capacity of relationship {id}");
+    let capacity = quantity(
+        relationship.capacity_source(),
+        "capacity",
+        &id,
+        globals,
+        config,
+    )?;
+    let bandwidth = quantity(
+        relationship.bandwidth_source(),
+        "bandwidth",
+        &id,
+        globals,
+        config,
+    )?;
+    Ok((id, capacity, bandwidth))
+}
+
+/// Evaluates one of a relationship's own quantities against the shared scope.
+fn quantity(
+    source: &str,
+    what: &str,
+    id: &LinkId,
+    globals: &BTreeMap<String, Value>,
+    config: Timing,
+) -> Result<Value, EvaluationError> {
+    let location = format!("{what} of relationship {id}");
     let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
         location: location.clone(),
         message: first_message(&diagnostics),
     })?;
-    let seed = derive_seed(config.seed, &id.to_string(), "capacity");
-    let capacity = runtime(seed, config.sample_count)?
+    let seed = derive_seed(config.seed, &id.to_string(), what);
+    runtime(seed, config.sample_count)?
         .evaluate_values(
             &program,
             globals
@@ -129,6 +153,5 @@ pub(super) fn link(
         .map_err(|diagnostic| EvaluationError::Evaluation {
             location,
             message: diagnostic.message,
-        })?;
-    Ok((id, capacity))
+        })
 }

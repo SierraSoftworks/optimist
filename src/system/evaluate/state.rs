@@ -47,6 +47,10 @@ pub struct LinkState {
     pub offered: Value,
     /// Operations per second the far end can take.
     pub drain: Value,
+    /// Bytes per second crossing the wire, request and reply together.
+    pub transfer: Value,
+    /// Bytes per second the wire can carry.
+    pub bandwidth: Value,
 }
 
 impl Default for LinkState {
@@ -58,6 +62,8 @@ impl Default for LinkState {
             blocked: Value::Number(0.0),
             offered: Value::Number(0.0),
             drain: Value::Number(0.0),
+            transfer: Value::Number(0.0),
+            bandwidth: Value::Number(f64::INFINITY),
         }
     }
 }

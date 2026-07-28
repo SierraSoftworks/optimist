@@ -28,6 +28,7 @@ own: which way it travels is settled by the port publishing it.
 | --- | --- | --- | --- | --- |
 | `rate` | `op/s` | sum | yes | Operations per second travelling along the relationship. |
 | `cancellation` | `op/s` | sum | yes | Operations the caller has abandoned. Travels forward, because only the caller knows it has given up. |
+| `cancellation_effectiveness` | `1` | mean | no | Share of those cancellations arriving in time to save the work. Rests at a half rather than at an aggregation identity. |
 | `occupancy` | `op` | sum | yes | Operations in flight: work a caller is holding open against a dependency. |
 | `payload` | `B/op` | mean | no | Bytes carried by one operation. Read on an inbound port it is the request; on an outbound port it is the reply. |
 | `latency` | `s` | max | no | Time from receiving a request to answering it, including every downstream call. Travels back to the caller. |
@@ -37,6 +38,12 @@ own: which way it travels is settled by the port publishing it.
 **Extensive** means the quantity is shared out across the replicas of a scale
 unit. A rate divides across a sharded fleet; a payload does not shrink because
 there are more shards to send it to.
+
+A signal reads its aggregation's identity where nothing arrives carrying it —
+nought for a rate, one for a success, no ceiling for a capacity. A signal may
+state a different resting value where it describes a convention rather than a
+flow, which is how `cancellation_effectiveness` assumes a half without any
+behaviour having to say so.
 
 A signal a manifest introduces without declaring falls back to adding across
 arrivals and not dividing across replicas. That is the safe reading: it may
@@ -123,13 +130,16 @@ how much work there is.
 | `service_rate` | `op/s` | *required* |
 | `capacity` | `op` | *required* |
 
-**Channels** — `arrivals`, `departures`, `backlog`, `accepted_ratio`, `wait`.
+**Channels** — `arrivals`, `departures`, `load`, `backlog`, `accepted_ratio`,
+`wait`.
 
-`backlog` reads `prev.backlog`, so this type is a state variable and its
-behaviour under [transient solving](../guide/analysis.md#steady-state-and-transient)
-differs from its steady state. Only work `accepted_ratio` admits accumulates, and
-the total is bounded by the depth, so a queue never reports holding more than it
-has room for.
+`backlog` and `accepted_ratio` have two forms. Asked where the design rests they
+are the stationary M/M/1/K results for this depth at this load — the same law the
+buffer on every relationship uses, so the two agree — and the answer does not
+depend on the solver's step. Asked how the design moves they integrate from
+`prev.backlog`, which is what gives the type memory and makes recovery time
+visible under [transient solving](../guide/analysis.md#steady-state-and-transient).
+Only accepted work accumulates, and the total is bounded by the depth.
 
 **Constraints** — `depth` (backlog against the queue's depth), `throughput`
 (arrivals against the rate consumers drain at).
@@ -166,11 +176,17 @@ itself doing very little work.
 | `utilisation` | `Queue.utilisation(offered, capacity)` |
 | `held_downstream` | `Little.occupancy(calls, dependency_wait)` |
 
-Also `arriving`, `cancelled`, `salvaged`, `offered`, `answered`,
+Also `arriving`, `cancelled`, `salvage_share`, `salvaged`, `offered`,
 `propagated_cancellation`, `dependency_wait`, `dependency_success`, `residence`,
 `concurrency`, `calls`, `success_rate`.
 
 **Constraints** — `capacity` (offered load against sustainable throughput).
+
+`success_rate` reports what this pool's dependencies managed, and nothing else.
+Neither the work refused by the queue in front of it nor the work its caller
+withdrew appears there: both are counted where they happened, and restating
+either would charge one failure twice — and once more for every further hop a
+cancellation reached.
 
 Asked for more than it can serve, this pool does not quietly serve less. It
 reports the share it could not answer and the caller decides what to do about it.
@@ -203,9 +219,9 @@ ceiling consumes the capacity of every service waiting on it.
 | `service_time` | `s` | `0.001` |
 | `replication_factor` | `1` | `0` |
 
-**Channels** — `arriving`, `cancelled`, `operations`, `held`, `concurrency`,
-`latency`, `records`, `volume`, `transfer`, `replicated`, `utilisation`,
-`success_rate`.
+**Channels** — `arriving`, `cancelled`, `salvaged`, `operations`, `held`,
+`concurrency`, `latency`, `records`, `volume`, `transfer`, `replicated`,
+`utilisation`, `success_rate`.
 
 **Constraints** — `operations`, `transfer`, `volume`, `concurrency`.
 
@@ -232,8 +248,9 @@ free, even when the branch itself is fast and reliable.
 | `branches` | `1` | *required* |
 | `overhead` | `s` | `0` |
 
-**Channels** — `arriving`, `cancelled`, `fanned_out`, `propagated_cancellation`,
-`branch_capacity`, `branch_wait`, `branch_success`, `latency`, `success_rate`.
+**Channels** — `arriving`, `cancelled`, `salvaged`, `fanned_out`,
+`propagated_cancellation`, `branch_capacity`, `branch_wait`, `branch_success`,
+`latency`, `success_rate`.
 
 **Constraints** — `fan_out` (demand created against demand received).
 
@@ -385,7 +402,8 @@ carries on being done. Models a hop with no cancellation plumbing: a call made
 without a context to propagate, a client that closes its connection without
 aborting the request behind it, a queue entry nobody withdraws.
 
-It takes no properties. Request `cancellation` becomes `0`.
+It takes no properties. Request `cancellation` becomes `0`, which is the same as
+attaching `cancellation-effectiveness` at nought.
 
 This is the behaviour that separates a system which degrades from one that
 collapses. A timeout above a retry normally protects the dependency twice over:
@@ -395,3 +413,64 @@ remains, so the caller gives up, retries, and the dependency now serves both the
 abandoned attempt and its replacement. Load rises while useful work falls, which
 is exactly the shape of a system that stays down after the thing that knocked it
 over has passed.
+
+### `cancellation-effectiveness`
+
+Says how much of the work a cancellation withdraws is actually saved at the far
+end.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `effectiveness` | `1` | `0.5` |
+
+Request `cancellation_effectiveness` becomes the value clamped into zero and one.
+Without it the share is a half, on the assumption that a cancellation is equally
+likely to land at any point during a request — the right guess in the absence of
+anything better, and the wrong one wherever a design knows more. A hop that
+checks for cancellation before starting work saves nearly all of it; one that
+checks only before replying saves none.
+
+The share decides load, not success. A request the caller gave up on has already
+failed that caller, and the behaviour that gave up is what reports it.
+
+### `message-size`
+
+States how large the request and the reply are on a connection, so the bytes
+crossing it can be measured against the link's speed.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `request_size` | `B/op` | `0` |
+| `response_size` | `B/op` | `0` |
+
+Request `payload` becomes `request_size` and response `payload` becomes
+`response_size`. Sizes belong on the connection rather than on either end of it:
+the same store answers a key lookup and a full document scan, and which it is was
+decided by the caller.
+
+Reply size matters more often than request size and is left out more often. A
+chatty API returning whole objects to callers that wanted one field is a
+bandwidth problem that looks like a latency problem.
+
+---
+
+## Relationships
+
+A relationship is a wire, and a wire has limits of its own that belong to neither
+end.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `capacity` | `op` | `100` |
+| `bandwidth` | `B/s` | unlimited |
+
+`capacity` is how many operations may wait on the wire: socket buffers and a
+listen backlog for a network hop, nearer one for an in-process call, far larger
+for a broker with disk backing.
+
+`bandwidth` is how fast it carries bytes, against the request and reply payloads
+together. It is reported as a `bandwidth` constraint on the relationship, and
+only where a speed was stated — a link nobody gave a speed to is not a link that
+is full. This is the limit an operation-rate model cannot report at all: a design
+whose rates all fit comfortably can still be bound by the bytes those operations
+move, and reading it sends somebody to the network rather than to the service.

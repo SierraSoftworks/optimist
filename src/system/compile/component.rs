@@ -62,7 +62,7 @@ pub(super) fn prepare_component(
     let mut outbound = prepare_ports(&component.id, &component_type.ports.outbound, "outbound")?;
     for relationship in context.model.inbound_to(&component.id) {
         let (port, peer_port) = endpoints(context.model, context.catalogue, relationship)?;
-        let (id, capacity) = link(
+        let (id, capacity, bandwidth) = link(
             relationship,
             &port,
             &peer_port,
@@ -78,6 +78,7 @@ pub(super) fn prepare_component(
                 peer_port,
                 id,
                 capacity,
+                bandwidth,
                 mutators: prepare_mutators(
                     relationship,
                     context.mutators,
@@ -89,7 +90,7 @@ pub(super) fn prepare_component(
     }
     for relationship in context.model.outbound_from(&component.id) {
         let (peer_port, port) = endpoints(context.model, context.catalogue, relationship)?;
-        let (id, capacity) = link(
+        let (id, capacity, bandwidth) = link(
             relationship,
             &peer_port,
             &port,
@@ -105,6 +106,7 @@ pub(super) fn prepare_component(
                 peer_port,
                 id,
                 capacity,
+                bandwidth,
                 mutators: prepare_mutators(
                     relationship,
                     context.mutators,

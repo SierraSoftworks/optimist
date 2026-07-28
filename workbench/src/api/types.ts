@@ -53,6 +53,13 @@ export interface Relationship {
    * merely restates that default.
    */
   capacity?: string
+  /**
+   * Squiggle source for how fast the wire carries bytes.
+   *
+   * Absent leaves the link unlimited, so it reports no constraint at all rather
+   * than one nobody stated.
+   */
+  bandwidth?: string
   summary: string
   mutators: AttachedMutator[]
 }
@@ -240,6 +247,13 @@ export interface Quantity {
 /** How heavily one constraint is loaded. */
 export interface Bottleneck {
   component: string
+  /**
+   * The relationship owning the constraint, where one does.
+   *
+   * A wire's limits belong to neither end of it, so `component` names the
+   * component it leaves and this says which relationship.
+   */
+  link?: string
   constraint: string
   summary: string
   replicas: number

@@ -6,14 +6,14 @@ use crate::{
     squiggle::{Runtime, Value},
     system::{
         compile::{Plan, PreparedComponent, PreparedPort},
-        expression::{INBOUND, OUTBOUND, PREVIOUS, STEP, TIME},
+        expression::{INBOUND, OUTBOUND, PREVIOUS, STEADY, STEP, TIME},
         model::ComponentId,
     },
 };
 
 use super::{
     arrivals::arrivals,
-    config::EvaluationConfig,
+    config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
     flow::Direction,
     state::{ComponentState, LinkId, LinkState},
@@ -55,6 +55,10 @@ pub(super) fn evaluate_component(
     scope.extend(component.properties.clone());
     scope.insert(TIME.to_owned(), Value::Number(time));
     scope.insert(STEP.to_owned(), Value::Number(config.step));
+    scope.insert(
+        STEADY.to_owned(),
+        Value::Boolean(config.mode == SolveMode::Steady),
+    );
     scope.insert(INBOUND.to_owned(), ported(inbound.clone()));
     scope.insert(OUTBOUND.to_owned(), ported(outbound.clone()));
     scope.insert(

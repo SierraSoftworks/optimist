@@ -73,6 +73,7 @@ fn full_model() -> SystemModel {
                 from_port: None,
                 to_port: None,
                 capacity: None,
+                bandwidth: None,
                 from: ComponentId::new("users"),
                 to: ComponentId::new("api"),
                 mutators: vec![AttachedMutator {
@@ -87,6 +88,7 @@ fn full_model() -> SystemModel {
                 from_port: None,
                 to_port: None,
                 capacity: None,
+                bandwidth: None,
                 from: ComponentId::new("api"),
                 to: ComponentId::new("store"),
                 mutators: vec![AttachedMutator {
@@ -267,6 +269,7 @@ fn project_local_definitions_are_loaded() {
         from_port: None,
         to_port: None,
         capacity: None,
+        bandwidth: None,
         from: ComponentId::new("api"),
         to: ComponentId::new("meter"),
         mutators: Vec::new(),
@@ -464,6 +467,7 @@ fn a_dangling_relationship_is_refused() {
         from_port: None,
         to_port: None,
         capacity: None,
+        bandwidth: None,
         from: ComponentId::new("api"),
         to: ComponentId::new("absent"),
         mutators: Vec::new(),

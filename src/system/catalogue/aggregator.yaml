@@ -45,18 +45,24 @@ channels:
     unit: op/s
     summary: Requests abandoned before every branch had answered.
     expression: in.requests.cancellation
+  salvaged:
+    unit: op/s
+    summary: >
+      Cancellations arriving early enough that the fan-out is never issued, at
+      the share the relationship they arrived on reports.
+    expression: cancelled * in.requests.cancellation_effectiveness
   propagated_cancellation:
     unit: op/s
     summary: >
       Cancellations passed on to each branch. Cancelling a fanned-out request
       cancels every branch it was waiting on, so this scales with the fan-out.
-    expression: 0.5 * cancelled * branches
+    expression: salvaged * branches
   fanned_out:
     unit: op/s
     summary: >
       Branch requests issued. One request becomes as many as there are branches,
       which is the amplification a diagram of this component does not show.
-    expression: max([arriving - 0.5 * cancelled, 0]) * branches
+    expression: max([arriving - salvaged, 0]) * branches
   branch_capacity:
     unit: op/s
     summary: >
@@ -64,7 +70,15 @@ channels:
       divided by how many calls each request makes of it. Fanning out consumes a
       branch's capacity several times over, so the caller-facing rate is always
       the smaller number.
-    expression: out.branches.capacity / max([branches, 1])
+
+      A branch that reports no ceiling, and a fan-out with nothing attached to it
+      yet, both arrive here as an unbounded figure, because the smallest of no
+      limits is no limit at all. It is capped at a rate no real service reaches
+      before being divided, so that the division stays a number: an unbounded one
+      would fail to evaluate and take the whole model with it, and any ceiling
+      this far above the load is read as no ceiling by everything downstream of
+      it.
+    expression: min([out.branches.capacity, 1e15]) / max([branches, 1])
   branch_wait:
     unit: s
     summary: >
@@ -85,9 +99,10 @@ channels:
   success_rate:
     unit: '1'
     summary: >
-      Share of arriving requests answered successfully. A cancelled request is
-      never combined and so is never answered.
-    expression: (max([arriving - cancelled, 0]) / max([arriving, 0.000001])) * branch_success
+      Share of arriving requests answered successfully, which is the share whose
+      branches all held. Cancellation is counted by the behaviour that raised it
+      rather than again here.
+    expression: branch_success
 constraints:
   fan_out:
     summary: >

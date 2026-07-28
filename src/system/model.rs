@@ -128,6 +128,19 @@ pub struct Relationship {
     /// and a caller with a deadline turns that latency back into failure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capacity: Option<String>,
+    /// Squiggle source for how fast this wire carries bytes.
+    ///
+    /// Unlimited by default, which keeps a relationship a pure operation queue
+    /// unless an author says otherwise. Say otherwise wherever the link is a
+    /// real one: a network interface, an inter-region path, a disk bus. A design
+    /// whose operation rates all fit can still be bound by the bytes those
+    /// operations carry, and that is the limit nobody draws.
+    ///
+    /// The bytes are the request and the reply together, at the sizes the
+    /// behaviours on the wire declare, so batching several calls into one leaves
+    /// this unchanged while dividing the operation rate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<super::mutator::AttachedMutator>,
@@ -139,10 +152,22 @@ pub struct Relationship {
 /// Operations a relationship holds when its author says nothing.
 pub const DEFAULT_LINK_CAPACITY: &str = "100";
 
+/// Bytes per second a relationship carries when its author says nothing.
+///
+/// Unbounded, because a link speed nobody stated is a link speed nobody meant to
+/// constrain, and inventing one would put a limit into a design that its author
+/// never wrote down.
+pub const DEFAULT_LINK_BANDWIDTH: &str = "infinity";
+
 impl Relationship {
     /// Borrows the authored queue depth, or the default network link.
     pub fn capacity_source(&self) -> &str {
         self.capacity.as_deref().unwrap_or(DEFAULT_LINK_CAPACITY)
+    }
+
+    /// Borrows the authored link speed, or an unlimited one.
+    pub fn bandwidth_source(&self) -> &str {
+        self.bandwidth.as_deref().unwrap_or(DEFAULT_LINK_BANDWIDTH)
     }
 }
 

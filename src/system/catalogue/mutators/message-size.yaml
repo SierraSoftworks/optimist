@@ -1,0 +1,40 @@
+id: message-size
+name: Message size
+summary: >
+  States how large the request and the reply are on a connection. Sizes are a
+  fact about the conversation rather than about either end of it: the same store
+  answers a key lookup and a full document scan, and the difference is decided by
+  what the caller asked for.
+
+  The point of saying it is the link. A relationship carries bytes at some rate,
+  and a design whose operation rates all fit comfortably can still be bound by
+  the bytes those operations move. That limit is invisible until both the sizes
+  and the link speed are written down, and it is the one an operation-rate model
+  cannot report at all.
+
+  Reply size matters more often than request size and is left out more often.
+  A write is small and its acknowledgement is smaller; a read is the other way
+  round, and a chatty API returning whole objects to callers that wanted one
+  field is a bandwidth problem that looks like a latency problem.
+properties:
+  request_size:
+    unit: B/op
+    summary: Bytes the caller sends for one operation.
+    default: '0'
+  response_size:
+    unit: B/op
+    summary: >
+      Bytes the callee sends back for one operation. Measure it rather than
+      assuming it resembles the request: the asymmetry between the two is what
+      decides which direction of a link saturates first.
+    default: '0'
+requests:
+  payload:
+    unit: B/op
+    summary: Bytes travelling downstream per operation.
+    expression: request_size
+responses:
+  payload:
+    unit: B/op
+    summary: Bytes travelling back per operation.
+    expression: response_size

@@ -53,6 +53,25 @@ pub enum Aggregation {
     Min,
 }
 
+impl Aggregation {
+    /// The value that leaves a reader unaffected when nothing arrives.
+    ///
+    /// Zero is right for a rate, which nobody is offering, and wrong for a
+    /// success rate: a component with no dependencies depends on nothing that
+    /// could fail, and reading zero there would report every leaf of a design as
+    /// a total outage and propagate that back to the caller.
+    pub fn identity(self) -> f64 {
+        match self {
+            Self::Product => 1.0,
+            // Nothing attached imposes no ceiling, so the limit is unbounded
+            // rather than nought; reading zero would report an unattached port
+            // as unable to carry anything at all.
+            Self::Min => f64::INFINITY,
+            Self::Sum | Self::Max | Self::Mean => 0.0,
+        }
+    }
+}
+
 /// One quantity that may travel along a relationship.
 ///
 /// A signal carries no direction of its own. Which way it travels is settled by
@@ -82,6 +101,23 @@ pub struct Signal {
     /// a payload size or an observed latency.
     #[serde(default)]
     pub extensive: bool,
+    /// What the quantity reads where nothing arrives carrying it.
+    ///
+    /// Defaults to the identity of the aggregation, which is what a quantity
+    /// nobody is contributing to should read: nought for a rate, one for a
+    /// success. Stated explicitly only where a signal describes a convention
+    /// rather than a flow, and where the convention is not an identity — a share
+    /// that assumes a half, say, which no aggregation could produce from
+    /// nothing.
+    #[serde(default)]
+    pub rest: Option<f64>,
+}
+
+impl Signal {
+    /// What this quantity reads where nothing arrives carrying it.
+    pub fn rest(&self) -> f64 {
+        self.rest.unwrap_or_else(|| self.aggregate.identity())
+    }
 }
 
 /// The signals shipped with the tool, keyed by name.

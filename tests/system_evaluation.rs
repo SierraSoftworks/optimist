@@ -31,6 +31,7 @@ fn link(from: &str, to: &str) -> Relationship {
         from_port: None,
         to_port: None,
         capacity: None,
+        bandwidth: None,
         from: ComponentId::new(from),
         to: ComponentId::new(to),
         mutators: Vec::new(),
@@ -43,6 +44,7 @@ fn linked(from: &str, to: &str, mutators: &[(&str, &[(&str, &str)])]) -> Relatio
         from_port: None,
         to_port: None,
         capacity: None,
+        bandwidth: None,
         from: ComponentId::new(from),
         to: ComponentId::new(to),
         mutators: mutators

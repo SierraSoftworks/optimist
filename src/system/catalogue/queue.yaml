@@ -55,26 +55,57 @@ channels:
       Saturation is per draw, so the share of draws pinned to the service rate is
       the share in which the queue is the bottleneck.
     expression: min([arrivals + prev.backlog / dt, service_rate])
+  load:
+    unit: '1'
+    summary: >
+      Arrivals against the rate consumers drain at. The one ratio every other
+      figure here follows from, and the reason a buffer's depth decides how bad
+      overload feels rather than whether it happens.
+    expression: arrivals / max([service_rate, 0.000001])
   backlog:
     unit: op
     summary: >
-      Work resident in the queue, accumulated from the imbalance between
-      arrivals and departures and floored at zero.
-    expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+      Work resident in the queue.
+
+      Asked where the design rests, this is the stationary result for a buffer of
+      this depth at this load: the same law the queue on every relationship uses,
+      so the two agree rather than each reporting its own arithmetic. It is a
+      distribution-free consequence of the load and the depth, and in particular
+      it does not depend on how long a step the solver happens to be taking. A
+      steady state that moved when the step size did would be a property of the
+      solver rather than of the design, and comparing two designs solved
+      differently would compare the wrong thing.
+
+      Asked how the design moves, it is integrated instead: only work the buffer
+      accepted accumulates, and the total is bounded by the depth. A queue
+      reporting that it turned work away for want of room, and in the same breath
+      that it stored every unit it turned away, would charge callers for waiting
+      behind a backlog that could never have formed.
+    expression: >
+      if steady
+        then Queue.boundedLength(load, capacity)
+        else min([max([prev.backlog + (arrivals * accepted_ratio - departures) * dt, 0]), capacity])
   accepted_ratio:
     unit: '1'
     summary: >
-      Share of offered work the buffer had room to take: the room left at the
-      start of the step, plus whatever drains during it, against what is
-      offered. One until the queue approaches its depth, and falling once it
-      does, because past that point accepting more work would mean losing it.
+      Share of offered work the buffer had room to take. One until the queue
+      approaches its depth, and falling once it does, because past that point
+      accepting more work would mean losing it.
 
-      Written as arithmetic rather than as a test against the depth because
-      every quantity here is a sample set. Asking whether a backlog has reached
+      Written as arithmetic rather than as a test against the depth because every
+      quantity here is a sample set. Asking whether a backlog has reached
       capacity has no single answer when the backlog is a distribution: it has
       reached it in some draws and not in others, and the share of draws that
       have is exactly what this should report.
-    expression: min([(max([capacity - prev.backlog, 0]) / dt + departures) / max([arrivals, 0.000001]), 1])
+
+      At rest that share is the stationary blocking probability, which the buffer
+      in front of every component is also read against. Moving, it is the room
+      left at the start of the step plus whatever drains during it, against what
+      is offered.
+    expression: >
+      if steady
+        then 1 - Queue.boundedBlocking(load, capacity)
+        else min([(max([capacity - prev.backlog, 0]) / dt + departures) / max([arrivals, 0.000001]), 1])
   wait:
     unit: s
     summary: >

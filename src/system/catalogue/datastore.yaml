@@ -79,12 +79,19 @@ channels:
     unit: op/s
     summary: Operations abandoned by the caller before the store answered.
     expression: in.operations.cancellation
+  salvaged:
+    unit: op/s
+    summary: >
+      Cancellations arriving early enough that the operation is never started, at
+      the share the relationship they arrived on reports.
+    expression: cancelled * in.operations.cancellation_effectiveness
   operations:
     unit: op/s
     summary: >
-      Operations that consume the store. Half of any cancellation arrives too
-      late to prevent the work, so cancelling saves less than it appears to.
-    expression: max([arriving - 0.5 * cancelled, 0])
+      Operations that consume the store. A cancellation arriving too late to
+      prevent the work saves nothing, which is why cancelling saves less than it
+      appears to.
+    expression: max([arriving - salvaged, 0])
   transfer:
     unit: B/s
     summary: Bytes moved per second.
@@ -126,11 +133,15 @@ channels:
   success_rate:
     unit: '1'
     summary: >
-      Share of arriving operations answered successfully. Cancelled operations
-      are never answered and count against this in full. Operations the store had
-      no room for are refused by the queue on the wire in front of it and are
-      counted there.
-    expression: max([arriving - cancelled, 0]) / max([arriving, 0.000001])
+      Share of arriving operations answered successfully. A store has nothing
+      behind it that could fail on its behalf, so every operation that reaches it
+      is answered.
+
+      Neither cancellation nor overload appears here. Operations the store had no
+      room for are refused by the queue on the wire in front of it and counted
+      there; operations the caller withdrew are counted by the behaviour that
+      withdrew them. Restating either would charge one failure twice.
+    expression: '1'
   replicated:
     unit: op/s
     summary: Operations propagated to replicas.

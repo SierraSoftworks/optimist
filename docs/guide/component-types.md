@@ -113,6 +113,7 @@ The surface is deliberately small. A channel expression may use:
 | `prev.<channel>` | This component's channel values at the previous step. |
 | `t` | Elapsed seconds since the run began. |
 | `dt` | Length of the current step, in seconds. |
+| `steady` | Whether the solve is asking where the design rests rather than how it moves. |
 | *scratchpad names* | Shared quantities, when used in a component's properties. |
 | Squiggle builtins | The whole standard library, including the queueing namespaces. |
 
@@ -129,20 +130,32 @@ than when a solver is midway through a run.
 
 `prev` is what gives a design memory, and it is only meaningful under
 [transient solving](./analysis.md#steady-state-and-transient). The shipped
-`queue` type uses it to accumulate a backlog:
+`queue` type uses it to accumulate a backlog.
+
+A channel that reads `prev` is a state variable. Without one, a component is a
+pure function of its inputs and the design has no history to recover from.
+
+A state variable usually needs two forms, which is what `steady` is for:
 
 ```yaml
 channels:
   backlog:
     unit: op
-    summary: >
-      Work resident in the queue, accumulated from the imbalance between
-      arrivals and departures and floored at zero.
-    expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+    expression: >
+      if steady
+        then Queue.boundedLength(load, capacity)
+        else max([prev.backlog + (arrivals - departures) * dt, 0])
 ```
 
-A channel that reads `prev` is a state variable. Without one, a component is a
-pure function of its inputs and the design has no history to recover from.
+Integrating from rest answers "how far did one step move it", which is the right
+question under transient solving and the wrong one under steady solving — there,
+the answer would be whatever a step happened to accumulate, so halving the step
+would halve the backlog. A steady state that moves when the step size does is a
+property of the solver rather than of the design, and comparing two designs
+solved differently would compare the wrong thing.
+
+Write the resting form as the stationary result for whatever the channel
+describes. If there isn't one, the channel is probably not a state variable.
 
 ## Writing a behaviour
 

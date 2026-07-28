@@ -18,8 +18,8 @@ use super::{
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
     flow::{CAPACITY, Direction, LATENCY, RATE, SUCCESS, sum, survives},
-    mutate::apply,
-    queue::queued,
+    mutate::{apply, returning},
+    queue::{carried, queued},
     state::{ComponentState, LinkId, LinkState},
 };
 
@@ -130,20 +130,31 @@ pub(super) fn arrivals(
                     *success = survives(success, &before.blocked, config);
                 }
             }
+            // A behaviour reads the answer as it reaches it, which is the
+            // callee's answer already rewritten by every behaviour beneath it.
+            let returned = returning(
+                plan,
+                &link.mutators,
+                observed,
+                request,
+                config,
+                time,
+                runtime,
+            )?;
             let mut crossing = request.clone();
-            for mutator in &link.mutators {
+            for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
                 crossing = apply(
                     plan,
                     mutator,
                     crossing,
-                    &observed,
+                    observed,
                     Direction::Request,
                     config,
                     time,
                     runtime,
                 )?;
             }
-            let state = match config.mode {
+            let mut state = match config.mode {
                 // Balance: the backlog is whatever the current load implies, so
                 // it is recomputed as the load settles.
                 SolveMode::Steady => queued(&crossing, response, &link.capacity, config),
@@ -151,15 +162,20 @@ pub(super) fn arrivals(
                 // flows are recorded, so the next step has something to advance
                 // from once everything else has settled.
                 SolveMode::Transient => {
-                    let mut carried = links.get(&link.id).cloned().unwrap_or_default();
-                    carried.offered = crossing.get(RATE).cloned().unwrap_or(Value::Number(0.0));
-                    carried.drain = response
+                    let mut held = links.get(&link.id).cloned().unwrap_or_default();
+                    held.offered = crossing.get(RATE).cloned().unwrap_or(Value::Number(0.0));
+                    held.drain = response
                         .get(CAPACITY)
                         .cloned()
                         .unwrap_or(Value::Number(0.0));
-                    carried
+                    held
                 }
             };
+            // Both ends compute this and agree, so it is taken from the request
+            // as it crosses and the answer as it arrives back rather than from
+            // whichever end happened to be evaluated last.
+            state.transfer = carried(&crossing, &returned.settled, config);
+            state.bandwidth = link.bandwidth.clone();
             let queueing = match direction {
                 Direction::Request => &mut counterpart,
                 Direction::Response => &mut flow,
@@ -178,21 +194,48 @@ pub(super) fn arrivals(
             // applying them in declaration order both ways would let the retry
             // answer a question the timeout had not yet asked, and the design
             // would look as though its deadline cost nothing.
-            let ordered: Vec<_> = match direction {
-                Direction::Request => link.mutators.iter().collect(),
-                Direction::Response => link.mutators.iter().rev().collect(),
-            };
-            for mutator in ordered {
-                flow = apply(
-                    plan,
-                    mutator,
-                    flow,
-                    &counterpart,
-                    direction,
-                    config,
-                    time,
-                    runtime,
-                )?;
+            match direction {
+                Direction::Request => {
+                    // Rebuilt against the queue as it stands now rather than as
+                    // it stood last pass, because this is the flow the component
+                    // reads rather than the one the queue was solved from.
+                    let offered = flow.clone();
+                    let returned = returning(
+                        plan,
+                        &link.mutators,
+                        counterpart.clone(),
+                        &offered,
+                        config,
+                        time,
+                        runtime,
+                    )?;
+                    for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
+                        flow = apply(
+                            plan,
+                            mutator,
+                            flow,
+                            observed,
+                            Direction::Request,
+                            config,
+                            time,
+                            runtime,
+                        )?;
+                    }
+                }
+                Direction::Response => {
+                    for mutator in link.mutators.iter().rev() {
+                        flow = apply(
+                            plan,
+                            mutator,
+                            flow,
+                            &counterpart,
+                            Direction::Response,
+                            config,
+                            time,
+                            runtime,
+                        )?;
+                    }
+                }
             }
             for (signal, value) in flow {
                 collected.entry(signal).or_default().push(value);
@@ -210,7 +253,7 @@ pub(super) fn arrivals(
             };
             combined.insert(
                 signal.clone(),
-                combine(&values, declaration.aggregate, divisor, config, &mut rng),
+                combine(&values, declaration, divisor, config, &mut rng),
             );
         }
         gathered.insert(name.clone(), combined);

@@ -9,8 +9,8 @@ use crate::{
     squiggle::Value,
     system::{
         compile::{Timing, prepare, runtime},
-        evaluate::{EvaluationConfig, EvaluationError, Step},
-        expression::{INBOUND, OUTBOUND, PREVIOUS, STEP, TIME},
+        evaluate::{EvaluationConfig, EvaluationError, SolveMode, Step},
+        expression::{INBOUND, OUTBOUND, PREVIOUS, STEADY, STEP, TIME},
         manifest::ComponentType,
         model::{ComponentId, SystemModel},
         mutator::Mutator,
@@ -51,6 +51,10 @@ pub(in crate::system) fn rank(
         scope.extend(state.channels.clone());
         scope.insert(TIME.to_owned(), Value::Number(step.time));
         scope.insert(STEP.to_owned(), Value::Number(config.step));
+        scope.insert(
+            STEADY.to_owned(),
+            Value::Boolean(config.mode == SolveMode::Steady),
+        );
         scope.insert(INBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
         scope.insert(OUTBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
         scope.insert(PREVIOUS.to_owned(), Value::Dictionary(BTreeMap::new()));
@@ -83,6 +87,7 @@ pub(in crate::system) fn rank(
             };
             ranked.push(measure(
                 component.id.clone(),
+                None,
                 name.clone(),
                 component.component_type.constraints[name].summary.clone(),
                 component.replicas,
@@ -91,19 +96,47 @@ pub(in crate::system) fn rank(
             ));
         }
     }
+    for (id, state) in &step.links {
+        let (Some(transfer), Some(bandwidth)) = (
+            draws(&state.transfer, config.sample_count, &mut rng),
+            draws(&state.bandwidth, config.sample_count, &mut rng),
+        ) else {
+            continue;
+        };
+        // A link nobody gave a speed to is not a link that is full.
+        if bandwidth.iter().all(|limit| limit.is_infinite()) {
+            continue;
+        }
+        ranked.push(measure(
+            id.from.clone(),
+            Some(id.to_string()),
+            "bandwidth".to_owned(),
+            "Bytes crossing the relationship against how fast it carries them. \
+             Saturating means the link is the bottleneck rather than either end \
+             of it, which is the reading that sends somebody to the network \
+             rather than to the service."
+                .to_owned(),
+            1.0,
+            &transfer,
+            &bandwidth,
+        ));
+    }
     ranked.sort_by(|left, right| {
         right
             .probability_of_binding
             .total_cmp(&left.probability_of_binding)
             .then(right.utilisation.total_cmp(&left.utilisation))
             .then(left.component.as_str().cmp(right.component.as_str()))
+            .then(left.link.cmp(&right.link))
             .then(left.constraint.cmp(&right.constraint))
     });
     Ok(ranked)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn measure(
     component: ComponentId,
+    link: Option<String>,
     constraint: String,
     summary: String,
     replicas: f64,
@@ -134,6 +167,7 @@ fn measure(
     let index = ((count as f64 * 0.9).ceil() as usize).clamp(1, count) - 1;
     Bottleneck {
         component,
+        link,
         constraint,
         summary,
         replicas,

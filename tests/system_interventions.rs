@@ -45,6 +45,7 @@ fn link(from: &str, to: &str) -> Relationship {
         from_port: None,
         to_port: None,
         capacity: None,
+        bandwidth: None,
         from: ComponentId::new(from),
         to: ComponentId::new(to),
         mutators: Vec::new(),
@@ -311,6 +312,7 @@ fn a_proposal_reaches_behaviours_and_scale_units() {
             from_port: None,
             to_port: None,
             capacity: None,
+            bandwidth: None,
             from: ComponentId::new("users"),
             to: ComponentId::new("api"),
             mutators: vec![AttachedMutator {
@@ -383,6 +385,7 @@ fn flagged(exposure: &str, interventions: Vec<Intervention>) -> SystemModel {
             from_port: None,
             to_port: None,
             capacity: None,
+            bandwidth: None,
             from: ComponentId::new("users"),
             to: ComponentId::new("recommender"),
             mutators: vec![AttachedMutator {
@@ -488,6 +491,7 @@ fn complementary_flags_split_traffic_between_paths() {
                 from_port: None,
                 to_port: None,
                 capacity: None,
+                bandwidth: None,
                 from: ComponentId::new("users"),
                 to: ComponentId::new("replacement"),
                 mutators: vec![AttachedMutator {
@@ -502,6 +506,7 @@ fn complementary_flags_split_traffic_between_paths() {
                 from_port: None,
                 to_port: None,
                 capacity: None,
+                bandwidth: None,
                 from: ComponentId::new("users"),
                 to: ComponentId::new("legacy"),
                 mutators: vec![AttachedMutator {

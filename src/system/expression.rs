@@ -28,6 +28,8 @@ use crate::squiggle::{
 pub(super) const TIME: &str = "t";
 /// The length of the current step, in seconds.
 pub(super) const STEP: &str = "dt";
+/// Whether the solve is asking where the design rests rather than how it moves.
+pub(super) const STEADY: &str = "steady";
 /// This component's channel values at the previous step.
 pub(super) const PREVIOUS: &str = "prev";
 /// The requests arriving on this component's inbound ports.
@@ -42,7 +44,7 @@ pub(super) const REQUEST: &str = "request";
 pub(super) const RESPONSE: &str = "response";
 
 /// Bindings the evaluator supplies to every channel expression.
-pub(super) const RESERVED: &[&str] = &[TIME, STEP, PREVIOUS, INBOUND, OUTBOUND];
+pub(super) const RESERVED: &[&str] = &[TIME, STEP, STEADY, PREVIOUS, INBOUND, OUTBOUND];
 
 /// Bindings the evaluator supplies to every mutator transform.
 ///

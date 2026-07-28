@@ -66,14 +66,19 @@ channels:
       Requests the caller abandoned before this pool answered. None of them are
       answered, but only some of them are saved.
     expression: in.requests.cancellation
+  salvage_share:
+    unit: '1'
+    summary: >
+      Share of cancellations arriving early enough that the work is never
+      started, as reported by the relationship they arrived on. Half unless a
+      behaviour on that relationship says otherwise.
+    expression: in.requests.cancellation_effectiveness
   salvaged:
     unit: op/s
     summary: >
-      Cancellations arriving early enough that the work is never started. Half of
-      them, on the assumption that a cancellation is equally likely to land at
-      any point during a request; the other half arrive with the work already
-      done and save nothing.
-    expression: 0.5 * cancelled
+      Cancellations arriving early enough that the work is never started. The
+      rest arrive with the work already done and save nothing.
+    expression: cancelled * salvage_share
   offered:
     unit: op/s
     summary: >
@@ -84,9 +89,9 @@ channels:
   propagated_cancellation:
     unit: op/s
     summary: >
-      Cancellations passed on to dependencies. The early half are stopped before
-      their downstream call is made and are cancelled in turn; the late half have
-      already called and cannot be recalled.
+      Cancellations passed on to dependencies. The ones that arrived early enough
+      are stopped before their downstream call is made and are cancelled in turn;
+      the rest have already called and cannot be recalled.
     expression: salvaged
   dependency_wait:
     unit: s
@@ -131,23 +136,24 @@ channels:
     unit: '1'
     summary: Share of requests whose dependencies all answered successfully.
     expression: out.dependencies.success
-  answered:
-    unit: op/s
-    summary: Requests that were not cancelled and so could be answered at all.
-    expression: max([arriving - cancelled, 0])
   success_rate:
     unit: '1'
     summary: >
-      Share of arriving requests answered successfully. A cancelled request is
-      never answered, so cancellation lowers this figure by its whole share while
-      relieving only half the load.
+      Share of arriving requests answered successfully, which is the share whose
+      dependencies all held.
 
-      Overload does not appear here. Work this pool has no room for never reaches
-      it: it is refused by the queue on the wire in front, which is where the
-      buffer that would have held it is. Counting it in both places would charge
-      the same overload twice and, because the caller answers failure with
+      Cancellation appears above, in the load it relieves, and not here. A request
+      the caller withdrew is a failure to that caller, and the behaviour that
+      withdrew it is what reports it; counting it again here would charge one
+      abandoned request twice, and once more for every further hop its
+      cancellation reached.
+
+      Overload does not appear here either. Work this pool has no room for never
+      reaches it: it is refused by the queue on the wire in front, which is where
+      the buffer that would have held it is. Counting it in both places would
+      charge the same overload twice and, because the caller answers failure with
       retries, would make the model amplify a shortfall it had already counted.
-    expression: (answered / max([arriving, 0.000001])) * dependency_success
+    expression: dependency_success
   calls:
     unit: op/s
     summary: >

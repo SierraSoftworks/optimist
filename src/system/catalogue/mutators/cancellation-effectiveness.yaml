@@ -1,0 +1,37 @@
+id: cancellation-effectiveness
+name: Cancellation effectiveness
+summary: >
+  Says how much of the work a cancellation withdraws is actually saved at the
+  far end. Cancelling is never free and rarely complete: some of it lands before
+  the work starts and genuinely saves the effort, and the rest lands with the
+  work already underway, so the resource is spent and only the reply is thrown
+  away.
+
+  Without this the split is a half, on the assumption that a cancellation is
+  equally likely to land at any point during a request. That is the right guess
+  in the absence of anything better and the wrong one wherever a design knows
+  more: a hop that checks for cancellation only at the start of a request saves
+  nearly all of it, and one that checks only before replying saves none.
+
+  Setting it to nought says the far end never learns in time, which is the same
+  load as never cancelling at all while still failing the caller. That is the
+  distinction between a system that degrades and one that collapses, and it is
+  worth writing down rather than assuming.
+properties:
+  effectiveness:
+    unit: '1'
+    summary: >
+      Share of cancellations arriving early enough to save the work. Clamped into
+      zero and one, because a share of cancellations has no meaning outside them
+      and a value beyond one would relieve a dependency of load nobody offered
+      it.
+    default: '0.5'
+requests:
+  cancellation_effectiveness:
+    unit: '1'
+    summary: >
+      The share the far end should salvage, replacing the half it would otherwise
+      assume. Travels with the cancellation it describes, so a chain of hops that
+      each honour cancellation differently is expressible without every component
+      along it having to know.
+    expression: min([max([effectiveness, 0]), 1])

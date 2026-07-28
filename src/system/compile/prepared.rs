@@ -20,6 +20,8 @@ pub(crate) struct PreparedLink {
     pub(crate) id: LinkId,
     /// Operations that may wait on this wire.
     pub(crate) capacity: Value,
+    /// Bytes per second this wire carries.
+    pub(crate) bandwidth: Value,
     pub(crate) mutators: Vec<PreparedMutator>,
 }
 

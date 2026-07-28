@@ -21,6 +21,25 @@ cancellation:
   aggregate: sum
   extensive: true
 
+cancellation_effectiveness:
+  unit: '1'
+  summary: >
+    Share of the cancellations crossing a relationship that arrive in time to
+    save the work. The rest arrive with the work already underway, so the
+    resource is spent and only the reply is thrown away.
+
+    Rests at a half, on the assumption that a cancellation is equally likely to
+    land at any point during a request. That is a convention rather than a
+    measurement, and it is the one figure in the cancellation story a design
+    cannot derive for itself, so it is stated here where a behaviour can rebind
+    it per hop rather than buried in every component that reads it.
+
+    Averaged across arrivals, because it describes each cancellation rather than
+    counting them, and unchanged by replication for the same reason.
+  aggregate: mean
+  extensive: false
+  rest: 0.5
+
 occupancy:
   unit: op
   summary: >

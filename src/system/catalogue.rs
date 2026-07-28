@@ -35,6 +35,8 @@ const MUTATORS: &[&str] = &[
     include_str!("catalogue/mutators/load-shed.yaml"),
     include_str!("catalogue/mutators/feature-flag.yaml"),
     include_str!("catalogue/mutators/ignores-cancellation.yaml"),
+    include_str!("catalogue/mutators/cancellation-effectiveness.yaml"),
+    include_str!("catalogue/mutators/message-size.yaml"),
 ];
 
 /// Why a catalogue could not be assembled.

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use super::{config::EvaluationConfig, error::EvaluationError, flow::Direction};
 use crate::{
     squiggle::{Runtime, Value},
     system::{
@@ -9,8 +10,6 @@ use crate::{
         expression::{REQUEST, RESPONSE, SIGNAL, STEP, TIME},
     },
 };
-
-use super::{config::EvaluationConfig, error::EvaluationError, flow::Direction};
 
 /// Rewrites a flow through one attached behaviour.
 ///
@@ -70,4 +69,53 @@ pub(super) fn apply(
         rewritten.insert(signal.clone(), value);
     }
     Ok(rewritten)
+}
+
+/// What the behaviours on a wire make of the answer travelling back along it.
+pub(super) struct Returning {
+    /// What each behaviour sees coming back, in declaration order.
+    pub(super) views: Vec<BTreeMap<String, Value>>,
+    /// The answer as it reaches the caller, past every behaviour.
+    pub(super) settled: BTreeMap<String, Value>,
+}
+
+/// Works the answer back along a wire, recording what each behaviour sees.
+///
+/// A response meets the behaviours in the reverse of the order a request does,
+/// so the answer reaching the topmost one has already been rewritten by every
+/// behaviour beneath it. Showing all of them the callee's raw answer instead
+/// would hide a deadline from the retry policy sitting above it, and the only
+/// way for that policy to learn a request had timed out would be for the callee
+/// to count the cancellation as failure as well — charging one abandoned request
+/// twice, and once more for every further hop its cancellation reached.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn returning(
+    plan: &Plan,
+    mutators: &[PreparedMutator],
+    response: BTreeMap<String, Value>,
+    request: &BTreeMap<String, Value>,
+    config: EvaluationConfig,
+    time: f64,
+    runtime: &mut Runtime,
+) -> Result<Returning, EvaluationError> {
+    let mut views = Vec::with_capacity(mutators.len());
+    let mut seen = response;
+    for mutator in mutators.iter().rev() {
+        views.push(seen.clone());
+        seen = apply(
+            plan,
+            mutator,
+            seen,
+            request,
+            Direction::Response,
+            config,
+            time,
+            runtime,
+        )?;
+    }
+    views.reverse();
+    Ok(Returning {
+        views,
+        settled: seen,
+    })
 }

@@ -54,9 +54,9 @@ channels:
   propagated_cancellation:
     unit: op/s
     summary: >
-      Cancellations passed on to backends. The half that arrive early enough to
-      matter are stopped before the backend answers.
-    expression: 0.5 * cancelled
+      Cancellations passed on to backends, at the share the relationship they
+      arrived on reports arriving early enough to matter.
+    expression: cancelled * in.requests.cancellation_effectiveness
   offered:
     unit: op/s
     summary: Demand still wanted by the time it reaches the balancer.
@@ -90,9 +90,16 @@ channels:
   success_rate:
     unit: '1'
     summary: >
-      Share of arriving requests answered successfully. Shed demand and cancelled
-      requests both count as unanswered, because from the caller's side they are.
-    expression: (admitted / max([arriving, 0.000001])) * backend_success
+      Share of arriving requests answered successfully, which is the share the
+      backends held.
+
+      Shedding does not appear here, for the same reason overload does not appear
+      in a pool's success rate. What this balancer refuses is refused by the
+      queue on the wire in front of it, which drains at the admission limit this
+      component publishes; counting it here as well would charge the same refusal
+      twice and report a design admitting a quarter of its traffic as serving a
+      sixteenth of it. Cancellation is counted by the behaviour that raised it.
+    expression: backend_success
   connections:
     unit: op
     summary: >
