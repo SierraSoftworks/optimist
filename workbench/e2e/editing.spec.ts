@@ -51,11 +51,7 @@ test.describe('editing', () => {
     await expect(page).toHaveURL(new RegExp(`/d/${id}/design`))
 
     await page.getByRole('button', { name: 'Add a component' }).click()
-    await page.getByTestId('component-type').click()
-    await page
-      .locator('.pick-component-type .el-select-dropdown__item', { hasText: 'Compute' })
-      .first()
-      .click()
+    await page.getByTestId('component-type-compute').click()
     await page.getByTestId('component-id').fill('api')
     await page.getByTestId('save-component').click()
 

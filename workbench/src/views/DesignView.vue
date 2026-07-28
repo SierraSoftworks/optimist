@@ -2,12 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import type { Mutation } from '../api/types'
+import type { Bottleneck, Mutation } from '../api/types'
 import Inspector from '../components/Inspector.vue'
 import ScratchpadPanel from '../components/ScratchpadPanel.vue'
 import SolveProgress from '../components/SolveProgress.vue'
 import SystemGraph from '../components/SystemGraph.vue'
 import { useAnalysis, useCatalogue, useDesign, useEditDesign } from '../composables/useDesign'
+import { glyphFor } from '../domain/componentIcons'
 import { readProblem } from '../domain/solverProblem'
 import { useWorkbenchStore } from '../stores/workbench'
 
@@ -43,18 +44,19 @@ function apply(mutations: Mutation[]): Promise<unknown> {
 const problem = computed(() => readProblem(solveError.value))
 
 /**
- * How close each component is to a limit, worst constraint winning.
+ * What each component is closest to exhausting, worst first.
  *
- * Fed into the diagram so that a strained component is visible without opening
- * anything. Only the worst matters: a component with one constraint at 30% and
- * another at 200% is in trouble, and averaging would hide it.
+ * Fed into the diagram so a strained component is visible without opening
+ * anything, and so stopping on one says which limit it is against. Only the
+ * worst decides the colour: a component with one constraint at 30% and another
+ * at 200% is in trouble, and averaging would hide it.
  */
-const pressure = computed(() => {
-  const worst: Record<string, number> = {}
+const constraints = computed(() => {
+  const byComponent: Record<string, Bottleneck[]> = {}
   for (const entry of analysis.value?.bottlenecks ?? []) {
-    worst[entry.component] = Math.max(worst[entry.component] ?? 0, entry.utilisation)
+    ;(byComponent[entry.component] ??= []).push(entry)
   }
-  return worst
+  return byComponent
 })
 
 const selection = computed(() => {
@@ -90,7 +92,37 @@ const newId = ref('')
 const addFailure = ref<string | null>(null)
 
 const types = computed(() => Object.values(catalogue.value?.component_types ?? {}))
+const mutatorTypes = computed(() => Object.values(catalogue.value?.mutators ?? {}))
 const componentIds = computed(() => snapshot.value?.model.components.map((c) => c.id) ?? [])
+
+function glyphOf(type: string) {
+  return glyphFor(catalogue.value?.component_types[type]?.icon)
+}
+
+/**
+ * The properties a type cannot be solved without.
+ *
+ * Shown on the card because it is the difference between choosing a component
+ * and finishing one. A queue wants a depth and a service rate; knowing that
+ * before the dialog closes is what stops somebody adding four of them and then
+ * discovering eight empty fields.
+ */
+function needs(type: string): string[] {
+  return Object.entries(catalogue.value?.component_types[type]?.properties ?? {})
+    .filter(([, property]) => property.default === null || property.default === undefined)
+    .map(([name]) => name)
+}
+
+/**
+ * Chooses a type, and offers its name as the identifier where none is typed.
+ *
+ * A first component of a kind is nearly always called after that kind, and
+ * having to type it is a step that teaches nobody anything.
+ */
+function chooseType(type: string) {
+  chosenType.value = type
+  if (!newId.value.trim()) newId.value = nameFor(type)
+}
 
 const idProblem = computed(() => {
   const id = newId.value.trim()
@@ -130,18 +162,77 @@ async function addComponent() {
 const connecting = ref(false)
 const from = ref('')
 const to = ref('')
+const attached = ref<string[]>([])
+
+function toggleMutator(id: string) {
+  attached.value = attached.value.includes(id)
+    ? attached.value.filter((entry) => entry !== id)
+    : [...attached.value, id]
+}
 
 async function connect() {
   if (!from.value || !to.value || from.value === to.value) return
-  await apply([
-    {
-      kind: 'set_relationship',
-      relationship: { from: from.value, to: to.value, summary: '', mutators: [] },
-    },
-  ])
+  await link(from.value, to.value, attached.value)
   connecting.value = false
   from.value = ''
   to.value = ''
+  attached.value = []
+}
+
+async function link(source: string, target: string, mutators: string[] = []) {
+  if (source === target) return
+  await apply([
+    {
+      kind: 'set_relationship',
+      relationship: {
+        from: source,
+        to: target,
+        summary: '',
+        mutators: mutators.map((type) => ({ type, properties: {} })),
+      },
+    },
+  ])
+  select({ kind: 'relationship', id: `${source}\u2192${target}` })
+}
+
+/**
+ * A name nobody has used, derived from the type.
+ *
+ * Placing a component from the diagram should not stop to ask what it is called:
+ * the point of the gesture is that it is one gesture. The identifier is a
+ * starting point rather than a decision, and the inspector opens on the new
+ * component so renaming it is the obvious next thing to do.
+ */
+function nameFor(type: string): string {
+  const taken = new Set(componentIds.value)
+  if (!taken.has(type)) return type
+  for (let index = 2; ; index += 1) {
+    const candidate = `${type}-${index}`
+    if (!taken.has(candidate)) return candidate
+  }
+}
+
+async function addComponentAt(type: string, at: { x: number; y: number }) {
+  const id = nameFor(type)
+  const definition = catalogue.value?.component_types[type]
+  const properties = Object.fromEntries(
+    Object.entries(definition?.properties ?? {}).map(([name, property]) => [
+      name,
+      property.default ?? '',
+    ]),
+  )
+  await apply([
+    {
+      kind: 'set_component',
+      component: { id, name: id, type, properties, position: { x: at.x, y: at.y } },
+    },
+  ])
+  select({ kind: 'component', id })
+}
+
+function removeComponent(id: string) {
+  if (selection.value?.id === id) select(null)
+  void apply([{ kind: 'remove_component', id }])
 }
 
 // A selection that no longer exists would leave the inspector describing
@@ -221,9 +312,12 @@ watch(
         :model="snapshot.model"
         :catalogue="catalogue"
         :selected="selected ?? null"
-        :pressure="pressure"
+        :constraints="constraints"
         @select="select"
         @move="place"
+        @create="({ type, x, y }) => addComponentAt(type, { x, y })"
+        @connect="({ from: source, to: target }) => link(source, target)"
+        @remove="({ id }) => removeComponent(id)"
       />
     </div>
 
@@ -276,25 +370,59 @@ watch(
       </template>
     </el-dialog>
 
-    <el-dialog v-model="connecting" title="Connect two components" width="420px">
-      <el-form label-position="top" size="small">
-        <el-form-item label="From">
+    <el-dialog v-model="connecting" title="Connect two components" width="560px">
+      <div class="ends">
+        <div class="end">
+          <p class="label">From</p>
           <el-select v-model="from" data-test="connect-from" popper-class="pick-from">
-            <el-option v-for="id in componentIds" :key="id" :label="id" :value="id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="To">
-          <el-select v-model="to" data-test="connect-to" popper-class="pick-to">
             <el-option
-              v-for="id in componentIds"
-              :key="id"
-              :label="id"
-              :value="id"
-              :disabled="id === from"
+              v-for="component in snapshot.model.components"
+              :key="component.id"
+              :label="component.name || component.id"
+              :value="component.id"
             />
           </el-select>
-        </el-form-item>
-      </el-form>
+        </div>
+        <el-icon class="arrow"><i-right /></el-icon>
+        <div class="end">
+          <p class="label">To</p>
+          <el-select v-model="to" data-test="connect-to-select" popper-class="pick-to">
+            <el-option
+              v-for="component in snapshot.model.components"
+              :key="component.id"
+              :label="component.name || component.id"
+              :value="component.id"
+              :disabled="component.id === from"
+            />
+          </el-select>
+        </div>
+      </div>
+
+      <!--
+        Behaviours are chosen here rather than found later. A retry policy or a
+        timeout is part of what a relationship *is*, and a wire drawn without
+        one silently models a caller that waits forever and never tries again.
+      -->
+      <p class="label behaviours">Behaviours on this relationship</p>
+      <div class="mutators">
+        <button
+          v-for="mutator in mutatorTypes"
+          :key="mutator.id"
+          class="mutator"
+          :class="{ chosen: attached.includes(mutator.id) }"
+          :data-test="`mutator-${mutator.id}`"
+          @click="toggleMutator(mutator.id)"
+        >
+          <el-icon class="tick">
+            <i-select v-if="attached.includes(mutator.id)" />
+            <i-plus v-else />
+          </el-icon>
+          <span class="name">{{ mutator.name }}</span>
+          <span class="says">{{ mutator.summary.split('.')[0] }}.</span>
+        </button>
+        <p v-if="!mutatorTypes.length" class="none">This catalogue defines no behaviours.</p>
+      </div>
+
       <template #footer>
         <el-button size="small" @click="connecting = false">Cancel</el-button>
         <el-button
@@ -348,4 +476,68 @@ watch(
 .option span { font-size: var(--text-2xs); color: var(--muted); }
 .message { margin: 0 0 var(--space-2); font-size: var(--text-xs); }
 .advice { margin: 0; padding-left: 1.1em; font-size: var(--text-2xs); color: var(--muted); }
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--space-2);
+}
+.type {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: left;
+  color: var(--ink);
+}
+.type:hover { border-color: var(--green); background: var(--surface-strong); }
+.type.chosen { border-color: var(--green); background: var(--green-soft); }
+.glyph { font-size: 17px; color: var(--muted); }
+.type.chosen .glyph { color: var(--green); }
+.type .name { font-size: var(--text-sm); font-weight: 650; }
+.type .says { font-size: var(--text-2xs); color: var(--muted); line-height: 1.35; }
+.type .needs {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.naming { margin-top: var(--space-4); }
+
+.ends { display: flex; align-items: flex-end; gap: var(--space-3); }
+.end { flex: 1; min-width: 0; }
+.arrow { color: var(--muted); padding-bottom: 6px; }
+.label {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.behaviours { margin-top: var(--space-4); }
+.mutators { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: var(--space-2); }
+.mutator {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'tick name' 'tick says';
+  gap: 0 var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: left;
+  color: var(--ink);
+}
+.mutator:hover { border-color: var(--green); }
+.mutator.chosen { border-color: var(--green); background: var(--green-soft); }
+.mutator .tick { grid-area: tick; font-size: 12px; color: var(--muted); align-self: center; }
+.mutator.chosen .tick { color: var(--green); }
+.mutator .name { grid-area: name; font-size: var(--text-sm); font-weight: 650; }
+.mutator .says { grid-area: says; font-size: var(--text-2xs); color: var(--muted); line-height: 1.35; }
+.none { margin: 0; font-size: var(--text-2xs); color: var(--muted); }
 </style>

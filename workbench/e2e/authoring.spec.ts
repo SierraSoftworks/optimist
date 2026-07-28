@@ -22,10 +22,9 @@ test('a design can be created and built up', async ({ page }) => {
   await expect(page.getByText('Nothing here yet')).toBeVisible()
 
   // A component comes from the catalogue rather than being invented, so the
-  // type picker is the only way in.
+  // type gallery is the only way in.
   await page.getByRole('button', { name: 'Add a component' }).click()
-  await page.getByTestId('component-type').click()
-  await chooseOption(page, 'pick-component-type', 'Client')
+  await page.getByTestId('component-type-client').click()
   await page.getByTestId('component-id').fill('users')
   await page.getByTestId('save-component').click()
 
@@ -34,15 +33,14 @@ test('a design can be created and built up', async ({ page }) => {
   await expect(page.getByTestId('component-name')).toHaveValue('users')
 
   await page.getByTestId('add-component').click()
-  await page.getByTestId('component-type').click()
-  await chooseOption(page, 'pick-component-type', 'Compute')
+  await page.getByTestId('component-type-compute').click()
   await page.getByTestId('component-id').fill('api')
   await page.getByTestId('save-component').click()
 
   await page.getByTestId('add-relationship').click()
   await page.getByTestId('connect-from').click()
   await chooseOption(page, 'pick-from', 'users')
-  await page.getByTestId('connect-to').click()
+  await page.getByTestId('connect-to-select').click()
   await chooseOption(page, 'pick-to', 'api')
   await page.getByTestId('save-relationship').click()
 

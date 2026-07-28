@@ -1,26 +1,45 @@
 <script setup lang="ts">
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import type { Catalogue, SystemModel } from '../api/types'
+import type { Bottleneck, Catalogue, SystemModel } from '../api/types'
+import { glyphFor, glyphUri } from '../domain/componentIcons'
+import { formatSiNumber } from '../domain/humanNumber'
 
 const props = defineProps<{
   model: SystemModel
   catalogue?: Catalogue
   selected: string | null
-  /** Constraint pressure per component, worst first, for colouring the graph. */
-  pressure?: Record<string, number>
+  /**
+   * What each component is closest to exhausting, worst first.
+   *
+   * Drives the colour and the flyout together, so what a reader is told when
+   * they stop on a red component is the reason it is red rather than a second
+   * measurement that might disagree with it.
+   */
+  constraints?: Record<string, Bottleneck[]>
 }>()
 
 const emit = defineEmits<{
   select: [{ kind: 'component' | 'relationship'; id: string } | null]
   connect: [{ from: string; to: string }]
   move: [{ id: string; x: number; y: number }]
+  create: [{ type: string; x: number; y: number }]
+  remove: [{ id: string }]
 }>()
 
 const host = ref<HTMLElement | null>(null)
 let graph: Core | null = null
 let observer: ResizeObserver | null = null
+
+/** How loaded each component's worst constraint is. */
+const pressure = computed(() => {
+  const worst: Record<string, number> = {}
+  for (const [component, entries] of Object.entries(props.constraints ?? {})) {
+    worst[component] = Math.max(0, ...entries.map((entry) => entry.utilisation))
+  }
+  return worst
+})
 
 /**
  * Which side of the design a component sits on.
@@ -38,19 +57,26 @@ function rank(model: SystemModel, id: string): number {
 }
 
 function elements(): ElementDefinition[] {
-  const nodes = props.model.components.map((component) => ({
-    data: {
-      id: component.id,
-      label: component.name || component.id,
-      kind: component.type,
-      rank: rank(props.model, component.id),
-      // Pressure drives colour rather than a separate badge, so a saturated
-      // component is visible without reading anything.
-      pressure: Math.min(props.pressure?.[component.id] ?? 0, 1.5),
-      strained: (props.pressure?.[component.id] ?? 0) >= 1 ? 'yes' : 'no',
-    },
-    position: component.position ? { ...component.position } : undefined,
-  }))
+  const nodes = props.model.components.map((component) => {
+    const strained = (pressure.value[component.id] ?? 0) >= 1
+    return {
+      data: {
+        id: component.id,
+        label: component.name || component.id,
+        kind: component.type,
+        rank: rank(props.model, component.id),
+        // The type's own glyph, drawn into the node rather than beside it. A
+        // diagram is scanned for shape before it is read for words, and a row of
+        // identical rectangles makes a reader read every label to find the store.
+        glyph: glyphUri(
+          props.catalogue?.component_types[component.type]?.icon,
+          strained ? '#9a3e31' : '#69716d',
+        ),
+        strained: strained ? 'yes' : 'no',
+      },
+      position: component.position ? { ...component.position } : undefined,
+    }
+  })
   const edges = props.model.relationships.map((edge) => ({
     data: {
       id: `${edge.from}\u2192${edge.to}`,
@@ -69,16 +95,23 @@ const STYLE: cytoscape.StylesheetJson = [
       label: 'data(label)',
       'text-valign': 'center',
       'text-halign': 'center',
+      'text-margin-x': 11,
       'font-family': 'Manrope, sans-serif',
       'font-size': 12,
       'font-weight': 700,
       color: '#25292b',
       'text-wrap': 'wrap',
-      'text-max-width': '120px',
+      'text-max-width': '96px',
       shape: 'round-rectangle',
-      width: 140,
+      width: 148,
       height: 46,
       'background-color': '#f9faf7',
+      // The image is composed to the node's proportions, so fitting it inside
+      // puts the glyph exactly where the image says it goes.
+      'background-image': 'data(glyph)',
+      'background-fit': 'contain',
+      'background-clip': 'node',
+      'background-image-opacity': 1,
       'border-width': 1.5,
       'border-color': '#d6dad3',
     },
@@ -190,6 +223,36 @@ onMounted(() => {
   graph.on('tap', (event) => {
     if (event.target === graph) emit('select', null)
   })
+
+  // Stopping on a component says why it is the colour it is. Reported in
+  // rendered coordinates because the flyout is HTML over the canvas, and the
+  // canvas has its own pan and zoom.
+  graph.on('mouseover', 'node', (event) => {
+    const at = event.target.renderedPosition()
+    const box = event.target.renderedBoundingBox()
+    hovered.value = { id: event.target.id() as string, x: box.x2, y: at.y }
+  })
+  graph.on('mouseout', 'node', () => (hovered.value = null))
+  graph.on('pan zoom drag', () => (hovered.value = null))
+
+  graph.on('cxttap', (event) => {
+    const rendered = event.renderedPosition ?? { x: 0, y: 0 }
+    hovered.value = null
+    if (event.target === graph) {
+      // Both positions are kept: one to put the menu where the pointer is, one
+      // to put the component where the diagram was clicked.
+      menu.value = {
+        kind: 'canvas',
+        x: rendered.x,
+        y: rendered.y,
+        at: event.position ?? { x: 0, y: 0 },
+      }
+      return
+    }
+    if (event.target.isNode?.()) {
+      menu.value = { kind: 'component', x: rendered.x, y: rendered.y, id: event.target.id() }
+    }
+  })
   // Reported when the drag ends rather than while it moves, so one placement is
   // one edit instead of a hundred.
   graph.on('dragfree', 'node', (event) => {
@@ -199,7 +262,10 @@ onMounted(() => {
   })
   // The container is measured by the layout, so it has to have been laid out
   // itself first. Running immediately puts every node in one row.
-  requestAnimationFrame(() => layout())
+  requestAnimationFrame(() => {
+    layout()
+    warmGlyphs()
+  })
 
   observer = new ResizeObserver(() => graph?.resize())
   observer.observe(host.value)
@@ -218,10 +284,20 @@ onBeforeUnmount(() => {
  * Re-running the layout on every solved result would move the diagram under the
  * cursor each time a number changed, so the signature deliberately excludes
  * anything but the structure.
+ *
+ * A component's glyph is part of that structure even though it comes from the
+ * catalogue rather than the model: the catalogue arrives after the design does,
+ * and without it here every node would keep the anonymous box it was drawn with
+ * before anything knew what it was.
  */
 const signature = () =>
   JSON.stringify([
-    props.model.components.map((component) => [component.id, component.name, component.type]),
+    props.model.components.map((component) => [
+      component.id,
+      component.name,
+      component.type,
+      props.catalogue?.component_types[component.type]?.icon,
+    ]),
     props.model.relationships.map((edge) => [edge.from, edge.to, edge.mutators.length]),
   ])
 
@@ -230,6 +306,7 @@ watch(signature, () => {
   graph.elements().remove()
   graph.add(elements())
   layout()
+  warmGlyphs()
 })
 
 /**
@@ -258,12 +335,21 @@ watch(
 // Pressure is pushed into existing nodes rather than rebuilding, so colours
 // update without disturbing positions.
 watch(
-  () => props.pressure,
-  (pressure) => {
+  pressure,
+  (loads) => {
     graph?.nodes().forEach((node) => {
-      const value = pressure?.[node.id()] ?? 0
-      node.data('strained', value >= 1 ? 'yes' : 'no')
+      const strained = (loads[node.id()] ?? 0) >= 1
+      node.data('strained', strained ? 'yes' : 'no')
+      const type = props.model.components.find((component) => component.id === node.id())?.type
+      node.data(
+        'glyph',
+        glyphUri(
+          type ? props.catalogue?.component_types[type]?.icon : undefined,
+          strained ? '#9a3e31' : '#69716d',
+        ),
+      )
     })
+    warmGlyphs()
   },
   { deep: true },
 )
@@ -277,6 +363,107 @@ watch(
   },
 )
 
+/**
+ * Draws again once every glyph has loaded.
+ *
+ * Cytoscape paints to a canvas as soon as it has elements, and an image that has
+ * not finished decoding is simply absent from that paint. Nothing schedules
+ * another one, so the glyphs stayed invisible until something unrelated — a
+ * drag, a resize — happened to force a redraw. Waiting for the images and asking
+ * for one is the whole fix.
+ */
+function warmGlyphs() {
+  if (!graph) return
+  const sources = new Set(
+    graph
+      .nodes()
+      .map((node) => node.data('glyph') as string | undefined)
+      .filter((source): source is string => !!source),
+  )
+  if (sources.size === 0) return
+  let outstanding = sources.size
+  const done = () => {
+    outstanding -= 1
+    if (outstanding === 0) graph?.forceRender()
+  }
+  sources.forEach((source) => {
+    const image = new Image()
+    image.onload = done
+    image.onerror = done
+    image.src = source
+  })
+}
+
+/**
+ * What a component is closest to exhausting, shown where the component is.
+ *
+ * A red box says something is wrong and not what. The constraints behind that
+ * colour are what an author needs in order to do anything about it, and sending
+ * them to the simulation to find out means leaving the diagram they were
+ * reasoning about.
+ */
+const hovered = ref<{ id: string; x: number; y: number } | null>(null)
+
+const hoveredConstraints = computed(() => {
+  const entries = hovered.value ? (props.constraints?.[hovered.value.id] ?? []) : []
+  return [...entries].sort((a, b) => b.utilisation - a.utilisation)
+})
+
+/** Right-click menus, which is how a diagram is edited without a toolbar. */
+const menu = ref<
+  | { kind: 'canvas'; x: number; y: number; at: { x: number; y: number } }
+  | { kind: 'component'; x: number; y: number; id: string }
+  | null
+>(null)
+
+const connectable = computed(() => {
+  if (menu.value?.kind !== 'component') return []
+  const from = menu.value.id
+  const attached = new Set(
+    props.model.relationships
+      .filter((edge) => edge.from === from)
+      .map((edge) => edge.to),
+  )
+  return props.model.components.filter(
+    (component) => component.id !== from && !attached.has(component.id),
+  )
+})
+
+const types = computed(() => Object.values(props.catalogue?.component_types ?? {}))
+
+function closeMenu() {
+  menu.value = null
+}
+
+function create(type: string) {
+  if (menu.value?.kind !== 'canvas') return
+  emit('create', { type, x: Math.round(menu.value.at.x), y: Math.round(menu.value.at.y) })
+  closeMenu()
+}
+
+function connectTo(to: string) {
+  if (menu.value?.kind !== 'component') return
+  emit('connect', { from: menu.value.id, to })
+  closeMenu()
+}
+
+function removeComponent() {
+  if (menu.value?.kind !== 'component') return
+  emit('remove', { id: menu.value.id })
+  closeMenu()
+}
+
+function glyph(type: string) {
+  return glyphFor(props.catalogue?.component_types[type]?.icon)
+}
+
+/** Load as a share of the limit, kept readable when a design is far past it. */
+function load(utilisation: number): string {
+  return utilisation >= 10
+    ? `\u00d7${formatSiNumber(utilisation, 2)}`
+    : `${(utilisation * 100).toFixed(0)}%`
+}
+
 defineExpose({
   fit: () => graph?.fit(undefined, 45),
   relayout: () => layout(true),
@@ -284,9 +471,178 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="host" class="graph" role="application" aria-label="System diagram" />
+  <!--
+    The browser's own context menu is suppressed over the diagram. Two menus
+    appearing on one gesture is not a choice anybody wants to make, and the one
+    with "Reload" in it is not the one being offered here.
+  -->
+  <div class="frame" @contextmenu.prevent @keydown.esc="closeMenu">
+    <div ref="host" class="graph" role="application" aria-label="System diagram" />
+
+    <div
+      v-if="hovered && hoveredConstraints.length"
+      class="flyout"
+      :style="{ left: `${hovered.x}px`, top: `${hovered.y}px` }"
+      data-test="component-limits"
+    >
+      <p class="heading">Closest to its limit</p>
+      <div
+        v-for="entry in hoveredConstraints"
+        :key="entry.constraint"
+        class="constraint"
+        :class="{ binding: entry.probability_of_binding > 0 }"
+      >
+        <div class="row">
+          <span class="name">{{ entry.constraint }}</span>
+          <span class="load">{{ load(entry.utilisation) }}</span>
+        </div>
+        <div class="gauge"><span :style="{ width: `${Math.min(entry.utilisation, 1) * 100}%` }" /></div>
+        <p class="says">{{ entry.summary }}</p>
+      </div>
+    </div>
+
+    <!--
+      A right-click menu rather than a toolbar dialog. Adding a component is a
+      placement as much as a choice, and a dialog that appears in the middle of
+      the screen loses the one piece of information the gesture carried.
+    -->
+    <template v-if="menu">
+      <div class="scrim" @click="closeMenu" @contextmenu.prevent="closeMenu" />
+      <div class="menu" :style="{ left: `${menu.x}px`, top: `${menu.y}px` }" data-test="graph-menu">
+        <template v-if="menu.kind === 'canvas'">
+          <p class="label">Add here</p>
+          <button
+            v-for="type in types"
+            :key="type.id"
+            class="item"
+            :data-test="`place-${type.id}`"
+            :title="type.summary"
+            @click="create(type.id)"
+          >
+            <el-icon class="mark"><component :is="glyph(type.id)" /></el-icon>
+            <span>{{ type.name }}</span>
+          </button>
+        </template>
+
+        <template v-else>
+          <p class="label">{{ menu.id }}</p>
+          <div v-if="connectable.length" class="submenu">
+            <button class="item" data-test="connect-to">
+              <el-icon class="mark"><i-connection /></el-icon>
+              <span>Connect to</span>
+              <el-icon class="chevron"><i-right /></el-icon>
+            </button>
+            <div class="nested">
+              <button
+                v-for="component in connectable"
+                :key="component.id"
+                class="item"
+                :data-test="`connect-to-${component.id}`"
+                @click="connectTo(component.id)"
+              >
+                <el-icon class="mark"><component :is="glyph(component.type)" /></el-icon>
+                <span>{{ component.name || component.id }}</span>
+              </button>
+            </div>
+          </div>
+          <button class="item danger" data-test="remove-component" @click="removeComponent">
+            <el-icon class="mark"><i-delete /></el-icon>
+            <span>Remove</span>
+          </button>
+        </template>
+      </div>
+    </template>
+  </div>
 </template>
 
 <style scoped>
+.frame { position: relative; width: 100%; height: 100%; }
 .graph { width: 100%; height: 100%; background: var(--bg); }
+
+.flyout {
+  position: absolute;
+  z-index: 3;
+  width: 236px;
+  transform: translate(14px, -50%);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: 0 8px 26px rgb(28 35 31 / 18%);
+  pointer-events: none;
+}
+.heading {
+  margin: 0 0 var(--space-2);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.constraint + .constraint { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.name { font-family: var(--mono); font-size: var(--text-2xs); }
+.load { font-family: var(--mono); font-size: var(--text-sm); }
+.constraint.binding .load, .constraint.binding .name { color: var(--danger); }
+.gauge { height: 3px; margin: 3px 0; border-radius: 2px; background: var(--line); overflow: hidden; }
+.gauge span { display: block; height: 100%; background: var(--green); }
+.constraint.binding .gauge span { background: var(--danger); }
+.says { margin: 0; font-size: 10px; line-height: 1.35; color: var(--muted); }
+
+.scrim { position: fixed; inset: 0; z-index: 4; }
+.menu {
+  position: absolute;
+  z-index: 5;
+  min-width: 176px;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: 0 8px 26px rgb(28 35 31 / 18%);
+}
+.label {
+  margin: 0;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+.item:hover { background: var(--green-soft); }
+.item.danger { color: var(--danger); }
+.item.danger:hover { background: var(--danger-surface); }
+.mark { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+.item.danger .mark { color: var(--danger); }
+.chevron { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+.submenu { position: relative; }
+.nested {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  min-width: 168px;
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: 0 8px 26px rgb(28 35 31 / 18%);
+}
+.submenu:hover .nested { display: block; }
 </style>
