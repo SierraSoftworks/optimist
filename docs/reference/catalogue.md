@@ -10,8 +10,14 @@ definitions are loaded alongside it and checked by identical rules. Nothing here
 is privileged, and a design may replace any of it.
 
 ```sh
+optimist catalogue ./design                # what is available, and what is used
+optimist catalogue ./design --type compute # one entry, in full
 optimist catalogue ./design --output json
 ```
+
+`--type` is the quickest way to see which of an entry's properties are required,
+what unit each carries, and which limits it can exhaust — worth reading before
+writing a component rather than after it fails to solve.
 
 ## Signals
 
@@ -92,6 +98,10 @@ its connection limit without any change in demand at all.
 **Constraints** — `admission` (offered against the admission limit),
 `connections` (connections held against the limit).
 
+Shed demand is charged to callers once, by the queue on the wire in front of the
+balancer, which drains at the admission limit this type publishes. `success_rate`
+therefore reports what the backends managed rather than restating the refusal.
+
 ### `queue`
 
 A buffer that decouples a producer's arrival rate from a consumer's service
@@ -117,7 +127,9 @@ how much work there is.
 
 `backlog` reads `prev.backlog`, so this type is a state variable and its
 behaviour under [transient solving](../guide/analysis.md#steady-state-and-transient)
-differs from its steady state.
+differs from its steady state. Only work `accepted_ratio` admits accumulates, and
+the total is bounded by the depth, so a queue never reports holding more than it
+has room for.
 
 **Constraints** — `depth` (backlog against the queue's depth), `throughput`
 (arrivals against the rate consumers drain at).
@@ -225,6 +237,12 @@ free, even when the branch itself is fast and reliable.
 
 **Constraints** — `fan_out` (demand created against demand received).
 
+`branch_capacity` divides what the slowest branch can take by the number of calls
+each request makes of it. A branch reporting no ceiling, and a fan-out with
+nothing wired to it yet, both arrive as an unbounded figure; it is capped at a
+rate no real service reaches before being divided, so a design part-way through
+being drawn still solves.
+
 ---
 
 ## Behaviours
@@ -317,7 +335,9 @@ sees every call.
 | --- | --- | --- |
 | `hit_ratio` | `1` | *required* |
 
-Request `rate` becomes `signal.rate * (1 - hit_ratio)`. Uncertainty here should
+Request `rate` becomes `signal.rate * (1 - hit_ratio)`, with the ratio clamped
+into zero and one so that a mistyped setting cannot send negative demand
+downstream. Uncertainty here should
 reflect how much the working set may change: a hit ratio measured on today's
 traffic is a poor guide to tomorrow's, and a design that depends on a high one
 should be checked against a low one.

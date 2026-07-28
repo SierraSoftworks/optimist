@@ -1,7 +1,7 @@
 # CLI reference
 
 ```text
-optimist [--output <FORMAT>] <COMMAND>
+optimist [--output <FORMAT>] [--colour <WHEN>] <COMMAND>
 ```
 
 > Design large systems and find what constrains them.
@@ -10,19 +10,39 @@ There are two things to do with a design: read one from disk and ask it
 questions, or serve a directory of them so the workbench and other editors can
 work together. Every command is one of those.
 
+The questions come in an order, and it is worth following:
+
+| Question | Command |
+| --- | --- |
+| Does this design mean what I wrote? | `optimist check` |
+| What flows through it? | `optimist solve` |
+| What does it run out of first? | `optimist bottlenecks` |
+| Does this proposal help? | `optimist compare` |
+| What can I build it from? | `optimist catalogue` |
+
+Every design command takes the design directory as its first argument and
+defaults to the working directory, so somebody standing in a design can ask
+anything of it without naming it again. The one exception is `compare`, which
+must be given the directory because the arguments after it are interventions.
+
 ## Global options
 
 | Option | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `--output` | `table`, `json`, `jsonl` | `table` | Report format. Accepted before or after the subcommand. |
+| `--colour` | `auto`, `always`, `never` | `auto` | Whether reports are coloured. `auto` colours a terminal and nothing else. |
 | `--version` | | | Print the version and exit. |
 | `--help` | | | Print usage and exit. |
 
-`table` output is tab-separated rather than padded, so it pipes into `cut` and
-`awk` unchanged and a long name never pushes a column out of alignment.
+`table` output is laid out for a terminal: rounded sections, aligned columns,
+and a closing note saying what the numbers mean. Colour is emphasis only —
+every figure it highlights is also written out — so a report captured to a
+file, read aloud, or parsed by an agent loses nothing. Width is taken from
+`COLUMNS` when that is set and from the terminal otherwise, which is how a
+script pins a report to a known width.
 
-Errors are rendered with recovery advice and exit with status `1`; success exits
-with `0`.
+Use `--output json` when something other than a person is reading. Errors are
+rendered with recovery advice and exit with status `1`; success exits with `0`.
 
 ## Shared solve options
 
@@ -46,106 +66,166 @@ the time a queue takes to empty, so expect to shorten `--step` and lengthen
 ## `check`
 
 ```text
-optimist check <DIRECTORY>
+optimist check [DIRECTORY] [--no-solve]
 ```
 
-Loads a design and reports what it contains without solving it. This is the
-command for continuous integration: it validates the schema version, the
-component documents, every relationship endpoint, and every project-local
-component type and behaviour definition.
+Loads a design, looks it over, and reports anything wrong with it. This is the
+command for continuous integration.
+
+Reading a design already rejects anything malformed: a wrong schema version, a
+relationship pointing at nothing, a component type that does not validate. What
+`check` adds is everything that parses and still does not say what its author
+meant, because the engine absorbs each of those silently and then answers a
+question nobody asked.
+
+| Finding | Severity | Why it matters |
+| --- | --- | --- |
+| A component adopts an unknown type | `error` | Nothing can be derived from it. |
+| A component omits a property its type requires | `error` | The design cannot be solved. |
+| A component sets a property its type does not declare | `warning` | The value is ignored; usually a misspelling. |
+| A relationship attaches an unknown behaviour | `error` | The rewrite it names never happens. |
+| A scale unit groups a component that does not exist | `error` | The replication it describes is not applied. |
+| An intervention rebinds something outside the scratchpad | `error` | It compares identically against the design. |
+| An intervention rebinds nothing at all | `warning` | The same, and usually unfinished. |
+| A component is wired to nothing | `warning` | It neither offers nor receives load. |
+| The design will not solve | `error` | Reported with the expression at fault. |
+| The design does not settle | `warning` | A loop whose gain exceeds one has no steady state. |
+
+The last two come from solving the design once at sixty-four draws. That trial
+is skipped when a structural error has already been found, because a design
+missing a required property will certainly fail to solve and saying so twice
+buries the finding worth acting on. Pass `--no-solve` to check the structure
+alone, which is faster and enough when the design is known to solve.
 
 ```sh
 optimist check examples/checkout
 ```
 
 ```text
-PROPERTY        VALUE
-name            Checkout
-components      3
-relationships   2
-shared quantities       3
-scale units     0
-interventions   2
-component types 6
-behaviours      8
+╭─ Checkout ───────────────────────────────────────────────────────────────────╮
+│ A worked example: browsers reach an API pool that reads from a store, with    │
+│ retries in front of the pool and a cache in front of the store.               │
+│                                                                              │
+│ 3 components, 2 relationships, 3 shared quantities, 0 scale units, 2          │
+│ interventions.                                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─ Components ─────────────────────────────────────────────────────────────────╮
+│ ID        TYPE       NAME          CALLS  CALLERS  BEHAVIOURS                 │
+│ ────────  ─────────  ────────────  ─────  ───────  ──────────                 │
+│ api       compute    Checkout API      1        1           1                 │
+│ browsers  client     Users             1        0           2                 │
+│ orders    datastore  Order store       0        1           0                 │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-`--output json` emits the loaded `SystemModel` — scratchpad, components,
-relationships, scale units, and interventions — as one document.
+Sections for shared quantities and interventions follow, and then either the
+findings or a note saying there are none.
+
+**The exit status is the point.** A design with any `error` finding exits `1`;
+warnings alone exit `0`. The report goes to stdout either way, so it can be read
+and acted on whichever it was.
+
+### JSON shape
+
+```json
+{
+  "name": "Checkout",
+  "summary": "A worked example: ...",
+  "components": 3,
+  "relationships": 2,
+  "shared_quantities": 3,
+  "scale_units": 0,
+  "interventions": 2,
+  "solvable": true,
+  "findings": [
+    {
+      "severity": "error",
+      "subject": "api",
+      "message": "does not supply `service_time`, which `compute` requires (s)",
+      "advice": "Give the property a value, or a default in the component type ..."
+    }
+  ]
+}
+```
+
+`severity` is `error` or `warning`. `solvable` is `false` when any finding is an
+error, which is the same condition as the exit status.
 
 ---
 
 ## `catalogue`
 
 ```text
-optimist catalogue <DIRECTORY>
+optimist catalogue [DIRECTORY] [--type <ID>]
 ```
 
 Lists the component types and behaviours available to a design, shipped and
-project-local together.
+project-local together, with a count of how many components use each.
 
 ```sh
 optimist catalogue examples/checkout
 ```
 
 ```text
-KIND       ID                    PROPERTIES  LIMITS
-component  aggregator            2           1
-component  client                4           2
-component  compute               4           1
-component  datastore             8           4
-component  load-balancer         4           2
-component  queue                 2           2
-behaviour  batch                 2           3
-behaviour  cache                 1           1
-behaviour  fan-out               1           1
-behaviour  feature-flag          1           1
-behaviour  ignores-cancellation  0           1
-behaviour  load-shed             1           2
-behaviour  retry                 1           3
-behaviour  timeout               1           3
+╭─ Component types ────────────────────────────────────────────────────────────╮
+│ TYPE           NAME            PROPERTIES  CHANNELS  LIMITS  IN USE          │
+│ ─────────────  ──────────────  ──────────  ────────  ──────  ──────          │
+│ aggregator     Aggregator               2         6       1       0          │
+│ client         Client                   4         9       2       1          │
+│ compute        Compute pool             4        14       1       1          │
+│ datastore      Datastore                8        12       4       1          │
+│ load-balancer  Load balancer            4         8       2       0          │
+│ queue          Queue                    2         5       2       0          │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-For a `component` row, `LIMITS` is the number of constraints. For a `behaviour`
-row it is the number of signals the behaviour rewrites, across both directions.
+`--type <ID>` describes one component type or behaviour in full: what it is for,
+the properties it expects and which of them are required, the ports it attaches
+by, the quantities it derives, and the limits it can exhaust. This is the
+reference to reach for when writing a component rather than reading one.
 
-`--output json` emits the full manifests: ports, properties, channels, and
-constraints, with every `summary`.
+```sh
+optimist catalogue examples/checkout --type queue
+```
+
+`--output json` emits the full manifests, or the single named one.
 
 ---
 
 ## `solve`
 
 ```text
-optimist solve <DIRECTORY> [--component <ID>] [--intervention <ID>] [solve options]
+optimist solve [DIRECTORY] [-c|--component <ID>] [-i|--intervention <ID>] [solve options]
 ```
 
-Solves a design and reports the quantities flowing through it.
+Solves a design and reports the quantities flowing through it, a section per
+component.
 
 ```sh
 optimist solve examples/checkout --component api
 ```
 
 ```text
-COMPONENT  CHANNEL                    VALUE
-api        capacity                   685.1550 [450.9287 .. 947.7374]
-api        hold_time                  0.0127 [0.0084 .. 0.0177]
-api        in.requests.rate           1754.8106 [900.2660 .. 2234.2242]
-api        out.dependencies.latency   0.0020 [0.0020 .. 0.0020]
-api        utilisation                2.9597 [0.9499 .. 4.9170]
+╭─ api ──────────────────────────────────────────────────────────╮
+│ CHANNEL                             MEAN          80% INTERVAL │
+│ ─────────────────────────────  ─────────  ──────────────────── │
+│ capacity                         685.155  450.9287 .. 947.7374 │
+│ hold_time                         0.0127      0.0084 .. 0.0177 │
+│ utilisation                       2.9597       0.9499 .. 4.917 │
+│ in.requests.rate               1754.8106  900.266 .. 2234.2242 │
+│ out.dependencies.latency           0.002        0.002 .. 0.002 │
+╰────────────────────────────────────────────────────────────────╯
 ```
 
-Uncertain quantities are shown as a mean with a central eighty percent interval.
-Certain ones are shown as a single number. Alongside the component's own
-channels, `in.<port>.<signal>` is what arrived and `out.<port>.<signal>` is what
-came back.
+Uncertain quantities carry a central eighty percent interval; certain ones do
+not. A component's own channels come first, then the traffic on its ports:
+`in.<port>.<signal>` is what arrived and `out.<port>.<signal>` is what came
+back, so the dependency latency that caused a component's own latency sits in
+the same table.
 
-If the model did not settle, a note follows the table:
-
-```text
-Did not settle after 1500 passes; largest movement 3.412e-2.
-A loop whose gain exceeds one has no steady state to find.
-```
+If the model did not settle, a note follows saying so, because a design with no
+steady state has no figures worth reading.
 
 ### JSON shape
 
@@ -166,7 +246,7 @@ A loop whose gain exceeds one has no steady state to find.
 ## `bottlenecks`
 
 ```text
-optimist bottlenecks <DIRECTORY> [--binding] [--intervention <ID>] [solve options]
+optimist bottlenecks [DIRECTORY] [--binding] [-c|--component <ID>] [-i|--intervention <ID>] [solve options]
 ```
 
 Ranks the constraints a design is closest to exhausting, most likely to bind
@@ -177,22 +257,34 @@ optimist bottlenecks examples/checkout --binding
 ```
 
 ```text
-COMPONENT  CONSTRAINT          UTILISATION  P90      BINDS  REPLICAS  HEADROOM
-orders     volume              7.009        9.555    100%   1         -3004303674979.1333
-api        capacity            2.960        4.916    87%    1         -1063.2349
-browsers   success_objective   55.626       109.865  86%    1         -0.2731
-browsers   latency_objective   0.460        0.793    3%     1         0.4053
+╭─ Constraints ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT     LOAD             MEAN       P90  BINDS    HEADROOM │
+│ ─────────  ─────────────  ────────────  ───────  ────────  ─────  ────────── │
+│ orders     volume         ████████████     7.01      9.56   100%   -3.004e12 │
+│ api        capacity       ████████████     2.96      4.92    87%  -1063.2349 │
+│ browsers   success_obje…  ████████████    55.63       110    86%     -0.2731 │
+│ browsers   latency_obje…  ██████░░░░░░   0.4597    0.7931     3%      0.4053 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─ orders.volume runs out first ───────────────────────────────────────────────╮
+│ It is carrying 7.01× what its limit allows on average and binds in 100% of   │
+│ draws. Resident bytes against usable capacity. Unlike the rate limits this   │
+│ one fills gradually and then fails abruptly, so headroom here is measured in │
+│ time rather than in load.                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 | Column | Meaning |
 | --- | --- |
-| `UTILISATION` | Mean of demand over limit. |
+| `LOAD` | Mean utilisation drawn as a bar, filled completely at or beyond the limit. |
+| `MEAN` | Mean of demand over limit. |
 | `P90` | Utilisation at the ninetieth percentile of draws. |
 | `BINDS` | Share of draws in which demand met or exceeded the limit. |
-| `REPLICAS` | Replicas of this component across every enclosing scale unit; the other figures describe one of them. |
 | `HEADROOM` | Mean limit less mean demand, in the constraint's own units. |
+| `REPLICAS` | Replicas of this component across every enclosing scale unit. Shown only where a design has any; the other figures describe one replica. |
 
-`--binding` keeps only constraints that bind in at least one draw.
+`--binding` keeps only constraints that bind in at least one draw, and
+`--component` keeps only one component's.
 
 ### JSON shape
 
@@ -218,42 +310,59 @@ browsers   latency_objective   0.460        0.793    3%     1         0.4053
 ## `compare`
 
 ```text
-optimist compare <DIRECTORY> <INTERVENTION> [solve options]
+optimist compare <DIRECTORY> <INTERVENTION>... [solve options]
 ```
 
-Weighs a proposed change against the design it would replace, solving both with
-the same seed and the same draws.
+Weighs proposals against the design they would replace, solving each with the
+same seed and the same draws. Name several and they become as comparable with
+each other as each is with the baseline.
 
 ```sh
-optimist compare examples/checkout warm-cache
+optimist compare examples/checkout warm-cache bigger-pool
 ```
 
 ```text
-COMPONENT  CONSTRAINT          BEFORE  AFTER  BOUND BEFORE  BOUND AFTER  EFFECT
-orders     volume              7.009   0.643  100%          0%           relieved
-orders     operations          0.066   0.006  0%            0%           eased
-browsers   latency_objective   0.460   0.495  3%            8%           loaded
-api        capacity            2.960   3.186  87%           87%          loaded
+╭─ warm-cache ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT               UTILISATION      BINDS  EFFECT          │
+│ ─────────  ─────────────────  ─────────────────  ─────────  ─────────       │
+│ orders     volume                 7.01 → 0.6433  100% → 0%  relieved        │
+│ orders     operations            0.066 → 0.0061    0% → 0%  eased           │
+│ browsers   latency_objective    0.4597 → 0.4955    3% → 8%  loaded          │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─ warm-cache relieves what it was aimed at ──────────────────────────────────╮
+│ It stops 1 constraint binding and starts none: orders.volume. 3 constraints │
+│ are still binding afterwards: browsers.latency_objective, api.capacity,     │
+│ browsers.success_objective.                                                 │
+╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
 `EFFECT` is one of `relieved`, `introduced`, `eased`, `loaded`, or `unchanged`.
-When a change introduces a constraint, a note follows the table saying how many
-and why that matters.
+The note beneath each proposal says which of three things it did: relieved what
+it was aimed at, moved the bottleneck somewhere else, or changed nothing that
+binds. It also names whatever is still binding afterwards, because a change can
+relieve one limit and leave the design just as short as it was.
 
 ### JSON shape
 
 ```json
 [
   {
+    "intervention": "warm-cache",
     "component": "orders",
     "constraint": "volume",
     "before": 7.009,
     "after": 0.643,
     "bound_before": 1.0,
-    "bound_after": 0.0
+    "bound_after": 0.0,
+    "relieved": true,
+    "introduced": false
   }
 ]
 ```
+
+Every movement names the proposal it belongs to, so several proposals share one
+flat list. `--output jsonl` emits one per line.
 
 ---
 
@@ -285,7 +394,7 @@ the repository. Without a valid web root the server remains API-only. See the
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | The design could not be read, could not be solved, or the arguments were invalid. |
+| `1` | The design could not be read, could not be solved, carried an error-level finding, or the arguments were invalid. |
 
 Failures are printed to stderr with the file or component at fault named, and
-with advice on what to do about it.
+with advice on what to do about it. Reports always go to stdout.

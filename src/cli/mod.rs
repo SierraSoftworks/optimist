@@ -3,16 +3,24 @@
 //! There are two things to do with a design: serve a directory of them so the
 //! workbench and other editors can work together, or read one from disk and ask
 //! it questions. Everything the tool does is reachable through one of those.
+//!
+//! The questions come in an order. `check` says whether a design means what its
+//! author wrote; `solve` says what flows through it; `bottlenecks` says what it
+//! runs out of first; `compare` says whether a proposal helps. Each answers in
+//! the boxed, coloured layout this crate already uses for its errors, so a
+//! report and a failure look like output from the same program rather than two.
 
+mod diagnose;
 mod output;
 mod output_json;
+mod render;
+mod report;
 mod server;
 mod system;
-mod system_output;
 
 use clap::{Parser, Subcommand};
 
-use output::OutputFormat;
+use output::{ColourChoice, OutputFormat};
 use server::ServerArgs;
 use system::SystemCommand;
 
@@ -32,8 +40,12 @@ use system::SystemCommand;
     about = "Design large systems and find what constrains them"
 )]
 pub struct Cli {
+    /// Report format.
     #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Table)]
     output: OutputFormat,
+    /// When to colour the output.
+    #[arg(long, global = true, value_enum, default_value_t = ColourChoice::Auto)]
+    colour: ColourChoice,
     #[command(subcommand)]
     command: Command,
 }
@@ -60,6 +72,7 @@ enum Command {
 /// # }
 /// ```
 pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
+    cli.colour.apply();
     match cli.command {
         Command::Serve(args) => server::run(args).await,
         Command::Design(command) => system::run(command, cli.output),
@@ -76,8 +89,10 @@ mod tests {
     fn parses_the_commands_over_a_design() {
         for arguments in [
             vec!["optimist", "check", "./design"],
-            vec!["optimist", "catalogue", "./design"],
+            vec!["optimist", "check", "--no-solve"],
+            vec!["optimist", "catalogue", "./design", "--type", "compute"],
             vec!["optimist", "solve", "./design", "--component", "api"],
+            vec!["optimist", "solve", "-c", "api", "-i", "warm-cache"],
             vec![
                 "optimist",
                 "bottlenecks",
@@ -86,7 +101,7 @@ mod tests {
                 "--samples",
                 "4000",
             ],
-            vec!["optimist", "compare", "./design", "warm-cache"],
+            vec!["optimist", "compare", "./design", "warm-cache", "shard"],
         ] {
             let cli = Cli::try_parse_from(&arguments)
                 .unwrap_or_else(|error| panic!("{arguments:?}: {error}"));
@@ -102,15 +117,22 @@ mod tests {
     }
 
     #[test]
-    fn output_format_is_global() {
-        let cli = Cli::try_parse_from(["optimist", "--output", "json", "check", "./design"])
-            .expect("parses");
+    fn output_and_colour_are_global() {
+        let cli = Cli::try_parse_from([
+            "optimist", "--output", "json", "--colour", "never", "check", "./design",
+        ])
+        .expect("parses");
         assert!(matches!(cli.command, Command::Design(_)));
     }
 
     #[test]
-    fn a_design_directory_is_required() {
-        assert!(Cli::try_parse_from(["optimist", "check"]).is_err());
+    fn the_design_directory_defaults_to_the_working_one() {
+        assert!(Cli::try_parse_from(["optimist", "check"]).is_ok());
+        assert!(Cli::try_parse_from(["optimist", "bottlenecks"]).is_ok());
+    }
+
+    #[test]
+    fn comparing_requires_something_to_compare() {
         assert!(Cli::try_parse_from(["optimist", "compare", "./design"]).is_err());
     }
 }

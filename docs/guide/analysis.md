@@ -122,21 +122,32 @@ optimist bottlenecks examples/checkout
 ```
 
 ```text
-COMPONENT  CONSTRAINT          UTILISATION  P90      BINDS  REPLICAS  HEADROOM
-orders     volume              7.009        9.555    100%   1         -3004303674979.1333
-api        capacity            2.960        4.916    87%    1         -1063.2349
-browsers   success_objective   55.626       109.865  86%    1         -0.2731
-browsers   latency_objective   0.460        0.793    3%     1         0.4053
-orders     operations          0.066        0.090    0%     1         4669.9294
+╭─ Constraints ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT        LOAD            MEAN     P90  BINDS    HEADROOM │
+│ ─────────  ────────────────  ────────────  ──────  ──────  ─────  ────────── │
+│ orders     volume            ████████████    7.01    9.56   100%   -3.004e12 │
+│ api        capacity          ████████████    2.96    4.92    87%  -1063.2349 │
+│ browsers   success_objecti…  ████████████   55.63     110    86%     -0.2731 │
+│ browsers   latency_objecti…  ██████░░░░░░  0.4597  0.7931     3%      0.4053 │
+│ orders     operations        █░░░░░░░░░░░   0.066    0.09     0%   4669.9294 │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─ orders.volume runs out first ───────────────────────────────────────────────╮
+│ It is carrying 7.01× what its limit allows on average and binds in 100% of   │
+│ draws. Resident bytes against usable capacity. Unlike the rate limits this   │
+│ one fills gradually and then fails abruptly, so headroom here is measured in │
+│ time rather than in load.                                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 | Column | Meaning |
 | --- | --- |
-| `UTILISATION` | Mean of demand over limit. |
+| `LOAD` | Mean utilisation drawn as a bar, filled completely at or beyond the limit. |
+| `MEAN` | Mean of demand over limit. |
 | `P90` | Utilisation at the ninetieth percentile of draws. |
 | `BINDS` | Share of draws in which demand met or exceeded the limit. |
-| `REPLICAS` | Replicas of the owning component across every enclosing scale unit. The other figures describe **one** replica. |
 | `HEADROOM` | Mean limit less mean demand, in the constraint's own units. |
+| `REPLICAS` | Replicas of the owning component across every enclosing scale unit. Shown only where a design has any; the other figures describe **one** replica. |
 
 Constraints are ordered by how likely they are to bind, and by utilisation where
 that ties:
@@ -170,16 +181,27 @@ optimist compare examples/checkout warm-cache
 ```
 
 ```text
-COMPONENT  CONSTRAINT          BEFORE  AFTER  BOUND BEFORE  BOUND AFTER  EFFECT
-orders     volume              7.009   0.643  100%          0%           relieved
-orders     operations          0.066   0.006  0%            0%           eased
-browsers   latency_objective   0.460   0.495  3%            8%           loaded
-api        capacity            2.960   3.186  87%           87%          loaded
+╭─ warm-cache ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT               UTILISATION      BINDS  EFFECT          │
+│ ─────────  ─────────────────  ─────────────────  ─────────  ─────────       │
+│ orders     volume                 7.01 → 0.6433  100% → 0%  relieved        │
+│ orders     operations            0.066 → 0.0061    0% → 0%  eased           │
+│ browsers   latency_objective    0.4597 → 0.4955    3% → 8%  loaded          │
+│ api        capacity                 2.96 → 3.19  87% → 87%  loaded          │
+│ browsers   success_objective      55.63 → 74.73  86% → 86%  loaded          │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─ warm-cache relieves what it was aimed at ──────────────────────────────────╮
+│ It stops 1 constraint binding and starts none: orders.volume. 3 constraints │
+│ are still binding afterwards: browsers.latency_objective, api.capacity,     │
+│ browsers.success_objective.                                                 │
+╰─────────────────────────────────────────────────────────────────────────────╯
 ```
 
 `compare` solves the design twice — once as it stands, once with the
 intervention's rebindings applied — using the same seed and the same draws, and
-reports the movement of every constraint.
+reports the movement of every constraint. Name several interventions at once and
+they become as comparable with each other as each is with the baseline.
 
 | Effect | Meaning |
 | --- | --- |
@@ -189,12 +211,9 @@ reports the movement of every constraint.
 | `loaded` | Utilisation rose. |
 | `unchanged` | Utilisation did not move. |
 
-When a change introduces a constraint, the report says so explicitly:
-
-```text
-2 constraint(s) started binding under this change.
-Relieving one limit routinely promotes another, so check whether this is a fix or a move.
-```
+The note beneath the table says which of three things the change did: relieved
+what it was aimed at, moved the bottleneck somewhere else, or changed nothing
+that binds. It also names whatever is still binding afterwards.
 
 That is the point of comparing rather than re-solving. Relieving the constraint
 everybody was watching usually promotes the next one, and a proposal is only
@@ -209,7 +228,8 @@ worth funding if the design is better after the promotion.
 | `--horizon` | `1` | Number of steps to advance. |
 | `--step` | `1.0` | Length of one step, in seconds. |
 | `--transient` | off | Advance queues through time instead of solving for balance. |
-| `--intervention` | none | Apply an intervention before solving or ranking. |
+| `--intervention` | none | Apply an intervention before solving or ranking. Short form `-i`. |
+| `--component` | all | Report or rank only one component. Short form `-c`. |
 
 The same controls are query parameters on the HTTP analysis endpoint, where
 `samples` is clamped to 64–20,000 and `horizon` to 1–500.
