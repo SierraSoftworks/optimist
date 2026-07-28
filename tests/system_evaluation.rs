@@ -353,11 +353,111 @@ fn a_feedback_loop_settles() {
     );
 }
 
+/// A buffer filled by a burst empties again once the burst has passed.
+///
+/// This is what makes a queue the memory of a design. Draining only what
+/// arrives would leave the backlog resident forever, so a model would report a
+/// system that recovers as one that never does, and recovery time — the whole
+/// reason for solving through time — could not be read at all.
+#[test]
+fn a_queue_drains_the_backlog_a_burst_left_behind() {
+    let model = SystemModel {
+        scratchpad: vec![ScratchpadEntry {
+            name: "burst".to_owned(),
+            expression: "if t < 5 then 900 else 100".to_owned(),
+            unit: Some("op/s".to_owned()),
+            summary: String::new(),
+        }],
+        components: vec![
+            component("producers", "client", &[("request_rate", "burst")]),
+            component(
+                "jobs",
+                "queue",
+                &[("service_rate", "400"), ("capacity", "100000")],
+            ),
+            component(
+                "worker",
+                "compute",
+                &[("service_time", "0.002"), ("parallelism", "8")],
+            ),
+        ],
+        relationships: vec![link("producers", "jobs"), link("jobs", "worker")],
+        ..SystemModel::default()
+    };
+
+    let backlog_at = |seconds: f64| {
+        let config = EvaluationConfig {
+            mode: optimist::system::SolveMode::Transient,
+            horizon: (seconds / 0.5) as usize + 1,
+            step: 0.5,
+            sample_count: 64,
+            ..config()
+        };
+        solve(&model, config)[&ComponentId::new("jobs")].mean("backlog")
+    };
+
+    // Offered at 900 against a 400 drain, so the backlog climbs while the burst
+    // lasts.
+    let during = backlog_at(4.0);
+    assert!(
+        during > 1_000.0,
+        "expected a backlog to build, got {during}"
+    );
+
+    // The burst ends at five seconds and demand falls below the drain rate.
+    // What accumulated has to be worked off, so the queue empties gradually
+    // rather than the moment the cause goes away.
+    let recovering = backlog_at(8.0);
+    assert!(
+        recovering < during,
+        "expected the backlog to fall from {during}, got {recovering}"
+    );
+    assert!(
+        recovering > 0.0,
+        "expected recovery to take time rather than happen at once"
+    );
+
+    let recovered = backlog_at(30.0);
+    assert!(
+        recovered < 1.0,
+        "expected the queue to have emptied by thirty seconds, got {recovered}"
+    );
+}
+
+/// An idle queue reports no waiting rather than failing to evaluate.
+///
+/// Residence time is occupancy over throughput, and a queue nobody is using has
+/// neither. Reporting zero is what lets a buffer sit unused in a design that
+/// still solves.
+#[test]
+fn an_idle_queue_reports_no_wait() {
+    let model = SystemModel {
+        components: vec![
+            component("producers", "client", &[("request_rate", "0")]),
+            component(
+                "jobs",
+                "queue",
+                &[("service_rate", "400"), ("capacity", "1000")],
+            ),
+            component(
+                "worker",
+                "compute",
+                &[("service_time", "0.002"), ("parallelism", "8")],
+            ),
+        ],
+        relationships: vec![link("producers", "jobs"), link("jobs", "worker")],
+        ..SystemModel::default()
+    };
+    let solved = solve(&model, config());
+    let jobs = &solved[&ComponentId::new("jobs")];
+    assert_eq!(jobs.mean("backlog"), 0.0);
+    assert_eq!(jobs.mean("wait"), 0.0);
+}
+
 /// Structural mistakes are reported against the component that made them.
 #[test]
 fn authoring_mistakes_are_reported() {
     let catalogue = builtin_catalogue().expect("catalogue");
-
     let missing = SystemModel {
         components: vec![component("api", "compute", &[("service_time", "0.01")])],
         ..SystemModel::default()

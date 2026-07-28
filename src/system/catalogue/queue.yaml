@@ -44,10 +44,16 @@ channels:
   departures:
     unit: op/s
     summary: >
-      Work actually drained. Saturation is per draw, so the share of draws
-      pinned to the service rate is the share in which the queue is the
-      bottleneck.
-    expression: min([arrivals, service_rate])
+      Work actually drained: everything available to be taken, capped by the rate
+      consumers can take it at. What is available is this step's arrivals plus
+      whatever was already waiting, so a buffer left holding work empties at the
+      service rate once the burst that filled it has passed. Draining only what
+      arrives would leave a backlog resident forever and report a queue that
+      recovers as one that never does.
+
+      Saturation is per draw, so the share of draws pinned to the service rate is
+      the share in which the queue is the bottleneck.
+    expression: min([arrivals + prev.backlog / dt, service_rate])
   backlog:
     unit: op
     summary: >
@@ -57,17 +63,29 @@ channels:
   accepted_ratio:
     unit: '1'
     summary: >
-      Share of offered work the buffer had room to take. One until the backlog
-      reaches the queue's depth, and falling once it does, because past that
-      point accepting more work would mean losing it.
-    expression: 'if backlog >= capacity then min([departures / max([arrivals, 0.000001]), 1]) else 1'
+      Share of offered work the buffer had room to take: the room left at the
+      start of the step, plus whatever drains during it, against what is
+      offered. One until the queue approaches its depth, and falling once it
+      does, because past that point accepting more work would mean losing it.
+
+      Written as arithmetic rather than as a test against the depth because
+      every quantity here is a sample set. Asking whether a backlog has reached
+      capacity has no single answer when the backlog is a distribution: it has
+      reached it in some draws and not in others, and the share of draws that
+      have is exactly what this should report.
+    expression: min([(max([capacity - prev.backlog, 0]) / dt + departures) / max([arrivals, 0.000001]), 1])
   wait:
     unit: s
     summary: >
       Time a unit of work waits before a consumer reaches it, by Little's Law
       applied to the resident backlog and the rate draining it. Travels onward to
       the consumer, where it is the age of the work being handled.
-    expression: Little.residence(backlog, departures)
+
+      A queue nothing is leaving has no residence time to report rather than an
+      infinite one: with nothing resident there is no unit of work whose wait
+      could be asked about. Guarding the divisor rather than testing it keeps
+      this defined per draw, which a comparison against a sample set would not.
+    expression: Little.residence(backlog, max([departures, 0.000001]))
 constraints:
   depth:
     summary: >
