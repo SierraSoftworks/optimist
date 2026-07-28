@@ -1,0 +1,36 @@
+# Test runner settings for cargo-nextest.
+#
+# The suite is dominated by a handful of solver tests that sweep a design over a
+# long horizon, so wall-clock time is decided by how well the slow ones overlap
+# rather than by how many tests there are. Nextest runs each test in its own
+# process, which is what makes that overlap possible at all.
+#
+# Which tests to run is a command-line question, not a profile one. Use a filter
+# expression to run the narrowest set that covers a change:
+#
+#   cargo nextest run -E 'binary(system_catalogue)'
+#   cargo nextest run -E 'test(a_deadline_is_charged_once)'
+#   cargo nextest run -E 'binary(/^system_/)'
+
+[profile.default]
+# Report a test that has been running this long rather than leaving somebody
+# wondering whether the suite has hung. Transient solves over a long horizon
+# legitimately take this long, so it is a notice and not a failure. Terminating
+# after eight of those periods catches a solver that has genuinely stopped
+# converging, which otherwise runs until somebody loses patience.
+slow-timeout = { period = "30s", terminate-after = 8 }
+# The whole point of adopting this is seeing every failure from one run, so a
+# broken invariant does not have to be rediscovered one test at a time.
+fail-fast = false
+failure-output = "immediate-final"
+status-level = "fail"
+final-status-level = "slow"
+
+[profile.ci]
+slow-timeout = { period = "60s", terminate-after = 10 }
+fail-fast = false
+failure-output = "immediate-final"
+status-level = "fail"
+# Every solver test is deterministic under its seed, so a retry would hide a real
+# failure rather than paper over a flake.
+retries = 0
