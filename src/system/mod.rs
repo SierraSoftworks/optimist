@@ -54,7 +54,9 @@ mod values;
 
 pub use bottleneck::{Bottleneck, bottlenecks, bottlenecks_with_mutators};
 pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
-pub use comparison::{Comparison, Movement, compare, compare_with_mutators};
+pub use comparison::{
+    Comparison, Movement, compare, compare_many_with_mutators, compare_with_mutators,
+};
 pub use evaluate::{
     ComponentState, Evaluation, EvaluationConfig, EvaluationError, LinkId, LinkState, SolveMode,
     Step, evaluate, evaluate_intervention, evaluate_intervention_with_mutators,
