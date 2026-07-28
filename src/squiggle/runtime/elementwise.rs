@@ -51,6 +51,14 @@ impl Column<'_> {
 /// soon as any argument is uncertain. `compute` receives one value per argument
 /// in the order supplied and returns a domain error message when the formula has
 /// no finite value for that combination.
+///
+/// Draws are independent, so this loop looks like somewhere to spread work
+/// across threads, and it is not. A solve calls this tens of thousands of times
+/// with a sample set of a thousand and a formula of two or three arithmetic
+/// operations; splitting that costs several times what evaluating it costs.
+/// Measured on the shipped examples, doing so made a solve five times slower at
+/// a thousand draws and was still losing at ten thousand. Parallelism belongs
+/// where the unit of work is a whole relaxation, not a single formula.
 pub(super) fn elementwise(
     runtime: &mut Runtime,
     arguments: &[Value],
