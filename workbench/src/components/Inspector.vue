@@ -103,6 +103,26 @@ function nameDraft(componentId: string): Draft<string> {
   )
 }
 
+/** Queue depth on the wire. Cleared back to absent so the server default returns. */
+function capacityDraft(): Draft<string> {
+  return remembered(`${props.selection?.id}#capacity`, () =>
+    useDraft<string>(
+      () => relationship.value?.capacity ?? '',
+      async (expression) => {
+        const edge = relationship.value
+        if (!edge) return
+        const capacity = expression.trim()
+        await props.apply([
+          {
+            kind: 'set_relationship',
+            relationship: { ...edge, capacity: capacity === '' ? undefined : capacity },
+          },
+        ])
+      },
+    ),
+  )
+}
+
 function mutatorDraft(type: string, property: string): Draft<string> {
   return remembered(`${props.selection?.id}!${type}.${property}`, () =>
     useDraft<string>(
@@ -295,6 +315,32 @@ const available = computed(() =>
         <code>{{ relationship.to }}</code>
       </p>
       <p v-if="relationship.summary" class="summary">{{ relationship.summary }}</p>
+
+      <section>
+        <h4>Queue depth</h4>
+        <p class="hint">
+          How many operations may wait on this wire. A deeper queue rides out longer bursts by
+          making callers wait for it. Leave it empty for the default of 100.
+        </p>
+        <div class="field">
+          <div class="row">
+            <SquiggleEditor
+              v-model="capacityDraft().value.value"
+              :scope="scope"
+              placeholder="100"
+              data-test="relationship-capacity"
+              @focus="capacityDraft().focus()"
+              @blur="capacityDraft().blur()"
+            />
+            <FieldStatus
+              :state="capacityDraft().state.value"
+              :error="capacityDraft().error.value"
+              :advice="capacityDraft().advice.value"
+              @revert="capacityDraft().revert()"
+            />
+          </div>
+        </div>
+      </section>
 
       <section>
         <h4>Behaviours</h4>

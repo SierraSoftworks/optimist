@@ -41,6 +41,18 @@ export interface AttachedMutator {
 export interface Relationship {
   from: string
   to: string
+  /** Outbound port on `from`; absent when the type declares exactly one. */
+  from_port?: string
+  /** Inbound port on `to`; absent when the type declares exactly one. */
+  to_port?: string
+  /**
+   * Squiggle source for how many operations may wait on the wire.
+   *
+   * Absent means the server's default, so a link nobody has tuned stays
+   * untouched in the design's YAML rather than gaining an expression that
+   * merely restates that default.
+   */
+  capacity?: string
   summary: string
   mutators: AttachedMutator[]
 }
@@ -65,14 +77,28 @@ export interface Component {
   position?: Position
 }
 
+/**
+ * How demand meets the replicas of a scale unit.
+ *
+ * Sharded traffic divides between them; mirrored traffic reaches all of them, so
+ * the replica count multiplies cost without dividing load.
+ */
+export type Distribution = 'sharded' | 'mirrored'
+
 /** A group of components replicated together. */
 export interface ScaleUnit {
   id: string
   name: string
   summary: string
+  /** An expression, so a fleet size can be a shared quantity or a range. */
   replicas: string
   members: string[]
-  distribution: string
+  distribution: Distribution
+  /**
+   * The unit this one sits inside, where it is itself replicated. Absent at the
+   * outermost level, which is where a chain of enclosing units ends.
+   */
+  parent?: string | null
 }
 
 /** A proposal, expressed as replacements for shared quantities. */

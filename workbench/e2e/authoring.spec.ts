@@ -44,9 +44,21 @@ test('a design can be created and built up', async ({ page }) => {
   await chooseOption(page, 'pick-to', 'api')
   await page.getByTestId('save-relationship').click()
 
+  // Queue depth belongs to the wire rather than to any behaviour attached to
+  // it, so the inspector edits it on the relationship itself.
+  await page.getByTestId('relationship-capacity').locator('.cm-content').click()
+  await page.keyboard.type('16')
+  await page.getByRole('heading', { name: 'Queue depth' }).click()
+
   // Reloading proves the edits reached the server rather than living in the tab.
   await page.reload()
   await expect(page.locator('canvas').first()).toBeVisible()
+
+  const snapshot = (await (await page.request.get(`/api/v1/designs/${id}`)).json()) as {
+    model: { relationships: { from: string; to: string; capacity?: string }[] }
+  }
+  expect(snapshot.model.relationships[0]?.capacity).toBe('16')
+
   await page.goto('/d/' + id + '/review')
   await expect(page.getByRole('navigation', { name: 'Variants' })).toBeVisible()
 })
