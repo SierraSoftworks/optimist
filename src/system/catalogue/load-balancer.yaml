@@ -1,5 +1,6 @@
 id: load-balancer
 name: Load balancer
+icon: balancer
 summary: >
   Spreads demand across replicas and refuses what it cannot admit. The only
   component that can pull a saturated system back out of congestion, because it

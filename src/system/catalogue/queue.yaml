@@ -1,5 +1,6 @@
 id: queue
 name: Queue
+icon: queue
 summary: >
   A buffer that decouples a producer's arrival rate from a consumer's service
   capacity. Absorbs bursts up to its depth, and converts sustained overload into

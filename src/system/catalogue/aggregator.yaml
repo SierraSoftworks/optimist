@@ -1,5 +1,6 @@
 id: aggregator
 name: Aggregator
+icon: aggregator
 summary: >
   Fans one request out across several branches and combines what comes back. A
   request completes only when every branch has, so this is where reliability and

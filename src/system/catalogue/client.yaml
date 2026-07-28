@@ -1,5 +1,6 @@
 id: client
 name: Client
+icon: client
 summary: >
   A population of callers offering work to the system. Has no capacity of its
   own: it is where demand enters a model and where the answer arrives back.

@@ -1,5 +1,6 @@
 id: datastore
 name: Datastore
+icon: store
 summary: >
   Durable storage with independent limits on operation rate, transfer rate, and
   resident volume. Reaching any one of them bottlenecks the system, and which

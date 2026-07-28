@@ -151,6 +151,13 @@ export interface ComponentType {
   id: string
   name: string
   summary: string
+  /**
+   * Which glyph stands for this kind of component.
+   *
+   * From a closed vocabulary the server validates, so anything unrecognised here
+   * means a workbench older than the design it is reading.
+   */
+  icon: string
   ports: Ports
   properties: Record<string, PropertyDefinition>
   channels: Record<string, ChannelDefinition>

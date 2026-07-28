@@ -156,6 +156,39 @@ pub struct Constraint {
     pub limit: String,
 }
 
+/// The glyph a diagram or a picker draws for a kind of component.
+///
+/// A closed vocabulary rather than free text, because every name here has to be
+/// something the workbench knows how to draw. A project-local type that named a
+/// glyph nobody ships would be rejected at load time with the list of what is
+/// available, which is a better answer than a blank square in a diagram.
+///
+/// These describe what a component *does*, not what product it is. A managed
+/// message bus, a thread pool with a work queue in front of it, and a batch
+/// spool are all [`Icon::Queue`], because the thing a reader needs to recognise
+/// at a glance is that work waits there.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Icon {
+    /// Something outside the design that originates demand.
+    Client,
+    /// Something that does work in response to a request.
+    Service,
+    /// Something that keeps data and returns it.
+    Store,
+    /// Somewhere work waits for a consumer to reach it.
+    Queue,
+    /// Something that spreads demand across replicas.
+    Balancer,
+    /// Something that fans a request out and collects the answers.
+    Aggregator,
+    /// Something that answers from a copy it kept earlier.
+    Cache,
+    /// Anything the vocabulary above does not describe.
+    #[default]
+    Component,
+}
+
 /// A complete, validated definition of one kind of component.
 ///
 /// Construct through [`ComponentType::parse`] so that the invariants the
@@ -171,6 +204,12 @@ pub struct ComponentType {
     /// What this kind of component models and when to reach for it.
     #[serde(default)]
     pub summary: String,
+    /// The glyph standing for this type wherever it is drawn or offered.
+    ///
+    /// Defaults to a plain box, so a type that has not thought about it appears
+    /// as an unremarkable component rather than as somebody else's idea.
+    #[serde(default)]
+    pub icon: Icon,
     /// The named places relationships attach, and what each publishes.
     #[serde(default)]
     pub ports: Ports,

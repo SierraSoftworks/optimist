@@ -1,5 +1,6 @@
 id: compute
 name: Compute
+icon: service
 summary: >
   A pool of identical workers serving requests. Capacity follows from how many
   requests can be in flight at once and how long each occupies a worker, so

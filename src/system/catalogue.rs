@@ -181,6 +181,23 @@ mod tests {
         }
     }
 
+    /// A shipped type appearing as an anonymous box would be a shipping mistake.
+    ///
+    /// The default exists for a project-local type nobody has thought about yet.
+    /// Everything in this catalogue has been thought about, and the diagram is
+    /// most of how a design is read.
+    #[test]
+    fn every_shipped_type_says_what_it_looks_like() {
+        for component in builtin_catalogue().expect("catalogue").values() {
+            assert_ne!(
+                component.icon,
+                super::super::Icon::Component,
+                "{} does not declare an icon",
+                component.id
+            );
+        }
+    }
+
     #[test]
     fn every_constraint_explains_what_saturating_it_means() {
         for component in builtin_catalogue().expect("catalogue").values() {
