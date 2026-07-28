@@ -108,25 +108,48 @@ impl ComponentType {
     /// let manifest = "
     /// id: token-bucket
     /// name: Token bucket
+    /// ports:
+    ///   in:
+    ///     requests:
+    ///       arity: many
+    ///       publishes:
+    ///         success: admitted_ratio
+    ///   out:
+    ///     downstream:
+    ///       arity: one
+    ///       publishes:
+    ///         rate: admitted
     /// properties:
     ///   refill:
     ///     unit: op/s
     ///   burst:
     ///     unit: op
+    ///     default: '0'
     /// channels:
+    ///   offered:
+    ///     unit: op/s
+    ///     expression: in.requests.rate
     ///   admitted:
     ///     unit: op/s
-    ///     expression: min([inbound.rate, refill])
-    /// outputs:
-    ///   rate: admitted
+    ///     expression: min([offered, refill])
+    ///   admitted_ratio:
+    ///     unit: '1'
+    ///     expression: min([admitted / max([offered, 0.000001]), 1])
     /// constraints:
     ///   throughput:
-    ///     demand: inbound.rate
+    ///     demand: offered
     ///     limit: refill
     /// ";
     /// let component = ComponentType::parse(manifest)?;
+    ///
     /// assert_eq!(component.id.as_str(), "token-bucket");
+    /// // A property without a default is one an author must supply.
     /// assert!(component.properties["refill"].is_required());
+    /// assert!(!component.properties["burst"].is_required());
+    /// // Ports publish channels the component has already worked out, which is
+    /// // how one component's result becomes another's input.
+    /// assert_eq!(component.ports.outbound["downstream"].publishes["rate"], "admitted");
+    /// assert_eq!(component.ports.inbound["requests"].publishes["success"], "admitted_ratio");
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn parse(manifest: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -177,15 +200,24 @@ impl ComponentType {
                 &visible,
             )?;
         }
-        for (signal, channel) in &self.outputs {
-            validate_name("output", signal)?;
-            // A published quantity may be derived or intrinsic: a payload size is
-            // a property of the component, not something it computes.
-            if !surface.contains(channel) {
-                return Err(ComponentTypeError::Output {
-                    signal: signal.clone(),
-                    channel: channel.clone(),
-                });
+        // A port publishes quantities the component has already worked out, so
+        // its expressions see the properties and channels but not the reserved
+        // flow bindings: a port cannot read the wire it is publishing onto.
+        let ports = self
+            .ports
+            .inbound
+            .iter()
+            .map(|(name, port)| (format!("inbound port '{name}'"), port))
+            .chain(
+                self.ports
+                    .outbound
+                    .iter()
+                    .map(|(name, port)| (format!("outbound port '{name}'"), port)),
+            );
+        for (location, port) in ports {
+            for (signal, source) in &port.publishes {
+                validate_name("published signal", signal)?;
+                validate_references(&format!("{location} signal '{signal}'"), source, &surface)?;
             }
         }
         Ok(())
@@ -222,13 +254,22 @@ impl Mutator {
     /// properties:
     ///   ratio:
     ///     unit: '1'
-    /// transforms:
+    /// requests:
     ///   rate:
     ///     unit: op/s
     ///     expression: signal.rate * ratio
+    /// responses:
+    ///   latency:
+    ///     unit: s
+    ///     expression: signal.latency * ratio
     /// ";
     /// let mutator = Mutator::parse(manifest)?;
+    ///
     /// assert_eq!(mutator.id.as_str(), "sample");
+    /// // `requests` rewrites the flow on its way downstream, `responses` on the
+    /// // way back, so one definition can both raise demand and answer for it.
+    /// assert!(mutator.requests.contains_key("rate"));
+    /// assert!(mutator.responses.contains_key("latency"));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn parse(manifest: &str) -> Result<Self, Box<dyn std::error::Error>> {
@@ -252,11 +293,20 @@ impl Mutator {
             }
             visible.insert(name.clone());
         }
-        for (name, transform) in &self.transforms {
-            validate_name("transform", name)?;
-            validate_unit(&format!("transform '{name}'"), &transform.unit)?;
+        for (name, transform) in &self.requests {
+            validate_name("request", name)?;
+            validate_unit(&format!("request '{name}'"), &transform.unit)?;
             validate_references(
-                &format!("transform '{name}'"),
+                &format!("request '{name}'"),
+                &transform.expression,
+                &visible,
+            )?;
+        }
+        for (name, transform) in &self.responses {
+            validate_name("response", name)?;
+            validate_unit(&format!("response '{name}'"), &transform.unit)?;
+            validate_references(
+                &format!("response '{name}'"),
                 &transform.expression,
                 &visible,
             )?;
@@ -335,7 +385,7 @@ mod tests {
     #[test]
     fn a_minimal_type_validates() {
         let component = ComponentType::parse(&manifest(
-            "properties:\n  limit:\n    unit: op/s\nchannels:\n  served:\n    unit: op/s\n    expression: min([inbound.rate, limit])\n",
+            "properties:\n  limit:\n    unit: op/s\nchannels:\n  served:\n    unit: op/s\n    expression: min([in.requests.rate, limit])\n",
         ))
         .expect("valid");
         assert_eq!(component.channels.len(), 1);
@@ -354,7 +404,7 @@ mod tests {
     #[test]
     fn a_mistyped_reference_is_caught_at_load_time() {
         let error = ComponentType::parse(&manifest(
-            "properties:\n  limit:\n    unit: op/s\nchannels:\n  served:\n    unit: op/s\n    expression: min([inbound.rate, limitt])\n",
+            "properties:\n  limit:\n    unit: op/s\nchannels:\n  served:\n    unit: op/s\n    expression: min([in.requests.rate, limitt])\n",
         ))
         .expect_err("unresolved");
         assert!(error.to_string().contains("limitt"), "{error}");
@@ -363,7 +413,7 @@ mod tests {
     #[test]
     fn reserved_bindings_resolve() {
         ComponentType::parse(&manifest(
-            "properties:\n  drain:\n    unit: op/s\nchannels:\n  backlog:\n    unit: op\n    expression: max([prev.backlog + (inbound.rate - drain) * dt, 0])\n  age:\n    unit: s\n    expression: t\n",
+            "properties:\n  drain:\n    unit: op/s\nchannels:\n  backlog:\n    unit: op\n    expression: max([prev.backlog + (in.requests.rate - drain) * dt, 0])\n  age:\n    unit: s\n    expression: t\n",
         ))
         .expect("valid");
     }
@@ -371,7 +421,7 @@ mod tests {
     #[test]
     fn a_channel_may_reference_another_channel() {
         ComponentType::parse(&manifest(
-            "channels:\n  arrivals:\n    unit: op/s\n    expression: inbound.rate\n  doubled:\n    unit: op/s\n    expression: arrivals * 2\n",
+            "channels:\n  arrivals:\n    unit: op/s\n    expression: in.requests.rate\n  doubled:\n    unit: op/s\n    expression: arrivals * 2\n",
         ))
         .expect("valid");
     }
@@ -389,29 +439,38 @@ mod tests {
     }
 
     #[test]
-    fn an_output_must_name_a_channel() {
+    fn a_published_signal_must_name_something_the_component_knows() {
         let error = ComponentType::parse(&manifest(
-            "channels:\n  served:\n    unit: op/s\n    expression: inbound.rate\noutputs:\n  rate: missing\n",
+            "ports:\n  in:\n    requests:\n      publishes:\n        success: missing\n",
         ))
-        .expect_err("output");
-        assert!(
-            error.to_string().contains("not a property or a channel"),
-            "{error}"
-        );
+        .expect_err("unresolved");
+        assert!(error.to_string().contains("missing"), "{error}");
     }
 
     #[test]
-    fn an_output_may_publish_a_property() {
+    fn a_port_may_publish_a_property_or_a_channel() {
         ComponentType::parse(&manifest(
-            "properties:\n  payload:\n    unit: B/op\noutputs:\n  payload: payload\n",
+            "properties:\n  payload:\n    unit: B/op\nchannels:\n  served:\n    unit: op/s\n    expression: in.requests.rate\nports:\n  in:\n    requests:\n      publishes:\n        payload: payload\n  out:\n    calls:\n      publishes:\n        rate: served\n",
         ))
         .expect("valid");
     }
 
     #[test]
+    fn a_port_cannot_read_the_wire_it_publishes_onto() {
+        // A component publishes what it has worked out, so a port expression
+        // sees the channels but not the flows; otherwise a response could be
+        // defined in terms of itself.
+        let error = ComponentType::parse(&manifest(
+            "ports:\n  in:\n    requests:\n      publishes:\n        success: in.requests.rate\n",
+        ))
+        .expect_err("unresolved");
+        assert!(error.to_string().contains("in"), "{error}");
+    }
+
+    #[test]
     fn a_broken_expression_is_rejected() {
         let error = ComponentType::parse(&manifest(
-            "channels:\n  served:\n    unit: op/s\n    expression: 'inbound.rate *'\n",
+            "channels:\n  served:\n    unit: op/s\n    expression: 'in.requests.rate *'\n",
         ))
         .expect_err("syntax");
         assert!(error.to_string().contains("does not parse"), "{error}");

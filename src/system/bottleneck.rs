@@ -39,7 +39,7 @@ use crate::squiggle::Value;
 use super::{
     compile::{Timing, prepare, runtime},
     evaluate::{EvaluationConfig, EvaluationError, Step},
-    expression::{INBOUND, PREVIOUS, STEP, TIME},
+    expression::{INBOUND, OUTBOUND, PREVIOUS, STEP, TIME},
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
     values::draws,
@@ -151,6 +151,7 @@ pub(super) fn rank(
         scope.insert(TIME.to_owned(), Value::Number(step.time));
         scope.insert(STEP.to_owned(), Value::Number(config.step));
         scope.insert(INBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
+        scope.insert(OUTBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
         scope.insert(PREVIOUS.to_owned(), Value::Dictionary(BTreeMap::new()));
 
         let mut runtime = runtime(config.seed, config.sample_count)?;

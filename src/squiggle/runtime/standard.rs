@@ -258,6 +258,8 @@ const NAMESPACES: &[(&str, &[(&str, &str)])] = &[
             ("mmcWait", "Queue.mmcWait"),
             ("erlangB", "Queue.erlangB"),
             ("erlangC", "Queue.erlangC"),
+            ("boundedLength", "Queue.boundedLength"),
+            ("boundedBlocking", "Queue.boundedBlocking"),
         ],
     ),
     (

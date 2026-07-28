@@ -12,6 +12,14 @@
 //! along it. It sees the flow and its own settings, never the components on
 //! either end, which is what lets one definition apply to any connection.
 //!
+//! # Both directions
+//!
+//! A relationship carries demand downstream and a response back, and a mutator
+//! can rewrite either. Both directions are in scope from either transform, so a
+//! behaviour can react to what is coming back: a retry policy raises demand
+//! precisely when the response says attempts are timing out, which is the
+//! feedback that turns a slow dependency into an overloaded one.
+//!
 //! # Composition
 //!
 //! Mutators apply in the order they are declared, each transforming what the one
@@ -82,9 +90,19 @@ pub struct Mutator {
     /// Settings an author supplies when attaching it.
     #[serde(default)]
     pub properties: BTreeMap<String, super::manifest::Property>,
-    /// Signals this behaviour rewrites, keyed by signal name.
-    #[serde(default)]
-    pub transforms: BTreeMap<String, Transform>,
+    /// Signals this behaviour rewrites on the way downstream, keyed by signal.
+    ///
+    /// These act on the request: what the caller is asking its dependency for.
+    #[serde(default, alias = "transforms")]
+    pub requests: BTreeMap<String, Transform>,
+    /// Signals this behaviour rewrites on the way back, keyed by signal name.
+    ///
+    /// These act on the response: what the dependency reports to its caller. A
+    /// timeout belongs here, because it bounds what the caller waits for and
+    /// turns the tail it cut off into failure rather than changing what the
+    /// dependency was asked to do.
+    #[serde(default, alias = "feedback")]
+    pub responses: BTreeMap<String, Transform>,
 }
 
 /// One behaviour attached to a particular relationship.

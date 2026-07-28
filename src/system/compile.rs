@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::squiggle::{Runtime, RuntimeConfig, Value, ast::Program, parse};
 
 use super::{
-    evaluate::EvaluationError,
+    evaluate::{EvaluationError, LinkId},
     expression::{STEP, TIME, free_names},
     manifest::ComponentType,
     model::{Component, ComponentId, Relationship, SystemModel},
@@ -45,17 +45,39 @@ impl Timing {
     }
 }
 
-/// One relationship arriving at a component, with its behaviours resolved.
-pub(super) struct PreparedInbound {
-    pub(super) source: ComponentId,
+/// One relationship seen from a component, with its behaviours resolved.
+///
+/// The same relationship appears once on each end: on the caller's outbound port
+/// and on the callee's inbound port. Both carry the same behaviours, because a
+/// mutator sits on the wire and acts on traffic in both directions.
+pub(super) struct PreparedLink {
+    pub(super) peer: ComponentId,
+    /// The port on the peer this relationship attaches to.
+    pub(super) peer_port: String,
+    /// Which relationship this is, for finding its backlog between steps.
+    pub(super) id: LinkId,
+    /// Operations that may wait on this wire.
+    pub(super) capacity: Value,
     pub(super) mutators: Vec<PreparedMutator>,
+}
+
+/// One named attachment point, with its links and published expressions.
+pub(super) struct PreparedPort {
+    pub(super) links: Vec<PreparedLink>,
+    /// Signals this port publishes, as signal name, source text, and program.
+    ///
+    /// The source is kept so that a publication naming a channel outright can
+    /// follow that channel's blended value, which keeps the published figure
+    /// inside the relaxation's damping rather than jumping ahead of it.
+    pub(super) publishes: Vec<(String, String, Program)>,
 }
 
 /// One behaviour attached to a relationship, ready to apply.
 pub(super) struct PreparedMutator {
     pub(super) id: String,
     pub(super) properties: BTreeMap<String, Value>,
-    pub(super) transforms: Vec<(String, Program)>,
+    pub(super) requests: Vec<(String, Program)>,
+    pub(super) responses: Vec<(String, Program)>,
 }
 
 /// One component resolved against its type and ready to evaluate.
@@ -65,7 +87,10 @@ pub(super) struct PreparedComponent {
     pub(super) properties: BTreeMap<String, Value>,
     pub(super) channels: Vec<(String, Program)>,
     pub(super) constraints: BTreeMap<String, (Program, Program)>,
-    pub(super) upstream: Vec<PreparedInbound>,
+    /// Ports callers attach to, receiving requests and publishing responses.
+    pub(super) inbound: BTreeMap<String, PreparedPort>,
+    /// Ports dependencies attach to, publishing requests and receiving responses.
+    pub(super) outbound: BTreeMap<String, PreparedPort>,
     /// Replicas of this component across every enclosing scale unit.
     pub(super) replicas: f64,
     /// Share of the model's demand one replica serves.
@@ -100,12 +125,19 @@ pub(super) fn prepare(
     let globals = evaluate_scratchpad(model, overrides, config)?;
     let mut signals = builtin_signals();
     for component_type in catalogue.values() {
-        for name in component_type.outputs.keys() {
-            signals.entry(name.clone()).or_default();
+        let ports = component_type
+            .ports
+            .inbound
+            .values()
+            .chain(component_type.ports.outbound.values());
+        for port in ports {
+            for name in port.publishes.keys() {
+                signals.entry(name.clone()).or_default();
+            }
         }
     }
     for mutator in mutators.values() {
-        for name in mutator.transforms.keys() {
+        for name in mutator.requests.keys().chain(mutator.responses.keys()) {
             signals.entry(name.clone()).or_default();
         }
     }
@@ -131,12 +163,53 @@ pub(super) fn prepare(
                 ),
             );
         }
-        let mut upstream = Vec::new();
+        let mut inbound = prepare_ports(
+            &component.id,
+            &component_type.ports.inbound,
+            "inbound",
+            &globals,
+        )?;
+        let mut outbound = prepare_ports(
+            &component.id,
+            &component_type.ports.outbound,
+            "outbound",
+            &globals,
+        )?;
         for relationship in model.inbound_to(&component.id) {
-            upstream.push(PreparedInbound {
-                source: relationship.from.clone(),
-                mutators: prepare_mutators(relationship, mutators, &globals, config)?,
-            });
+            let (port, peer_port) = endpoints(model, catalogue, relationship)?;
+            let (id, capacity) = link(relationship, &port, &peer_port, &globals, config)?;
+            inbound
+                .get_mut(&port)
+                .ok_or_else(|| EvaluationError::UnknownPort {
+                    component: component.id.to_string(),
+                    port: port.clone(),
+                })?
+                .links
+                .push(PreparedLink {
+                    peer: relationship.from.clone(),
+                    peer_port,
+                    id,
+                    capacity,
+                    mutators: prepare_mutators(relationship, mutators, &globals, config)?,
+                });
+        }
+        for relationship in model.outbound_from(&component.id) {
+            let (peer_port, port) = endpoints(model, catalogue, relationship)?;
+            let (id, capacity) = link(relationship, &peer_port, &port, &globals, config)?;
+            outbound
+                .get_mut(&port)
+                .ok_or_else(|| EvaluationError::UnknownPort {
+                    component: component.id.to_string(),
+                    port: port.clone(),
+                })?
+                .links
+                .push(PreparedLink {
+                    peer: relationship.to.clone(),
+                    peer_port,
+                    id,
+                    capacity,
+                    mutators: prepare_mutators(relationship, mutators, &globals, config)?,
+                });
         }
         let (replicas, share) = scaling.get(&component.id).copied().unwrap_or((1.0, 1.0));
         components.push(PreparedComponent {
@@ -145,7 +218,8 @@ pub(super) fn prepare(
             properties,
             channels,
             constraints,
-            upstream,
+            inbound,
+            outbound,
             replicas,
             share,
         });
@@ -271,6 +345,123 @@ fn validate_scale_units(model: &SystemModel) -> Result<(), EvaluationError> {
     Ok(())
 }
 
+/// Parses each port's published expressions, ready to evaluate against channels.
+fn prepare_ports(
+    component: &ComponentId,
+    declared: &BTreeMap<String, crate::system::manifest::Port>,
+    side: &str,
+    _globals: &BTreeMap<String, Value>,
+) -> Result<BTreeMap<String, PreparedPort>, EvaluationError> {
+    let mut prepared = BTreeMap::new();
+    for (name, port) in declared {
+        let mut publishes = Vec::new();
+        for (signal, source) in &port.publishes {
+            let location = format!("{side} port '{name}' signal '{signal}'");
+            publishes.push((
+                signal.clone(),
+                source.trim().to_owned(),
+                compile(component, &location, source)?,
+            ));
+        }
+        prepared.insert(
+            name.clone(),
+            PreparedPort {
+                links: Vec::new(),
+                publishes,
+            },
+        );
+    }
+    Ok(prepared)
+}
+
+/// Resolves which ports a relationship attaches to at each end.
+///
+/// Returns the inbound port on the destination and the outbound port on the
+/// source. A relationship that names neither is resolved against types that
+/// declare exactly one port on the relevant side, so simple designs stay free of
+/// wiring detail while an ambiguous one is refused rather than guessed at.
+fn endpoints(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    relationship: &Relationship,
+) -> Result<(String, String), EvaluationError> {
+    let resolve = |component: &ComponentId, named: Option<&String>, inbound: bool| {
+        let declared = model
+            .components
+            .iter()
+            .find(|candidate| &candidate.id == component)
+            .and_then(|candidate| catalogue.get(candidate.component_type.as_str()))
+            .map(|component_type| {
+                if inbound {
+                    &component_type.ports.inbound
+                } else {
+                    &component_type.ports.outbound
+                }
+            });
+        let Some(declared) = declared else {
+            return Err(EvaluationError::UnknownPort {
+                component: component.to_string(),
+                port: named.cloned().unwrap_or_else(|| "default".to_owned()),
+            });
+        };
+        match named {
+            Some(port) if declared.contains_key(port) => Ok(port.clone()),
+            Some(port) => Err(EvaluationError::UnknownPort {
+                component: component.to_string(),
+                port: port.clone(),
+            }),
+            None => crate::system::manifest::Ports::sole(declared)
+                .cloned()
+                .ok_or_else(|| EvaluationError::AmbiguousPort {
+                    component: component.to_string(),
+                    side: if inbound { "inbound" } else { "outbound" }.to_owned(),
+                }),
+        }
+    };
+    let to = resolve(&relationship.to, relationship.to_port.as_ref(), true)?;
+    let from = resolve(&relationship.from, relationship.from_port.as_ref(), false)?;
+    Ok((to, from))
+}
+
+/// Resolves a relationship's identity and how much it can hold.
+///
+/// Both ends of a relationship prepare it independently, so the identity has to
+/// be derived from the endpoints rather than allocated, or the two ends would
+/// disagree about whose backlog is whose.
+fn link(
+    relationship: &Relationship,
+    inbound_port: &str,
+    outbound_port: &str,
+    globals: &BTreeMap<String, Value>,
+    config: Timing,
+) -> Result<(LinkId, Value), EvaluationError> {
+    let id = LinkId {
+        from: relationship.from.clone(),
+        from_port: outbound_port.to_owned(),
+        to: relationship.to.clone(),
+        to_port: inbound_port.to_owned(),
+    };
+    let source = relationship.capacity_source();
+    let location = format!("capacity of relationship {id}");
+    let program = parse(source).map_err(|diagnostics| EvaluationError::Syntax {
+        location: location.clone(),
+        message: first_message(&diagnostics),
+    })?;
+    let seed = derive_seed(config.seed, &id.to_string(), "capacity");
+    let capacity = runtime(seed, config.sample_count)?
+        .evaluate_values(
+            &program,
+            globals
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.clone())),
+        )
+        .map_err(|diagnostic| EvaluationError::Evaluation {
+            location,
+            message: diagnostic.message,
+        })?;
+    Ok((id, capacity))
+}
+
 fn prepare_mutators(
     relationship: &Relationship,
     catalogue: &BTreeMap<String, Mutator>,
@@ -323,19 +514,29 @@ fn prepare_mutators(
                 });
             }
         }
-        let mut transforms = Vec::new();
-        for (signal, transform) in &mutator.transforms {
+        let mut requests = Vec::new();
+        for (signal, transform) in &mutator.requests {
             let program =
                 parse(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
-                    location: format!("transform '{signal}' of {} on {owner}", mutator.id),
+                    location: format!("request '{signal}' of {} on {owner}", mutator.id),
                     message: first_message(&diagnostics),
                 })?;
-            transforms.push((signal.clone(), program));
+            requests.push((signal.clone(), program));
+        }
+        let mut responses = Vec::new();
+        for (signal, transform) in &mutator.responses {
+            let program =
+                parse(&transform.expression).map_err(|diagnostics| EvaluationError::Syntax {
+                    location: format!("response '{signal}' of {} on {owner}", mutator.id),
+                    message: first_message(&diagnostics),
+                })?;
+            responses.push((signal.clone(), program));
         }
         prepared.push(PreparedMutator {
             id: mutator.id.to_string(),
             properties,
-            transforms,
+            requests,
+            responses,
         });
     }
     Ok(prepared)

@@ -83,19 +83,64 @@ pub struct Component {
     pub position: Option<Position>,
 }
 
-/// A directed flow from one component's outputs to another's inbound port.
+/// A directed flow between one component's outbound port and another's inbound.
+///
+/// A relationship is a wire, not a one-way pipe. Requests travel from `from` to
+/// `to`, and the response travels back along the same relationship, so a call
+/// graph is drawn once rather than once per direction.
+///
+/// It is also a queue. Work offered faster than it can be taken waits somewhere,
+/// and that somewhere is real whether or not anybody drew it: a socket buffer, a
+/// listen backlog, a connection pool's wait list. Modelling the wire as a queue
+/// puts that buffering in one place instead of asking every component type to
+/// reimplement it, and makes the queues a design already contains visible
+/// without anybody having to add them.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Relationship {
     /// Component publishing the flow.
     pub from: ComponentId,
+    /// Outbound port on `from` that this relationship leaves by.
+    ///
+    /// Omitted when the type declares exactly one outbound port, which is the
+    /// common case and leaves simple designs free of wiring detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_port: Option<String>,
     /// Component receiving the flow.
     pub to: ComponentId,
+    /// Inbound port on `to` that this relationship arrives at.
+    ///
+    /// Omitted when the type declares exactly one inbound port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_port: Option<String>,
+    /// Squiggle source for how many operations may wait on this wire.
+    ///
+    /// Defaults to a hundred, which is the order of a network link between two
+    /// services: socket buffers and a listen backlog, deep enough to ride out a
+    /// brief burst and shallow enough that sustained overload is felt rather
+    /// than hidden. An in-process call is nearer one, and a broker with disk
+    /// backing is far larger.
+    ///
+    /// Depth is not free. A queue absorbs a burst by making the caller wait for
+    /// it, so a generous buffer converts a capacity problem into a latency one,
+    /// and a caller with a deadline turns that latency back into failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<super::mutator::AttachedMutator>,
     /// What this connection represents.
     #[serde(default)]
     pub summary: String,
+}
+
+/// Operations a relationship holds when its author says nothing.
+pub const DEFAULT_LINK_CAPACITY: &str = "100";
+
+impl Relationship {
+    /// Borrows the authored queue depth, or the default network link.
+    pub fn capacity_source(&self) -> &str {
+        self.capacity.as_deref().unwrap_or(DEFAULT_LINK_CAPACITY)
+    }
 }
 
 /// A complete system design.
@@ -139,6 +184,17 @@ impl SystemModel {
         self.relationships
             .iter()
             .filter(|relationship| &relationship.to == component)
+            .collect()
+    }
+
+    /// Returns the relationships departing from `component`, in model order.
+    ///
+    /// These are the dependencies `component` calls, and therefore the
+    /// relationships along which responses travel back to it.
+    pub fn outbound_from(&self, component: &ComponentId) -> Vec<&Relationship> {
+        self.relationships
+            .iter()
+            .filter(|relationship| &relationship.from == component)
             .collect()
     }
 

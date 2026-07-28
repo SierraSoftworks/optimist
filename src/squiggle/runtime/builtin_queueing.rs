@@ -110,6 +110,77 @@ builtins! {
             elementwise(runtime, &[servers.clone(), offered.clone()], span, |row| {
                 finite(erlang_c(count(row[0])?, load(row[1])?), "waiting probability")
             }),
+        "Queue.boundedLength"(utilisation: (Number | Distribution), capacity: (Number | Distribution)) =>
+            elementwise(runtime, &[utilisation.clone(), capacity.clone()], span, |row| {
+                finite(bounded_length(row[0], row[1]), "queue length")
+            }),
+        "Queue.boundedBlocking"(utilisation: (Number | Distribution), capacity: (Number | Distribution)) =>
+            elementwise(runtime, &[utilisation.clone(), capacity.clone()], span, |row| {
+                finite(bounded_blocking(row[0], row[1]), "blocking probability")
+            }),
+}
+
+/// Mean number waiting in an M/M/1/K queue.
+///
+/// For a buffer holding at most `k` operations and offered load `rho`, the
+/// stationary distribution is truncated geometric, $p_n = (1-\rho)\rho^n /
+/// (1-\rho^{k+1})$, and its mean is
+///
+/// $$L = \frac{\rho}{1-\rho} - \frac{(k+1)\rho^{k+1}}{1-\rho^{k+1}}$$
+///
+/// Unlike the unbounded result this stays finite at and above saturation,
+/// approaching `k` as the load grows, which is what a real buffer does: it fills
+/// and then refuses rather than growing without limit. At `rho = 1` the
+/// expression above is indeterminate and the exact value is `k/2`, the mean of a
+/// uniform distribution over the `k+1` occupancies, which is used directly to
+/// avoid cancellation near that point.
+///
+/// The bound is what makes overload legible. An unbounded queue reports an
+/// arbitrarily large delay, which is neither true of a system with a finite
+/// buffer nor useful to somebody reading the result.
+fn bounded_length(utilisation: f64, capacity: f64) -> f64 {
+    let k = capacity.max(0.0);
+    if k <= 0.0 {
+        return 0.0;
+    }
+    let rho = utilisation.max(0.0);
+    // Within this window of saturation the closed form loses its significant
+    // digits to cancellation, and the exact midpoint is a better answer than a
+    // noisy one.
+    if (rho - 1.0).abs() < 1e-9 {
+        return k / 2.0;
+    }
+    let power = rho.powf(k + 1.0);
+    if !power.is_finite() {
+        return k;
+    }
+    let length = rho / (1.0 - rho) - (k + 1.0) * power / (1.0 - power);
+    length.clamp(0.0, k)
+}
+
+/// Probability an arrival finds an M/M/1/K buffer full and is refused.
+///
+/// The last term of the truncated geometric distribution,
+///
+/// $$P_K = \frac{(1-\rho)\rho^{k}}{1-\rho^{k+1}}$$
+///
+/// which is where a bounded queue turns excess demand into failure instead of
+/// into unbounded delay. At `rho = 1` every occupancy is equally likely and the
+/// probability is `1/(k+1)`.
+fn bounded_blocking(utilisation: f64, capacity: f64) -> f64 {
+    let k = capacity.max(0.0);
+    let rho = utilisation.max(0.0);
+    if (rho - 1.0).abs() < 1e-9 {
+        return 1.0 / (k + 1.0);
+    }
+    let power = rho.powf(k + 1.0);
+    if !power.is_finite() {
+        // Far above saturation essentially everything beyond the service rate is
+        // refused, which is the reciprocal of the load.
+        return (1.0 - 1.0 / rho).clamp(0.0, 1.0);
+    }
+    let blocking = (1.0 - rho) * rho.powf(k) / (1.0 - power);
+    blocking.clamp(0.0, 1.0)
 }
 
 fn ratio(numerator: f64, denominator: f64, what: &str) -> Result<f64, String> {

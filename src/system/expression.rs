@@ -6,10 +6,15 @@
 //! surface the evaluator will actually provide.
 //!
 //! The visible surface is deliberately small: the component's own properties and
-//! channels, the reserved bindings describing time and prior state, the flows
-//! arriving on inbound relationships, and the Squiggle standard library. Names
-//! bound inside the expression itself, by a block binding or a lambda parameter,
-//! shadow that surface and are not treated as free.
+//! channels, the reserved bindings describing time and prior state, the requests
+//! arriving on inbound ports, the responses returning on outbound ports, and the
+//! Squiggle standard library. Names bound inside the expression itself, by a
+//! block binding or a lambda parameter, shadow that surface and are not treated
+//! as free.
+//!
+//! A component cannot see what it publishes itself. `in.<port>` is what arrived
+//! and `out.<port>` is what came back, so neither name can be confused for the
+//! response the component is sending or the request it is making.
 
 use std::collections::BTreeSet;
 
@@ -25,19 +30,27 @@ pub(super) const TIME: &str = "t";
 pub(super) const STEP: &str = "dt";
 /// This component's channel values at the previous step.
 pub(super) const PREVIOUS: &str = "prev";
-/// The flows arriving on this component's inbound relationships.
-pub(super) const INBOUND: &str = "inbound";
+/// The requests arriving on this component's inbound ports.
+pub(super) const INBOUND: &str = "in";
+/// The responses returning on this component's outbound ports.
+pub(super) const OUTBOUND: &str = "out";
 /// The signals currently travelling along a relationship.
 pub(super) const SIGNAL: &str = "signal";
+/// The request travelling from caller to callee along a relationship.
+pub(super) const REQUEST: &str = "request";
+/// The response returning from callee to caller along a relationship.
+pub(super) const RESPONSE: &str = "response";
 
 /// Bindings the evaluator supplies to every channel expression.
-pub(super) const RESERVED: &[&str] = &[TIME, STEP, PREVIOUS, INBOUND];
+pub(super) const RESERVED: &[&str] = &[TIME, STEP, PREVIOUS, INBOUND, OUTBOUND];
 
 /// Bindings the evaluator supplies to every mutator transform.
 ///
-/// A mutator sees the flow passing through it rather than the components on
-/// either end, which is what keeps it reusable on any relationship.
-pub(super) const MUTATOR_RESERVED: &[&str] = &[TIME, STEP, SIGNAL];
+/// A mutator sees the flows passing through it rather than the components on
+/// either end, which is what keeps it reusable on any relationship. Both
+/// directions are visible from either transform, so a retry policy can raise
+/// demand in response to the failures coming back.
+pub(super) const MUTATOR_RESERVED: &[&str] = &[TIME, STEP, SIGNAL, REQUEST, RESPONSE];
 
 /// Parses an expression and reports the names it expects to be given.
 pub(super) fn free_names(source: &str) -> Result<BTreeSet<String>, Vec<Diagnostic>> {

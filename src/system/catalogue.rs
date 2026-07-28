@@ -34,6 +34,7 @@ const MUTATORS: &[&str] = &[
     include_str!("catalogue/mutators/cache.yaml"),
     include_str!("catalogue/mutators/load-shed.yaml"),
     include_str!("catalogue/mutators/feature-flag.yaml"),
+    include_str!("catalogue/mutators/ignores-cancellation.yaml"),
 ];
 
 /// Why a catalogue could not be assembled.
@@ -108,7 +109,7 @@ pub fn builtin_catalogue() -> Result<BTreeMap<String, ComponentType>, CatalogueE
 ///
 /// ```
 /// let mutators = optimist::system::builtin_mutators()?;
-/// assert!(mutators["retry"].transforms.contains_key("rate"));
+/// assert!(mutators["retry"].requests.contains_key("rate"));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn builtin_mutators() -> Result<BTreeMap<String, Mutator>, CatalogueError> {
@@ -227,12 +228,12 @@ mod tests {
     fn every_behaviour_rewrites_something_and_explains_itself() {
         for mutator in builtin_mutators().expect("mutators").values() {
             assert!(
-                !mutator.transforms.is_empty(),
-                "'{}' rewrites no signal, so attaching it would do nothing",
+                !mutator.requests.is_empty() || !mutator.responses.is_empty(),
+                "'{}' rewrites no signal in either direction, so attaching it would do nothing",
                 mutator.id
             );
             assert!(!mutator.summary.trim().is_empty(), "{}", mutator.id);
-            for (name, transform) in &mutator.transforms {
+            for (name, transform) in mutator.requests.iter().chain(&mutator.responses) {
                 assert!(
                     !transform.summary.trim().is_empty(),
                     "{}.{name} has no summary",
@@ -250,7 +251,7 @@ mod tests {
         let mutators = builtin_mutators().expect("mutators");
         for id in ["retry", "fan-out", "cache", "load-shed", "feature-flag"] {
             assert!(
-                mutators[id].transforms.contains_key("rate"),
+                mutators[id].requests.contains_key("rate"),
                 "'{id}' should rewrite the request rate"
             );
         }

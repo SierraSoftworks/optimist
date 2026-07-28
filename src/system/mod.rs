@@ -55,8 +55,8 @@ pub use bottleneck::{Bottleneck, bottlenecks};
 pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
 pub use comparison::{Comparison, Movement, compare};
 pub use evaluate::{
-    ComponentState, Evaluation, EvaluationConfig, EvaluationError, Step, evaluate,
-    evaluate_intervention,
+    ComponentState, Evaluation, EvaluationConfig, EvaluationError, LinkId, LinkState, SolveMode,
+    Step, evaluate, evaluate_intervention,
 };
 pub use intervention::{Intervention, InterventionId, Override};
 pub use manifest::{
@@ -71,3 +71,12 @@ pub use schema::{
 };
 pub use signal::{Aggregation, Signal};
 pub use validate::ComponentTypeError;
+
+/// The quantities that may travel along a relationship, by name.
+///
+/// A port publishes signals rather than channels, so anything reporting what
+/// arrived at a component or came back to it has no component type to read a
+/// unit from. This is the vocabulary those names are drawn from.
+pub fn signals() -> std::collections::BTreeMap<String, Signal> {
+    signal::builtin_signals()
+}

@@ -99,8 +99,23 @@ pub struct ComponentDocument {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutgoingRelationship {
+    /// Outbound port on the owning component this relationship leaves by.
+    ///
+    /// Omitted when the type declares exactly one outbound port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_port: Option<String>,
     /// Component receiving the flow.
     pub to: ComponentId,
+    /// Inbound port on the receiving component this relationship arrives at.
+    ///
+    /// Omitted when the type declares exactly one inbound port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_port: Option<String>,
+    /// Squiggle source for how many operations may wait on this wire.
+    ///
+    /// Omitted to accept the default network link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<AttachedMutator>,

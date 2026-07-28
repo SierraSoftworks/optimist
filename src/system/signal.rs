@@ -41,9 +41,24 @@ pub enum Aggregation {
     Max,
     /// Arrivals average, for a quantity describing each unit of work.
     Mean,
+    /// Arrivals multiply, as the success of dependencies that must all hold does.
+    ///
+    /// This is the reading that treats every dependency as hard: a caller
+    /// needing three services succeeds only when all three do. A component that
+    /// survives one of them failing is expressing something else, and should say
+    /// so with a behaviour that turns a failure into a success rather than by
+    /// combining differently.
+    Product,
+    /// The smallest arrival wins, as a rate limited by its narrowest stage is.
+    Min,
 }
 
 /// One quantity that may travel along a relationship.
+///
+/// A signal carries no direction of its own. Which way it travels is settled by
+/// the port publishing it: an inbound port publishes toward callers and an
+/// outbound port toward dependencies, so the same `payload` names a request body
+/// in one place and a reply body in the other without needing two names.
 ///
 /// A signal a manifest introduces without declaring here falls back to adding
 /// across arrivals and not dividing across replicas, which is the safe reading:
@@ -69,7 +84,7 @@ pub struct Signal {
 }
 
 /// The signals shipped with the tool, keyed by name.
-pub(super) fn builtin_signals() -> BTreeMap<String, Signal> {
+pub(crate) fn builtin_signals() -> BTreeMap<String, Signal> {
     serde_yaml_ng::from_str(include_str!("catalogue/signals.yaml"))
         .expect("the shipped signal vocabulary is valid")
 }
@@ -81,7 +96,7 @@ mod tests {
     #[test]
     fn the_shipped_vocabulary_loads() {
         let signals = builtin_signals();
-        for name in ["rate", "added_latency", "payload"] {
+        for name in ["rate", "latency", "payload"] {
             assert!(signals.contains_key(name), "missing '{name}'");
         }
     }
@@ -99,17 +114,14 @@ mod tests {
         // the time any one of them took.
         let signals = builtin_signals();
         assert!(!signals["payload"].extensive);
-        assert!(!signals["added_latency"].extensive);
+        assert!(!signals["latency"].extensive);
     }
 
     #[test]
     fn latency_does_not_sum_across_callers() {
         // Two callers each waiting a second is one second of waiting apiece,
         // not two.
-        assert_eq!(
-            builtin_signals()["added_latency"].aggregate,
-            Aggregation::Max
-        );
+        assert_eq!(builtin_signals()["latency"].aggregate, Aggregation::Max);
     }
 
     #[test]

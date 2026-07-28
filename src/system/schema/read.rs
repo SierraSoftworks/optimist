@@ -52,7 +52,10 @@ pub fn read_system(directory: &Path) -> Result<LoadedSystem, SchemaError> {
         for outgoing in document.outgoing {
             relationships.push(Relationship {
                 from: document.component.id.clone(),
+                from_port: outgoing.from_port,
                 to: outgoing.to,
+                to_port: outgoing.to_port,
+                capacity: outgoing.capacity,
                 mutators: outgoing.mutators,
                 summary: outgoing.summary,
             });

@@ -43,6 +43,12 @@ pub enum PortArity {
 }
 
 /// One side of a component's connectivity.
+///
+/// A port is a named place relationships attach, and the unit in which a
+/// component's traffic is separated. A read-through cache declares one inbound
+/// port for lookups and two outbound ports, one for the hits it serves itself
+/// and one for the misses it forwards, so the two paths can be sized apart
+/// instead of being averaged into a single figure that describes neither.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Port {
     /// How many relationships may attach here.
@@ -51,6 +57,42 @@ pub struct Port {
     /// What attaching to this port means, in the author's terms.
     #[serde(default)]
     pub summary: String,
+    /// Squiggle source for each signal this port publishes, keyed by signal name.
+    ///
+    /// On an inbound port these are the responses sent back to callers, and only
+    /// signals that travel backward may appear. On an outbound port they are the
+    /// requests sent to dependencies, and only signals that travel forward may.
+    ///
+    /// Expressions may read the component's properties and channels, so a port
+    /// publishes quantities the component has already worked out rather than
+    /// recomputing them. They may not read the port's own published values,
+    /// which is what keeps a component from depending on what it is saying.
+    #[serde(default)]
+    pub publishes: BTreeMap<String, String>,
+}
+
+/// The named places relationships attach to a component.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Ports {
+    /// Ports callers attach to, carrying requests in and responses back.
+    #[serde(rename = "in", default)]
+    pub inbound: BTreeMap<String, Port>,
+    /// Ports dependencies attach to, carrying requests out and responses back.
+    #[serde(rename = "out", default)]
+    pub outbound: BTreeMap<String, Port>,
+}
+
+impl Ports {
+    /// Returns the only port on a side, when a relationship names none.
+    ///
+    /// A model that does not mention ports is unambiguous exactly when there is
+    /// one to choose, so this resolves the common case without letting a type
+    /// with several ports be wired by guesswork.
+    pub fn sole(ports: &BTreeMap<String, Port>) -> Option<&String> {
+        let mut names = ports.keys();
+        let only = names.next()?;
+        names.next().is_none().then_some(only)
+    }
 }
 
 /// An intrinsic fact an author supplies about a component.
@@ -123,21 +165,15 @@ pub struct ComponentType {
     /// What this kind of component models and when to reach for it.
     #[serde(default)]
     pub summary: String,
-    /// Relationships arriving from upstream components.
+    /// The named places relationships attach, and what each publishes.
     #[serde(default)]
-    pub inbound: Port,
-    /// Relationships departing toward downstream components.
-    #[serde(default)]
-    pub outbound: Port,
+    pub ports: Ports,
     /// Intrinsic facts an author supplies.
     #[serde(default)]
     pub properties: BTreeMap<String, Property>,
     /// Quantities derived from properties, inbound flows, and prior state.
     #[serde(default)]
     pub channels: BTreeMap<String, Channel>,
-    /// Channels published onto outbound relationships, keyed by signal name.
-    #[serde(default)]
-    pub outputs: BTreeMap<String, String>,
     /// Resource limits this component can saturate.
     #[serde(default)]
     pub constraints: BTreeMap<String, Constraint>,
