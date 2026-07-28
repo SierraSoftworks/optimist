@@ -20,6 +20,8 @@ fn smoke_source(name: &str) -> Option<String> {
         "Queue.mmcWait" => "Queue.mmcWait(0.01,4,0.8)",
         "Queue.erlangB" => "Queue.erlangB(4,3)",
         "Queue.erlangC" => "Queue.erlangC(4,3)",
+        "Queue.boundedLength" => "Queue.boundedLength(0.8,100)",
+        "Queue.boundedBlocking" => "Queue.boundedBlocking(0.8,100)",
         "Reliability.retrySuccess" => "Reliability.retrySuccess(0.9,3)",
         "Reliability.retryAttempts" => "Reliability.retryAttempts(0.9,3)",
         "Reliability.serialSuccess" => "Reliability.serialSuccess(0.99,8)",

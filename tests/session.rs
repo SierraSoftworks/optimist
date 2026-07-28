@@ -151,6 +151,9 @@ fn structurally_invalid_changes_are_refused() {
 
     let dangling = session.apply(Mutation::SetRelationship {
         relationship: Relationship {
+            from_port: None,
+            to_port: None,
+            capacity: None,
             from: ComponentId::new("api"),
             to: ComponentId::new("absent"),
             mutators: Vec::new(),
@@ -161,6 +164,9 @@ fn structurally_invalid_changes_are_refused() {
 
     let loop_back = session.apply(Mutation::SetRelationship {
         relationship: Relationship {
+            from_port: None,
+            to_port: None,
+            capacity: None,
             from: ComponentId::new("api"),
             to: ComponentId::new("api"),
             mutators: Vec::new(),

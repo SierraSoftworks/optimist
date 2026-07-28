@@ -70,20 +70,23 @@ fn full_model() -> SystemModel {
         ],
         relationships: vec![
             Relationship {
+                from_port: None,
+                to_port: None,
+                capacity: None,
                 from: ComponentId::new("users"),
                 to: ComponentId::new("api"),
                 mutators: vec![AttachedMutator {
                     mutator: MutatorId::new("retry"),
-                    properties: [
-                        ("attempts".to_owned(), "3".to_owned()),
-                        ("attempt_success".to_owned(), "0.99".to_owned()),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    properties: [("attempts".to_owned(), "3".to_owned())]
+                        .into_iter()
+                        .collect(),
                 }],
                 summary: "Callers reaching the entry point.".to_owned(),
             },
             Relationship {
+                from_port: None,
+                to_port: None,
+                capacity: None,
                 from: ComponentId::new("api"),
                 to: ComponentId::new("store"),
                 mutators: vec![AttachedMutator {
@@ -261,6 +264,9 @@ fn project_local_definitions_are_loaded() {
         .components
         .push(component("meter", "rate-limiter", &[("ceiling", "500")]));
     model.relationships.push(Relationship {
+        from_port: None,
+        to_port: None,
+        capacity: None,
         from: ComponentId::new("api"),
         to: ComponentId::new("meter"),
         mutators: Vec::new(),
@@ -282,13 +288,20 @@ fn project_local_definitions_are_loaded() {
          \x20 admitted:\n\
          \x20   unit: op/s\n\
          \x20   summary: Calls allowed through.\n\
-         \x20   expression: min([inbound.rate, ceiling])\n\
-         outputs:\n\
-         \x20 rate: admitted\n\
+         \x20   expression: min([in.requests.rate, ceiling])\n\
+         ports:\n\
+         \x20 in:\n\
+         \x20   requests:\n\
+         \x20     publishes:\n\
+         \x20       capacity: ceiling\n\
+         \x20 out:\n\
+         \x20   onward:\n\
+         \x20     publishes:\n\
+         \x20       rate: admitted\n\
          constraints:\n\
          \x20 ceiling:\n\
          \x20   summary: Demand against the cap.\n\
-         \x20   demand: inbound.rate\n\
+         \x20   demand: in.requests.rate\n\
          \x20   limit: ceiling\n",
     )
     .expect("writes");
@@ -366,6 +379,9 @@ fn a_dangling_relationship_is_refused() {
     let directory = scratch("dangling");
     let mut model = full_model();
     model.relationships.push(Relationship {
+        from_port: None,
+        to_port: None,
+        capacity: None,
         from: ComponentId::new("api"),
         to: ComponentId::new("absent"),
         mutators: Vec::new(),

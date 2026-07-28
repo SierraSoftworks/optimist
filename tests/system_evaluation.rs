@@ -28,6 +28,9 @@ fn component(id: &str, component_type: &str, properties: &[(&str, &str)]) -> Com
 
 fn link(from: &str, to: &str) -> Relationship {
     Relationship {
+        from_port: None,
+        to_port: None,
+        capacity: None,
         from: ComponentId::new(from),
         to: ComponentId::new(to),
         mutators: Vec::new(),
@@ -37,6 +40,9 @@ fn link(from: &str, to: &str) -> Relationship {
 
 fn linked(from: &str, to: &str, mutators: &[(&str, &[(&str, &str)])]) -> Relationship {
     Relationship {
+        from_port: None,
+        to_port: None,
+        capacity: None,
         from: ComponentId::new(from),
         to: ComponentId::new(to),
         mutators: mutators
@@ -129,7 +135,7 @@ fn a_two_component_model_solves_to_its_capacity() {
     assert!((api.mean("offered") - 100.0).abs() < 1e-9);
     assert!((api.mean("utilisation") - 0.0625).abs() < 1e-9);
     // Well below saturation the pool serves everything offered.
-    assert!((api.mean("throughput") - 100.0).abs() < 1e-9);
+    assert!((api.mean("calls") - 100.0).abs() < 1e-9);
 }
 
 /// Little's Law holds on the solved quantities, not merely inside the manifest.
@@ -149,7 +155,7 @@ fn solved_concurrency_matches_littles_law() {
     };
     let solved = solve(&model, config());
     let api = &solved[&ComponentId::new("api")];
-    let expected = api.mean("throughput") * api.mean("residence");
+    let expected = api.mean("calls") * api.mean("residence");
     assert!(
         (api.mean("concurrency") - expected).abs() < 1e-6,
         "concurrency {} against rate times residence {expected}",
@@ -157,9 +163,14 @@ fn solved_concurrency_matches_littles_law() {
     );
 }
 
-/// A saturated pool clamps throughput and the excess shows as lost demand.
+/// A saturated pool refuses the excess rather than quietly serving less.
+///
+/// Overload used to be expressed by clamping throughput, which meant a design
+/// asked for more than it could serve reported the shortfall nowhere. It now
+/// reports the share it could not answer, and the caller is the one that finds
+/// out — which is what makes shedding a decision rather than an accident.
 #[test]
-fn demand_beyond_capacity_is_clamped() {
+fn demand_beyond_capacity_is_refused() {
     let model = SystemModel {
         components: vec![
             component("users", "client", &[("request_rate", "5000")]),
@@ -175,10 +186,20 @@ fn demand_beyond_capacity_is_clamped() {
     let solved = solve(&model, config());
     let api = &solved[&ComponentId::new("api")];
     assert!((api.mean("capacity") - 400.0).abs() < 1e-6);
-    assert!((api.mean("throughput") - 400.0).abs() < 1e-6);
     assert!(api.mean("utilisation") > 0.99, "the pool must be saturated");
-    // Queueing delay explodes as utilisation approaches one.
-    assert!(api.mean("wait") > api.mean("residence") * 0.9);
+    let users = &solved[&ComponentId::new("users")];
+    // Eight slots at 20 ms sustain 400 of the 5000 offered. The refusal happens
+    // on the wire, so it is the caller that finds out.
+    let served = users.mean("offered") * users.mean("success");
+    assert!(
+        (served - 400.0).abs() < 40.0,
+        "what is served should be about the capacity, got {served}"
+    );
+    assert!(
+        users.mean("success") < 0.2,
+        "the caller must see the refusal, got {}",
+        users.mean("success")
+    );
 }
 
 /// Uncertainty in a property reaches every quantity derived from it.
@@ -204,8 +225,9 @@ fn uncertainty_propagates_through_the_model() {
         "uncertainty must reach utilisation"
     );
     assert!(
-        api.spread("wait") > 0.0,
-        "uncertainty must reach queueing delay"
+        solved[&ComponentId::new("users")].spread("latency") > 0.0,
+        "uncertainty must reach the delay a caller observes, which is where the \
+         queueing caused by uncertain demand now shows"
     );
     // Capacity depends on no uncertain property, so it stays certain.
     assert_eq!(api.spread("capacity"), 0.0);
@@ -286,6 +308,11 @@ fn retention_sets_resident_volume() {
 }
 
 /// A model wired into a cycle still settles, because the solver relaxes.
+///
+/// Every call chain is now a cycle: the pool's capacity depends on how long its
+/// dependency takes, and the dependency's load depends on what the pool passes
+/// through. There is no term to evaluate first, so this is exactly the case
+/// relaxation exists to handle.
 #[test]
 fn a_feedback_loop_settles() {
     let model = SystemModel {
@@ -302,11 +329,7 @@ fn a_feedback_loop_settles() {
                 &[("service_time", "0.002"), ("parallelism", "16")],
             ),
         ],
-        relationships: vec![
-            link("users", "api"),
-            link("api", "cache"),
-            link("cache", "api"),
-        ],
+        relationships: vec![link("users", "api"), link("api", "cache")],
         ..SystemModel::default()
     };
     let catalogue = builtin_catalogue().expect("catalogue");
@@ -315,6 +338,18 @@ fn a_feedback_loop_settles() {
         evaluation.converged(),
         "a contracting loop must settle, moved {}",
         evaluation.settled().movement
+    );
+    let settled = &evaluation.settled().components;
+    let latency = |id: &str, channel: &str| {
+        Channels(settled[&ComponentId::new(id)].channels.clone()).mean(channel)
+    };
+    // The pool holds a worker for its own service plus the cache's answer, so
+    // the cache's latency is visible in the pool's hold time.
+    let cache_residence = latency("cache", "residence");
+    let api_hold = latency("api", "hold_time");
+    assert!(
+        (api_hold - (0.01 + cache_residence)).abs() < 1e-6,
+        "expected 0.01 + {cache_residence}, got {api_hold}"
     );
 }
 
@@ -515,7 +550,7 @@ fn every_constraint_is_accounted_for() {
     assert!(ranked.iter().all(|entry| !entry.binds()));
 }
 
-fn amplified(attempt_success: &str) -> f64 {
+fn amplified(budget: &str) -> f64 {
     let model = SystemModel {
         components: vec![
             component("users", "client", &[("request_rate", "100")]),
@@ -528,14 +563,14 @@ fn amplified(attempt_success: &str) -> f64 {
         relationships: vec![linked(
             "users",
             "api",
-            &[(
-                "retry",
-                &[("attempts", "3"), ("attempt_success", attempt_success)],
-            )],
+            &[
+                ("retry", &[("attempts", "3")][..]),
+                ("timeout", &[("budget", budget)][..]),
+            ],
         )],
         ..SystemModel::default()
     };
-    solve(&model, config())[&ComponentId::new("api")].mean("offered")
+    solve(&model, config())[&ComponentId::new("api")].mean("arriving")
 }
 
 /// A retry policy amplifies the demand reaching the dependency behind it.
@@ -543,18 +578,34 @@ fn amplified(attempt_success: &str) -> f64 {
 /// This is the term that turns a partial outage into a retry storm, and it is
 /// invisible on a diagram: the relationship looks identical whether or not a
 /// policy is attached.
+///
+/// The retry knows nothing about time. It reissues what failed, and what counts
+/// as a failure is decided by the timeout beneath it, which is why the
+/// amplification below is produced by the budget alone. The pool answers in
+/// about a millisecond, and an attempt succeeds with probability
+/// `1 - exp(-budget / latency)`.
 #[test]
 fn retrying_amplifies_downstream_demand() {
-    // A dependency that almost always succeeds is called about once per request.
-    assert!((amplified("0.999") - 100.0).abs() < 0.5);
-    // One that fails half the time is called nearly twice as often.
-    let degraded = amplified("0.5");
+    // Ten times the dependency's latency almost always suffices, so a request
+    // costs about one attempt.
     assert!(
-        (degraded - 175.0).abs() < 1.0,
+        (amplified("0.0069") - 100.0).abs() < 1.0,
+        "got {}",
+        amplified("0.0069")
+    );
+    // A budget of `latency * ln 2` succeeds half the time.
+    let degraded = amplified("0.000693");
+    assert!(
+        (degraded - 175.0).abs() < 5.0,
         "expected 1 + 0.5 + 0.25 attempts per request, got {degraded}"
     );
-    // One that almost always fails is called the full budget of three times.
-    assert!((amplified("0.001") - 300.0).abs() < 1.0);
+    // A budget far below the latency never succeeds, so the full budget of three
+    // attempts is spent on every request.
+    assert!(
+        (amplified("0.000001") - 300.0).abs() < 5.0,
+        "got {}",
+        amplified("0.000001")
+    );
 }
 
 /// Amplification can push a healthy dependency past its capacity.
@@ -586,7 +637,10 @@ fn amplification_can_create_the_bottleneck_it_responds_to() {
     let retried = pool(vec![linked(
         "users",
         "api",
-        &[("retry", &[("attempts", "3"), ("attempt_success", "0.05")])],
+        &[
+            ("retry", &[("attempts", "3")][..]),
+            ("timeout", &[("budget", "0.001")][..]),
+        ],
     )]);
     let evaluation = evaluate(&retried, &catalogue, config()).expect("solves");
     let ranked = bottlenecks(&retried, &catalogue, evaluation.settled(), config()).expect("ranks");
@@ -686,20 +740,28 @@ fn behaviour_order_changes_the_result() {
         relationships: vec![linked("users", "api", mutators)],
         ..SystemModel::default()
     };
-    let retry = (
-        "retry",
-        &[("attempts", "3"), ("attempt_success", "0.001")][..],
-    );
+    let retry = ("retry", &[("attempts", "3")][..]);
     let shed = ("load-shed", &[("limit", "100")][..]);
+    // A budget far below the pool's latency fails every attempt, so the retry
+    // policy always spends its full budget and the arithmetic below is exact.
+    let timeout = ("timeout", &[("budget", "0.000001")][..]);
 
     // Shedding first caps demand at 100, which retrying then triples.
-    let shed_first = solve(&model(&[shed, retry]), config());
+    let shed_first = solve(&model(&[shed, retry, timeout]), config());
     // Retrying first triples demand to 600, which shedding then caps at 100.
-    let retry_first = solve(&model(&[retry, shed]), config());
+    let retry_first = solve(&model(&[retry, shed, timeout]), config());
 
     let api = ComponentId::new("api");
-    assert!((shed_first[&api].mean("offered") - 300.0).abs() < 1.0);
-    assert!((retry_first[&api].mean("offered") - 100.0).abs() < 1.0);
+    assert!(
+        (shed_first[&api].mean("arriving") - 300.0).abs() < 5.0,
+        "got {}",
+        shed_first[&api].mean("arriving")
+    );
+    assert!(
+        (retry_first[&api].mean("arriving") - 100.0).abs() < 5.0,
+        "got {}",
+        retry_first[&api].mean("arriving")
+    );
 }
 
 /// A timeout bounds the latency a caller observes.
@@ -850,12 +912,19 @@ fn sharding_relieves_a_bottleneck() {
 /// Observed latency takes the largest arrival rather than the sum.
 ///
 /// A caller reaching two dependencies waits for the slower one, not for both
-/// end to end, and summing would invent delay nobody experienced.
+/// end to end, and summing would invent delay nobody experienced. Latency
+/// travels back along a relationship, so this is a claim about what returns to
+/// a caller that fanned out rather than about what arrives at one.
 #[test]
-fn latency_does_not_accumulate_across_parallel_arrivals() {
+fn latency_does_not_accumulate_across_parallel_dependencies() {
     let model = SystemModel {
         components: vec![
             component("users", "client", &[("request_rate", "10")]),
+            component(
+                "collector",
+                "compute",
+                &[("service_time", "0.001"), ("parallelism", "64")],
+            ),
             component(
                 "slow",
                 "compute",
@@ -866,29 +935,28 @@ fn latency_does_not_accumulate_across_parallel_arrivals() {
                 "compute",
                 &[("service_time", "0.05"), ("parallelism", "64")],
             ),
-            component(
-                "collector",
-                "aggregator",
-                &[("branches", "2"), ("overhead", "0.001")],
-            ),
         ],
         relationships: vec![
-            link("users", "slow"),
-            link("users", "quick"),
-            link("slow", "collector"),
-            link("quick", "collector"),
+            link("users", "collector"),
+            link("collector", "slow"),
+            link("collector", "quick"),
         ],
         ..SystemModel::default()
     };
     let catalogue = builtin_catalogue().expect("catalogue");
     let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
     assert!(evaluation.converged());
-    // Both branches deliver 10 requests per second, combined two at a time.
-    let collector = &evaluation.settled().components[&ComponentId::new("collector")];
-    let Value::Number(completed) = collector.channels["completed"] else {
-        panic!("expected a certain rate");
-    };
-    assert!((completed - 10.0).abs() < 1e-6);
+    let solved = evaluation.settled().components.clone();
+    let wait =
+        Channels(solved[&ComponentId::new("collector")].channels.clone()).mean("dependency_wait");
+    let slower = Channels(solved[&ComponentId::new("slow")].channels.clone()).mean("residence");
+    // The slow dependency alone sets the wait; the quick one is free. The wire
+    // in front of each adds a little queueing of its own, which is why this is a
+    // tolerance rather than an equality.
+    assert!(
+        (wait - slower).abs() < slower * 0.05,
+        "expected about the slower dependency {slower}, waited {wait}"
+    );
 }
 
 /// Structural mistakes in scale units are reported.
