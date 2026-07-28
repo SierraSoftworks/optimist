@@ -199,12 +199,31 @@ impl Runtime {
         program: &Program,
         bindings: impl IntoIterator<Item = (&'a str, Value)>,
     ) -> Result<Value, Diagnostic> {
+        for (name, value) in bindings {
+            self.bind(name, value);
+        }
+        self.evaluate_bound(program)
+    }
+
+    /// Binds one name for the programs evaluated after it.
+    ///
+    /// Writes over an existing key rather than allocating a fresh one, so a
+    /// caller that rebinds the same names repeatedly pays only for the values.
+    pub(crate) fn bind(&mut self, name: &str, value: Value) {
+        self.bindings.rebind(name, value);
+    }
+
+    /// Evaluates a program against the names already bound.
+    ///
+    /// A caller evaluating several programs against one scope binds it once and
+    /// calls this for each of them, rather than handing over the same scope again
+    /// per program. That matters where the scope holds dictionaries: binding is a
+    /// copy, and a component's inbound flows would otherwise be copied once for
+    /// every channel that could have read them.
+    pub(crate) fn evaluate_bound(&mut self, program: &Program) -> Result<Value, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
         count!(Programs);
-        for (name, value) in bindings {
-            self.bindings.rebind(name, value);
-        }
         let environment = self.bindings.child();
         self.eval_program(program, &environment)
             .map(|output| output.value)

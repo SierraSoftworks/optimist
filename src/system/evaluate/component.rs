@@ -65,25 +65,26 @@ pub(super) fn evaluate_component(
         PREVIOUS.to_owned(),
         Value::Dictionary(zeroed(component, &prior.channels)),
     );
+    // Bound once for the whole component. Every channel and every published
+    // signal reads the same scope, and it holds the inbound and outbound flows
+    // as dictionaries, so binding it per program copied them a dozen times over.
+    for (name, value) in &scope {
+        runtime.bind(name, value.clone());
+    }
 
     let mut channels = BTreeMap::new();
     for (name, program) in &component.channels {
-        let value = runtime
-            .evaluate_values(
-                program,
-                scope
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), value.clone())),
-            )
-            .map_err(|diagnostic| EvaluationError::Evaluation {
+        let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
+            EvaluationError::Evaluation {
                 location: format!("channel '{name}' of component '{}'", component.id),
                 message: diagnostic.message,
-            })?;
-        scope.insert(name.clone(), value.clone());
+            }
+        })?;
+        runtime.bind(name, value.clone());
         channels.insert(name.clone(), value);
     }
-    let responses = publish(&component.inbound, &component.id, &scope, runtime)?;
-    let requests = publish(&component.outbound, &component.id, &scope, runtime)?;
+    let responses = publish(&component.inbound, &component.id, runtime)?;
+    let requests = publish(&component.outbound, &component.id, runtime)?;
     Ok(ComponentState {
         channels,
         requests,
@@ -97,24 +98,18 @@ pub(super) fn evaluate_component(
 fn publish(
     ports: &BTreeMap<String, PreparedPort>,
     component: &ComponentId,
-    scope: &BTreeMap<String, Value>,
     runtime: &mut Runtime,
 ) -> Result<BTreeMap<String, BTreeMap<String, Value>>, EvaluationError> {
     let mut published = BTreeMap::new();
     for (name, port) in ports {
         let mut signals = BTreeMap::new();
         for (signal, _, program) in &port.publishes {
-            let value = runtime
-                .evaluate_values(
-                    program,
-                    scope
-                        .iter()
-                        .map(|(name, value)| (name.as_str(), value.clone())),
-                )
-                .map_err(|diagnostic| EvaluationError::Evaluation {
+            let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
+                EvaluationError::Evaluation {
                     location: format!("signal '{signal}' of port '{name}' on '{component}'"),
                     message: diagnostic.message,
-                })?;
+                }
+            })?;
             signals.insert(signal.clone(), value);
         }
         published.insert(name.clone(), signals);
