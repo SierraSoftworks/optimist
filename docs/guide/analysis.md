@@ -1,188 +1,243 @@
-# Analysis
+# Solving and bottlenecks
 
-Optimist provides exact structural graph analysis and finite-horizon Monte Carlo projection for scenario candidates. The two results are intentionally separate: topology is exact, while intervention impact depends on explicit modelling assumptions and uncertain inputs.
+Solving a design means finding the quantities that flow through it. Ranking it
+means turning those quantities into the one answer worth having: which resource
+this design is closest to exhausting.
 
-## Causal graph projection
+## Why the solver iterates
 
-Only these edge kinds participate in structural causal analysis:
+Channels can be arranged in dependency order only when a model is acyclic, and
+the models worth building rarely are. Utilisation sets queueing delay, delay sets
+how long each request occupies a worker, occupancy sets utilisation again. That
+loop has no first term to evaluate.
 
-- `contributes`,
-- `changes`,
-- `blocks`.
+The solver therefore relaxes toward a fixed point. It evaluates every component
+against the current estimate of its inputs, blends the result part of the way
+toward what it computed, and repeats until nothing moves. Where a model happens
+to be acyclic this converges immediately, so ordering is never needed as a
+special case.
 
-`requires`, `part-of`, `measures`, `conflicts-with`, and `synergizes-with` do not enter causal strongly connected component calculation. `requires`, conflicts, and synergies separately inform intervention execution readiness and scenario projection.
+Blending rather than jumping is deliberate. A cancelling timeout and the load it
+relieves form an oscillator: cancelling lowers utilisation, which lowers latency,
+which stops the cancelling, which raises the load again. Moving the whole way
+each pass overshoots and the iterate cycles instead of settling.
 
-An immutable analysis key records:
+## Not converging is a result
 
-- project ID,
-- independent graph revision,
-- optional scenario ID and revision,
-- dependence document revision,
-- formula document revision.
+An iteration that never settles is reported rather than hidden behind a last
+iterate:
 
-This makes it possible to detect whether a result was computed from the documents a caller expected.
-
-## Strongly connected components
-
-Optimist uses Tarjan's algorithm to partition every node exactly once into maximal strongly connected components (SCCs).
-
-A component represents feedback when it contains:
-
-- more than one node, or
-- one node with a causal self-loop.
-
-SCC detection is exact and deterministic. Component members and internal edges are sorted by canonical IDs.
-
-## Elementary cycles
-
-Within the causal graph, Optimist enumerates directed elementary cycles without repeating internal nodes. Enumeration is bounded by:
-
-- maximum edges per cycle,
-- maximum returned cycle count.
-
-```sh
-cargo run -- --project A analysis structure \
-  --maximum-cycle-length 8 \
-  --maximum-cycles 1000
+```text
+Did not settle after 1500 passes; largest movement 3.412e-2.
+A loop whose gain exceeds one has no steady state to find.
 ```
 
-If another cycle exists beyond the count bound, `cycles_truncated` is set. A returned cycle is rotated so its smallest entity ID appears first, giving a deterministic representation.
+A loop with gain above one has no steady state, and saying so is more useful than
+returning whichever values the cap happened to stop at. Because relaxation runs
+per draw, the share of draws still moving distinguishes a wholly unstable design
+from one unstable only in its tail.
 
-The [feedback-loop example](../examples/#feedback-loop-discovery) builds and verifies a three-factor loop:
+The commonest cause is unbounded amplification: a retry policy against a
+dependency that cannot serve the amplified demand, or a component type on a
+response leg that publishes `rate` and so feeds demand back into its own caller.
+
+## Steady state and transient
+
+The same equations either way. What differs is whether the backlog on each wire
+is asked to balance or asked to move.
+
+**Steady** is the default. One algebraic solve, using the closed form for a
+bounded queue, so the answer arrives immediately. It says where the design comes
+to rest, which is the question being asked nearly all of the time, and it is what
+a constraint should be read against.
+
+It has no memory. Where a design has more than one resting state, this reports
+the one reachable from nothing, so a surge that would have tipped it over and
+left it there appears to be survived.
+
+**Transient** advances the backlog through time, one step at a time.
 
 ```sh
-cargo run --example feedback_loop
+optimist solve examples/metastable --transient --horizon 250 --step 0.1
 ```
 
-Structural analysis says where the loops are but nothing about their strength. Scenario projection adds that, under [loop gain](#loop-gain).
+The queue on each wire fills and drains at a finite rate, which is what gives a
+design memory. A buffer filled by a surge has to be emptied afterwards, and if
+work arrives faster than it drains the design stays where the surge left it.
+Hysteresis, recovery time, and whether an incident ends when its cause does are
+only visible here.
 
-## Scenario-scoped keys
+The cost is the step. Integration is faithful only while a step is short against
+the time a queue takes to drain, so shorten `--step` and lengthen `--horizon`
+together. A horizon that reads comfortably in seconds may need thousands of
+steps.
 
-You may include a scenario revision in the projection key:
+## Time
+
+`--horizon` is the number of steps and `--step` their length in seconds. Time is
+visible to expressions as `t`, so a scratchpad quantity or an intervention
+override can depend on it:
+
+```yaml
+overrides:
+  - name: peak_rate
+    expression: 'if t < 10 then 4000 else 900'
+```
+
+That is a ten-second surge. Under steady solving each step is solved from rest
+and the surge leaves no trace; under transient solving the backlog it created has
+to drain, and whether it does is the whole question.
+
+`prev.<channel>` gives a component its own values from the previous step, which
+is how a component type carries state of its own. `dt` is the step length, so an
+accumulation is written as an accumulation:
+
+```yaml
+backlog:
+  expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+```
+
+## More than one fixed point
+
+The solver starts from a single set of values, so where a loop admits more than
+one fixed point it reports the one reachable from rest — the lower, uncongested
+branch of a bistable system. The congested branch exists and is not searched for.
+
+A wide converged distribution is the signal that a design is operating near the
+fold between the two. Some draws settle healthy and some settle collapsed, and
+the result is a genuine mixture rather than a broad unimodal spread. This is why
+the workbench draws a density estimate and calls out multiple modes rather than
+leaving them to a mean and a percentile pair.
+
+The `metastable` example is built to demonstrate exactly this. See
+[the examples](../examples/README.md).
+
+## Ranking constraints
+
+Every constraint pairs a demand with the limit it consumes. Utilisation is their
+ratio, taken per draw, so the answer is a distribution rather than a figure:
 
 ```sh
-cargo run -- --project A analysis structure --scenario A
+optimist bottlenecks examples/checkout
 ```
 
-The graph topology is unchanged by selecting a scenario. The scenario revision is retained so later decision-analysis results can prove which objectives, budget, horizon, and candidates were selected.
+```text
+COMPONENT  CONSTRAINT          UTILISATION  P90      BINDS  REPLICAS  HEADROOM
+orders     volume              7.009        9.555    100%   1         -3004303674979.1333
+api        capacity            2.960        4.916    87%    1         -1063.2349
+browsers   success_objective   55.626       109.865  86%    1         -0.2731
+browsers   latency_objective   0.460        0.793    3%     1         0.4053
+orders     operations          0.066        0.090    0%     1         4669.9294
+```
 
-## Finite-horizon scenario projection
+| Column | Meaning |
+| --- | --- |
+| `UTILISATION` | Mean of demand over limit. |
+| `P90` | Utilisation at the ninetieth percentile of draws. |
+| `BINDS` | Share of draws in which demand met or exceeded the limit. |
+| `REPLICAS` | Replicas of the owning component across every enclosing scale unit. The other figures describe **one** replica. |
+| `HEADROOM` | Mean limit less mean demand, in the constraint's own units. |
 
-Analyze every candidate execution plan in a stored scenario:
+Constraints are ordered by how likely they are to bind, and by utilisation where
+that ties:
+
+$$P(\text{bind}) = \frac{1}{n}\sum_{i=1}^{n} \mathbb{1}\{d_i \geq l_i\}$$
+
+Ranking by probability rather than by mean utilisation puts the constraint most
+exposed to a bad draw at the top, which is the one worth spending on. Two
+constraints at the same average load are not equally urgent if one of them is far
+more variable.
+
+Add `--binding` to drop everything with headroom in every draw.
+
+The engine attaches no meaning to any constraint's name. A limit called `iops`
+and one called `concurrency` are ranked by identical arithmetic, which is what
+lets a new component type introduce a resource nobody anticipated and still have
+it reported.
+
+### Objectives are constraints too
+
+A `client` compares the latency and success arriving back at it against the
+targets it declares. Because responses propagate back along every relationship,
+those figures already include every hop, retry, timeout, and fan-out along the
+way. That turns "does this design meet its objective" into a ranked constraint
+rather than a figure an engineer has to assemble by hand.
+
+## Weighing a change
 
 ```sh
-cargo run -- --project A scenario analyze A
+optimist compare examples/checkout warm-cache
 ```
 
-Every factor and objective on a candidate-to-objective causal path needs a native quantity and `current` estimate. For `A requires B`, B executes before A. Recursive prerequisite durations add, each required intervention must succeed, and successful prerequisite `changes` effects enter propagation before the candidate. Hard factor requirements preclude execution when their threshold is absent or unsatisfied. `changes` and `contributes` provide sampled dimensionless local responses.
+```text
+COMPONENT  CONSTRAINT          BEFORE  AFTER  BOUND BEFORE  BOUND AFTER  EFFECT
+orders     volume              7.009   0.643  100%          0%           relieved
+orders     operations          0.066   0.006  0%            0%           eased
+browsers   latency_objective   0.460   0.495  3%            8%           loaded
+api        capacity            2.960   3.186  87%           87%          loaded
+```
 
-A response is a ratio, so a state moves relative to its own sampled baseline rather than by an amount expressed in its unit. How responses combine follows the destination quantity's declared support, because support is what makes one rule sound. A strictly non-negative quantity has a ratio scale, so its responses multiply:
+`compare` solves the design twice — once as it stands, once with the
+intervention's rebindings applied — using the same seed and the same draws, and
+reports the movement of every constraint.
 
-$$
-x_i(t) = \operatorname{clamp}_i\left(
-  b_i \prod_j \left(\frac{x_j(t-d_{ji})}{b_j}\right)^{\varepsilon_{ji}}
-\right).
-$$
+| Effect | Meaning |
+| --- | --- |
+| `relieved` | Bound in some draws before, in none after. |
+| `introduced` | Bound in no draws before, in some after. |
+| `eased` | Utilisation fell. |
+| `loaded` | Utilisation rose. |
+| `unchanged` | Utilisation did not move. |
 
-A plain product such as $\text{impact} = \text{frequency} \times \text{duration}$ is therefore two edges with $\varepsilon = 1$, and the result stays non-negative for free. A quantity that may be zero or negative has no ratio scale, so its responses accumulate against baseline instead:
+When a change introduces a constraint, the report says so explicitly:
 
-$$
-x_i(t) = \operatorname{clamp}_i\left(
-  b_i \left(1 + \sum_j \varepsilon_{ji}\left(\frac{x_j(t-d_{ji})}{b_j} - 1\right)\right)
-\right).
-$$
+```text
+2 constraint(s) started binding under this change.
+Relieving one limit routinely promotes another, so check whether this is a fix or a move.
+```
 
-A response with no explicit lag consumes its source from the previous planning period. Explicit duration and lag estimates are interpreted as numbers of planning periods, rounded up, and added to that one-period transport delay. An unchanged source has a ratio of one and so contributes no movement, and $\operatorname{clamp}_i$ applies the destination quantity's declared support. A source whose sampled baseline is zero has no fractional movement at all; its responses are dropped and reported as undefined rather than propagating an infinity. Horizons are bounded to 10,000 periods.
+That is the point of comparing rather than re-solving. Relieving the constraint
+everybody was watching usually promotes the next one, and a proposal is only
+worth funding if the design is better after the promotion.
 
-A state carrying a [node equation](./modelling.md#node-equations) is computed from that equation instead of from either rule. Its parents are bound at the value they held one relationship lag ago, its interventions bind their activation, and its parameters are sampled once per draw and held across the horizon. Because the one-period transport delay guarantees every parent is already resolved, equations within a period never depend on each other's order.
+## Controls
 
-Its baseline comes from the equation too, evaluated with every parent at its own baseline and every activation at zero — the state at rest, before anything intervenes. The authored current estimate is not used as the baseline, because the equation and the estimate describe the same quantity: drawing both would compare a projection against an unrelated sample of itself, and the resulting improvement would measure the gap between two draws rather than the effect of the plan. Equations may read other equations, so baselines settle in dependency order. A state sitting on a cycle has no closed-form rest point and keeps its authored estimate, which is the author's own statement of where the loop settles.
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--seed` | `0` | Root of the deterministic random stream. |
+| `--samples` | `1000` | Draws carried through every uncertain quantity. |
+| `--horizon` | `1` | Number of steps to advance. |
+| `--step` | `1.0` | Length of one step, in seconds. |
+| `--transient` | off | Advance queues through time instead of solving for balance. |
+| `--intervention` | none | Apply an intervention before solving or ranking. |
 
-### Time-boxed interventions
+The same controls are query parameters on the HTTP analysis endpoint, where
+`samples` is clamped to 64–20,000 and `horizon` to 1–500.
 
-An intervention has no level to take a ratio of, so a `changes` response is the multiplier $m_k$ applied to its target while the intervention is fully active. Its temporal activation $a_k(t)$ enters as the exponent, contributing $m_k^{a_k(t)}$ multiplicatively or the share $(m_k - 1)a_k(t)$ additively, with the sampled rebound multiplier $\rho_k$ applied the same way against $b_k(t)$. Ramping therefore interpolates geometrically. An effect without a profile holds $a_k = 1$ and $b_k = 0$ after arrival, which is the monotone step a permanent intervention applies, so adding a profile changes only an effect's schedule and never its magnitude.
+Relaxation itself is not exposed on the command line. The iteration cap is 1,500
+passes, the tolerance for "settled" is a relative movement of $10^{-6}$, and the
+blend is a fraction of the way toward each computed value. Feedback converges
+more slowly than a feed-forward chain: a retry policy against a saturated
+dependency has a loop gain just under one, so the iterate approaches its fixed
+point steadily but without hurry. A pass is cheap, and a loop that genuinely has
+no fixed point diverges fast enough to be obvious long before the cap.
 
-A profile has four parts. `ramp` spends $r$ periods rising to full strength, `hold` keeps $h$ periods at full strength, `release` returns the effect toward zero, and an optional `aftereffect` fires a rebound when the release begins:
+## Reading the solved quantities
 
-$$
-a_k(e) = \begin{cases}
-  \dfrac{e+1}{r+1} & e < r \\[6pt]
-  1 & r \leq e < r + h \\[4pt]
-  \sigma(e - r - h) & e \geq r + h
-\end{cases}
-$$
+```sh
+optimist solve examples/checkout --component api
+```
 
-where $e$ counts periods since arrival and $\sigma$ is the release kernel: $0$ for an abrupt end, $\max(0,\,1-\frac{k+1}{L+1})$ for a decline over $L$ periods, and $2^{-(k+1)/H}$ for a half-life $H$. Omitting `hold` leaves the effect permanent and removes the release phase entirely.
+Alongside a component's own channels, the report includes what it read from its
+ports:
 
-The rebound carries its own magnitude rather than a share of the primary effect, because ending an intervention is its own event: a backlog that drains after a change freeze rarely returns exactly what was withheld. Every profile duration is an ordinary Squiggle estimate, so a schedule is as uncertain as any other input, and durations are sampled per draw and rounded up to whole periods. Only `changes` effects accept a profile; a `contributes` relationship is always in effect and has no activation to start or stop.
+- `in.<port>.<signal>` — demand arriving on an inbound port, aggregated across
+  callers and after every behaviour on those relationships.
+- `out.<port>.<signal>` — responses returning on an outbound port, which is what
+  explains the component's own latency and failures.
 
-Modelling a time-boxed intervention this way removes the older workaround of adding a placeholder factor whose only job was to fire a lagged rebound.
-
-Each candidate run uses the scenario's pinned ChaCha20 seed and Monte Carlo stopping controls. Baselines, prerequisite and candidate success, cumulative duration, lags, and destination responses are sampled once per joint draw. Estimates named by the project's residual dependence document are drawn through their Gaussian copula instead, by inverse transform, so a stated correlation reaches the projection while every authored marginal survives unchanged. See [Uncertainty](./uncertainty.md#dependence) for the document itself. Reports include total execution duration, all-steps success, prerequisite/blocker/synergy/conflict context, baseline, final-state, and direction-oriented improvement means and variances, covariance between objective improvements, reachability, clamping, Monte Carlo errors, and convergence status. Improvement is always a relative, preference-oriented delta from baseline: positive means improvement even for a minimize objective.
-
-Repeating the same immutable revision and seed is bit-reproducible for the current algorithm and pinned dependency versions. Adding or reordering sampled model inputs changes the random stream and therefore the exact sample sequence.
-
-::: warning Current statistical boundary
-Estimates are independent unless a dependence group couples them; Optimist never infers correlation from graph structure. Candidate execution plans are still evaluated one at a time; budgets, costs, numeric synergy magnitudes, candidate bundles, and scalar utility are not yet optimization inputs. Synergy and conflict edges are reported as qualitative decision context.
-:::
-
-## Loop gain
-
-Both composition rules are linear in relative deviation. Multiplicative composition gives $u_i = \sum_j \varepsilon_{ji} u_j$ in log deviations $u_i = \log(x_i/b_i)$; additive composition gives $d_i = \sum_j \varepsilon_{ji} d_j$ in relative deviations $d_i = (x_i - b_i)/b_i$. Either way, one trip around a circuit multiplies the deviation by the product of the responses on it:
-
-$$
-g = \prod_{(j \to i) \in C} \varepsilon_{ji}.
-$$
-
-`feedback_loops` reports each circuit among the projected states with its gain, using the same enumeration and canonical rotation as [structural analysis](#elementary-cycles):
-
-- $|g| < 1$ contracts. A deviation entering the loop dies out and the projection settles.
-- $|g| > 1$ expands. The loop runs away until the destination's declared support clamps it, so the result reports that bound rather than the intervention. Watch `clamped_state_updates` climb alongside it.
-- $|g| = 1$ is marginal: a deviation neither decays nor grows.
-- $g < 0$ alternates sign each trip, which reads as oscillation rather than drift.
-
-The gain is a linearization about the baseline evaluated at each response's mean. It says what the loop does to a small deviation, not what any one Monte Carlo draw does to a large one. Where two relationships run between the same pair, the larger magnitude is used, which keeps the gain a bound rather than an average that could hide an amplifying path behind a damping one.
-
-A loop through a state carrying a node equation reports `null`. The state does not respond proportionally to its parents, so no elasticity describes the edge and the product would mean nothing. **An unknown gain is not a safe one** — such a loop can run away just as far, it simply admits no number to multiply.
-
-### Probability of instability
-
-A mean says nothing about how often a product crosses one. Two responses averaging 0.9 apiece give a mean gain of 0.81 and look safe, but if each is uncertain enough their product exceeds one in a large minority of draws — and those are the draws in which the projection reports its clamp rather than the plan.
-
-Each circuit therefore also reports `instability`, the share of sampled draws in which $|g| \geq 1$:
-
-$$
-\widehat{P}(|g| \geq 1) = \frac{1}{n}\sum_{k=1}^{n} \mathbf{1}\left[\left|\prod_{(j \to i) \in C} \varepsilon_{ji}^{(k)}\right| \geq 1\right].
-$$
-
-Responses are drawn jointly through the project's Gaussian copula, so two hops that share a quantity move together rather than being multiplied as if independent. That difference matters most here: a shared assumption appearing twice on a circuit squares its effect on the gain. A draw whose product is not finite carries no information about stability and is left out of the denominator rather than counted either way.
-
-Treat anything other than a known gain below one **and** a small sampled share as needing review.
-
-## Horizon adequacy
-
-Every relationship adds a transport period to its authored lag, so a chain of relationships cannot deliver an effect faster than its length. Each objective therefore reports `periods_to_effect` beside `reachable`: the shortest delay-weighted path from the candidate to that objective, evaluated at the mean lags.
-
-This distinguishes two results that otherwise look identical. An objective the horizon ends before reaching reports a flat zero improvement — exactly what a disconnected objective reports. `reachable` is purely topological and says `true` in both cases; only the period count separates "not yet" from "not effective". Extend `planning_horizon` past `periods_to_effect` before concluding an intervention does nothing.
-
-## What analysis does not claim
-
-Current structural and scenario output does **not** establish:
-
-- whether it is reinforcing or balancing with a particular probability,
-- equilibrium values,
-- causal identification from observational data,
-- a ranked investment frontier.
-
-Finite-horizon projection estimates impact under the recurrence and supplied priors; it does not prove that an edge is causal or identify effects from observational data. Bundles, costs, and Pareto ranking remain separate roadmap items.
-
-## Interpreting results
-
-Treat SCCs and cycles as candidates for review:
-
-1. Read each edge mechanism and evidence.
-2. Confirm edge direction and endpoint semantics.
-3. Check whether the cycle is meaningful at one time scale.
-4. Review lags and uncertain effect signs.
-5. Decide whether omitted common causes require dependence modelling.
-6. Only then apply a documented stability or propagation model.
+Those two are usually where a surprising answer is explained. A pool that looks
+overloaded with no change in demand is normally reading a `latency` on
+`out.<port>` that has risen, because a synchronous worker cannot be reclaimed
+while it waits and a slow dependency consumes capacity just as surely as slow
+local work does.

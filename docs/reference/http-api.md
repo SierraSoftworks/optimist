@@ -1,227 +1,372 @@
 # HTTP and WebSocket API
 
-The server defaults to `http://127.0.0.1:3000`. JSON mutation requests use the revision-checked command endpoint; read routes expose complete typed aggregates.
+Everything is served under `/api/v1`. Start the server with:
 
-## Health
-
-```http
-GET /api/v1/health
+```sh
+optimist serve --bind 127.0.0.1:3000 --designs ./designs
 ```
 
-## Projects
+Reads return the design as it stands; the one write endpoint takes the same
+mutations the session applies. There is no revision to send, nothing to retry,
+and no conflict to resolve, because a mutation names one entity and the last
+writer to touch it wins.
 
-```http
-POST   /api/v1/projects
-GET    /api/v1/projects
-GET    /api/v1/projects/{project}
-DELETE /api/v1/projects/{project}
-GET    /api/v1/projects/{project}/changes?after={revision}
-GET    /api/v1/projects/{project}/archive
-POST   /api/v1/project-archives?replace={bool}&yes={bool}
-```
+There is no authentication. Bind to loopback or run behind something that
+enforces access.
 
-Create body:
+## Errors
 
-```json
-{"name":"Delivery reliability"}
-```
-
-Archive responses contain the typed project structure: metadata, description, optional dependence, entities with source-owned outgoing edges, and scenarios. Import validates document and byte limits, canonical identities, cross-references, estimates, and dependence before atomically publishing a fresh in-memory project entry. The workbench serializes this response as `.optimist.yaml`; existing IDs return `project_import_requires_replace` unless both replacement flags are true.
-
-## Backups and immutable snapshots
-
-```http
-POST /api/v1/backups
-GET  /api/v1/backups
-POST /api/v1/backups/{backup}/restore?yes=true
-
-POST /api/v1/projects/{project}/snapshots
-GET  /api/v1/projects/{project}/snapshots
-GET  /api/v1/projects/{project}/snapshots/{revision}
-```
-
-Backup routes are available only on a server configured with persistent `--data-dir` storage. A full backup is an immutable directory copy of each validated project plus bounded metadata. Restore validates every project directory, creates a safety backup of current state, publishes the replacement, and closes existing project change streams so clients reconnect against restored revisions. Omitting `yes=true` returns `backup_restore_requires_confirmation` without changing state.
-
-Project snapshots are canonical `ProjectArchive` documents keyed by project and revision. Creating a snapshot at an already captured revision is idempotent when the content matches and never overwrites different content.
-
-## Commands
-
-```http
-POST /api/v1/projects/{project}/commands
-```
-
-Envelope:
+Every failure is the same envelope:
 
 ```json
 {
-  "request_id": "00000000-0000-0000-0000-000000000000",
-  "expected_revision": 12,
-  "command": {
-    "type": "delete_node",
-    "payload": {"id": "A"}
+  "message": "No design goes by 'chekcout'.",
+  "advice": "List the workspace to see which designs exist."
+}
+```
+
+| Status | Cause |
+| --- | --- |
+| `400 Bad Request` | An identifier could name something outside the workspace. |
+| `404 Not Found` | No such design, or no such endpoint. |
+| `409 Conflict` | A design already exists, or a mutation refers to something that is not there. |
+| `422 Unprocessable Entity` | The design is incomplete or inconsistent and could not be solved. |
+| `500 Internal Server Error` | The workspace directory, or a design in it, could not be read or written. |
+
+An unknown `/api/*` path is always a JSON 404 and never falls back to the
+workbench, so a mistyped endpoint cannot be read by a client as a malformed
+success.
+
+---
+
+## `GET /api/v1/health`
+
+```json
+{ "status": "ok", "version": "0.1.0", "designs": 2, "unsaved": 0 }
+```
+
+`designs` is the number currently loaded in memory; `unsaved` is how many of
+those have edits not yet written back.
+
+---
+
+## `GET /api/v1/designs`
+
+Lists the workspace. Reads only each design's header, so it stays cheap as
+designs grow.
+
+```json
+[
+  { "id": "checkout", "name": "Checkout", "summary": "A worked example." },
+  { "id": "broken", "name": "", "summary": "", "unreadable": "components/api.yaml: unknown field `parallelisim`" }
+]
+```
+
+`unreadable` is present only when the design could not be read. It is listed
+rather than hidden so that a malformed file is discoverable.
+
+---
+
+## `POST /api/v1/designs`
+
+Starts an empty design. Responds `201 Created` with a snapshot.
+
+```json
+{ "id": "payments", "name": "Payments", "summary": "Card capture and settlement." }
+```
+
+`name` falls back to `id` when empty, and `summary` defaults to empty. The
+identifier becomes a directory name and is checked against the same rule that
+guards every other path the server builds: lower-case letters, digits, hyphens,
+and underscores, 1–128 characters.
+
+A design with no components is valid. It is what somebody has after naming the
+thing they are about to model, and refusing to store it would mean the first edit
+had to carry the creation too.
+
+---
+
+## `GET /api/v1/designs/{design}`
+
+Returns a snapshot.
+
+```json
+{
+  "name": "Checkout",
+  "summary": "A worked example.",
+  "sequence": 41,
+  "model": {
+    "scratchpad": [ { "name": "peak_rate", "expression": "900", "unit": "op/s", "summary": "" } ],
+    "components": [ { "id": "api", "name": "Checkout API", "type": "compute", "properties": {} } ],
+    "relationships": [ { "from": "browsers", "to": "api", "mutators": [], "summary": "" } ],
+    "scale_units": [],
+    "interventions": []
   }
 }
 ```
 
-A retry must reuse the same `request_id`. The original result is returned without appending another ChangeSet.
+`sequence` is the design's position in its change feed. It increments on every
+applied mutation.
 
-Successful response:
+---
+
+## `GET /api/v1/designs/{design}/catalogue`
+
+Everything a design may draw on.
 
 ```json
 {
-  "request_id": "00000000-0000-0000-0000-000000000000",
-  "project_revision": 13,
-  "outcome": {
-    "type": "node_deleted",
-    "value": {}
-  }
+  "component_types": { "compute": { "id": "compute", "name": "Compute", "ports": {}, "properties": {}, "channels": {}, "constraints": {} } },
+  "mutators": { "retry": { "id": "retry", "name": "Retry", "properties": {}, "requests": {}, "responses": {} } },
+  "signals": { "rate": { "unit": "op/s", "summary": "", "aggregate": "sum", "extensive": true } },
+  "builtins": ["Little.rate", "Queue.mmcWait", "Reliability.retryAttempts"]
 }
 ```
 
-### Causal relationship commands
+`signals` is here because a port publishes signals rather than channels, so a
+client showing what arrived at a component has no component type to read a unit
+from. `builtins` is every name an expression may call, sent so an editor can
+complete what somebody is typing against the vocabulary the server will actually
+evaluate.
 
-`update_causal_effect` replaces the stated reasoning behind a `contributes` or `changes` relationship. Strength lives in the relationship's `response` estimate and is edited through the estimate commands, not here.
+---
+
+## `POST /api/v1/designs/{design}/mutations` {#mutations}
+
+Applies a batch of changes in order.
 
 ```json
 {
-  "type": "update_causal_effect",
-  "payload": {
-    "edge": {"source": "H", "kind": "changes", "destination": "E"},
-    "expected_revision": 0,
-    "mechanism": "Freezing changes suppresses the defect inflow.",
-    "evidence": ["2026-Q2 freeze retrospective"]
-  }
+  "mutations": [
+    { "kind": "set_scratchpad_entry", "entry": { "name": "peak_rate", "expression": "1200", "unit": "op/s", "summary": "" } },
+    { "kind": "remove_component", "id": "legacy-api" }
+  ]
 }
 ```
 
-`set_effect_profile` shapes how long an intervention effect lasts. It applies only to `changes` relationships; a `contributes` relationship is always in effect. Passing `"profile": null` restores a permanent effect.
+```json
+{ "sequence": 43, "applied": 2 }
+```
+
+Each mutation is applied atomically. The batch stops at the first failure, and
+earlier mutations stand; `applied` says how many landed.
+
+### Mutation kinds
+
+Every mutation is tagged with `kind` and rejects unknown fields.
+
+| `kind` | Payload |
+| --- | --- |
+| `set_scratchpad_entry` | `entry`: a scratchpad entry. Replaces the one with the same `name`. |
+| `remove_scratchpad_entry` | `name` |
+| `set_component` | `component`. Replaces the one with the same `id`. |
+| `remove_component` | `id`. Also removes every relationship touching it. |
+| `set_relationship` | `relationship`. Replaces the one between the same two components. |
+| `remove_relationship` | `from`, `to` |
+| `set_scale_unit` | `scale_unit`. Replaces the one with the same `id`. |
+| `remove_scale_unit` | `id` |
+| `set_intervention` | `intervention`. Replaces the one with the same `id`. |
+| `remove_intervention` | `id` |
+
+### Entity shapes
+
+**Scratchpad entry**
+
+```json
+{ "name": "peak_rate", "expression": "900", "unit": "op/s", "summary": "Requests per second at peak." }
+```
+
+**Component** — `type` is the component type it adopts; `position` is optional
+diagram layout.
 
 ```json
 {
-  "type": "set_effect_profile",
-  "payload": {
-    "edge": {"source": "H", "kind": "changes", "destination": "E"},
-    "expected_revision": 1,
-    "profile": {
-      "ramp": null,
-      "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
-      "release": {"type": "immediate"},
-      "aftereffect": {
-        "magnitude": {"source": "pointMass(1.25)", "seed": 42, "sample_count": 256, "target_unit": {}},
-        "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
-        "release": {"type": "immediate"}
-      }
+  "id": "api",
+  "name": "Checkout API",
+  "type": "compute",
+  "properties": { "service_time": "lognormal(-4.6, 0.35)", "parallelism": "pool_size" },
+  "position": { "x": 220.0, "y": 80.0 }
+}
+```
+
+**Relationship** — `from_port` and `to_port` may be omitted when the type
+declares exactly one port on that side. `capacity` defaults to `"100"`.
+
+```json
+{
+  "from": "browsers",
+  "to": "api",
+  "from_port": "calls",
+  "to_port": "requests",
+  "capacity": "100",
+  "mutators": [ { "type": "retry", "properties": { "attempts": "3" } } ],
+  "summary": "Checkout requests arriving at the API."
+}
+```
+
+**Scale unit** — `distribution` is `sharded` or `mirrored`.
+
+```json
+{
+  "id": "cell",
+  "name": "Serving cell",
+  "summary": "",
+  "replicas": "12",
+  "distribution": "sharded",
+  "members": ["api", "orders"],
+  "parent": null
+}
+```
+
+**Intervention**
+
+```json
+{
+  "id": "warm-cache",
+  "name": "Warm the cache",
+  "summary": "Raise the hit ratio by holding a larger working set.",
+  "overrides": [ { "name": "cache_hits", "expression": "0.95" } ]
+}
+```
+
+### What is rejected
+
+A mutation that would break the design structurally returns `409 Conflict`: a
+relationship naming a component that does not exist, a relationship that leaves
+and arrives at the same component, a scale unit claiming a component another
+already claims, a scale unit enclosed by one that does not exist, or a removal of
+something that is not there.
+
+A design that is merely *incomplete* is accepted. A component missing a required
+property is stored, because that is what somebody has halfway through an edit; it
+fails when the design is solved, which is where the message belongs.
+
+---
+
+## `GET /api/v1/designs/{design}/analysis`
+
+Solves the design and ranks its constraints.
+
+| Query parameter | Default | Notes |
+| --- | --- | --- |
+| `seed` | `0` | |
+| `samples` | `1000` | Clamped to 64–20,000. |
+| `horizon` | `1` | Clamped to 1–500. |
+| `step` | `1.0` | Seconds. |
+| `transient` | `false` | Advance queues through time rather than solving for balance. |
+| `series` | `false` | Return every step rather than only the one it settled on. |
+| `intervention` | none | Apply an intervention before solving. |
+
+Draw count is the one control that costs the server rather than the caller, which
+is why it is capped. Solving runs on the blocking pool, so a model that takes a
+moment delays only the client that asked for it.
+
+```json
+{
+  "sequence": 41,
+  "converged": true,
+  "iterations": 789,
+  "components": {
+    "api": {
+      "capacity": { "mean": 685.155, "p10": 450.93, "p50": 672.1, "p90": 947.74, "draws": [] },
+      "in.requests.rate": { "mean": 1754.81, "p10": 900.27, "p50": 1730.4, "p90": 2234.22, "draws": [] }
     }
-  }
+  },
+  "bottlenecks": [
+    {
+      "component": "orders",
+      "constraint": "volume",
+      "summary": "Stored bytes against usable capacity.",
+      "replicas": 1.0,
+      "utilisation": 7.009,
+      "utilisation_p90": 9.555,
+      "probability_of_binding": 1.0,
+      "headroom": -3004303674979.13
+    }
+  ],
+  "series": null
 }
 ```
 
-`release` is `{"type": "immediate"}`, `{"type": "linear", "over": <duration>}`, or `{"type": "exponential", "half_life": <duration>}`. Every duration is a Squiggle estimate in the synthetic `duration` unit, so schedules carry uncertainty like any other estimate. A profile owns its estimates, so it is replaced as one document rather than through individually addressed slots.
+Channel keys are dotted paths: a component's own channel names, plus
+`in.<port>.<signal>` for what arrived and `out.<port>.<signal>` for what came
+back.
 
-## Atomic command batches
+`draws` carries a subsample of the underlying values — up to 256 per quantity,
+and up to 96 per quantity inside a series frame — so a client can draw a density
+rather than a summary. It is empty for a certain quantity.
 
-```http
-POST /api/v1/projects/{project}/command-batches
-POST /api/v1/projects/{project}/command-batches/{batch}/undo
-```
+With `series=true`, `series` is an array of frames, each with `time`,
+`converged`, and its own `components` map.
 
-Forward request:
+`sequence` says which state of the design this analysis reflects, so a client can
+tell whether an answer predates an edit it has already seen.
+
+---
+
+## `GET /api/v1/designs/{design}/comparisons/{intervention}`
+
+Solves the design twice with the same controls, once as it stands and once with
+the intervention applied. Accepts the same query parameters as `analysis`.
 
 ```json
 {
-  "request_id": "00000000-0000-4000-8000-000000000001",
-  "expected_revision": 12,
-  "commands": [{"type":"delete_node","payload":{"id":"A"}}]
+  "baseline": [],
+  "proposed": [],
+  "movements": [
+    {
+      "component": "orders",
+      "constraint": "volume",
+      "before": 7.009,
+      "after": 0.643,
+      "bound_before": 1.0,
+      "bound_after": 0.0
+    }
+  ]
 }
 ```
 
-The server accepts 1 to 100 commands, validates and applies them on an isolated catalog, writes the complete batch ahead, and publishes the catalog once. Any command failure leaves project state and replay unchanged. Each committed `ChangeSet` includes `batch_id`; deterministic child request IDs make exact retries idempotent.
+`baseline` and `proposed` are full bottleneck lists. `movements` pairs them per
+constraint, largest improvement first.
 
-The undo route accepts the same body shape and treats `commands` as an explicit compensation plan. Its `ChangeSet`s include both their new `batch_id` and `compensates` pointing to the selected forward batch. Compensation advances history instead of restoring an old snapshot. Missing, already-compensated, or compensation target batches are rejected.
+---
 
-## Graph reads
+## `GET /api/v1/designs/{design}/feed`
 
-```http
-GET /api/v1/projects/{project}/nodes
-GET /api/v1/projects/{project}/nodes/{entity}
-GET /api/v1/projects/{project}/edges
-GET /api/v1/projects/{project}/edges/{edge}
-GET /api/v1/projects/{project}/estimates?address={estimate_address}
-```
+A WebSocket. Every message is JSON tagged with `type`.
 
-Edge and estimate addresses are URL-encoded by clients.
-
-## Project documents
-
-```http
-GET /api/v1/projects/{project}/scenarios
-GET /api/v1/projects/{project}/scenarios/{scenario}
-GET /api/v1/projects/{project}/dependence
-```
-
-Scenario and dependence mutations use the command endpoint.
-
-## Structural analysis
-
-```http
-GET /api/v1/projects/{project}/analysis/structure
-    ?scenario={optional_scenario}
-    &maximum_cycle_length=8
-    &maximum_cycles=1000
-```
-
-The response contains an immutable revision key, exact SCCs, canonical cycles, limits, and a truncation flag.
-
-## Scenario analysis
-
-```http
-GET /api/v1/projects/{project}/scenarios/{scenario}/analysis
-```
-
-The response contains the immutable graph/scenario/dependence revision key, planning horizon, and independently sampled candidate/objective projections. A `422 scenario_analysis_unavailable` response identifies missing baselines or unsupported non-empty dynamic dependence.
-
-## Change replay
-
-```http
-GET /api/v1/projects/{project}/changes?after=12
-```
-
-The cursor is exclusive. A cursor newer than the current revision returns `invalid_replay_revision`.
-
-## WebSocket stream
-
-```text
-GET ws://host/api/v1/projects/{project}/changes/ws?after=12
-```
-
-Protocol messages:
+The socket sends the design as its first message and streams changes after it,
+which has no gap to reason about and costs one round trip rather than two.
 
 ```json
-{"type":"change","value":{}}
-{"type":"caught_up","value":{"revision":15}}
-{"type":"replay_required","value":{"after_revision":15}}
+{ "type": "snapshot", "name": "Checkout", "summary": "", "sequence": 41, "model": {} }
 ```
-
-See [collaboration and revisions](../guide/collaboration.md) for reconnect semantics.
-
-## Error envelope
-
-Errors use an HTTP status plus a stable machine code, message, and recovery advice:
 
 ```json
-{
-  "error": {
-    "code": "project_revision_conflict",
-    "message": "project revision conflict: expected 12, current 13",
-    "advice": [
-      "Refresh the project and retry the command against its current revision."
-    ]
-  }
-}
+{ "type": "change", "sequence": 42, "mutation": { "kind": "set_component", "component": {} } }
 ```
 
-Clients should branch on `code`, not parse the human-readable message.
+```json
+{ "type": "lagged", "missed": 312 }
+```
 
-## Current security boundary
+A socket opened at sequence *N* receives the snapshot at *N* and then every
+change with a sequence above it. A client that already has a change can
+recognise it by sequence and ignore it — which is how an editor handles its own
+edits arriving back.
 
-The current API has no authentication or authorisation middleware. Bind to localhost or protect it behind a trusted reverse proxy during development. OIDC roles and production TLS guidance remain planned work.
+`lagged` means the listener fell more than 256 changes behind and the backlog was
+dropped. That is the one case where refetching the design is the right answer.
+
+---
+
+## Static files
+
+Requests that no API route claims fall through to the workbench.
+
+- A path whose final segment contains a `.` is served as a file, or 404s.
+- Anything else is served `index.html`, so browser-side routing works.
+- `assets/*` is served `Cache-Control: public, max-age=31536000, immutable`.
+- Everything else, including `index.html`, is served `no-cache`.
+
+Path traversal is rejected component by component before any path is joined.

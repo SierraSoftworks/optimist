@@ -6,7 +6,7 @@ titleTemplate: false
 
 heroText: Optimist
 
-tagline: Model complex systems without throwing away uncertainty.
+tagline: Design large systems and find what constrains them.
 
 actions:
   - text: Get Started
@@ -16,55 +16,105 @@ actions:
     type: secondary
 
 features:
-  - title: Typed systems models
-    details: Outcomes, metrics, factors, interventions, and validated relationships keep the graph meaningful and machine-readable.
-  - title: Probability with guardrails
-    details: Dimensioned Squiggle estimates, Bayesian updates, Gaussian copulas, and deterministic sampling preserve assumptions and uncertainty.
-  - title: Feedback and collaboration
-    details: Exact structural loop discovery, revision-checked commands, ordered ChangeSet replay, and WebSocket streams support shared modelling workflows.
+  - title: Component-centric designs
+    details: A design is a graph of typed components — clients, load balancers, queues, compute pools, datastores — wired together and annotated with quantities an engineer can measure.
+  - title: Component types are data
+    details: Properties, channels, ports, and constraints are declared in YAML manifests. Adding a new kind of component means writing a manifest, not changing the engine.
+  - title: Uncertainty carried through the solve
+    details: Every quantity is a Squiggle expression evaluated over aligned draws, so each draw settles on its own fixed point and the spread of a result is a genuine mixture.
+  - title: Bottlenecks, not dashboards
+    details: Every constraint pairs a demand with the limit it consumes. The engine ranks them by how likely they are to bind, so the answer names the resource worth spending on.
 ---
 
-Optimist is a Rust toolkit and server for modelling contributing factors, feedback loops, evidence, uncertainty, and interventions in complex systems. It is designed for teams asking questions such as:
+Optimist is a Rust toolkit, server, and workbench for designing large systems and
+finding what constrains them. A design is a directory of YAML that belongs in the
+same repository as the system it describes, so answering a capacity question is a
+local operation and can run in the same continuous integration that builds the
+thing being designed.
 
-- Which conditions are driving the outcome we care about?
-- Where do reinforcing or balancing loops exist?
-- How uncertain are our cost, duration, effect, and success assumptions?
-- Which assumptions are shared or correlated?
-- What changed in the model, and can another client replay it deterministically?
+It exists for the questions a diagram cannot answer:
 
-## Start with a real problem
+- Which resource does this design exhaust first, and how sure are we?
+- What happens to a pool of workers when the store it calls slows down?
+- How much extra demand does that retry policy create once the dependency starts failing?
+- Does the design still meet its latency objective at the ninetieth percentile of demand?
+- Would the proposed change relieve the binding constraint, or only move it?
 
-A delivery team wants to understand why lead time remains high. It models:
+## What a design looks like
 
-1. **Reliable delivery** as an outcome.
-2. **Fast feedback**, **small batches**, and **learning rate** as factors.
-3. **Deployment automation** as an intervention.
-4. Current states, desired states, costs, durations, and causal effects as typed uncertain estimates.
-5. A scenario containing objectives, budget, planning horizon, and candidate interventions.
+A shop front — browsers calling an API pool that reads from an order store — is
+a directory of small files.
 
-Optimist can validate and store that model, detect structural feedback loops, update selected priors with conjugate Bayesian evidence, evaluate unit-checked Squiggle calculations, and project each candidate over a finite scenario horizon.
-
-## Try the core
-
-```sh
-cargo run --example feedback_loop
-cargo run --example bayesian_delivery_success
+```yaml
+# _system.yaml
+schema_version: 2
+name: Checkout
+scratchpad:
+  - name: peak_rate
+    expression: '900'
+    unit: op/s
+    summary: Requests per second at the daily peak.
 ```
 
-Or start the server and use the CLI:
-
-```sh
-cargo run -- server
-cargo run -- project create "Delivery reliability"
-cargo run -- --project A node create \
-  --kind outcome \
-  --name reliable_delivery \
-  --title "Reliable delivery" \
-  --direction maximize
+```yaml
+# components/browsers.yaml
+id: browsers
+name: Browsers
+type: client
+properties:
+  request_rate: peak_rate
+  latency_target: '0.75'
+  success_target: '0.995'
+outgoing:
+  - to: api
+    summary: Checkout requests arriving at the API.
+    mutators:
+      - type: retry
+        properties:
+          attempts: '3'
 ```
 
-Continue with the [getting-started guide](./guide/README.md).
+```yaml
+# components/api.yaml
+id: api
+name: Checkout API
+type: compute
+properties:
+  service_time: lognormal(-4.6, 0.35)
+  parallelism: pool_size
+```
+
+Every value is a Squiggle expression. A service time measured with spread stays a
+distribution the whole way through the solve, and the result says how much of
+that distribution has crossed into congestion.
+
+## Ask it something
+
+```sh
+optimist check       examples/checkout
+optimist solve       examples/checkout
+optimist bottlenecks examples/checkout
+optimist compare     examples/checkout warm-cache
+```
+
+`bottlenecks` is the one worth reading first. It ranks every constraint in the
+design by the share of draws in which demand meets or exceeds its limit, so the
+top of the list is the resource the design is closest to exhausting rather than
+the component somebody happens to be worried about.
+
+## Edit it together
+
+```sh
+optimist serve --designs ./designs
+```
+
+The server opens a directory of designs, streams every edit over a WebSocket, and
+serves the Vue workbench from the same process. Continue with the
+[getting-started guide](./guide/README.md).
 
 ::: warning Development status
-The default server atomically persists complete projects, replay history, retry results, and allocator state under `--data-dir`; it also provides immutable catalog backups and per-project revision snapshots. RocksDB-backed project handles, dependence-aware decision optimization, and several advanced workbench workflows remain under development.
+The modelling, solving, and ranking core is usable today, and the CLI, HTTP API,
+and workbench all run against it. Authentication is not implemented. The
+on-disk schema is at version two, and version one directories are refused rather
+than converted.
 :::

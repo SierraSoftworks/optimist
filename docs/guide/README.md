@@ -1,116 +1,179 @@
 # Getting started
 
-This guide builds a small delivery-reliability model using the HTTP server and CLI.
+This guide takes a shipped example, asks it the four questions the tool can
+answer, and then opens it in the workbench.
 
 ## Prerequisites
 
 - Rust 1.96 or newer
 - A local checkout of Optimist
-- Two terminal windows
-
-The default build uses an embedded in-memory IndraDB datastore and requires no external database. Under `--data-dir`, each `projects/<ID>/` directory owns cheap `meta.json` discovery metadata, complete `project.yaml` state, and a temporary project-local WAL. Commands return after WAL fsync; background compaction rewrites only touched projects. Unknown or obsolete schemas are rejected rather than migrated. `project backup create|list|restore` copies validated project directories, while `project snapshot <PROJECT> create|list|show|export` captures canonical project archives at exact revisions and publishes retained revisions as deterministic YAML directories.
-
-## Start the server
+- Node 20 or newer, if you want the workbench
 
 ```sh
-cargo run -- server --bind 127.0.0.1:3000
+cargo build
 ```
 
-The CLI defaults to `http://127.0.0.1:3000`. Use `--server-url` or `OPTIMIST_SERVER` to select another endpoint.
+The examples below use `cargo run --` in place of the built binary. If you have
+installed `optimist` onto your path, drop that prefix.
 
-To serve the production workbench from the same process, run `npm run build` inside `workbench` before starting the server. Optimist discovers `workbench/dist` from the repository root. Use `--web-root <DIRECTORY>` or `OPTIMIST_WEB_ROOT` for another Vite build; without a valid `index.html`, the server remains API-only.
+## A design is a directory
 
-## Create a project
+There is no database and no server to start. A design is a directory of YAML:
+
+```text
+examples/checkout/
+  _system.yaml            name, shared quantities, scale units, interventions
+  components/browsers.yaml
+  components/api.yaml
+  components/orders.yaml
+```
+
+Each component file declares one component and the relationships leaving it, so
+adding a dependency touches one file rather than a shared list that everybody
+would have to agree on the ordering of.
+
+## Check what it contains
 
 ```sh
-cargo run -- project create "Delivery reliability"
+cargo run -- check examples/checkout
 ```
 
-A fresh server returns project `A`. IDs are deliberately short and scoped to the project, so a different project may also contain entity `A` without conflict.
+```text
+PROPERTY        VALUE
+name            Checkout
+components      3
+relationships   2
+shared quantities       3
+scale units     0
+interventions   2
+component types 6
+behaviours      8
+```
 
-Set the project once for the rest of the shell session:
+`check` reads and validates the directory without solving it. It is the fastest
+way to find a misspelt property or a relationship pointing at a component that
+does not exist, and it is what to put in continuous integration.
+
+Six component types and eight behaviours are available even though this design
+defines none of its own: they are the shipped catalogue. See
+[the catalogue reference](../reference/catalogue.md) for what is in it.
+
+## Solve it
 
 ```sh
-export OPTIMIST_PROJECT=A
+cargo run -- solve examples/checkout
 ```
 
-## Add an outcome and factors
+```text
+COMPONENT  CHANNEL          VALUE
+api        capacity         685.1550 [450.9287 .. 947.7374]
+api        hold_time        0.0127 [0.0084 .. 0.0177]
+api        utilisation      2.9597 [0.9499 .. 4.9170]
+browsers   latency          0.3447 [0.0279 .. 0.5949]
+browsers   success          0.7219 [0.4506 .. 1.0000]
+orders     volume           3504303674979.1333 [2303453606495.4536 .. 4777574410209.3037]
+```
+
+Every quantity is shown as its mean with a central eighty percent interval
+beside it. The interval is the point: `service_time` was authored as a
+lognormal, so `capacity` is a distribution and the design is congested in some
+draws and comfortable in others.
+
+Narrow the report to one component with `--component api`, and raise the draw
+count with `--samples 10000` when the tails matter.
+
+## Find what constrains it
 
 ```sh
-cargo run -- node create \
-  --kind outcome \
-  --name reliable_delivery \
-  --title "Reliable delivery" \
-  --direction maximize
-
-cargo run -- node create \
-  --kind factor \
-  --name fast_feedback \
-  --title "Fast feedback" \
-  --controllable
-
-cargo run -- node create \
-  --kind factor \
-  --name small_batches \
-  --title "Small batches" \
-  --controllable
+cargo run -- bottlenecks examples/checkout
 ```
 
-On a fresh project, these nodes receive IDs `A`, `B`, and `C` in creation order.
-
-Inspect them in a script-friendly format:
-
-```sh
-cargo run -- --output json node list
+```text
+COMPONENT  CONSTRAINT          UTILISATION  P90     BINDS  REPLICAS  HEADROOM
+orders     volume              7.009        9.555   100%   1         -3004303674979.1333
+api        capacity            2.960        4.916   87%    1         -1063.2349
+browsers   success_objective   55.626       109.865 86%    1         -0.2731
+browsers   latency_objective   0.460        0.793   3%     1         0.4053
+orders     operations          0.066        0.090   0%     1         4669.9294
 ```
 
-## Add structural relationships
+A constraint pairs a demand with the limit it consumes. `UTILISATION` is the mean
+of that ratio, `BINDS` is the share of draws in which demand met or exceeded the
+limit, and the list is ranked by `BINDS` first. Ranking by probability rather
+than by mean puts the constraint most exposed to a bad draw at the top, which is
+the one worth spending on.
 
-The current simple CLI supports safe structural relationships such as requirements, decomposition, and measurement. For example, small batches can be modelled as part of fast feedback:
+Add `--binding` to hide everything with headroom in every draw.
 
-```sh
-cargo run -- edge create C part-of B
-```
+Note what the ranking says here. Thirty days of retention overruns the store
+several times over, and the objective the client declared is missed in most
+draws — but the pool everybody watches is only third on the list.
 
-Causal `contributes`, `changes`, and `blocks` edges carry typed uncertain estimates. They are currently authored through the typed command API or the Rust library; see [modelling systems](./modelling.md) and the [HTTP API reference](../reference/http-api.md).
+## Weigh a proposed change
 
-## Add uncertain state
+A change is not an edit. An intervention rebinds named quantities in the
+scratchpad and the design is solved again exactly as it stands, so whatever moves
+in the result moved because of the rebinding.
 
-First configure the outcome's native quantity, then assign estimate `A` to its `current` slot:
-
-```sh
-cargo run -- node quantity A \
-  --definition '{"unit":"reliability","dimension":{"reliability":1},"aggregation":null,"support":{"type":"bounded","lower":0,"upper":1},"operational_definition":"Share of successful deliveries"}'
+```yaml
+# _system.yaml
+interventions:
+  - id: warm-cache
+    name: Warm the cache
+    summary: Raise the hit ratio by holding a larger working set.
+    overrides:
+      - name: cache_hits
+        expression: '0.95'
 ```
 
 ```sh
-cargo run -- estimate set A/node/A/estimate/A \
-  --slot '{"kind":"current"}' \
-  --definition '{"source":"beta(3, 2)","seed":42,"sample_count":2048,"target_unit":{"reliability":1}}' \
-  --provenance '["Weekly delivery review"]'
+cargo run -- compare examples/checkout warm-cache
 ```
 
-Read it back:
+```text
+COMPONENT  CONSTRAINT          BEFORE  AFTER    BOUND BEFORE  BOUND AFTER  EFFECT
+orders     volume              7.009   0.643    100%          0%           relieved
+orders     operations          0.066   0.006    0%            0%           eased
+browsers   latency_objective   0.460   0.495    3%            8%           loaded
+api        capacity            2.960   3.186    87%           87%          loaded
+```
+
+Caching relieves the store outright and loads the pool slightly, because the
+requests that used to fail at the store now reach it. Relieving one limit
+routinely promotes another, and `compare` says so rather than reporting the
+improvement alone.
+
+## Open it in the workbench
+
+The commands above read files. To edit a design with other people, serve a
+directory of them:
 
 ```sh
-cargo run -- estimate show A/node/A/estimate/A
+cargo run -- serve --designs ./designs
 ```
 
-## Inspect structure and history
+`designs` is a scratch directory; seed it from `examples/` to start with
+something to look at. The server exposes the API on `http://127.0.0.1:3000` and
+serves the workbench from the same process when a build is available.
 
 ```sh
-cargo run -- analysis structure
-cargo run -- project changes A --after 0
+npm --prefix workbench install
+npm --prefix workbench run build
+cargo run -- serve --designs ./designs
 ```
 
-Structural analysis reports exact strongly connected components and bounded elementary cycles over causal edges. It does not yet estimate intervention impact or feedback stability.
+For front-end development, run Vite's dev server instead; it proxies `/api`,
+including the WebSocket upgrade the change feed needs.
 
-Change replay returns every committed mutation in project-revision order. Repeating a command with the same request ID does not append a duplicate event.
+```sh
+npm --prefix workbench run dev     # http://127.0.0.1:5173
+```
 
 ## Next steps
 
-- Learn the [graph and ownership model](./modelling.md).
-- Add disciplined [uncertainty and Squiggle estimates](./uncertainty.md).
-- Understand [structural analysis boundaries](./analysis.md).
-- Integrate clients with [revision replay and WebSockets](./collaboration.md).
-- Run the [compileable examples](../examples/README.md).
+- [Designing a system](./modelling.md) — components, relationships, signals, behaviours, scale units.
+- [Writing component types](./component-types.md) — adding a kind of component the catalogue does not have.
+- [Uncertainty](./uncertainty.md) — Squiggle, sample sets, determinism, and the queueing builtins.
+- [Solving and bottlenecks](./analysis.md) — how the fixed point is found and what convergence means.
+- [The workbench](./collaboration.md) — sessions, mutations, and the change feed.
+- [The worked examples](../examples/README.md) — including a design with two steady states.

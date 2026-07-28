@@ -6,7 +6,7 @@ import { defaultTheme } from '@vuepress/theme-default'
 export default defineUserConfig({
   lang: 'en-GB',
   title: 'Optimist',
-  description: 'Model complex systems, uncertainty, feedback loops, and investment decisions.',
+  description: 'Design large systems, model uncertainty, and find what constrains them.',
 
   head: [
     [
@@ -14,7 +14,7 @@ export default defineUserConfig({
       {
         name: 'description',
         content:
-          'Documentation for Optimist, a typed causal modelling and uncertainty analysis toolkit.',
+          'Documentation for Optimist, a component-centric system design and capacity modelling toolkit.',
       },
     ],
   ],
@@ -43,6 +43,7 @@ export default defineUserConfig({
         text: 'Guides',
         children: [
           '/guide/modelling.md',
+          '/guide/component-types.md',
           '/guide/uncertainty.md',
           '/guide/analysis.md',
           '/guide/collaboration.md',
@@ -50,7 +51,12 @@ export default defineUserConfig({
       },
       {
         text: 'Reference',
-        children: ['/reference/cli.md', '/reference/http-api.md', '/reference/yaml.md'],
+        children: [
+          '/reference/cli.md',
+          '/reference/http-api.md',
+          '/reference/yaml.md',
+          '/reference/catalogue.md',
+        ],
       },
       { text: 'Examples', link: '/examples/' },
       {
@@ -67,6 +73,7 @@ export default defineUserConfig({
           children: [
             '/guide/README.md',
             '/guide/modelling.md',
+            '/guide/component-types.md',
             '/guide/uncertainty.md',
             '/guide/analysis.md',
             '/guide/collaboration.md',
@@ -81,6 +88,7 @@ export default defineUserConfig({
             '/reference/cli.md',
             '/reference/http-api.md',
             '/reference/yaml.md',
+            '/reference/catalogue.md',
           ],
         },
       ],

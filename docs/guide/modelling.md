@@ -1,206 +1,300 @@
-# Modelling systems
+# Designing a system
 
-Optimist separates structural graph concepts from values which have one natural owner. This keeps causal traversal focused while preserving evidence and uncertainty alongside the thing they describe.
+A design is a graph of typed components wired together. This page covers the
+seven things a design is made of and how they fit together; the file layout they
+are stored in is in the [YAML reference](../reference/yaml.md).
 
-## Node kinds
+## Components
 
-| Kind | Meaning | Typical owned data |
-| --- | --- | --- |
-| Outcome | A result whose direction guides prioritisation. | Native quantity, current/forecast estimates, evidence. |
-| Metric | A directly measurable native-unit quantity. | Operational definition, support, current estimate, observations. |
-| Factor | A condition influencing another part of the system. | Native quantity, current/forecast estimates, controllability, evidence. |
-| Intervention | An investable action. | Costs, duration, probability of success, acceptance criteria. |
+A component is one part of the system. It adopts a **component type**, which
+decides what properties it must supply, what quantities it derives, where
+relationships may attach, and what resource limits it can saturate.
 
-Names and aliases are unique within a project after Unicode normalisation, lowercasing, and whitespace collapse. IDs are compact counters (`A`, `B`, ..., `BA`) scoped to their project.
-
-## Native quantities
-
-A metric defines a quantity independently of whether its movement is desirable. Its unit, aggregation window, legal support, operational definition, reference time, and resolution source answer what value is being estimated and how it could eventually be checked. Maximize, minimize, and target-range preferences belong to scenarios rather than the metric.
-
-Metric support is one of:
-
-- any finite real value,
-- zero or greater,
-- an inclusive finite interval.
-
-The metric's optional current estimate is expressed directly in that native unit. A latency metric can therefore retain a Squiggle LogNormal calculation in days. Metric storage contains one nested quantity definition plus its optional estimate.
-
-Factors and outcomes use the same native quantity contract. Their state owns one quantity definition, an uncertain current estimate, and an optional pre-intervention forecast. Scenario analysis uses the forecast when present, otherwise current, and clamps simulated values only to the declared support. Configure the quantity before authoring either estimate or creating a causal relationship.
-
-Every persisted estimate retains Squiggle source. The owner determines the target unit and legal support: fresh real quantities start with a Normal calculation, non-negative quantities with LogNormal, and bounded quantities with an affine Beta on the declared interval. These are editable starting points rather than mandatory families. Optimist evaluates source in Rust, preserves supported symbolic families, and creates deterministic empirical draws only in memory for composed results.
-
-Every estimate can retain provenance plus separate descriptions of epistemic uncertainty (knowledge and model gaps), process uncertainty (variation between realizations), and measurement uncertainty (observation and resolution error). These descriptions are reviewable assumptions alongside the authoritative total distribution. Optimist does not assign numeric shares, add component variances, or assume that the categories are independent.
-
-## Edge kinds
-
-| Kind | Direction | Purpose |
-| --- | --- | --- |
-| `contributes` | Directed | A proportional causal response. |
-| `measures` | Directed | A metric measuring a factor or outcome. |
-| `changes` | Directed | An intervention changing a factor or native metric. |
-| `requires` | Directed | A hard or soft prerequisite. |
-| `part-of` | Directed | Non-causal factor decomposition. |
-| `blocks` | Directed | A factor inhibiting a factor or intervention. |
-| `conflicts-with` | Symmetric | Incompatible interventions. |
-| `synergizes-with` | Symmetric | Mutually beneficial interventions. |
-
-Endpoint combinations are validated. `contributes` may connect any configured factor, metric, or outcome to another such state variable. Every causal edge carries one dimensionless response estimate, so the endpoints' units need not agree and re-baselining either endpoint leaves the claim intact. `measures` remains a metric-to-factor/outcome observation model.
-
-Canonical edge IDs use `<source>-<kind>-<destination>`, such as `B-requires-A`. Symmetric edges are ordered by entity ID so both input orders produce one identity.
-
-## Embedded ownership
-
-Optimist deliberately does not create graph vertices for:
-
-- estimates,
-- observations,
-- intervention costs,
-- evidence.
-
-An observation belongs to one `measures` edge because the same metric may measure several subjects with independent histories. A cost belongs to one intervention. A causal response belongs to one causal edge.
-
-This design avoids graph noise and makes deletion/reference checks explicit.
-
-## Causal responses
-
-Every `contributes` relationship answers a concrete counterfactual:
-
-> If the source moves by some fraction of its baseline, what fraction of its own baseline should we expect the destination to move after the stated lag?
-
-That ratio of fractional changes is an elasticity $\varepsilon_{xy}$, and it carries no unit:
-
-$$
-\varepsilon_{xy} = \frac{\Delta y / y_0}{\Delta x / x_0}.
-$$
-
-So $\varepsilon = 1$ is a plain product, $\varepsilon = 0$ is no response, and a negative value inverts the direction. Because it is dimensionless, one relationship can connect a rate to a duration without the author converting between them.
-
-A `changes` relationship is different, because an intervention has no level to take a ratio of. Its response is instead the multiplier applied to the target while the intervention is fully active: `0.1` cuts the target to a tenth, `1` leaves it unchanged, and `1.25` raises it by a quarter.
-
-Both are revisioned Squiggle estimates evaluated as dimensionless quantities, so uncertainty in the response is expressed the same way as anywhere else in the model.
-
-This response is a modelling claim, not causal identification from observed correlation. Mechanism, assumptions, and evidence remain explicit edge context. Observational co-movement should not be promoted to a response without an experiment or documented identification argument.
-
-## Node equations
-
-An elasticity says how strongly one parent moves a state. Some states are not like that: they *are* an expression of their parents. Customer impact is not "responsive to" outage frequency and impact duration, it is their product, and no pair of independent elasticities says so.
-
-Give the state a node equation and write the arithmetic:
-
-```sh
-cargo run -- --project A batch apply \
-  --request-id 00000000-0000-4000-8000-000000000020 \
-  --expected-revision 14 \
-  --commands '[{
-    "type": "set_state_relation",
-    "payload": {
-      "node": "A",
-      "expected_revision": 2,
-      "relation": {"source": "outage_frequency * impact_duration"}
-    }
-  }]'
+```yaml
+id: api
+name: Checkout API
+type: compute
+properties:
+  service_time: lognormal(-4.6, 0.35)
+  parallelism: pool_size
+  replicas: '1'
 ```
 
-Parents are bound by node name, at the value they held one relationship lag ago. The names are not authored: they come from the relationships already drawn into this state, so an equation cannot invent a dependency the graph does not show. Interventions reaching the state bind their activation in $[0, 1]$ instead, which is how a relative effect is written:
+Every property is Squiggle source, not a number. `lognormal(-4.6, 0.35)` is a
+distribution; `pool_size` is a reference to a shared quantity; `'1'` is a
+constant that happens to be certain. A property the type declares without a
+default must be supplied, because no sensible stand-in exists for a quantity
+that varies by orders of magnitude between deployments.
 
-```
-baseline * (1 - suppression * code_yellow)
-```
+The shipped types are `client`, `load-balancer`, `queue`, `compute`,
+`datastore`, and `aggregator`. Their properties, channels, and constraints are
+listed in [the catalogue reference](../reference/catalogue.md), and a design may
+[define its own](./component-types.md).
 
-An equation **replaces** proportional composition for the state that owns it. The incoming responses no longer scale anything; the relationships still declare which parents exist and how far they lag, and intervention effects still supply their activation, but the magnitudes come from the equation. It replaces the state's baseline too: the value the analysis compares against is the equation with every parent at rest, not the authored current estimate. Keep that estimate as your independent reading of the quantity — where it disagrees with the equation, one of the two is wrong.
+## Relationships
 
-Three things are checked before an equation is stored:
+A relationship declares that one component calls another.
 
-- **Units.** `outage_frequency * impact_duration` is accepted when the product is measured in the state's own unit, and rejected when it is not. `outage_frequency + impact_duration` is rejected outright.
-- **Names.** Only parents the graph connects, interventions that change this state, `baseline`, and the equation's own parameters can be referenced.
-- **Shape.** An equation must produce a number. Authoring `normal(1, 0.1)` inside it is rejected.
-
-Uncertainty belongs in named parameters rather than in the source, because propagation samples a parameter once per Monte Carlo draw and holds it across the horizon. A distribution written inline would be resampled every period, modelling a coefficient as noise, and would resample shared assumptions independently and quietly destroy common-cause structure:
-
-```json
-{
-  "source": "baseline * (1 - suppression * code_yellow)",
-  "parameters": {
-    "suppression": {
-      "quantity": {"unit": "ratio", "dimension": {}, "support": {"type": "bounded", "lower": 0, "upper": 1}},
-      "value": {"id": "A", "revision": 0, "source": {"type": "squiggle", "definition": {"source": "beta(4, 2)", "seed": 42, "sample_count": 256, "target_unit": {}}}}
-    }
-  }
-}
+```yaml
+# components/browsers.yaml
+id: browsers
+type: client
+outgoing:
+  - to: api
+    summary: Checkout requests arriving at the API.
 ```
 
-A state with an equation always projects every parent it reads, even one no intervention moves. Proportional composition can ignore such a parent, because an unchanged parent contributes a ratio of one; an equation cannot, because it computes the whole value from all of its inputs.
+It is a wire, not a one-way pipe. Requests travel from `from` to `to` and the
+response travels back along the same relationship, so a call graph is drawn once
+rather than once per direction.
 
-## Time-boxed interventions
+It is also a queue. Work offered faster than it can be taken waits somewhere,
+and that somewhere is real whether or not anybody drew it: a socket buffer, a
+listen backlog, a connection pool's wait list. Modelling the wire as a queue puts
+that buffering in one place instead of asking every component type to
+reimplement it.
 
-Interventions are permanent by default: once an effect arrives it holds for the rest of the horizon. Many real interventions are not. A change freeze runs for two planning cycles, a temporary staffing uplift ends when the contract does, and a mitigation gets reverted once the underlying defect is fixed.
-
-Give a `changes` relationship an effect profile to say how long it lasts:
-
-```sh
-cargo run -- --project A batch apply \
-  --request-id 00000000-0000-4000-8000-000000000010 \
-  --expected-revision 12 \
-  --commands '[{
-    "type": "set_effect_profile",
-    "payload": {
-      "edge": {"source": "H", "kind": "changes", "destination": "E"},
-      "expected_revision": 0,
-      "profile": {
-        "ramp": null,
-        "hold": {"source": "pointMass(2)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
-        "release": {"type": "immediate"},
-        "aftereffect": {
-          "magnitude": {"source": "pointMass(1.25)", "seed": 42, "sample_count": 256, "target_unit": {}},
-          "hold": {"source": "pointMass(1)", "seed": 42, "sample_count": 256, "target_unit": {"duration": 1}},
-          "release": {"type": "immediate"}
-        }
-      }
-    }
-  }]'
+```yaml
+outgoing:
+  - to: api
+    capacity: '1'      # an in-process call, with nowhere to wait
 ```
 
-That reads as: hold the effect for two periods, end it abruptly, and run the change rate a quarter above baseline for one period afterwards as the suppressed work drains. Set `profile` to `null` to restore a permanent effect.
+`capacity` is how many operations may wait on the wire, and defaults to `100` —
+the order of a network link between two services. Depth is not free. A queue
+absorbs a burst by making the caller wait for it, so a generous buffer converts a
+capacity problem into a latency one, and a caller with a deadline turns that
+latency back into failure.
 
-The rebound declares its own multiplier rather than a share of the effect it follows, so releasing an intervention can overshoot, undershoot, or exactly reverse. Every duration is a Squiggle estimate, so an uncertain schedule is expressed the same way as any other uncertain quantity. `ramp` staggers the onset, and `release` can decline linearly over a span or decay by half-life instead of stopping abruptly.
+### Ports
 
-Only `changes` accepts a profile. A `contributes` relationship describes an ongoing structural dependency with no activation to start or stop, and Optimist rejects a profile on one.
+A component type may declare several named places relationships attach. A
+`compute` pool has one inbound port, `requests`, and one outbound port,
+`dependencies`. A read-through cache might declare two outbound ports, one for
+hits and one for misses, so the two paths can be sized apart instead of being
+averaged into a figure that describes neither.
 
-## Descriptions and metadata
-
-Nodes and edges carry Markdown descriptions plus extensible JSON metadata. Updates are complete replacements guarded by the aggregate revision:
-
-```sh
-cargo run -- node update B \
-  --title "Fast feedback" \
-  --description $'# Fast feedback\n\nTime from change to useful evidence.' \
-  --metadata '{"owner":"platform"}'
-
-cargo run -- edge update C-part-of-B \
-  --description $'# Decomposition\n\nSmall batches are one part of fast feedback.' \
-  --metadata '{"source":"ADR-17"}'
+```yaml
+outgoing:
+  - to: orders
+    from_port: misses
+    to_port: operations
 ```
 
-These commands preserve identity, names, aliases, endpoint kinds, typed payloads, estimates, and observation histories.
+Both may be omitted when the type declares exactly one port on that side, which
+is the common case and leaves simple designs free of wiring detail. A type with
+several ports and a relationship that names none is an error rather than a
+guess.
 
-## Project documents
+## Signals
 
-Some concepts span several graph aggregates and therefore live outside the graph:
+A relationship carries named quantities called **signals**. The vocabulary is
+small and each entry says how it behaves:
 
-- **Scenarios** define objectives, horizon, budgets, candidates, and sampling controls.
-- **Dependence documents** group residual marginals under Gaussian copulas.
+| Signal | Unit | Direction | Combines by |
+| --- | --- | --- | --- |
+| `rate` | `op/s` | forward | sum |
+| `cancellation` | `op/s` | forward | sum |
+| `occupancy` | `op` | forward | sum |
+| `payload` | `B/op` | both | mean |
+| `latency` | `s` | backward | max |
+| `success` | `1` | backward | product |
+| `capacity` | `op/s` | backward | min |
 
-Each document has its own revision. Structural analysis keys include the graph, scenario, and dependence revisions, making the input snapshot explicit.
+Two properties decide how the engine treats each one.
 
-## Choosing model detail
+**How arrivals combine.** Request rates from several callers add together, but
+the latency each of them observed does not; summing it would invent delay nobody
+experienced. A component fanning out to several dependencies waits for the
+slowest, so `latency` takes the maximum. Success multiplies, which treats every
+dependency as hard: a component needing three services succeeds only when all
+three do.
 
-Start with the smallest graph which can answer the question:
+**Whether the quantity is shared out across replicas.** This is the extensive and
+intensive distinction from physics. A `rate` divides across a sharded fleet; a
+`payload` does not shrink because there are more shards to send it to. Getting
+this wrong is quiet and expensive — treating a payload as extensive makes adding
+shards look as though it shrinks records — so it is declared once per signal
+rather than inferred.
 
-1. Define one or more outcomes.
-2. Add factors with a plausible direct causal mechanism.
-3. Add metrics only where observations can be supplied.
-4. Add interventions only when a team can choose or fund them.
-5. Decompose uncertain quantities with named Squiggle bindings rather than creating structural nodes for arithmetic.
-6. Add dependence only when shared causes or residual correlation are justified.
+Signals have no direction of their own. Which way one travels is settled by the
+port publishing it: an inbound port publishes toward callers, an outbound port
+toward dependencies. That is how `payload` names a request body in one place and
+a reply body in the other without needing two names.
 
-A denser graph is not automatically a better model. Every causal edge should have a mechanism, evidence boundary, and uncertainty model that can be reviewed.
+## Behaviours
+
+A retry policy, a timeout, or a batching window is not a place work goes; it is a
+rule about how work travels. Modelling them as components would put a box on the
+diagram for every policy; modelling them as component properties would mean every
+component type reimplementing the same rules.
+
+A **behaviour** (a *mutator*, in the API) therefore sits on a relationship and
+transforms the signals passing along it.
+
+```yaml
+outgoing:
+  - to: api
+    mutators:
+      - type: retry
+        properties:
+          attempts: '3'
+      - type: timeout
+        properties:
+          budget: '1'
+```
+
+The shipped behaviours are `retry`, `timeout`, `fan-out`, `batch`, `cache`,
+`load-shed`, `feature-flag`, and `ignores-cancellation`.
+
+### Order matters
+
+Behaviours apply in the order they are declared, each transforming what the one
+before it produced. A timeout *inside* a retry bounds each attempt; a timeout
+*outside* one bounds the whole sequence, including the waiting between attempts.
+Writing the order down makes that choice explicit instead of leaving it to be
+inferred from prose.
+
+### Amplification
+
+The reason behaviours belong in a capacity model at all is that several of them
+change how much demand arrives downstream:
+
+- `retry` multiplies request rate by the expected number of attempts,
+- `fan-out` multiplies it by the branch count,
+- `batch` divides it while multiplying payload,
+- `cache` reduces it to the miss rate.
+
+Demand amplification is invisible in a diagram and is a common way for a design
+to be wrong by an order of magnitude.
+
+The retry policy reads the success rate coming *back* rather than taking a
+constant, so its amplification rises exactly when the dependency starts failing.
+That is a positive feedback loop — failing means more load, more load means
+failing — and it is what turns a transient fault into a retry storm the system
+cannot leave on its own.
+
+## Shared quantities
+
+Quantities the whole design refers to live in the **scratchpad** rather than
+being repeated at every component that needs them.
+
+```yaml
+scratchpad:
+  - name: peak_rate
+    expression: '900'
+    unit: op/s
+    summary: Requests per second at the daily peak.
+  - name: cache_hits
+    expression: '0.5'
+    unit: '1'
+    summary: Share of reads served from cache.
+  - name: pool_size
+    expression: '8'
+    unit: op
+    summary: Concurrent requests one API replica serves.
+```
+
+A record size, a global request rate, or a peak-to-mean ratio is one fact about
+the system. Stating it once means an experiment can change it once. Entries are
+ordinary Squiggle bindings evaluated before anything else, in order, so a later
+entry may build on an earlier one and any component may refer to any of them.
+
+## Scale units
+
+Large systems are not built by scaling every part independently. They are built
+by designing a self-contained unit — a cell, a shard, a zone, a region — and
+deploying many of them. A **scale unit** names that boundary, so a model
+describes one unit and says how many exist.
+
+```yaml
+scale_units:
+  - id: cell
+    name: Serving cell
+    replicas: '12'
+    distribution: sharded
+    members: [api, orders]
+```
+
+Constraints are evaluated per unit, which is the question worth asking. "Does one
+cell have enough capacity" has an answer an engineer can act on; "does the fleet
+have enough capacity in total" hides the cell that is hot while the average looks
+fine.
+
+Units nest, because real deployments do. A component's effective replica count is
+the product along its chain of enclosing units, so a component inside ten shards
+inside three regions is deployed thirty times. Set `parent` to nest one unit
+inside another; a component claimed directly by two units is rejected.
+
+`distribution` decides how demand meets those replicas, and it is a modelling
+decision rather than a consequence of the count. `sharded` traffic divides, so
+each replica serves its share. `mirrored` traffic does not: replicating writes to
+every region means every region sees every write, so the count multiplies cost
+without dividing load.
+
+A component type's own `replicas` property is a different statement. It
+replicates *one* component behind a shared entry point, where a scale unit
+replicates a *set* of components together as a deployable whole. A pool of
+servers is the former; a cell containing a pool, its queue, and its store is the
+latter.
+
+## Interventions
+
+Comparing two designs only means something if the two are otherwise identical.
+Editing a model to try an idea destroys that guarantee: the before and after
+differ by whatever was changed plus whatever was disturbed along the way.
+
+An intervention therefore changes nothing structural. It rebinds named
+quantities in the scratchpad, and the model is solved again exactly as it stands.
+
+```yaml
+interventions:
+  - id: warm-cache
+    name: Warm the cache
+    summary: Raise the hit ratio by holding a larger working set.
+    overrides:
+      - name: cache_hits
+        expression: '0.95'
+```
+
+That constraint is also a design discipline. Expressing an idea as an
+intervention forces the quantity it acts on to have been named in the first
+place, which is usually where the thinking is. "Add a cache" is not a proposal
+until it becomes "the hit ratio becomes 0.9", and the second is something an
+engineer can argue with.
+
+Because scratchpad entries may refer to earlier ones, rebinding an early quantity
+carries through everything derived from it without any of those components being
+mentioned.
+
+A replacement is an ordinary expression and may depend on time, so a change that
+arrives gradually is written as one:
+
+```yaml
+overrides:
+  - name: peak_rate
+    expression: 'if t < 300 then 900 else 3600'
+```
+
+The quantity was always a function of time; a constant was only the simplest
+case.
+
+## Choosing how much detail
+
+Start with the smallest design that can answer the question:
+
+1. Put a `client` at the boundary and give it the objective the system exists to
+   meet. Latency and success propagate back to it, so its constraints report on
+   the whole design rather than on any one hop.
+2. Add the components on the path a request actually takes.
+3. Add a behaviour only where it changes demand, latency, or success — a retry,
+   a timeout, a cache, a fan-out.
+4. Name a quantity in the scratchpad as soon as two components need it, or as
+   soon as you want to vary it.
+5. Add a scale unit when the answer should describe one cell rather than the
+   fleet.
+6. Add an intervention for each proposal you intend to weigh.
+
+A denser model is not a better one. Every property should be something an
+engineer can measure, look up, or defend, and the `summary` field beside it is
+where that defence belongs.

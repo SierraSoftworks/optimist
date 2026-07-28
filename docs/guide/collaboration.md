@@ -1,110 +1,188 @@
-# Collaboration and revisions
+# The workbench and shared editing
 
-Optimist serialises project mutations through revision-checked, idempotent commands. This provides the consistency boundary used by CLI clients, agents, and the future visual workbench.
-
-## Project and aggregate revisions
-
-Every successful command advances the project revision. Commands carry:
-
-- a client-generated UUID request ID,
-- the project revision observed by the client,
-- one typed mutation.
-
-A repeated request ID returns the original result before revision comparison, preventing duplicate entities or observations after a transport retry.
-
-Node, edge, scenario, formula, and dependence updates may also use their own aggregate/document revision. This catches concurrent changes to the selected object even when the caller has refreshed the wider project.
-
-Graph mutations advance a separate graph revision. Scenario, formula, and dependence changes advance the project revision but do not pretend that graph topology changed.
-
-## Committed ChangeSets
-
-Each newly committed command appends one `ChangeSet` containing:
-
-- request ID,
-- base and resulting project revisions,
-- resulting graph revision,
-- typed command,
-- committed outcome.
-
-Commands may be grouped into a bounded atomic batch. Every child event retains its own consecutive project revision and also carries the shared `batch_id`. The catalog and write-ahead journal publish the complete sequence together; validation failure in any child publishes no events.
-
-Compensating undo is another atomic batch linked through `compensates`. It never removes the original events or lowers revisions. Clients submit an explicit plan against current state because append-only observations and real-world actions cannot be safely inverted by a generic algorithm. A retained forward batch can be compensated once; retrying the same compensation UUID remains idempotent.
-
-Replay changes strictly after an observed project revision:
+The CLI reads files. To edit a design with other people, serve a directory of
+them and let the workbench, or any other client, talk to it.
 
 ```sh
-cargo run -- project changes A --after 12
+optimist serve --designs ./designs
 ```
 
-Use JSON Lines for agent ingestion:
+## What a workspace is
 
-```sh
-cargo run -- --output jsonl project changes A --after 12
+A workspace is a directory whose subdirectories are designs. Each is otherwise
+independent: its own in-memory state, its own change feed. Editing one neither
+blocks nor notifies anyone working on another, and nothing is shared but the
+directory they happen to live under.
+
+An engineer rarely reasons about one system in isolation. The design being
+changed sits next to the one it depends on and the one that replaced it last
+year, and being able to open each without restarting anything is the difference
+between a tool and a batch job.
+
+Listing a workspace reads only the header of each design, which is cheap and
+stays cheap as designs grow. A design is fully loaded the first time someone
+opens it and stays loaded afterwards, because everyone editing it has to share
+one copy for the change feed to mean anything.
+
+A design that cannot be read appears in the listing with the reason it could not,
+under an `unreadable` field. Hiding it would be worse: an engineer who cannot
+find a design they know exists has no way to discover that its file is malformed.
+
+## Editing is a stream of mutations
+
+There is no revision to send, nothing to retry, and no conflict to resolve. A
+mutation names exactly one entity, and the last writer to touch it wins.
+
+```http
+POST /api/v1/designs/checkout/mutations
+Content-Type: application/json
+
+{
+  "mutations": [
+    {
+      "kind": "set_component",
+      "component": {
+        "id": "api",
+        "name": "Checkout API",
+        "type": "compute",
+        "properties": { "service_time": "0.02", "parallelism": "8" }
+      }
+    }
+  ]
+}
 ```
 
-Committed event history and idempotent results are durable under each `projects/<ID>/` directory. Before acknowledging a command, the server appends and fsyncs its complete request to that project's ordered `journal.json`. Background compaction writes the project snapshot and clears only the journal prefix it contains. After a crash, startup replays remaining requests; UUID idempotency returns already-snapshotted results without appending duplicate events. Projects compact independently, so unrelated project count does not affect save cost.
+A mutation is tagged with `kind`; the `type` inside a component is the component
+type it adopts.
 
-Rejected commands are never journaled. Corrupt, oversized, or unknown-version journal documents stop startup and remain untouched for diagnosis rather than being skipped.
+Two editors working on different components never contend. Two editors working on
+the same component replace it whole, so there is no interleaving of field edits
+to reconcile. The full list of mutation types is in the
+[HTTP API reference](../reference/http-api.md#mutations).
 
-Imported archives do not contain the source server's event log. Their retained-history floor is the archived project revision. A replay request older than that floor returns a canonical project snapshot in the replay envelope instead of an incomplete event list. Clients replace local project state with the snapshot, persist its revision, and resume incremental replay from there.
+A mutation that would break the design structurally is rejected — a relationship
+to a component that does not exist, a self-loop, a scale unit claiming a
+component another already owns. A design that is merely *incomplete* is accepted,
+because that is what somebody has halfway through making a change. A component
+missing a required property is stored happily; it fails when the design is
+solved, which is where the message belongs.
 
-REST replay responses retain `after_revision`, `current_revision`, and `changes`. Ordinary replay omits `snapshot`. Gap recovery leaves `changes` empty and includes the complete canonical archive:
+Mutations in one request apply in order and stop at the first failure. Earlier
+ones stand, and the response says how many were applied.
 
-```json
-{"snapshot":{"revision":13,"archive":{"schema_version":1,"project":{},"files":{},"summary":{}}}}
-```
-
-Table CLI output reports snapshot revision and aggregate counts. JSON returns the complete envelope, while JSON Lines emits one tagged `snapshot` record.
-
-## WebSocket change stream
-
-Connect to:
+## The change feed
 
 ```text
-ws://127.0.0.1:3000/api/v1/projects/A/changes/ws?after=12
+GET /api/v1/designs/checkout/feed      (WebSocket upgrade)
 ```
 
-Messages use a tagged JSON protocol:
+The socket sends the design as its first message and streams changes after it:
 
 ```json
-{"type":"change","value":{"request_id":"...","base_revision":12,"project_revision":13,"graph_revision":9,"command":{},"outcome":{}}}
+{ "type": "snapshot", "name": "Checkout", "summary": "", "model": {}, "sequence": 41 }
+{ "type": "change", "sequence": 42, "mutation": { "kind": "set_component", "component": {} } }
 ```
 
-After replay, the server sends:
+Feed messages are tagged with `type`; the mutation inside a `change` is tagged
+with `kind`.
+
+Opening with a snapshot has no gap to reason about. Fetching a design and then
+subscribing would drop anything that changed in between; subscribing and then
+fetching would deliver changes the fetch already contains.
+
+The feed carries mutations rather than whole designs. Sending the whole design
+would be simpler to implement and worse to use: it would clobber whatever the
+recipient was midway through editing, and it would cost the size of the model on
+every keystroke somebody else typed. Sending the mutation means a client applies
+exactly what the server applied, to exactly the entity that changed, leaving
+everything it is working on untouched.
+
+A client that falls far enough behind receives a `lagged` message instead of the
+backlog:
 
 ```json
-{"type":"caught_up","value":{"revision":13}}
+{ "type": "lagged", "missed": 312 }
 ```
 
-Live `change` messages then continue in project-revision order.
+That is the one case where a client refetches, because the local copy cannot be
+repaired by replay.
 
-## Race-free client startup
+`sequence` increments on every applied change. An editor recognises its own
+edits arriving back by the sequence the write returned.
 
-The server subscribes to live broadcasts before reading replay history. It then ignores queued events at or below the replay snapshot's current revision. This prevents both gaps and duplicates when a command races with connection setup.
+## Persistence
 
-A client should:
+Edits are held in memory and written back to the design directory after a short
+quiet period, and again on shutdown. The whole directory is rewritten in
+canonical form: `_system.yaml` for the design-wide document, one file per
+component under `components/`, and relationships stored with the component they
+leave.
 
-1. Persist its last successfully applied project revision.
-2. Connect with `after=<last revision>`.
-3. Apply each replayed `change` in ascending order.
-4. Treat `caught_up` as the transition to live state.
-5. Persist each revision only after applying the event.
-6. Reconnect after transport failure using the last applied revision.
+Component files the model no longer contains are removed, because a stale file
+would be read back as a component nobody declared.
 
-Idempotent command retries do not broadcast duplicate changes because only newly advanced project revisions are published.
+The practical consequence is that a design edited in the workbench produces a
+clean diff. It is meant to be reviewed in the same repository as the system it
+describes, so `git diff` after a session should read as the change that was
+actually made.
 
-## Lag recovery
+## Serving the workbench
 
-Each live receiver is bounded. If it falls behind, the server sends:
+The server serves the API and the Vue workbench from the same process. Browser
+routes fall back to `index.html`; generated files under `/assets` use a one-year
+immutable cache while HTML revalidates on every load. `/api` and every `/api/*`
+path remain JSON-only and never fall back to the application, so a mistyped
+endpoint is a 404 with an advice field rather than a page of HTML.
+
+Release builds embed a frontend build. Debug builds look for `workbench/dist`
+beside the repository. Either can be overridden:
+
+```sh
+optimist serve --web-root /path/to/dist
+OPTIMIST_WEB_ROOT=/path/to/dist optimist serve
+```
+
+Rust builds do not invoke Node. If no valid web root is configured or discovered,
+the server remains API-only.
+
+For front-end work, run Vite's dev server instead. It proxies `/api`, including
+the WebSocket upgrade the feed needs.
+
+```sh
+optimist serve --designs ./designs      # in one terminal
+npm --prefix workbench run dev          # http://127.0.0.1:5173
+```
+
+Point the workbench at another server with `OPTIMIST_API_URL`.
+
+## How the workbench stays current
+
+Worth knowing if you are writing a client of your own: the workbench writes
+through `POST /mutations` and puts *nothing* from the response into its local
+cache. The same edit arrives back over the design's feed, and that is the path
+that updates the screen.
+
+Doing it that way means an edit made locally and an edit made by somebody else in
+another tab are handled by identical code, rather than by two implementations
+that can disagree. It also means the design is patched rather than replaced: the
+feed carries the mutation, the client replays it onto the entity it names, and a
+field being typed into elsewhere on the page is left alone.
+
+## Health
+
+```sh
+curl http://127.0.0.1:3000/api/v1/health
+```
 
 ```json
-{"type":"replay_required","value":{"after_revision":13}}
+{ "status": "ok", "version": "0.1.0", "designs": 2, "unsaved": 0 }
 ```
 
-The stream then closes. Reconnect from that revision to replay missing events.
+`unsaved` is the number of loaded designs with edits that have not yet been
+written back.
 
-On WebSocket startup, a history gap sends `snapshot`, then `caught_up` at the snapshot revision, then queued/live changes above that revision. A lagged receiver still gets `replay_required`; reconnecting from its last applied revision automatically receives incremental replay or snapshot fallback as appropriate.
+## What is not implemented
 
-## Conflict handling
-
-Current commands reject stale project or aggregate revisions and return stable error codes with corrective advice. Field-level merge of disjoint nested changes and structured base/current/proposed conflict payloads are planned but not complete.
+There is no authentication and no authorisation. Anyone who can reach the port
+can read and edit every design in the workspace, so run it on a loopback address
+or behind something that does enforce access.
