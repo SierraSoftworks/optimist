@@ -81,9 +81,46 @@ function open(id: string) {
       <span class="spacer" />
 
       <template v-if="design">
-        <el-tooltip content="Draws carried through every uncertain quantity" placement="bottom">
-          <div class="control">
-            <span>samples</span>
+        <!--
+          Behind a gear, because these decide how the answer was produced rather
+          than what the answer is. Almost nobody needs to touch them, and having
+          them permanently in the bar invited fiddling with the sample count in
+          preference to reading the result.
+        -->
+        <el-popover
+          placement="bottom-end"
+          trigger="click"
+          :width="272"
+          popper-class="settings"
+        >
+          <template #reference>
+            <button class="gear" aria-label="Solver settings" data-test="settings">
+              <el-icon :size="15"><i-setting /></el-icon>
+            </button>
+          </template>
+
+          <div class="setting">
+            <div class="label">
+              <span>Through time</span>
+              <p>
+                Fill and drain each queue at a finite rate instead of solving for where it
+                balances. Shows how long an incident outlasts its cause, and takes
+                considerably longer.
+              </p>
+            </div>
+            <el-switch
+              :model-value="store.transient"
+              size="small"
+              data-test="transient-toggle"
+              @update:model-value="(value: string | number | boolean) => store.walkThroughTime(value === true)"
+            />
+          </div>
+
+          <div class="setting">
+            <div class="label">
+              <span>Samples</span>
+              <p>Draws carried through every uncertain quantity.</p>
+            </div>
             <el-input-number
               v-model="store.samples"
               :min="64"
@@ -94,10 +131,12 @@ function open(id: string) {
               data-test="samples"
             />
           </div>
-        </el-tooltip>
-        <el-tooltip content="Steps to advance the model through" placement="bottom">
-          <div class="control">
-            <span>horizon</span>
+
+          <div class="setting">
+            <div class="label">
+              <span>Horizon</span>
+              <p>Steps to advance the model through.</p>
+            </div>
             <el-input-number
               v-model="store.horizon"
               :min="1"
@@ -107,7 +146,24 @@ function open(id: string) {
               data-test="horizon"
             />
           </div>
-        </el-tooltip>
+
+          <div class="setting">
+            <div class="label">
+              <span>Step</span>
+              <p>Seconds each step covers.</p>
+            </div>
+            <el-input-number
+              v-model="store.step"
+              :min="0.01"
+              :max="3600"
+              :step="0.5"
+              size="small"
+              controls-position="right"
+              data-test="step"
+            />
+          </div>
+        </el-popover>
+
         <el-tooltip :content="`Change feed ${feedStatus}`" placement="bottom">
           <span class="feed" :class="feedStatus" :data-status="feedStatus" data-test="feed" />
         </el-tooltip>
@@ -158,11 +214,36 @@ function open(id: string) {
   min-width: 0;
 }
 .spacer { flex: 1; }
-.control { display: flex; align-items: center; gap: var(--space-1); }
-.control span { font-size: var(--text-2xs); color: var(--muted); }
-.control :deep(.el-input-number) { width: 92px; }
+.gear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+}
+.gear:hover { background: var(--green-soft); color: var(--green); }
 .feed { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
 .feed.open { background: #2f9e69; }
 .feed.closed { background: var(--danger); }
 .feed.connecting { background: var(--caution); }
+</style>
+
+<style>
+/* The popover renders at the body, so its contents cannot be scoped. */
+.settings .setting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.settings .setting + .setting { border-top: 1px solid var(--line); }
+.settings .label { min-width: 0; }
+.settings .label span { font-size: var(--text-sm); font-weight: 650; }
+.settings .label p { margin: 2px 0 0; font-size: var(--text-2xs); color: var(--muted); line-height: 1.4; }
+.settings .el-input-number { width: 96px; flex: 0 0 auto; }
 </style>

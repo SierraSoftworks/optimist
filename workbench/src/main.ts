@@ -15,8 +15,11 @@ import {
   Loading,
   Plus,
   Right,
+  Search,
   Select,
+  Setting,
   TrendCharts,
+  View,
   Warning,
   WarningFilled,
 } from '@element-plus/icons-vue'
@@ -47,8 +50,11 @@ const icons = {
   MagicStick,
   Plus,
   Right,
+  Search,
   Select,
+  Setting,
   TrendCharts,
+  View,
   Warning,
   WarningFilled,
 }

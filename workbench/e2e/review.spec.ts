@@ -11,12 +11,34 @@ test.describe('review', () => {
   test('charts the quantities of whatever is under the most pressure', async ({ page }) => {
     await page.goto('/d/metastable/review')
 
-    await expect(page.locator('figure').first()).toBeVisible()
+    // A solved chart rather than the outline standing in for one, so that a
+    // skeleton left on screen forever would fail this rather than satisfy it.
+    await expect(page.locator('figure svg.plot').first()).toBeVisible()
     await expect(page.getByTestId('watch-picker')).toBeVisible()
 
     // The ranking sits alongside, so a reader can see which limit the chart is
     // about without changing view.
     await expect(page.getByRole('cell', { name: '100%' }).first()).toBeVisible()
+  })
+
+  /**
+   * A first solve has nothing to show, so it shows the shape of what is coming.
+   *
+   * The alternative was an empty panel and a badge in a corner, which read as a
+   * page that had finished loading and found nothing.
+   */
+  test('outlines the charts while the first answer is still being solved', async ({ page }) => {
+    await page.route('**/analysis*', async (route) => {
+      await new Promise((resume) => setTimeout(resume, 1500))
+      await route.continue()
+    })
+    await page.goto('/d/metastable/review')
+
+    await expect(page.getByTestId('chart-skeleton').first()).toBeVisible()
+    await expect(page.getByTestId('solve-progress')).toBeVisible()
+
+    await expect(page.locator('figure svg.plot').first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByTestId('chart-skeleton')).toHaveCount(0)
   })
 
   /**
@@ -66,6 +88,88 @@ test.describe('review', () => {
     // reported as relieved. A comparison that found nothing would mean the
     // variant never reached the solver.
     await expect(page.getByText('relieved').first()).toBeVisible()
+  })
+
+  /**
+   * A variant's charts carry the design they would replace.
+   *
+   * A proposal is judged by the distance between two lines, and reading that off
+   * two charts on two screens is not something anybody does accurately. The
+   * baseline is therefore drawn on the same axes, dashed so it cannot be
+   * mistaken for the result.
+   */
+  test('charts a variant against the baseline it would replace', async ({ page }) => {
+    await page.goto('/d/metastable/review')
+    await expect(page.locator('figure svg.plot').first()).toBeVisible()
+    await expect(page.locator('polyline.reference')).toHaveCount(0)
+
+    await page.getByTestId('variant-shed').click()
+
+    const chart = page.locator('figure', { has: page.locator('svg.plot') }).first()
+    await expect(chart.locator('polyline.reference')).toBeVisible({ timeout: 30_000 })
+    await expect(chart.getByTestId('baseline-legend')).toContainText('as designed')
+
+    // And the gap between them is named rather than left to the eye.
+    const plot = chart.locator('svg.plot')
+    const box = await plot.boundingBox()
+    await plot.hover({ position: { x: (box?.width ?? 400) * 0.75, y: (box?.height ?? 60) / 2 } })
+    await expect(chart.getByTestId('baseline-shift')).toContainText('vs as designed')
+  })
+
+  /**
+   * Results that are no longer about the question on screen must not read as if
+   * they are.
+   *
+   * Choosing a variant leaves the previous answer mounted while the new one is
+   * solved. A reader who takes those numbers for the variant they just chose
+   * concludes something about a design nobody solved, which is worse than any
+   * amount of waiting — so what is retained is covered until it catches up.
+   */
+  test('covers the previous variant while the chosen one is solved', async ({ page }) => {
+    await page.goto('/d/metastable/review')
+    await expect(page.locator('figure svg.plot').first()).toBeVisible()
+
+    await page.route('**/analysis*', async (route) => {
+      await new Promise((resume) => setTimeout(resume, 2000))
+      await route.continue()
+    })
+    // Read from the sidebar rather than written in here, so the assertion is
+    // about the variant that was chosen rather than about its current wording.
+    const chosen = page.getByTestId('variant-shed')
+    const name = (await chosen.innerText()).trim()
+    await chosen.click()
+
+    const veil = page.getByTestId('solving-veil').first()
+    await expect(veil).toBeVisible()
+    await expect(veil).toContainText(name)
+
+    await page.unroute('**/analysis*')
+    await expect(page.getByTestId('solving-veil')).toHaveCount(0, { timeout: 30_000 })
+  })
+
+  /**
+   * Choosing what to watch sits beside choosing what to watch it against.
+   *
+   * It was a multi-select above the charts, which closed after every pick and
+   * made assembling a set of four an exercise in patience.
+   */
+  test('quantities are pinned from the sidebar', async ({ page }) => {
+    await page.goto('/d/metastable/review')
+    await expect(page.locator('figure svg.plot').first()).toBeVisible()
+
+    const picker = page.getByTestId('watch-picker')
+    const charted = await page.locator('figure', { has: page.locator('svg.plot') }).count()
+
+    await picker.getByTestId('signal-search').fill('utilisation')
+    const first = picker.locator('[data-test^="pin-"]').first()
+    const value = ((await first.getAttribute('data-test')) ?? '').replace('pin-', '')
+    await first.click()
+
+    await expect(picker.getByTestId(`unpin-${value}`)).toBeVisible()
+    await expect(page.locator('figure', { has: page.locator('svg.plot') })).toHaveCount(charted + 1)
+
+    await picker.getByTestId('clear-signals').click()
+    await expect(picker.locator('[data-test^="unpin-"]')).toHaveCount(0)
   })
 
   test('the counterfactual and the design differ', async ({ page }) => {

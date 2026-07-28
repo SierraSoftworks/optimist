@@ -36,5 +36,19 @@ export const useWorkbenchStore = defineStore('workbench', () => {
    */
   const step = ref(1)
 
-  return { samples, horizon, seed, transient, step }
+  /**
+   * Turns walking through time on or off, moving the step and horizon with it.
+   *
+   * The three are one decision. A step of a second cannot integrate a service
+   * answering in milliseconds, and a horizon of twenty short steps covers no
+   * time at all, so either without the others is misleading — which is why this
+   * is an action rather than three fields a caller has to remember to set.
+   */
+  function walkThroughTime(wanted: boolean) {
+    transient.value = wanted
+    step.value = wanted ? 0.5 : 1
+    horizon.value = wanted ? 120 : 20
+  }
+
+  return { samples, horizon, seed, transient, step, walkThroughTime }
 })

@@ -116,13 +116,29 @@ function share(value: number): string {
   font-size: var(--text-sm);
 }
 .empty { color: var(--muted); font-size: var(--text-sm); margin: 0; }
-.ranking { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
-.ranking th, .ranking td { text-align: left; padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--line); vertical-align: top; }
-.numeric { text-align: right; font-family: var(--mono); white-space: nowrap; }
+/*
+ * Fixed layout, so the constraint's name gives way rather than the numbers. A
+ * name can be shortened and still recognised; a utilisation pushed off the edge
+ * of a narrow panel cannot be read at all.
+ */
+.ranking { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-sm); }
+.ranking th, .ranking td { text-align: left; padding: var(--space-2) var(--space-1); border-bottom: 1px solid var(--line); vertical-align: top; }
+.ranking th:first-child, .ranking td:first-child { padding-left: 0; }
+.numeric { text-align: right; font-family: var(--mono); white-space: nowrap; width: 4.2em; }
 .over { color: var(--danger); font-weight: 650; }
-.what { display: flex; flex-direction: column; gap: 1px; font-weight: 400; }
-.component { font-weight: 700; }
-.constraint { font-family: var(--mono); font-size: var(--text-xs); color: var(--muted); cursor: help; }
+.what { display: flex; flex-direction: column; gap: 1px; font-weight: 400; min-width: 0; }
+.component { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+/*
+ * Wrapped rather than truncated. A constraint is identified by its whole name
+ * and `volu…` names nothing, so a second short line is the cheaper loss.
+ */
+.constraint {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  cursor: help;
+  overflow-wrap: anywhere;
+}
 .summary { color: var(--muted); font-size: var(--text-xs); max-width: 52ch; }
 .replicas { font-size: var(--text-2xs); color: var(--muted); }
 .quantities h3 { font-size: var(--text-md); margin: 0 0 var(--space-3); }

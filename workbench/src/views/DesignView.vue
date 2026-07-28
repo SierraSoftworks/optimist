@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import type { Mutation } from '../api/types'
 import Inspector from '../components/Inspector.vue'
 import ScratchpadPanel from '../components/ScratchpadPanel.vue'
+import SolveProgress from '../components/SolveProgress.vue'
 import SystemGraph from '../components/SystemGraph.vue'
 import { useAnalysis, useCatalogue, useDesign, useEditDesign } from '../composables/useDesign'
 import { readProblem } from '../domain/solverProblem'
@@ -22,7 +23,10 @@ const edit = useEditDesign(design)
 
 const controls = computed(() => ({ samples: store.samples, horizon: store.horizon }))
 const sequence = computed(() => snapshot.value?.sequence)
-const { data: analysis, error: solveError } = useAnalysis(design, controls, sequence)
+const { data: analysis, error: solveError, isFetching } = useAnalysis(design, controls, sequence)
+
+/** What makes two solves cost the same amount of arithmetic. */
+const shape = computed(() => [design.value, store.samples, store.horizon].join('/'))
 
 /**
  * Applies edits and lets the caller see the outcome.
@@ -174,6 +178,8 @@ watch(
           </el-button>
         </el-button-group>
         <span class="spacer" />
+
+        <SolveProgress :solving="isFetching" :shape="shape" />
 
         <!--
           One line, always in the same place, saying whether the design can be
