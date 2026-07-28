@@ -120,23 +120,43 @@ const STYLE: cytoscape.StylesheetJson = [
  *
  * A design somebody has laid out is left exactly as they left it, because the
  * arrangement carries meaning no algorithm reconstructs. Automatic layout runs
- * only when something has no position of its own, which is why adding a
- * component to an arranged diagram does not rearrange the rest.
+ * only over components with no position of their own, which is why adding a
+ * component to an arranged diagram places the newcomer without disturbing
+ * anything already placed.
+ *
+ * Saved positions are reapplied before anything else, so returning to the
+ * diagram redraws it as it was left rather than as an algorithm would have it.
+ * Rebuilding the elements is not enough on its own: a node added without a
+ * position keeps whatever the previous element in that slot had, which is how a
+ * hand-made arrangement silently becomes a generated one.
  */
 function layout(force = false) {
   if (!graph) return
-  const components = props.model.components
-  const placed = components.filter((component) => component.position).length
-  if (!force && components.length > 0 && placed === components.length) {
+  const saved = new Map(
+    props.model.components
+      .filter((component) => component.position)
+      .map((component) => [component.id, component.position!] as const),
+  )
+
+  if (!force) {
+    graph.nodes().forEach((node) => {
+      const at = saved.get(node.id())
+      if (at) node.position({ x: at.x, y: at.y })
+    })
+  }
+
+  const arrange = force
+    ? graph.nodes()
+    : graph.nodes().filter((node) => !saved.has(node.id()))
+  if (arrange.length === 0) {
     graph.fit(undefined, 45)
     return
   }
 
-  const sources = graph
-    .nodes()
+  const sources = arrange
     .filter((node) => node.data('rank') === 0)
     .map((node) => `#${node.id()}`)
-  graph
+  arrange
     .layout({
       name: 'breadthfirst',
       directed: true,
@@ -211,6 +231,30 @@ watch(signature, () => {
   graph.add(elements())
   layout()
 })
+
+/**
+ * Reapplies saved positions without rearranging anything.
+ *
+ * The signature above deliberately ignores positions, so a diagram drawn before
+ * its positions arrived would otherwise keep the arrangement it was given at
+ * mount and never adopt the one on record. Dragging is excluded by comparing
+ * against where each node already is, so this cannot fight the pointer.
+ */
+watch(
+  () => props.model.components.map((component) => [component.id, component.position] as const),
+  (placements) => {
+    if (!graph) return
+    placements.forEach(([id, at]) => {
+      if (!at) return
+      const node = graph!.getElementById(id)
+      if (node.empty()) return
+      const now = node.position()
+      if (Math.round(now.x) === at.x && Math.round(now.y) === at.y) return
+      node.position({ x: at.x, y: at.y })
+    })
+  },
+  { deep: true },
+)
 // Pressure is pushed into existing nodes rather than rebuilding, so colours
 // update without disturbing positions.
 watch(
