@@ -11,7 +11,8 @@ use clap::{Args, Subcommand};
 
 use crate::system::{
     Bottleneck, ComponentId, Evaluation, EvaluationConfig, InterventionId, LoadedSystem, SolveMode,
-    bottlenecks, compare, evaluate, evaluate_intervention, read_system,
+    bottlenecks_with_mutators, compare_with_mutators, evaluate_intervention_with_mutators,
+    evaluate_with_mutators, read_system,
 };
 
 use super::output::OutputFormat;
@@ -144,9 +145,10 @@ pub(super) fn run(command: SystemCommand, output: OutputFormat) -> Result<(), hu
         }
         SystemCommand::Compare(args) => {
             let loaded = load(&args.design.directory)?;
-            let comparison = compare(
+            let comparison = compare_with_mutators(
                 &loaded.model,
                 &loaded.component_types,
+                &loaded.mutators,
                 &InterventionId::new(args.intervention),
                 args.options.config(),
             )
@@ -179,13 +181,20 @@ fn solve(
     options: &SolveOptions,
 ) -> Result<Evaluation, human_errors::Error> {
     match intervention {
-        Some(id) => evaluate_intervention(
+        Some(id) => evaluate_intervention_with_mutators(
             &loaded.model,
             &loaded.component_types,
+            &loaded.mutators,
             &InterventionId::new(id),
             options.config(),
         ),
-        None => evaluate(&loaded.model, &loaded.component_types, options.config()),
+        None => evaluate_with_mutators(
+            &loaded.model,
+            &loaded.component_types,
+            &loaded.mutators,
+            &std::collections::BTreeMap::new(),
+            options.config(),
+        ),
     }
     .map_err(evaluation_error)
 }
@@ -195,9 +204,10 @@ fn rank(
     evaluation: &Evaluation,
     options: &SolveOptions,
 ) -> Result<Vec<Bottleneck>, human_errors::Error> {
-    bottlenecks(
+    bottlenecks_with_mutators(
         &loaded.model,
         &loaded.component_types,
+        &loaded.mutators,
         evaluation.settled(),
         options.config(),
     )

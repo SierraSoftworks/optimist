@@ -117,12 +117,35 @@ pub fn bottlenecks(
     step: &Step,
     config: EvaluationConfig,
 ) -> Result<Vec<Bottleneck>, EvaluationError> {
-    rank(model, catalogue, &BTreeMap::new(), step, config)
+    bottlenecks_with_mutators(
+        model,
+        catalogue,
+        &super::evaluate::builtin_mutators_or_empty(),
+        step,
+        config,
+    )
+}
+
+/// Ranks constraints against a caller's own set of behaviours.
+///
+/// A design may define behaviours the shipped catalogue never anticipated, and
+/// a constraint's demand can be read from a flow one of them rewrote. Ranking
+/// against the shipped set alone would silently drop those rewrites and report
+/// a load the design does not actually place.
+pub fn bottlenecks_with_mutators(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    step: &Step,
+    config: EvaluationConfig,
+) -> Result<Vec<Bottleneck>, EvaluationError> {
+    rank(model, catalogue, mutators, &BTreeMap::new(), step, config)
 }
 
 pub(super) fn rank(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
     overrides: &BTreeMap<String, String>,
     step: &Step,
     config: EvaluationConfig,
@@ -130,7 +153,7 @@ pub(super) fn rank(
     let plan = prepare(
         model,
         catalogue,
-        &super::evaluate::builtin_mutators_or_empty(),
+        mutators,
         overrides,
         Timing {
             seed: config.seed,

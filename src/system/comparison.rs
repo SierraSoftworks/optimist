@@ -149,20 +149,62 @@ pub fn compare(
     intervention: &InterventionId,
     config: EvaluationConfig,
 ) -> Result<Comparison, EvaluationError> {
-    let overrides = model.intervention(intervention)?.bindings();
-    let mutators = super::evaluate::builtin_mutators_or_empty();
-
-    let settled = evaluate_with_mutators(model, catalogue, &mutators, &BTreeMap::new(), config)?;
-    let baseline = rank(
+    compare_with_mutators(
         model,
         catalogue,
-        &BTreeMap::new(),
-        settled.settled(),
+        &super::evaluate::builtin_mutators_or_empty(),
+        intervention,
         config,
-    )?;
+    )
+}
 
-    let settled = evaluate_with_mutators(model, catalogue, &mutators, &overrides, config)?;
-    let proposed = rank(model, catalogue, &overrides, settled.settled(), config)?;
+/// Weighs an intervention against a caller's own set of behaviours.
+///
+/// The two runs must see identical behaviours as well as identical structure,
+/// or the difference between them stops being attributable to the intervention.
+pub fn compare_with_mutators(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    intervention: &InterventionId,
+    config: EvaluationConfig,
+) -> Result<Comparison, EvaluationError> {
+    let overrides = model.intervention(intervention)?.bindings();
+    let unchanged = BTreeMap::new();
+
+    // The two scenarios share nothing but the model they read, so they are
+    // solved side by side. Each is a long arithmetic run on one core, and a
+    // comparison that took twice as long as the design it is about was spending
+    // the second half of that wait on a machine that had cores to spare.
+    let (baseline, proposed) = std::thread::scope(|scope| {
+        let baseline = scope.spawn(|| {
+            let settled = evaluate_with_mutators(model, catalogue, mutators, &unchanged, config)?;
+            rank(
+                model,
+                catalogue,
+                mutators,
+                &unchanged,
+                settled.settled(),
+                config,
+            )
+        });
+        let proposed = scope.spawn(|| {
+            let settled = evaluate_with_mutators(model, catalogue, mutators, &overrides, config)?;
+            rank(
+                model,
+                catalogue,
+                mutators,
+                &overrides,
+                settled.settled(),
+                config,
+            )
+        });
+        (
+            baseline.join().expect("solving does not panic"),
+            proposed.join().expect("solving does not panic"),
+        )
+    });
+    let (baseline, proposed) = (baseline?, proposed?);
 
     Ok(Comparison {
         movements: movements(&baseline, &proposed),

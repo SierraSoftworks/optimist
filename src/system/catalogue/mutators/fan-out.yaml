@@ -13,3 +13,17 @@ requests:
     unit: op/s
     summary: Demand multiplied by the branch count.
     expression: signal.rate * branches
+  occupancy:
+    unit: op
+    summary: >
+      Work held open, multiplied by the branch count for the same reason the
+      rate is. A caller waiting on six branches at once is holding six calls
+      open, not one, and a dependency sized by how much it is holding rather
+      than by how fast it is asked would otherwise see a sixth of the load the
+      rate says is arriving.
+
+      Leaving this out is not a smaller error than leaving out the rate. It is
+      the same error, made against whichever of the two limits happens to bind,
+      and it hides fan-out completely from any dependency whose ceiling is
+      concurrency rather than throughput.
+    expression: signal.occupancy * branches

@@ -460,14 +460,30 @@ pub fn evaluate_intervention(
     intervention: &InterventionId,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    let overrides = model.intervention(intervention)?.bindings();
-    evaluate_with_mutators(
+    evaluate_intervention_with_mutators(
         model,
         catalogue,
         &builtin_mutators_or_empty(),
-        &overrides,
+        intervention,
         config,
     )
+}
+
+/// Solves a model with one of its interventions applied, against explicit
+/// behaviours.
+///
+/// A design may define behaviours the shipped catalogue never anticipated, and
+/// solving without them would quietly drop the rewrites they apply to the flows
+/// travelling along a relationship.
+pub fn evaluate_intervention_with_mutators(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
+    intervention: &InterventionId,
+    config: EvaluationConfig,
+) -> Result<Evaluation, EvaluationError> {
+    let overrides = model.intervention(intervention)?.bindings();
+    evaluate_with_mutators(model, catalogue, mutators, &overrides, config)
 }
 
 /// Solves a model against explicit catalogues and scratchpad replacements.

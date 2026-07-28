@@ -51,12 +51,13 @@ mod signal;
 mod validate;
 mod values;
 
-pub use bottleneck::{Bottleneck, bottlenecks};
+pub use bottleneck::{Bottleneck, bottlenecks, bottlenecks_with_mutators};
 pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
-pub use comparison::{Comparison, Movement, compare};
+pub use comparison::{Comparison, Movement, compare, compare_with_mutators};
 pub use evaluate::{
     ComponentState, Evaluation, EvaluationConfig, EvaluationError, LinkId, LinkState, SolveMode,
-    Step, evaluate, evaluate_intervention,
+    Step, evaluate, evaluate_intervention, evaluate_intervention_with_mutators,
+    evaluate_with_mutators,
 };
 pub use intervention::{Intervention, InterventionId, Override};
 pub use manifest::{

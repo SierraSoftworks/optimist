@@ -3,6 +3,10 @@
 //! Solving is arithmetic over thousands of draws and does not belong on the
 //! thread accepting requests, so it runs on the blocking pool. A model that
 //! takes a moment then delays only the client that asked for it.
+//!
+//! An answer depends on the design as it stood and the controls asked for, so
+//! it is remembered against both. Somebody flicking between the variants of a
+//! design they are not editing is reading answers rather than recomputing them.
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -14,17 +18,17 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    session::Workspace,
+    session::Session,
     squiggle::Value,
     system::{
-        Bottleneck, Comparison, EvaluationConfig, InterventionId, bottlenecks, compare, evaluate,
-        evaluate_intervention,
+        Bottleneck, Comparison, EvaluationConfig, InterventionId, bottlenecks_with_mutators,
+        compare_with_mutators, evaluate_intervention_with_mutators, evaluate_with_mutators,
     },
 };
 
-use super::{designs::open, error::Rejected};
+use super::{ApiState, designs::open, error::Rejected};
 
-pub(super) fn router() -> Router<Arc<Workspace>> {
+pub(super) fn router() -> Router<super::ApiState> {
     Router::new()
         .route("/api/v1/designs/{design}/analysis", get(analysis))
         .route(
@@ -82,6 +86,33 @@ impl Controls {
             ..defaults
         }
     }
+
+    /// Renders everything about this request that changes the answer.
+    ///
+    /// Numbers go in as they are, floats by their bits rather than their printed
+    /// form, because two step lengths that render alike must not be treated as
+    /// one. Free text goes in with its length in front: an intervention is named
+    /// by whoever wrote the design, and one called `a/0/0` must not be able to
+    /// spell the key belonging to a different request.
+    fn key(&self, sequence: u64, purpose: &str) -> String {
+        let config = self.config();
+        format!(
+            "{sequence}/{}/{}/{}/{}/{}/{}/{}/{}",
+            config.seed,
+            config.sample_count,
+            config.horizon,
+            config.step.to_bits(),
+            u8::from(self.transient),
+            u8::from(self.series),
+            tagged(purpose),
+            tagged(self.intervention.as_deref().unwrap_or("")),
+        )
+    }
+}
+
+/// Writes free text so that no value of it can spell a different key.
+fn tagged(text: &str) -> String {
+    format!("{}:{text}", text.len())
 }
 
 /// Draws returned for each solved quantity.
@@ -206,7 +237,7 @@ struct Frame {
 
 /// A solved design and what constrains it.
 #[derive(Serialize)]
-struct Analysis {
+pub(super) struct Analysis {
     /// Position in the feed this answer reflects.
     ///
     /// An answer is about the design as it stood, and the design may have moved
@@ -237,73 +268,103 @@ struct Analysis {
 }
 
 async fn analysis(
-    State(workspace): State<Arc<Workspace>>,
+    State(state): State<ApiState>,
     Path(design): Path<String>,
     Query(controls): Query<Controls>,
-) -> Result<Json<Analysis>, Rejected> {
-    let session = open(&workspace, &design)?;
+) -> Result<Json<Arc<Analysis>>, Rejected> {
+    let session = open(&state.workspace, &design)?;
+    let answers = state.analyses.design(&design);
+    let key = controls.key(session.snapshot().sequence, "analysis");
+    if let Some(answer) = answers.get(&key) {
+        return Ok(Json(answer));
+    }
+
     let config = controls.config();
     let intervention = controls.intervention.clone();
     let wanted = controls.series;
 
-    let analysis = tokio::task::spawn_blocking(move || {
-        let snapshot = session.snapshot();
-        let (types, _) = session.catalogue();
-        let evaluation = match &intervention {
-            Some(id) => evaluate_intervention(
-                &snapshot.model,
-                &types,
-                &InterventionId::new(id.clone()),
-                config,
-            ),
-            None => evaluate(&snapshot.model, &types, config),
-        }?;
-        let settled = evaluation.settled();
-        let ranked = bottlenecks(&snapshot.model, &types, settled, config)?;
-        let series = wanted.then(|| {
-            evaluation
-                .steps
-                .iter()
-                .map(|step| Frame {
-                    time: step.time,
-                    converged: step.converged,
-                    components: solved(step, SERIES_DRAW_BUDGET),
-                })
-                .collect()
-        });
-        Ok::<_, crate::system::EvaluationError>(Analysis {
-            sequence: snapshot.sequence,
-            converged: evaluation.converged(),
-            iterations: settled.iterations,
-            components: solved(settled, DRAW_BUDGET),
-            series,
-            bottlenecks: ranked,
-        })
-    })
-    .await
-    .expect("the solver does not panic")?;
+    let analysis =
+        tokio::task::spawn_blocking(move || solve(&session, intervention, wanted, config))
+            .await
+            .expect("the solver does not panic")?;
+    let analysis = Arc::new(analysis);
+    answers.insert(key, Arc::clone(&analysis));
     Ok(Json(analysis))
 }
 
-async fn comparison(
-    State(workspace): State<Arc<Workspace>>,
-    Path((design, intervention)): Path<(String, String)>,
-    Query(controls): Query<Controls>,
-) -> Result<Json<Comparison>, Rejected> {
-    let session = open(&workspace, &design)?;
-    let config = controls.config();
-
-    let comparison = tokio::task::spawn_blocking(move || {
-        let snapshot = session.snapshot();
-        let (types, _) = session.catalogue();
-        compare(
+fn solve(
+    session: &Session,
+    intervention: Option<String>,
+    wanted: bool,
+    config: EvaluationConfig,
+) -> Result<Analysis, crate::system::EvaluationError> {
+    let snapshot = session.snapshot();
+    let (types, mutators) = session.catalogue();
+    let evaluation = match &intervention {
+        Some(id) => evaluate_intervention_with_mutators(
             &snapshot.model,
             &types,
+            &mutators,
+            &InterventionId::new(id.clone()),
+            config,
+        ),
+        None => {
+            evaluate_with_mutators(&snapshot.model, &types, &mutators, &BTreeMap::new(), config)
+        }
+    }?;
+    let settled = evaluation.settled();
+    let ranked = bottlenecks_with_mutators(&snapshot.model, &types, &mutators, settled, config)?;
+    let series = wanted.then(|| {
+        evaluation
+            .steps
+            .iter()
+            .map(|step| Frame {
+                time: step.time,
+                converged: step.converged,
+                components: solved(step, SERIES_DRAW_BUDGET),
+            })
+            .collect()
+    });
+    Ok(Analysis {
+        sequence: snapshot.sequence,
+        converged: evaluation.converged(),
+        iterations: settled.iterations,
+        components: solved(settled, DRAW_BUDGET),
+        series,
+        bottlenecks: ranked,
+    })
+}
+
+async fn comparison(
+    State(state): State<ApiState>,
+    Path((design, intervention)): Path<(String, String)>,
+    Query(controls): Query<Controls>,
+) -> Result<Json<Arc<Comparison>>, Rejected> {
+    let session = open(&state.workspace, &design)?;
+    let answers = state.comparisons.design(&design);
+    let key = controls.key(
+        session.snapshot().sequence,
+        &format!("comparison:{intervention}"),
+    );
+    if let Some(answer) = answers.get(&key) {
+        return Ok(Json(answer));
+    }
+
+    let config = controls.config();
+    let comparison = tokio::task::spawn_blocking(move || {
+        let snapshot = session.snapshot();
+        let (types, mutators) = session.catalogue();
+        compare_with_mutators(
+            &snapshot.model,
+            &types,
+            &mutators,
             &InterventionId::new(intervention),
             config,
         )
     })
     .await
     .expect("the solver does not panic")?;
+    let comparison = Arc::new(comparison);
+    answers.insert(key, Arc::clone(&comparison));
     Ok(Json(comparison))
 }
