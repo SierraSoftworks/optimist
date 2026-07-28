@@ -4,14 +4,33 @@ summary: >
   Abandons a call that has not returned within a deadline. Bounds the latency a
   caller can observe, and converts the tail it cut off into failures rather than
   removing it from the system.
+
+  This is the component that turns slowness into failure, which is what allows a
+  retry policy to remain a pure failure policy. Placed beneath a retry it bounds
+  each attempt; placed above one it bounds the whole sequence, because the
+  cancellation it raises travels forward and withdraws the work still in flight.
 properties:
   budget:
     unit: s
     summary: >
       Time allowed before the call is abandoned. Set below the caller's own
       deadline, otherwise the caller gives up first and the timeout never binds.
-transforms:
-  added_latency:
+requests:
+  cancellation:
+    unit: op/s
+    summary: >
+      Calls withdrawn because the deadline passed before an answer arrived.
+      Travels forward because only the caller knows it has stopped waiting.
+
+      Cancelling is not free and not fully effective. Work already underway is
+      still paid for, so a deadline set tightly against a struggling dependency
+      relieves that dependency by considerably less than it appears to while
+      failing the caller in full.
+    expression: >
+      signal.cancellation + signal.rate * (1 - Reliability.deadlineSuccess(1,
+      max([response.latency, 0.000001]), budget))
+responses:
+  latency:
     unit: s
     summary: >
       Latency capped per draw at the budget. Clamping rather than discarding is
@@ -19,4 +38,15 @@ transforms:
       budget, so the resource it held is accounted for even though the caller saw
       no result. The share of draws sitting exactly at the budget is the share
       that timed out.
-    expression: min([signal.added_latency, budget])
+    expression: min([signal.latency, budget])
+  success:
+    unit: '1'
+    summary: >
+      Success reduced by the share of calls that had not answered in time. This
+      is where a latency problem becomes a reliability problem, and it is the
+      only place in the model where the two are connected, so a deadline set
+      without reference to the dependency's actual tail shows up here as failure
+      the design did not ask for.
+    expression: >
+      signal.success * Reliability.deadlineSuccess(1, max([signal.latency,
+      0.000001]), budget)

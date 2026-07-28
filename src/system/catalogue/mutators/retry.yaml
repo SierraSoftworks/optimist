@@ -5,26 +5,46 @@ summary: >
   call eventually succeeds, and raises the demand placed on the dependency by
   the same mechanism, which is why a retry policy helps a healthy system and
   harms a failing one.
+
+  This policy knows nothing about time. It retries what failed, and whether a
+  slow answer counts as a failure is a separate decision expressed by placing a
+  timeout beneath it. That separation is what lets the two compose: a timeout
+  inside a retry bounds each attempt, while a timeout outside one bounds the
+  whole sequence.
 properties:
   attempts:
     unit: '1'
     summary: >
       Maximum attempts per call, including the first. A budget of one disables
       retrying without removing the policy from the model.
-  attempt_success:
-    unit: '1'
-    summary: >
-      Probability a single attempt succeeds. Assumes attempts fail
-      independently, which is optimistic: attempts against a saturated
-      dependency fail together, and correlated failure has to be expressed
-      through shared upstream uncertainty instead.
-transforms:
+requests:
   rate:
     unit: op/s
     summary: >
-      Demand multiplied by the expected number of attempts. As attempt success
-      falls this term grows toward the full budget, so a dependency that starts
-      failing is immediately asked to serve several times the traffic. That
-      feedback is what turns a partial outage into a retry storm, and it is
-      invisible unless the amplification is modelled.
-    expression: signal.rate * Reliability.retryAttempts(attempt_success, attempts)
+      Demand multiplied by the expected number of attempts, read from the success
+      rate coming back rather than supplied as a constant. The amplification
+      therefore rises exactly when the dependency starts failing: as success
+      falls this term grows toward the full budget, and a dependency in trouble
+      is immediately asked to serve several times the traffic.
+
+      That is a positive feedback loop. Failing means more load, and more load
+      means failing. It is what turns a transient fault into a retry storm the
+      system cannot leave on its own, and it is invisible unless the
+      amplification is modelled against the failures actually observed.
+    expression: signal.rate * Reliability.retryAttempts(response.success, attempts)
+responses:
+  success:
+    unit: '1'
+    summary: >
+      Probability at least one attempt succeeds. Assumes attempts fail
+      independently, which is optimistic: attempts against a saturated
+      dependency fail together, and correlated failure has to be expressed
+      through shared upstream uncertainty instead.
+    expression: Reliability.retrySuccess(signal.success, attempts)
+  latency:
+    unit: s
+    summary: >
+      Time the caller waits, extended by the attempts that had to be made first.
+      Retrying trades latency for success, and a policy that rescues a call on
+      its third attempt has made that call three times slower.
+    expression: signal.latency * Reliability.retryAttempts(signal.success, attempts)

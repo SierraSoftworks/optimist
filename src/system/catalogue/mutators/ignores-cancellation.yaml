@@ -1,0 +1,30 @@
+id: ignores-cancellation
+name: Ignores cancellation
+summary: >
+  Drops cancellation on its way downstream, so work the caller has abandoned
+  carries on being done. Models a hop with no cancellation plumbing: a call made
+  without a context to propagate, a client that closes its connection without
+  aborting the request behind it, a queue entry nobody withdraws.
+
+  Cancellation is only useful if every hop honours it. One that does not is
+  enough to strand the work, because the components past it never learn the
+  answer is no longer wanted. Attaching this is how a design says that its
+  give-up signal stops here.
+
+  This is the behaviour that separates a system which degrades from one that
+  collapses. A timeout above a retry normally protects the dependency twice
+  over: it bounds the wait and it withdraws the work, and the withdrawn load is
+  what lets a saturated dependency climb back out. Remove the withdrawal and only
+  the bound remains, so the caller gives up, retries, and the dependency is now
+  serving both the abandoned attempt and its replacement. Load rises while the
+  useful work done falls, which is exactly the shape of a system that stays down
+  after the thing that knocked it over has passed.
+requests:
+  cancellation:
+    unit: op/s
+    summary: >
+      No cancellation continues past this hop, whatever arrived at it. The
+      abandoned work is still counted against the dependency, because it is still
+      being done; what is lost is any chance of the dependency finding out that
+      nobody is waiting for the result.
+    expression: '0'

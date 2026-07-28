@@ -11,7 +11,7 @@ properties:
       Rate above which calls are refused. Setting it below the downstream
       capacity is the point: a limit above capacity sheds nothing until the
       dependency has already saturated.
-transforms:
+requests:
   rate:
     unit: op/s
     summary: >
@@ -19,3 +19,17 @@ transforms:
       limit is the share being refused, and it is a cost paid deliberately in
       exchange for the rest of the traffic being served.
     expression: min([signal.rate, limit])
+responses:
+  success:
+    unit: '1'
+    summary: >
+      Success reduced by the share of demand that was refused. Shedding is not
+      free and is not invisible: a caller whose request is turned away at the
+      door has not been served, however healthy the traffic behind the limit
+      looks.
+
+      Without this the model would report a shedding system as almost perfectly
+      successful while it refused most of its traffic, which is precisely the
+      reading that makes shedding look like a solution rather than a choice
+      about who to disappoint.
+    expression: signal.success * min([limit / max([request.rate, 0.000001]), 1])

@@ -1,15 +1,30 @@
 id: aggregator
 name: Aggregator
 summary: >
-  Collects the responses of a fan-out into a single result. Divides the
-  downstream request rate back into caller-facing requests, and pays the latency
-  of the slowest branch rather than the average one.
-inbound:
-  arity: many
-  summary: Branches returning partial results.
-outbound:
-  arity: many
-  summary: Callers awaiting the combined result.
+  Fans one request out across several branches and combines what comes back. A
+  request completes only when every branch has, so this is where reliability and
+  tail latency are decided rather than where capacity is.
+
+  Both effects work against the caller at once. Waiting for the slowest of many
+  branches makes the typical response as slow as an unusual one, and needing all
+  of them to succeed multiplies their failure rates together. Adding a branch is
+  therefore never free, even when the branch itself is fast and reliable.
+ports:
+  in:
+    requests:
+      arity: many
+      summary: Callers making requests that fan out.
+      publishes:
+        latency: latency
+        success: success_rate
+        capacity: branch_capacity
+  out:
+    branches:
+      arity: many
+      summary: Branches contacted for each request.
+      publishes:
+        rate: fanned_out
+        cancellation: propagated_cancellation
 properties:
   branches:
     unit: '1'
@@ -21,14 +36,63 @@ properties:
     summary: Time spent combining results once every branch has returned.
     default: '0'
 channels:
-  collected:
+  arriving:
     unit: op/s
-    summary: Branch responses arriving.
-    expression: inbound.rate
-  completed:
+    summary: Requests arriving from callers.
+    expression: in.requests.rate
+  cancelled:
     unit: op/s
-    summary: Caller-facing requests completed, one per set of branches.
-    expression: collected / branches
-outputs:
-  rate: completed
-  added_latency: overhead
+    summary: Requests abandoned before every branch had answered.
+    expression: in.requests.cancellation
+  propagated_cancellation:
+    unit: op/s
+    summary: >
+      Cancellations passed on to each branch. Cancelling a fanned-out request
+      cancels every branch it was waiting on, so this scales with the fan-out.
+    expression: 0.5 * cancelled * branches
+  fanned_out:
+    unit: op/s
+    summary: >
+      Branch requests issued. One request becomes as many as there are branches,
+      which is the amplification a diagram of this component does not show.
+    expression: max([arriving - 0.5 * cancelled, 0]) * branches
+  branch_capacity:
+    unit: op/s
+    summary: >
+      Requests this component can accept, from what its slowest branch can take
+      divided by how many calls each request makes of it. Fanning out consumes a
+      branch's capacity several times over, so the caller-facing rate is always
+      the smaller number.
+    expression: out.branches.capacity / max([branches, 1])
+  branch_wait:
+    unit: s
+    summary: >
+      Time the slowest branch takes. Arrivals combine by taking the largest, so
+      this is already the slowest rather than the average.
+    expression: out.branches.latency
+  latency:
+    unit: s
+    summary: >
+      Time a caller waits: the slowest branch, then combining the results.
+    expression: branch_wait + overhead
+  branch_success:
+    unit: '1'
+    summary: >
+      Share of requests whose branches all succeeded. Branch success rates
+      multiply, so this falls faster than any one branch degrades.
+    expression: out.branches.success
+  success_rate:
+    unit: '1'
+    summary: >
+      Share of arriving requests answered successfully. A cancelled request is
+      never combined and so is never answered.
+    expression: (max([arriving - cancelled, 0]) / max([arriving, 0.000001])) * branch_success
+constraints:
+  fan_out:
+    summary: >
+      Branch requests issued against those arriving. Always at least one, and
+      exactly the factor by which this component multiplies the load on
+      everything behind it. Worth reading whenever a downstream component is
+      unexpectedly busy.
+    demand: fanned_out
+    limit: arriving

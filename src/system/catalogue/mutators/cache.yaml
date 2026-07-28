@@ -11,7 +11,7 @@ properties:
       Share of calls served from cache. Uncertainty here should reflect how much
       the working set may change, because a hit ratio measured on today's
       traffic is a poor guide to tomorrow's.
-transforms:
+requests:
   rate:
     unit: op/s
     summary: >

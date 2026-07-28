@@ -1,19 +1,29 @@
 id: load-balancer
 name: Load balancer
 summary: >
-  Spreads offered demand across a set of downstream replicas. Models the fan-out
-  itself rather than the work, so its own limits are on connections and
-  admission rather than on compute.
-inbound:
-  arity: many
-  summary: Callers arriving at the entry point.
-outbound:
-  arity: many
-  summary: Replicas receiving a share of the demand.
+  Spreads demand across replicas and refuses what it cannot admit. The only
+  component that can pull a saturated system back out of congestion, because it
+  acts on demand rather than on how long a request waits.
+
+  A connection is held for the whole round trip, so backends slowing down
+  consumes this component's connection limit without any change in demand at all.
+ports:
+  in:
+    requests:
+      arity: many
+      summary: Callers arriving at the entry point.
+      publishes:
+        latency: latency
+        success: success_rate
+        capacity: admission_limit
+  out:
+    backends:
+      arity: many
+      summary: Replicas the balancer distributes work across.
+      publishes:
+        rate: per_replica
+        cancellation: propagated_cancellation
 properties:
-  replicas:
-    unit: '1'
-    summary: Downstream instances sharing the load.
   admission_limit:
     unit: op/s
     summary: >
@@ -23,15 +33,33 @@ properties:
   connection_limit:
     unit: op
     summary: Concurrent connections the balancer will hold open.
+  replicas:
+    unit: '1'
+    summary: Backends sharing the admitted demand.
+    default: '1'
   overhead:
     unit: s
     summary: Latency added by the hop itself.
     default: '0'
 channels:
-  offered:
+  arriving:
     unit: op/s
     summary: Demand arriving from all callers.
-    expression: inbound.rate
+    expression: in.requests.rate
+  cancelled:
+    unit: op/s
+    summary: Requests the caller abandoned before an answer arrived.
+    expression: in.requests.cancellation
+  propagated_cancellation:
+    unit: op/s
+    summary: >
+      Cancellations passed on to backends. The half that arrive early enough to
+      matter are stopped before the backend answers.
+    expression: 0.5 * cancelled
+  offered:
+    unit: op/s
+    summary: Demand still wanted by the time it reaches the balancer.
+    expression: max([arriving - propagated_cancellation, 0])
   admitted:
     unit: op/s
     summary: >
@@ -46,22 +74,43 @@ channels:
     unit: op/s
     summary: Share of admitted demand each replica receives.
     expression: admitted / replicas
+  backend_wait:
+    unit: s
+    summary: Time the slowest backend takes to answer.
+    expression: out.backends.latency
+  latency:
+    unit: s
+    summary: Time a caller waits, the hop itself plus the backend answering it.
+    expression: overhead + backend_wait
+  backend_success:
+    unit: '1'
+    summary: Share of forwarded requests the backends answered successfully.
+    expression: out.backends.success
+  success_rate:
+    unit: '1'
+    summary: >
+      Share of arriving requests answered successfully. Shed demand and cancelled
+      requests both count as unanswered, because from the caller's side they are.
+    expression: (admitted / max([arriving, 0.000001])) * backend_success
   connections:
     unit: op
-    summary: Connections held open, by Little's Law.
-    expression: Little.occupancy(admitted, overhead)
-outputs:
-  rate: per_replica
-  added_latency: overhead
+    summary: >
+      Connections held open, by Little's Law. A connection is held for the whole
+      round trip, so backends slowing down consumes this limit without any change
+      in demand.
+    expression: Little.occupancy(admitted, latency)
 constraints:
   admission:
     summary: >
       Offered demand against the admission limit. Saturating means the system is
       protecting itself by refusing work, which is a healthier failure than
-      queueing without bound but is still a failure to serve.
+      collapsing, but it is still a failure to the callers being refused.
     demand: offered
     limit: admission_limit
   connections:
-    summary: Concurrent connections against the balancer's ceiling.
+    summary: >
+      Connections held against the limit. Rises when backends slow down even if
+      demand is unchanged, which is how a latency problem downstream becomes an
+      availability problem here.
     demand: connections
     limit: connection_limit

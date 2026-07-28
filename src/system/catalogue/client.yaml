@@ -1,26 +1,80 @@
 id: client
 name: Client
 summary: >
-  A source of demand outside the system being designed. Carries no capacity of
-  its own, because a model cannot bound what its users choose to do.
-outbound:
-  arity: many
-  summary: Entry points this population calls.
+  A population of callers offering work to the system. Has no capacity of its
+  own: it is where demand enters a model and where the answer arrives back.
+
+  Because responses propagate back to whoever made the call, this component is
+  also the measurement point. The latency and success it reports are what a user
+  experiences end to end, with every hop, retry, timeout and fan-out along the
+  way already folded in. Declaring a target here turns "does this design meet its
+  objective" into a constraint the engine can rank rather than a figure an
+  engineer has to assemble by hand from per-component numbers.
+ports:
+  out:
+    calls:
+      arity: many
+      summary: Entry points this population calls.
+      publishes:
+        rate: offered
+        payload: payload
 properties:
   request_rate:
     unit: op/s
     summary: >
-      Requests offered to the system. Uncertainty here should reflect the range a
-      design must survive, not the rate observed on an average day.
+      Requests this population offers per second. The figure a design is sized
+      against, and the one worth expressing as a distribution rather than a
+      point, because demand is never known exactly.
   payload:
     unit: B/op
-    summary: Bytes carried by a request.
+    summary: Bytes carried by one request.
+    default: '0'
+  latency_target:
+    unit: s
+    summary: >
+      Longest end-to-end response this population will accept. Compared against
+      what actually comes back, so the constraint below reports whether the whole
+      design meets its objective rather than whether any one hop does.
+    default: 'infinity'
+  success_target:
+    unit: '1'
+    summary: >
+      Lowest share of successful responses this population will accept. Set from
+      the objective the design exists to meet.
     default: '0'
 channels:
   offered:
     unit: op/s
-    summary: Demand placed on the system.
+    summary: Demand entering the system.
     expression: request_rate
-outputs:
-  rate: offered
-  payload: payload
+  latency:
+    unit: s
+    summary: >
+      Time between making a request and receiving an answer, as experienced here.
+      This is the figure an objective is written against.
+    expression: out.calls.latency
+  success:
+    unit: '1'
+    summary: >
+      Share of requests answered successfully, as experienced here, including
+      every downstream dependency the call relied upon.
+    expression: out.calls.success
+  failure:
+    unit: op/s
+    summary: Requests per second that did not receive a successful answer.
+    expression: offered * max([1 - success, 0])
+constraints:
+  latency_objective:
+    summary: >
+      Observed end-to-end latency against the target. Saturating means the design
+      is answering, but not quickly enough to be useful, which is a failure that
+      no per-component capacity figure reports on its own.
+    demand: latency
+    limit: latency_target
+  success_objective:
+    summary: >
+      Observed failure rate against what the objective allows. Saturating means
+      the design is losing more requests than it is permitted to, wherever in the
+      system that loss originates.
+    demand: max([1 - success, 0])
+    limit: max([1 - success_target, 0.000001])

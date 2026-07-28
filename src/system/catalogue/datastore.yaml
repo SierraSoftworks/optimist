@@ -4,12 +4,27 @@ summary: >
   Durable storage with independent limits on operation rate, transfer rate, and
   resident volume. Reaching any one of them bottlenecks the system, and which
   one binds first depends on record size rather than on the store itself.
-inbound:
-  arity: many
-  summary: Writers and readers issuing operations.
-outbound:
-  arity: many
-  summary: Replication or downstream propagation.
+
+  Latency here is not a fixed property. It rises with how hard the store is being
+  driven, and because that delay travels back to whoever called, a store near its
+  ceiling consumes the capacity of every service waiting on it.
+ports:
+  in:
+    operations:
+      arity: many
+      summary: Writers and readers issuing operations.
+      publishes:
+        latency: latency
+        success: success_rate
+        capacity: operation_limit
+        payload: record_size
+  out:
+    replication:
+      arity: many
+      summary: Replication or downstream propagation.
+      publishes:
+        rate: replicated
+        payload: record_size
 properties:
   operation_limit:
     unit: op/s
@@ -31,15 +46,94 @@ properties:
     summary: >
       How long a record remains resident. Combined with the ingest rate this
       fixes the steady-state volume, by Little's Law.
+  service_time:
+    unit: s
+    summary: >
+      Time to complete one operation with the store lightly loaded. Sets the
+      floor on the latency a caller sees; queueing above it is derived rather
+      than measured separately.
+    default: '0.001'
+  concurrency_limit:
+    unit: op
+    summary: >
+      Operations the store can have in progress at once: connections, sessions,
+      or worker threads. Distinct from the operation limit, which is a rate.
+      Either can bind first and they fail differently, so a store sized for
+      throughput can still be brought down by callers that each hold on longer
+      than expected.
+
+      Unlimited by default, which keeps the store a pure rate limit unless an
+      author says otherwise.
+    default: 'infinity'
+  replication_factor:
+    unit: '1'
+    summary: Copies written downstream for each operation accepted.
+    default: '0'
 channels:
-  operations:
+  arriving:
     unit: op/s
     summary: Operations arriving from all callers.
-    expression: inbound.rate
+    expression: in.operations.rate
+  cancelled:
+    unit: op/s
+    summary: Operations abandoned by the caller before the store answered.
+    expression: in.operations.cancellation
+  operations:
+    unit: op/s
+    summary: >
+      Operations that consume the store. Half of any cancellation arrives too
+      late to prevent the work, so cancelling saves less than it appears to.
+    expression: max([arriving - 0.5 * cancelled, 0])
   transfer:
     unit: B/s
     summary: Bytes moved per second.
     expression: operations * record_size
+  utilisation:
+    unit: '1'
+    summary: >
+      Operation rate against the store's ceiling. Reported because it is the
+      figure an operator recognises; the delay it causes is computed on the wire
+      in front of the store, where the queue actually is.
+    expression: Queue.utilisation(operations, operation_limit)
+  held:
+    unit: op
+    summary: >
+      Operations in progress at once, as reported by the callers holding them
+      open. Read from what arrives rather than derived here, because how long a
+      caller holds on is a fact about the caller's own patience as much as about
+      this store.
+    expression: in.operations.occupancy
+  concurrency:
+    unit: '1'
+    summary: Share of simultaneous capacity in use.
+    expression: Queue.utilisation(held, concurrency_limit)
+  latency:
+    unit: s
+    summary: >
+      Time one operation takes once the store is working on it, stretched by how
+      much of its simultaneous capacity is already spoken for. Waiting to get
+      that far happens in the buffer in front of the store and is reported there,
+      so counting it here as well would charge a caller twice for one delay.
+
+      The stretching is what makes this store worth pairing with a caller that
+      holds a connection for the whole call. Each of them slows the other: the
+      store's delay decides how many connections are held, and the connections
+      held decide the store's delay. A pair like that has two resting states over
+      a band of load rather than one, and which of them a design is sitting in is
+      not something its configuration can tell you.
+    expression: service_time / max([1 - concurrency, 0.001])
+  success_rate:
+    unit: '1'
+    summary: >
+      Share of arriving operations answered successfully. Cancelled operations
+      are never answered and count against this in full. Operations the store had
+      no room for are refused by the queue on the wire in front of it and are
+      counted there.
+    expression: max([arriving - cancelled, 0]) / max([arriving, 0.000001])
+  replicated:
+    unit: op/s
+    summary: Operations propagated to replicas.
+    expression: operations * replication_factor
   records:
     unit: op
     summary: >
@@ -50,9 +144,15 @@ channels:
     unit: B
     summary: Bytes resident in steady state.
     expression: records * record_size
-outputs:
-  rate: operations
 constraints:
+  concurrency:
+    summary: >
+      Operations in progress against how many the store can hold at once. Rises
+      when callers hold on longer even if they call no more often, which is how a
+      store that is comfortably within its rate limit can still be the thing that
+      brings a system down.
+    demand: held
+    limit: concurrency_limit
   operations:
     summary: >
       Operation rate against the store's ceiling. Binds first for workloads of
@@ -68,7 +168,7 @@ constraints:
   volume:
     summary: >
       Resident bytes against usable capacity. Unlike the rate limits this one
-      is reached gradually, so it is the constraint most often missed until the
-      retention window has fully elapsed.
+      fills gradually and then fails abruptly, so headroom here is measured in
+      time rather than in load.
     demand: volume
     limit: volume_limit

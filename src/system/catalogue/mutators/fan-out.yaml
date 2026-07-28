@@ -8,7 +8,7 @@ properties:
   branches:
     unit: '1'
     summary: Downstream calls issued per upstream call.
-transforms:
+requests:
   rate:
     unit: op/s
     summary: Demand multiplied by the branch count.

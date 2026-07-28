@@ -6,6 +6,21 @@ rate:
   aggregate: sum
   extensive: true
 
+cancellation:
+  unit: op/s
+  summary: >
+    Operations per second the caller has abandoned and no longer wants an answer
+    to. Travels forward because only the caller knows it has given up, and the
+    callee cannot discover it by waiting.
+
+    Cancellation arrives too late to be free. Some of it lands before the work
+    starts and genuinely saves the effort; the rest lands after the work is
+    already underway, so the resource is spent and only the reply is thrown away.
+    A component type says how it splits the two, and neither part returns a
+    result, which is why cancelling reduces load by less than it reduces success.
+  aggregate: sum
+  extensive: true
+
 occupancy:
   unit: op
   summary: >
@@ -16,27 +31,69 @@ occupancy:
 
     Distinct from rate because a resource can be sized by either, and which one
     binds is not a property of the resource. A connection pool is exhausted by
-    calls held at once; a service is exhausted by calls arriving per second. A
-    component that publishes this is asserting that the caller holds something
-    for the whole call, which is what allows the callee's delay to feed back into
-    the callee's own occupancy.
+    calls held at once; a service is exhausted by calls arriving per second.
   aggregate: sum
   extensive: true
 
-added_latency:
+latency:
   unit: s
   summary: >
-    Time this hop adds to a call. Arrivals take the largest rather than the sum,
-    because a caller fanning out to several dependencies waits for the slowest,
-    not for all of them end to end.
+    Time from a component receiving a request to it answering, including every
+    downstream call it made along the way. Travels back to the caller, because
+    the caller is what waits.
+
+    Arrivals take the largest rather than the sum, because a component fanning
+    out to several dependencies waits for the slowest, not for all of them end to
+    end. Accumulating down the chain is what makes the figure a client reads the
+    latency a user would actually experience.
   aggregate: max
   extensive: false
+
+success:
+  unit: '1'
+  summary: >
+    Probability a request is answered successfully, including every downstream
+    call it depended on. Travels back to the caller alongside the latency.
+
+    Arrivals multiply, which treats every dependency as hard: a component needing
+    three services succeeds only when all three do. A component that survives one
+    of them failing is saying something more specific than "it depends on these",
+    and should express it with a behaviour that converts a failure into a success
+    rather than by combining differently.
+
+    This is what makes saturation visible without a component silently refusing
+    work. A pool asked for more than it can serve reports that it served less,
+    and the caller decides what to do about it.
+  aggregate: product
+  extensive: false
+
+capacity:
+  unit: op/s
+  summary: >
+    Operations per second the callee can sustain, reported back to the caller.
+    Not a promise about what it will serve, but what it is able to: the rate the
+    queue in front of it drains at.
+
+    Travels backward because only the callee knows it, and the wire between them
+    needs it. A buffer's behaviour is decided by the ratio of what arrives to
+    what leaves, so a link cannot say how long work waits on it, nor when it
+    starts refusing, without knowing the rate at which it empties.
+
+    Takes the smallest across arrivals, because a caller reaching several
+    dependencies can go no faster than the slowest of them.
+  aggregate: min
+  extensive: true
 
 payload:
   unit: B/op
   summary: >
-    Bytes carried by one operation. Averaged across arrivals, which is exact when
-    callers send similar payloads and understates the spread when they do not; a
-    mix of very different payload sizes is better modelled as separate flows.
+    Bytes carried by one operation. Travels in both directions: read on an
+    inbound port it is the size of the request, and on an outbound port the size
+    of the reply, so a component can size a request path and a response path
+    separately.
+
+    Averaged across arrivals, which is exact when callers send similar payloads
+    and understates the spread when they do not; a mix of very different payload
+    sizes is better modelled as separate flows.
   aggregate: mean
   extensive: false

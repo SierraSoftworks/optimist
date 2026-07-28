@@ -18,7 +18,7 @@ properties:
       reasoning as a saturating limit: a share of traffic has no meaning above
       all of it, and a flag that quietly amplified demand would be a stranger
       result than one that saturates.
-transforms:
+requests:
   rate:
     unit: op/s
     summary: >

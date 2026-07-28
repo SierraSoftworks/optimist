@@ -5,19 +5,42 @@ summary: >
   requests can be in flight at once and how long each occupies a worker, so
   raising parallelism and shortening service time are interchangeable levers on
   throughput but not on latency.
-inbound:
-  arity: many
-  summary: Callers offering requests.
-outbound:
-  arity: many
-  summary: Dependencies this pool calls in turn.
+
+  A worker is held for the whole of a request, including any time spent waiting
+  on a dependency, so this pool's capacity depends on how fast the things it
+  calls are. That coupling is what allows a slow dependency to saturate a caller
+  that is itself doing very little work.
+
+  Asked for more than it can serve, this pool does not quietly serve less. It
+  reports the share it could not answer, and the caller decides what to do about
+  that. Refusing work is a design decision that belongs on a relationship, as an
+  explicit load-shedding behaviour, rather than an unannounced property of every
+  component that happens to be busy.
+ports:
+  in:
+    requests:
+      arity: many
+      summary: Callers offering requests.
+      publishes:
+        latency: residence
+        success: success_rate
+        capacity: capacity
+  out:
+    dependencies:
+      arity: many
+      summary: Services this pool calls while holding a worker.
+      publishes:
+        rate: calls
+        occupancy: held_downstream
+        cancellation: propagated_cancellation
+        payload: request_size
 properties:
   service_time:
     unit: s
     summary: >
-      Time one request occupies one worker, excluding queueing. Measure with the
-      pool lightly loaded, otherwise queueing delay is folded into the figure and
-      capacity is understated.
+      Time one request occupies one worker, excluding queueing and excluding any
+      wait on a dependency. Measure with the pool lightly loaded, otherwise
+      queueing delay is folded into the figure and capacity is understated.
   parallelism:
     unit: op
     summary: >
@@ -27,11 +50,59 @@ properties:
     unit: '1'
     summary: Instances sharing the offered load.
     default: '1'
+  request_size:
+    unit: B/op
+    summary: Bytes this pool sends to a dependency per request it serves.
+    default: '0'
 channels:
+  arriving:
+    unit: op/s
+    summary: Requests arriving from all callers, before cancellation.
+    expression: in.requests.rate
+  cancelled:
+    unit: op/s
+    summary: >
+      Requests the caller abandoned before this pool answered. None of them are
+      answered, but only some of them are saved.
+    expression: in.requests.cancellation
+  salvaged:
+    unit: op/s
+    summary: >
+      Cancellations arriving early enough that the work is never started. Half of
+      them, on the assumption that a cancellation is equally likely to land at
+      any point during a request; the other half arrive with the work already
+      done and save nothing.
+    expression: 0.5 * cancelled
   offered:
     unit: op/s
-    summary: Requests arriving from all callers.
-    expression: inbound.rate
+    summary: >
+      Requests that actually consume a worker. Cancelling late costs exactly as
+      much as not cancelling at all, which is why abandoning a request is a poor
+      substitute for not making it.
+    expression: max([arriving - salvaged, 0])
+  propagated_cancellation:
+    unit: op/s
+    summary: >
+      Cancellations passed on to dependencies. The early half are stopped before
+      their downstream call is made and are cancelled in turn; the late half have
+      already called and cannot be recalled.
+    expression: salvaged
+  dependency_wait:
+    unit: s
+    summary: >
+      Time a request spends waiting on this pool's dependencies. Taken as the
+      slowest rather than the sum, because a request that fans out waits for the
+      last answer to arrive and not for each in turn.
+    expression: out.dependencies.latency
+  hold_time:
+    unit: s
+    summary: >
+      Time one request occupies one worker: its own service plus whatever it
+      spends blocked on a dependency. A synchronous worker cannot be reclaimed
+      while it waits, so a slow dependency consumes this pool's capacity just as
+      surely as slow local work does. This is the term that turns someone else's
+      latency problem into your own saturation.
+    expression: service_time + dependency_wait
   servers:
     unit: op
     summary: Total concurrent slots across every replica.
@@ -41,43 +112,83 @@ channels:
     summary: >
       Sustainable throughput, by Little's Law: concurrent slots divided by the
       time each request holds one.
-    expression: Little.rate(servers, service_time)
+    expression: Little.rate(servers, hold_time)
   utilisation:
     unit: '1'
     summary: Share of capacity consumed by the offered load.
     expression: Queue.utilisation(offered, capacity)
-  wait:
-    unit: s
-    summary: >
-      Queueing delay before service begins, from the M/M/c result. Assumes
-      exponential service, which is the most variable law for a given mean and
-      so errs toward predicting more delay rather than less.
-    expression: Queue.mmcWait(service_time, servers, utilisation)
   residence:
     unit: s
-    summary: Total time in the pool, queueing plus service.
-    expression: wait + service_time
-  throughput:
+    summary: >
+      Time from accepting a request to answering it: this pool's own work plus
+      whatever it waited on. Queueing to reach the pool is not counted here,
+      because that waiting happens on the wire in front of it and is reported
+      there; adding it in both places would charge a caller twice for the same
+      delay.
+    expression: hold_time
+  dependency_success:
+    unit: '1'
+    summary: Share of requests whose dependencies all answered successfully.
+    expression: out.dependencies.success
+  answered:
     unit: op/s
-    summary: Requests actually served, capped per draw by capacity.
+    summary: Requests that were not cancelled and so could be answered at all.
+    expression: max([arriving - cancelled, 0])
+  success_rate:
+    unit: '1'
+    summary: >
+      Share of arriving requests answered successfully. A cancelled request is
+      never answered, so cancellation lowers this figure by its whole share while
+      relieving only half the load.
+
+      Overload does not appear here. Work this pool has no room for never reaches
+      it: it is refused by the queue on the wire in front, which is where the
+      buffer that would have held it is. Counting it in both places would charge
+      the same overload twice and, because the caller answers failure with
+      retries, would make the model amplify a shortfall it had already counted.
+    expression: (answered / max([arriving, 0.000001])) * dependency_success
+  calls:
+    unit: op/s
+    summary: >
+      Requests passed on to dependencies, which is what this pool can actually
+      serve rather than what it was asked for. A pool with room for four hundred
+      a second cannot make five thousand calls a second on the things behind it,
+      however much is offered.
+
+      This caps the rate travelling onward and nothing else. The shortfall is not
+      hidden by it: work with no room here is refused by the queue on the wire in
+      front, and the caller is told. What would be wrong is capping the figure a
+      constraint reads, because then a design asked for ten times what it can
+      serve would report itself comfortably at its limit.
     expression: min([offered, capacity])
   concurrency:
     unit: op
     summary: >
       Requests in flight, queueing and in service, by Little's Law. Reported
-      rather than constrained: a saturated pool has an unbounded number in
-      system, and the limit that actually binds is the capacity below.
-    expression: Little.occupancy(throughput, residence)
-outputs:
-  rate: throughput
-  added_latency: residence
+      rather than constrained: the limit that actually binds is the capacity
+      below, which this restates in different units.
+    expression: Little.occupancy(offered, residence)
+  held_downstream:
+    unit: op
+    summary: >
+      Calls this pool is holding open against its dependencies at any moment, by
+      Little's Law on the rate it calls them and how long each takes to answer.
+
+      A synchronous worker holds its slot at the far end for the whole of a call,
+      so this is what the dependency is actually being asked to keep track of.
+      Publishing it is what allows a dependency limited by simultaneous work
+      rather than by throughput to be modelled at all, and it is the term that
+      makes such a pairing capable of more than one resting state: the
+      dependency's delay decides how much is held, and how much is held decides
+      the dependency's delay.
+    expression: Little.occupancy(calls, dependency_wait)
 constraints:
   capacity:
     summary: >
       Offered load against sustainable throughput. This is the constraint that
       turns a latency problem into an outage, because queueing delay rises
       without bound as it approaches saturation. Requests in service are the
-      offered rate times the service time, so a separate limit on concurrent
+      offered rate times the time each is held, so a separate limit on concurrent
       slots would restate this one rather than add to it.
     demand: offered
     limit: capacity

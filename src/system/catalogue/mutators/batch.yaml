@@ -15,7 +15,7 @@ properties:
       batch that fills early is a property of the traffic rather than of the
       policy.
     default: '0'
-transforms:
+requests:
   rate:
     unit: op/s
     summary: Operation rate divided by the batch size.
@@ -26,7 +26,11 @@ transforms:
       Bytes per operation multiplied by the batch size, so the byte rate through
       the relationship is unchanged while the operation rate falls.
     expression: signal.payload * size
-  added_latency:
+feedback:
+  latency:
     unit: s
-    summary: Waiting for the batch to fill, added to the call's own latency.
-    expression: signal.added_latency + max_delay
+    summary: >
+      Waiting for the batch to fill, added to the call's own latency. This lands
+      on the response because the delay is spent by the caller waiting for its
+      request to be sent, not by the dependency serving it.
+    expression: signal.latency + max_delay

@@ -4,12 +4,28 @@ summary: >
   A buffer that decouples a producer's arrival rate from a consumer's service
   capacity. Absorbs bursts up to its depth, and converts sustained overload into
   growing backlog and waiting time rather than immediate rejection.
-inbound:
-  arity: many
-  summary: Producers offering work.
-outbound:
-  arity: many
-  summary: Consumers draining work.
+
+  Unlike a synchronous call, the waiting here is not spent by the producer. A
+  producer that hands work to a queue is answered as soon as the work is
+  accepted, so the delay travels onward to the consumer as staleness rather than
+  back to the producer as latency. That is the whole point of a queue, and it is
+  also why a queue cannot relieve a shortfall in consumer capacity: it changes
+  who waits, not how much work there is.
+ports:
+  in:
+    work:
+      arity: many
+      summary: Producers offering work.
+      publishes:
+        success: accepted_ratio
+        latency: '0'
+  out:
+    consumers:
+      arity: many
+      summary: Consumers draining work.
+      publishes:
+        rate: departures
+        latency: wait
 properties:
   service_rate:
     unit: op/s
@@ -24,7 +40,7 @@ channels:
   arrivals:
     unit: op/s
     summary: Work offered by all producers.
-    expression: inbound.rate
+    expression: in.work.rate
   departures:
     unit: op/s
     summary: >
@@ -38,15 +54,20 @@ channels:
       Work resident in the queue, accumulated from the imbalance between
       arrivals and departures and floored at zero.
     expression: max([prev.backlog + (arrivals - departures) * dt, 0])
+  accepted_ratio:
+    unit: '1'
+    summary: >
+      Share of offered work the buffer had room to take. One until the backlog
+      reaches the queue's depth, and falling once it does, because past that
+      point accepting more work would mean losing it.
+    expression: 'if backlog >= capacity then min([departures / max([arrivals, 0.000001]), 1]) else 1'
   wait:
     unit: s
     summary: >
-      Time a unit of work waits, by Little's Law applied to the resident
-      backlog and the rate draining it.
+      Time a unit of work waits before a consumer reaches it, by Little's Law
+      applied to the resident backlog and the rate draining it. Travels onward to
+      the consumer, where it is the age of the work being handled.
     expression: Little.residence(backlog, departures)
-outputs:
-  rate: departures
-  added_latency: wait
 constraints:
   depth:
     summary: >
