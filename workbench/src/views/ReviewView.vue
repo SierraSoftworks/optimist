@@ -2,10 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import type { Intervention, Mutation } from '../api/types'
-import BottlenecksPanel from '../components/BottlenecksPanel.vue'
+import type { Intervention, Movement, Mutation } from '../api/types'
 import ChartSkeleton from '../components/ChartSkeleton.vue'
-import ComparisonPanel from '../components/ComparisonPanel.vue'
+import LimitCards from '../components/LimitCards.vue'
 import MetricTimeline from '../components/MetricTimeline.vue'
 import SignalPicker, { type SignalOption } from '../components/SignalPicker.vue'
 import SkeletonBlock from '../components/SkeletonBlock.vue'
@@ -50,11 +49,16 @@ const controls = computed(() => ({
 const sequence = computed(() => snapshot.value?.sequence)
 
 const { data: analysis, error: solveError, isFetching } = useAnalysis(design, controls, sequence)
-const { data: comparison, isFetching: comparing } = useComparison(
-  design,
-  variant,
-  controls,
-  sequence,
+const { data: comparison } = useComparison(design, variant, controls, sequence)
+
+/** How each constraint moved under this variant, for the cards in the header. */
+const movements = computed(() =>
+  Object.fromEntries(
+    (comparison.value?.movements ?? []).map((movement) => [
+      `${movement.component}/${movement.constraint}`,
+      movement,
+    ]),
+  ) as Record<string, Movement>,
 )
 
 /**
@@ -238,6 +242,30 @@ const baselineSeries = computed(() => (variant.value ? (baseline.value?.series ?
 const BASELINE_LABEL = 'as designed'
 
 /**
+ * What this variant did to every quantity, as a share of where it started.
+ *
+ * Carried into the picker so that choosing what to look at and seeing what moved
+ * are the same list. Reading a table of movements and then hunting for the
+ * matching quantity in a second list was two acts of translation for one
+ * question, and the answer to "what changed" is most useful next to the thing
+ * that would show it.
+ */
+const movedSignals = computed(() => {
+  const now = analysis.value?.components
+  const before = baseline.value?.components
+  if (!variant.value || !now || !before) return undefined
+  const moved: Record<string, { before: number; after: number }> = {}
+  for (const [component, channels] of Object.entries(now)) {
+    for (const [channel, quantity] of Object.entries(channels)) {
+      const was = before[component]?.[channel]?.mean
+      if (was === undefined) continue
+      moved[`${component}.${channel}`] = { before: was, after: quantity.mean }
+    }
+  }
+  return moved
+})
+
+/**
  * The unit a quantity carries.
  *
  * A port signal is named for the signal it carries rather than a channel, so its
@@ -322,6 +350,7 @@ function unitOf(component: string, channel: string): string {
       <SignalPicker
         :options="available"
         :pinned="watching"
+        :moved="movedSignals"
         @update:pinned="(next) => (watching = next)"
       />
     </nav>
@@ -335,7 +364,23 @@ function unitOf(component: string, channel: string): string {
           </p>
           <p v-else class="summary">The design as it stands, with nothing proposed.</p>
         </div>
-        <SolveProgress :solving="isFetching" :shape="shape" />
+
+        <!--
+          What the design is closest to exhausting, beside the design's own name
+          rather than in a panel down the side. It is the first question anybody
+          asks of a simulation and the last one they check after changing
+          something, and a panel it shared with everything else meant scrolling
+          to find out.
+        -->
+        <div class="verdict">
+          <SolveProgress :solving="isFetching" :shape="shape" />
+          <SolvingVeil v-if="analysis" :busy="isFetching" :label="solvingLabel">
+            <LimitCards :bottlenecks="analysis.bottlenecks" :movements="movements" />
+          </SolvingVeil>
+          <div v-else-if="isFetching" class="cards" aria-busy="true">
+            <SkeletonBlock v-for="card in 3" :key="card" width="104px" height="46px" />
+          </div>
+        </div>
       </header>
 
       <el-alert
@@ -347,6 +392,20 @@ function unitOf(component: string, channel: string): string {
         data-test="review-problem"
         :title="problem.component ? `${problem.component} cannot be solved` : 'This design cannot be solved'"
         :description="problem.message"
+      />
+      <!--
+        A design with no steady state has no figures worth reading, so this is
+        said where the figures are rather than beside them.
+      -->
+      <el-alert
+        v-else-if="analysis && !analysis.converged"
+        type="warning"
+        :closable="false"
+        show-icon
+        class="problem"
+        data-test="did-not-settle"
+        :title="`This design did not settle after ${analysis.iterations} passes`"
+        description="A loop whose gain exceeds one has no steady state, so the figures below are wherever the solver stopped rather than what the design does."
       />
 
       <div class="body">
@@ -381,27 +440,6 @@ function unitOf(component: string, channel: string): string {
             />
           </SolvingVeil>
         </section>
-
-        <aside class="side">
-          <el-tabs model-value="limits">
-            <el-tab-pane label="Limits" name="limits">
-              <SolvingVeil v-if="analysis" :busy="isFetching" :label="solvingLabel">
-                <BottlenecksPanel :analysis="analysis" :quantities="false" />
-              </SolvingVeil>
-              <div v-else-if="isFetching" class="rows" aria-busy="true">
-                <SkeletonBlock v-for="row in 5" :key="row" height="15px" />
-              </div>
-            </el-tab-pane>
-            <el-tab-pane v-if="variant" label="Against baseline" name="against">
-              <SolvingVeil v-if="comparison" :busy="comparing" :label="solvingLabel">
-                <ComparisonPanel :comparison="comparison" />
-              </SolvingVeil>
-              <div v-else-if="comparing" class="rows" aria-busy="true">
-                <SkeletonBlock v-for="row in 5" :key="row" height="15px" />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </aside>
       </div>
     </div>
 
@@ -489,6 +527,8 @@ function unitOf(component: string, channel: string): string {
 }
 .what h2 { margin: 0; font-size: var(--text-lg); }
 .summary { margin: 2px 0 0; font-size: var(--text-xs); color: var(--muted); max-width: 92ch; }
+.verdict { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); min-width: 0; }
+.cards { display: flex; gap: var(--space-2); }
 .problem { margin: var(--space-3) var(--space-4) 0; width: auto; }
 .body { flex: 1; display: flex; min-height: 0; }
 .timelines {
@@ -511,13 +551,4 @@ function unitOf(component: string, channel: string): string {
 }
 .against { margin-left: auto; font-size: var(--text-2xs); color: var(--muted); }
 .against strong { font-weight: 650; color: var(--ink); }
-.side {
-  width: clamp(256px, 28vw, 344px);
-  flex: 0 0 auto;
-  border-left: 1px solid var(--line);
-  background: var(--surface-strong);
-  overflow: auto;
-  padding: 0 var(--space-4) var(--space-4);
-}
-.rows { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-2); }
 </style>

@@ -16,9 +16,9 @@ test.describe('review', () => {
     await expect(page.locator('figure svg.plot').first()).toBeVisible()
     await expect(page.getByTestId('watch-picker')).toBeVisible()
 
-    // The ranking sits alongside, so a reader can see which limit the chart is
-    // about without changing view.
-    await expect(page.getByRole('cell', { name: '100%' }).first()).toBeVisible()
+    // What the design is closest to exhausting sits in the header, so a reader
+    // can see which limit the chart is about without changing view.
+    await expect(page.getByTestId('limit-cards')).toBeVisible()
   })
 
   /**
@@ -77,17 +77,25 @@ test.describe('review', () => {
     await expect(readout.locator('svg.sketch')).toBeVisible()
   })
 
+  /**
+   * What a proposal did to each limit, beside the design's own name.
+   *
+   * It used to be a table in a panel down the side, which meant the answer to
+   * "did this help" was one tab away from the charts that showed how.
+   */
   test('a variant is weighed against the design it would replace', async ({ page }) => {
     await page.goto('/d/metastable/review')
+    await expect(page.getByTestId('limit-cards')).toBeVisible()
 
     await page.getByTestId('variant-shed').click()
-    await expect(page.getByRole('tab', { name: 'Against baseline' })).toBeVisible()
-    await page.getByRole('tab', { name: 'Against baseline' }).click()
 
-    // Shedding is the lever that ends this collapse, so something must be
-    // reported as relieved. A comparison that found nothing would mean the
+    // Shedding is the lever that ends this collapse, so the constraint it
+    // relieves must say so. A card that reported no movement would mean the
     // variant never reached the solver.
-    await expect(page.getByText('relieved').first()).toBeVisible()
+    await expect(page.getByTestId('limit-cards').getByText('%')).toBeVisible()
+    await expect(page.getByTestId('limit-cards')).toContainText(/no longer binds|−|÷/, {
+      timeout: 30_000,
+    })
   })
 
   /**
@@ -174,11 +182,13 @@ test.describe('review', () => {
 
   test('the counterfactual and the design differ', async ({ page }) => {
     await page.goto('/d/metastable/review')
-    await expect(page.getByRole('cell', { name: '2.200' }).first()).toBeVisible()
+    const cards = page.getByTestId('limit-cards')
+    await expect(cards).toBeVisible()
+    const collapsing = await cards.innerText()
 
     await page.getByTestId('variant-no-surge').click()
     // Same demand at the moment it is read; different history, different state.
-    await expect(page.getByRole('cell', { name: '2.200' })).toHaveCount(0)
+    await expect(cards).not.toHaveText(collapsing, { timeout: 30_000 })
   })
 
   /**

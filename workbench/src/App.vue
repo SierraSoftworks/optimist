@@ -13,7 +13,7 @@ const { data: designs } = useDesigns()
 
 /** The design in the URL, which is the only place it is recorded. */
 const design = computed(() => (route.params.design as string | undefined) ?? null)
-const { data: snapshot, feedStatus } = useDesign(design)
+const { feedStatus } = useDesign(design)
 
 const mode = computed(() => (route.name === 'review' ? 'review' : 'design'))
 
@@ -52,11 +52,20 @@ function open(id: string) {
             :disabled="!!entry.unreadable"
           />
         </el-select>
+      </template>
 
+      <span class="spacer" />
+
+      <template v-if="design">
         <!--
           Two modes rather than a row of panels. Editing a design and judging one
           are different jobs done at different times, and the tool showing only
           what the current job needs is the point of separating them.
+
+          They sit at the right-hand end beside the settings that also belong to
+          the whole window. The design's name used to sit here and has gone: it
+          is already in the picker two inches to the left, and repeating it cost
+          the width that the mode switch now uses.
         -->
         <el-radio-group
           :model-value="mode"
@@ -71,16 +80,9 @@ function open(id: string) {
           </el-radio-button>
           <el-radio-button value="review">
             <el-icon><i-trend-charts /></el-icon>
-            <span>Review</span>
+            <span>Simulation</span>
           </el-radio-button>
         </el-radio-group>
-
-        <span class="title">{{ snapshot?.name }}</span>
-      </template>
-
-      <span class="spacer" />
-
-      <template v-if="design">
         <!--
           Behind a gear, because these decide how the answer was produced rather
           than what the answer is. Almost nobody needs to touch them, and having
@@ -205,14 +207,6 @@ function open(id: string) {
 .modes { flex: 0 0 auto; }
 .modes :deep(.el-radio-group) { flex-wrap: nowrap; }
 .modes :deep(.el-radio-button__inner) { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.title {
-  font-size: var(--text-sm);
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 .spacer { flex: 1; }
 .gear {
   display: inline-flex;

@@ -19,13 +19,13 @@ test.describe('routing', () => {
 
   test('a deep link restores the design and its mode', async ({ page }) => {
     await page.goto('/d/checkout/review')
-    await expect(page.getByRole('navigation', { name: 'Variants' })).toBeVisible()
-    await expect(page.getByRole('radio', { name: 'Review' })).toBeChecked()
+    await expect(page.getByRole('navigation', { name: /Variants/ })).toBeVisible()
+    await expect(page.getByRole('radio', { name: 'Simulation' })).toBeChecked()
   })
 
   test('switching mode changes the address', async ({ page }) => {
     await page.goto('/d/checkout/design')
-    await chooseRadio(page, 'Review')
+    await chooseRadio(page, 'Simulation')
     await expect(page).toHaveURL(/\/d\/checkout\/review/)
 
     await chooseRadio(page, 'Design')

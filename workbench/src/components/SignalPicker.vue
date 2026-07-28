@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import { describeChange, directionOf } from '../domain/change'
+
 /** One quantity that can be watched, and where it came from. */
 export interface SignalOption {
   value: string
@@ -9,10 +11,37 @@ export interface SignalOption {
   family: 'input' | 'backpressure' | 'channel'
 }
 
-const props = defineProps<{ options: SignalOption[]; pinned: string[] }>()
+const props = defineProps<{
+  options: SignalOption[]
+  pinned: string[]
+  /**
+   * What each quantity settled at with and without the variant.
+   *
+   * Empty while the design itself is on show, because there is nothing to have
+   * moved from. Given for every quantity rather than only the pinned ones, so
+   * that finding what a proposal changed is a matter of reading the list rather
+   * than charting things one at a time until something moves.
+   */
+  moved?: Record<string, { before: number; after: number }>
+}>()
 const emit = defineEmits<{ 'update:pinned': [string[]] }>()
 
 const search = ref('')
+
+function movement(value: string) {
+  const pair = props.moved?.[value]
+  if (!pair) return null
+  const label = describeChange(pair.before, pair.after)
+  const direction = directionOf(pair.before, pair.after)
+  return label && direction ? { label, direction } : null
+}
+
+/** How far a quantity moved, for ordering by it. */
+function magnitude(value: string): number {
+  const pair = props.moved?.[value]
+  if (!pair || pair.before === 0) return pair ? Number.MAX_SAFE_INTEGER : 0
+  return Math.abs((pair.after - pair.before) / Math.abs(pair.before))
+}
 
 /**
  * How a quantity reached its component, in the order a reader works through it.
@@ -41,8 +70,13 @@ const chosen = computed(() =>
 const matching = computed(() => {
   const needle = search.value.trim().toLowerCase()
   const available = props.options.filter((option) => !props.pinned.includes(option.value))
-  if (!needle) return available
-  return available.filter((option) => option.value.toLowerCase().includes(needle))
+  const found = needle
+    ? available.filter((option) => option.value.toLowerCase().includes(needle))
+    : available
+  // What a variant changed most, first. With nothing to compare against this
+  // leaves the order the solver gave, which is by component and then by name.
+  if (!props.moved) return found
+  return [...found].sort((left, right) => magnitude(right.value) - magnitude(left.value))
 })
 
 const groups = computed(() =>
@@ -92,6 +126,9 @@ function unpin(value: string) {
             <span class="channel">{{ option.channel }}</span>
             <span class="component">{{ option.component }}</span>
           </span>
+          <span v-if="movement(option.value)" class="moved" :class="movement(option.value)!.direction">
+            {{ movement(option.value)!.label }}
+          </span>
           <el-icon class="act"><i-close /></el-icon>
         </button>
       </li>
@@ -126,6 +163,9 @@ function unpin(value: string) {
           <span class="name">
             <span class="channel">{{ option.channel }}</span>
             <span class="component">{{ option.component }}</span>
+          </span>
+          <span v-if="movement(option.value)" class="moved" :class="movement(option.value)!.direction">
+            {{ movement(option.value)!.label }}
           </span>
         </button>
       </template>
@@ -198,6 +238,12 @@ function unpin(value: string) {
   white-space: nowrap;
 }
 .component { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/*
+ * Which way it went, not whether that is good news. Higher latency and higher
+ * throughput are the same arrow, and only the reader knows which they wanted.
+ */
+.moved { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 0 0 auto; }
+.signal:hover .moved { display: none; }
 .act { font-size: 11px; color: var(--muted); flex: 0 0 auto; opacity: 0; }
 .signal:hover .act { opacity: 1; }
 
