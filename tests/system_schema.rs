@@ -353,6 +353,88 @@ fn unknown_fields_are_refused() {
     assert!(error.to_string().contains("parallelisms"), "{error}");
 }
 
+/// Strictness reaches inside a document rather than stopping at its top level.
+///
+/// A design-wide document is a list of entries, and an entry is where an author
+/// actually writes. Refusing an unknown key beside `name` while accepting one
+/// inside the entry below it would guard the part nobody mistypes.
+#[test]
+fn unknown_fields_are_refused_inside_a_document() {
+    let directory = scratch("strict-nested");
+    write_system(&directory, "Checkout", "", &full_model()).expect("writes");
+    fs::write(
+        directory.join("_system.yaml"),
+        format!(
+            "schema_version: {SCHEMA_VERSION}\n\
+             name: Checkout\n\
+             scratchpad:\n\
+             \x20 - name: peak_rate\n\
+             \x20   expression: lognormal(6, 0.3)\n\
+             \x20   unti: op/s\n"
+        ),
+    )
+    .expect("writes");
+
+    let error = read_system(&directory).expect_err("unknown field");
+    assert!(error.to_string().contains("unti"), "{error}");
+}
+
+/// A component type manifest is held to the same rule as a design document.
+///
+/// This is where a key that has been renamed does the most damage. A manifest
+/// naming a section the engine no longer reads produces a type with no ports,
+/// which solves, reports numbers, and is wrong everywhere the missing section
+/// would have carried a flow.
+#[test]
+fn a_manifest_naming_an_absent_section_is_refused() {
+    let directory = scratch("strict-manifest");
+    write_system(&directory, "Checkout", "", &full_model()).expect("writes");
+    fs::create_dir_all(directory.join("component-types")).expect("directory");
+    fs::write(
+        directory.join("component-types/legacy.yaml"),
+        "id: legacy\n\
+         name: Legacy\n\
+         properties:\n\
+         \x20 refill:\n\
+         \x20   unit: op/s\n\
+         channels:\n\
+         \x20 admitted:\n\
+         \x20   unit: op/s\n\
+         \x20   expression: min([in.requests.rate, refill])\n\
+         outputs:\n\
+         \x20 rate: admitted\n",
+    )
+    .expect("writes");
+
+    let error = read_system(&directory).expect_err("unknown section");
+    assert!(error.to_string().contains("outputs"), "{error}");
+    assert!(error.to_string().contains("ports"), "{error}");
+}
+
+/// A behaviour manifest is held to the same rule as everything else.
+#[test]
+fn a_behaviour_manifest_with_an_unknown_field_is_refused() {
+    let directory = scratch("strict-behaviour");
+    write_system(&directory, "Checkout", "", &full_model()).expect("writes");
+    fs::create_dir_all(directory.join("mutators")).expect("directory");
+    fs::write(
+        directory.join("mutators/sample.yaml"),
+        "id: sample\n\
+         name: Sampling\n\
+         properties:\n\
+         \x20 ratio:\n\
+         \x20   unit: '1'\n\
+         requests:\n\
+         \x20 rate:\n\
+         \x20   unit: op/s\n\
+         \x20   expresion: signal.rate * ratio\n",
+    )
+    .expect("writes");
+
+    let error = read_system(&directory).expect_err("unknown field");
+    assert!(error.to_string().contains("expresion"), "{error}");
+}
+
 /// A directory from the previous schema is refused rather than converted.
 #[test]
 fn an_older_schema_is_refused() {

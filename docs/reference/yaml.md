@@ -31,10 +31,17 @@ The current version is **2**. Version one described the causal graph this tool
 was built around before it became a system design tool; the two schemas share no
 structure, so a version one directory is refused rather than converted.
 
-Unknown fields are refused too. A file that nearly parses is more dangerous than
-one that does not: silently dropping a misspelt property would leave a model
-quietly using a default while its author believed otherwise, and every number
-downstream would look plausible.
+Unknown fields are refused too, at every level rather than only at the top of a
+document. A file that nearly parses is more dangerous than one that does not:
+silently dropping a misspelt property would leave a model quietly using a default
+while its author believed otherwise, and every number downstream would look
+plausible. The error names the path to the offending key and lists what was
+expected there:
+
+```text
+_system.yaml: scratchpad[0]: unknown field `unti`,
+  expected one of `name`, `expression`, `unit`, `summary` at line 7 column 5
+```
 
 ## Values are expressions
 
@@ -295,11 +302,11 @@ the way back. Both accept a map of signal name to `{ unit, summary, expression }
 ## What the loader checks
 
 - The schema version is exactly `2`.
-- No document uses an unknown field.
+- No document uses an unknown field, at any depth.
 - No two components claim the same identifier.
 - Every relationship names a component the design contains.
 - Every project-local component type and behaviour passes the same validation as
-  a shipped one.
+  a shipped one, including the rejection of unknown fields.
 
 Order within the files carries no meaning; a design that has been through
 persistence is written back in canonical order — components by identifier,

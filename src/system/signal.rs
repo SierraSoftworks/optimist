@@ -65,6 +65,7 @@ pub enum Aggregation {
 /// it may overstate the load on one replica, and overstating a bottleneck is
 /// recoverable in a way that missing one is not.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Signal {
     /// Unit annotation the quantity carries.
     pub unit: String,

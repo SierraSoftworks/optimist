@@ -36,6 +36,16 @@
 //! nearly parses is more dangerous than one that does not: silently dropping a
 //! misspelt property would leave a model quietly using a default while its author
 //! believed otherwise, and every number downstream would look plausible.
+//!
+//! This holds at every depth, not only at the top of a document. An author
+//! writes inside the entries of a list far more often than beside the field
+//! naming it, so a rule that guarded `scratchpad` while accepting anything
+//! within one of its entries would protect the part nobody mistypes. It holds
+//! for component type and behaviour manifests on the same reasoning, and there
+//! it matters most: a manifest naming a section the engine has since renamed
+//! produces a type with that section missing, which loads, solves, and reports
+//! plausible numbers that are wrong wherever the section would have carried a
+//! flow.
 
 mod read;
 mod write;

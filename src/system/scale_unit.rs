@@ -78,6 +78,7 @@ pub enum Distribution {
 
 /// A set of components deployed together as one replicated whole.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScaleUnit {
     /// Identifier unique within the model.
     pub id: ScaleUnitId,

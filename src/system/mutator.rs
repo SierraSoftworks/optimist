@@ -67,6 +67,7 @@ impl std::fmt::Display for MutatorId {
 
 /// How one signal is rewritten as it passes through a mutator.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Transform {
     /// Unit annotation the rewritten signal carries.
     pub unit: String,
@@ -79,6 +80,7 @@ pub struct Transform {
 
 /// A declarative definition of one relationship behaviour.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Mutator {
     /// Stable identifier used when attaching this behaviour.
     pub id: MutatorId,
@@ -107,6 +109,7 @@ pub struct Mutator {
 
 /// One behaviour attached to a particular relationship.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AttachedMutator {
     /// The behaviour being attached.
     #[serde(rename = "type")]

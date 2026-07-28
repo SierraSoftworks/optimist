@@ -50,6 +50,7 @@ pub enum PortArity {
 /// and one for the misses it forwards, so the two paths can be sized apart
 /// instead of being averaged into a single figure that describes neither.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Port {
     /// How many relationships may attach here.
     #[serde(default)]
@@ -73,6 +74,7 @@ pub struct Port {
 
 /// The named places relationships attach to a component.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Ports {
     /// Ports callers attach to, carrying requests in and responses back.
     #[serde(rename = "in", default)]
@@ -101,6 +103,7 @@ impl Ports {
 /// can look up, benchmark, or estimate. Everything else the model reports is
 /// derived from them.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Property {
     /// Unit annotation the authored value must satisfy, such as `op/s`.
     pub unit: String,
@@ -125,6 +128,7 @@ impl Property {
 
 /// A quantity derived from properties, inbound flows, and prior state.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Channel {
     /// Unit annotation the derived quantity carries.
     pub unit: String,
@@ -141,6 +145,7 @@ pub struct Channel {
 /// the share of draws in which demand meets or exceeds the limit is the
 /// probability that this constraint binds.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Constraint {
     /// What saturating this constraint does to the system.
     #[serde(default)]
@@ -157,6 +162,7 @@ pub struct Constraint {
 /// evaluator relies on are checked once, at load time, rather than rediscovered
 /// per draw inside a solver loop.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ComponentType {
     /// Stable identifier used by components that adopt this type.
     pub id: ComponentTypeId,

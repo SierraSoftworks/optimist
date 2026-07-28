@@ -63,6 +63,7 @@ impl std::fmt::Display for InterventionId {
 
 /// One shared quantity rebound by an intervention.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Override {
     /// Scratchpad entry being rebound.
     pub name: String,
@@ -72,6 +73,7 @@ pub struct Override {
 
 /// A proposed change to a design.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Intervention {
     /// Identifier unique within the model.
     pub id: InterventionId,

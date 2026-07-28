@@ -212,10 +212,11 @@ Load-time validation rejects a definition when:
 - a unit annotation does not parse,
 - a port publishes a quantity that is neither a property nor a channel.
 
-Unknown fields in a design's own documents are refused too. A file that nearly
-parses is more dangerous than one that does not: silently dropping a misspelt
-property would leave a model quietly using a default while its author believed
-otherwise, and every number downstream would look plausible.
+Unknown fields are refused, in a manifest exactly as in a design document. A
+file that nearly parses is more dangerous than one that does not: a manifest
+naming a section the engine has since renamed would otherwise load with that
+section missing, then solve and report plausible numbers that are wrong wherever
+it would have carried a flow.
 
 ## Two things worth knowing before you start
 

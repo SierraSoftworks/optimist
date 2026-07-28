@@ -58,6 +58,7 @@ impl std::fmt::Display for ComponentId {
 /// laid out automatically rather than pinned to whatever an algorithm produced
 /// the first time it was opened.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Position {
     /// Horizontal position, in the diagram's own units.
     pub x: f64,
@@ -67,6 +68,7 @@ pub struct Position {
 
 /// One part of the system being designed.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Component {
     /// Identifier unique within the model.
     pub id: ComponentId,
@@ -96,6 +98,7 @@ pub struct Component {
 /// reimplement it, and makes the queues a design already contains visible
 /// without anybody having to add them.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Relationship {
     /// Component publishing the flow.
     pub from: ComponentId,
@@ -145,6 +148,7 @@ impl Relationship {
 
 /// A complete system design.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct SystemModel {
     /// Shared quantities available to every component, in evaluation order.
     #[serde(default)]
@@ -165,6 +169,7 @@ pub struct SystemModel {
 
 /// One shared quantity available throughout a model.
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScratchpadEntry {
     /// Binding name referenced by component properties.
     pub name: String,

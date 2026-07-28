@@ -153,7 +153,9 @@ earlier mutations stand; `applied` says how many landed.
 
 ### Mutation kinds
 
-Every mutation is tagged with `kind` and rejects unknown fields.
+Every mutation is tagged with `kind`. Unknown fields are rejected, in the
+envelope and in the entity it carries, so a client sending a field this server
+does not know about is told rather than having it silently dropped.
 
 | `kind` | Payload |
 | --- | --- |
