@@ -174,14 +174,21 @@ Useful starting points:
 
 ## Worked examples
 
-Two designs ship in [examples](examples/README.md), both covered by tests that
+Five designs ship in [examples](examples/README.md), all covered by tests that
 assert the conclusions they claim to teach:
 
+- **`saturation`** — where saturation comes from, and why retrying past the fold
+  lowers the share of requests that succeed rather than protecting it.
+- **`queued-collapse`** — a queue makes the design second order: a ten second
+  surge costs seventy seconds of recovery, and leaves it in a second steady
+  state that persists once the backlog has gone.
+- **`deadlines`** — a timeout bounds what the caller waits for; only a
+  propagated one withdraws the work. Failing to propagate leaves the failure
+  rate unchanged and doubles what the dependency is holding.
 - **`checkout`** — a shop front where the binding constraint is the one nobody
   watches, and neither proposed fix addresses it.
-- **`metastable`** — a design with two steady states at one level of demand,
-  built entirely from shipped component types, which does not recover after a
-  surge that ended ten seconds ago.
+- **`metastable`** — two steady states at one level of demand, built entirely
+  from shipped component types.
 
 ## Verify the core
 

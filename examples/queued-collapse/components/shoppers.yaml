@@ -1,0 +1,20 @@
+id: shoppers
+name: Shoppers
+type: client
+properties:
+  request_rate: demand
+  latency_target: '0.5'
+  success_target: '0.99'
+position:
+  x: 0
+  y: 0
+outgoing:
+  - to: api
+    capacity: link_capacity
+    summary: >
+      Checkout requests. The shedding limit sits here, at the edge, because it
+      is the only place that can stop work reaching the queue at all.
+    mutators:
+      - type: load-shed
+        properties:
+          limit: admission_limit

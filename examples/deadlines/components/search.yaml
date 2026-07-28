@@ -1,0 +1,26 @@
+id: search
+name: Search service
+type: compute
+properties:
+  service_time: search_service_time
+  parallelism: search_workers
+position:
+  x: 0
+  y: 320
+outgoing:
+  - to: index
+    summary: >
+      The index operations one search performs. The fan-out is what makes an
+      abandoned request expensive: by the time the browser has given up, this
+      request has already become several operations further down, and none of
+      them are recalled unless the giving up reached here.
+    mutators:
+      - type: fan-out
+        properties:
+          branches: follow_on_ops
+      - type: retry
+        properties:
+          attempts: max_attempts
+      - type: timeout
+        properties:
+          budget: attempt_timeout

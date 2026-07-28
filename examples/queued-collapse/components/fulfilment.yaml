@@ -1,0 +1,22 @@
+id: fulfilment
+name: Fulfilment worker
+type: compute
+properties:
+  service_time: worker_service_time
+  parallelism: worker_pool
+position:
+  x: 240
+  y: 320
+outgoing:
+  - to: orders
+    summary: >
+      The store call each job makes, behind the same timeout and retry the API
+      would use. Working off a backlog therefore puts amplified load on the
+      store precisely while the synchronous path is trying to recover.
+    mutators:
+      - type: retry
+        properties:
+          attempts: max_attempts
+      - type: timeout
+        properties:
+          budget: attempt_timeout

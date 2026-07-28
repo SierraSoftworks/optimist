@@ -1,0 +1,19 @@
+id: api
+name: Checkout API
+type: compute
+properties:
+  service_time: api_service_time
+  parallelism: api_workers
+position:
+  x: 0
+  y: 160
+outgoing:
+  - to: orders
+    summary: >
+      The synchronous read the shopper waits for. This is the path whose latency
+      and failures the user experiences.
+  - to: jobs
+    summary: >
+      Fulfilment work handed to the queue. Answered the moment it is accepted,
+      so the shopper never waits for it — which is the whole point of the queue
+      and the reason its backlog is invisible from the user's side.

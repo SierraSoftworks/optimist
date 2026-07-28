@@ -1,0 +1,17 @@
+id: browsers
+name: Browsers
+type: client
+properties:
+  request_rate: demand
+  payload: '512'
+  latency_target: '0.5'
+  success_target: '0.99'
+position:
+  x: 0
+  y: 0
+outgoing:
+  - to: api
+    capacity: link_capacity
+    summary: >
+      Checkout requests. No policy here: the browser waits, and whatever the API
+      reports is what the user experiences.

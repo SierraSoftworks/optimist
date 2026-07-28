@@ -1,0 +1,37 @@
+id: cancellation-propagation
+name: Cancellation propagation
+summary: >
+  Passes on a share of the cancellation arriving at this hop, so a design can
+  say how much of "the caller has given up" survives the journey downstream.
+
+  The shipped catalogue has `ignores-cancellation`, which drops all of it. That
+  is the right way to state a fact about a hop that has no cancellation
+  plumbing. It is the wrong way to ask a question, because a design cannot be
+  compared against itself by adding and removing a behaviour: an intervention
+  rebinds quantities and leaves the structure alone, which is what makes the two
+  readings comparable in the first place.
+
+  Attaching this once and pointing it at a shared quantity turns the structural
+  question into a numerical one, and the two designs into one design read twice.
+
+  Between the extremes it is a partial answer, which is also realistic: a
+  deadline honoured by the request path but not by an asynchronous continuation
+  propagates some of the giving up and not the rest.
+properties:
+  propagated:
+    unit: '1'
+    summary: >
+      Share of arriving cancellation carried onward. One passes it all on, zero
+      stops it here. Values outside the range are clamped rather than rejected,
+      on the same reasoning as a saturating limit: a share has no meaning above
+      all of it, and a hop that invented cancellation would be a stranger result
+      than one that saturates.
+requests:
+  cancellation:
+    unit: op/s
+    summary: >
+      Cancellation reduced to the share this hop honours. What is dropped is not
+      work that stops: it is work that carries on being done with nobody waiting
+      for the answer, which is why the rate downstream is unchanged while the
+      useful part of it falls.
+    expression: signal.cancellation * min([max([propagated, 0]), 1])

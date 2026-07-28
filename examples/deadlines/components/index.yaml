@@ -1,0 +1,14 @@
+id: index
+name: Search index
+type: datastore
+properties:
+  service_time: index_service_time
+  concurrency_limit: index_concurrency
+  operation_limit: '100000'
+  transfer_limit: '1e9'
+  volume_limit: '1e13'
+  record_size: '2048'
+  retention: '86400'
+position:
+  x: 0
+  y: 480

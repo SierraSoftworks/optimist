@@ -1,0 +1,19 @@
+id: api
+name: Search front end
+type: compute
+properties:
+  service_time: api_service_time
+  parallelism: api_workers
+position:
+  x: 0
+  y: 160
+outgoing:
+  - to: search
+    summary: >
+      The call into the search service. Whether the giving up that happened
+      above this line is carried across it is the whole question, and it is the
+      one thing this design varies.
+    mutators:
+      - type: cancellation-propagation
+        properties:
+          propagated: deadline_propagation

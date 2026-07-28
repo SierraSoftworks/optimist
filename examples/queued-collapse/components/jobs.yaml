@@ -1,0 +1,12 @@
+id: jobs
+name: Fulfilment queue
+type: queue
+properties:
+  service_rate: drain_rate
+  capacity: queue_depth
+position:
+  x: 240
+  y: 160
+outgoing:
+  - to: fulfilment
+    summary: Jobs handed to the worker as it takes them.

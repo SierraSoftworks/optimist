@@ -1,0 +1,212 @@
+schema_version: 2
+name: Queued collapse
+summary: >
+  The same shop front as `saturation`, with one addition: the API also hands
+  work to a queue, and a fulfilment worker drains that queue against the same
+  store the API reads from.
+
+  That single change makes the design second order. The first example has no
+  memory — the wire in front of the API holds a few hundred requests and clears
+  in milliseconds, so the moment demand falls the design is well again. A queue
+  holds tens of thousands of operations, and what it holds it keeps. The
+  backlog is a state variable, and draining it is itself load on the store the
+  user-facing path depends on.
+
+  So the design has two ways to be at four hundred requests a second: with an
+  empty queue, where the store is quiet, and with a full one, where draining it
+  keeps the store busy enough to keep the queue full. Which of the two you are
+  in is not a function of demand. It is a function of what happened earlier.
+
+  Read it for what a second state variable buys, why recovery outlasts the
+  cause by an order of magnitude, and why the only lever that works is the one
+  applied before the queue fills rather than after.
+
+scratchpad:
+  - name: base_demand
+    expression: '400'
+    unit: op/s
+    summary: >
+      Requests per second at rest. Both the synchronous read and the queued job
+      are issued once per request, so this is also the rate work enters the
+      queue at.
+
+  - name: surge_factor
+    expression: '3'
+    unit: '1'
+    summary: >
+      Multiple of resting demand during the surge. Rebind to one for the design
+      that never had one.
+
+  - name: surge_from
+    expression: '5'
+    unit: s
+    summary: When the surge begins.
+
+  - name: surge_until
+    expression: '15'
+    unit: s
+    summary: When the surge ends, ten seconds later.
+
+  - name: demand
+    expression: >
+      if t >= surge_from && t < surge_until then base_demand * surge_factor
+      else base_demand
+    unit: op/s
+    summary: Offered load over the run, with the surge in the middle.
+
+  - name: admission_limit
+    expression: '1000000'
+    unit: op/s
+    summary: >
+      Rate above which the edge refuses requests. Effectively absent by default,
+      because a design's first version never has one: shedding is what gets
+      added after the first incident, and the point of this model is to ask what
+      it would have been worth beforehand.
+
+  - name: store_idle_latency
+    expression: '0.01'
+    unit: s
+    summary: The store's answer time when it is holding almost nothing.
+
+  - name: store_service_time
+    expression: store_idle_latency * lognormal(0, 0.15)
+    unit: s
+    summary: The idle latency, with the spread a real measurement has.
+
+  - name: store_concurrency
+    expression: '100'
+    unit: op
+    summary: Operations the store holds in flight at once.
+
+  - name: fold_load
+    expression: store_concurrency / (4 * store_idle_latency)
+    unit: op/s
+    summary: >
+      Rate above which the store has no steady state, from L = S / (1 - λL/C).
+      Every load below is against this number, and the load the store sees is
+      the synchronous reads plus whatever the fulfilment worker is draining.
+
+  - name: drain_rate
+    expression: '500'
+    unit: op/s
+    summary: >
+      Jobs per second the fulfilment worker takes off the queue. A quarter above
+      resting demand, which is the sort of headroom a queue is sized with: it
+      keeps up comfortably at rest and nobody asks what happens when it does not.
+
+      It is the single most important number in the design, and not for the
+      reason it was chosen. It is not the rate at which work is done; it is the
+      rate at which a backlog is worked off, and therefore it sets how long the
+      design stays unwell after an episode. Draining is not free either: every
+      job worked off is another operation at the store the synchronous path is
+      still using.
+
+  - name: queue_depth
+    expression: '200000'
+    unit: op
+    summary: >
+      Jobs the queue will hold. Large enough that it never refuses work, which
+      is how a broker is normally configured and is why the backlog is allowed
+      to grow to a size that takes minutes to clear.
+
+  - name: worker_pool
+    expression: '200'
+    unit: op
+    summary: >
+      Jobs the fulfilment worker processes concurrently. Sized against the drain
+      rate at the store's idle latency, with room to spare.
+
+  - name: worker_service_time
+    expression: 0.001 * lognormal(0, 0.1)
+    unit: s
+    summary: The worker's own work per job, excluding the store call.
+
+  - name: api_service_time
+    expression: 0.002 * lognormal(0, 0.1)
+    unit: s
+    summary: The API's own work per request, excluding anything it waits on.
+
+  - name: api_workers
+    expression: '150'
+    unit: op
+    summary: Requests the API serves concurrently.
+
+  - name: attempt_timeout
+    expression: '0.05'
+    unit: s
+    summary: >
+      Deadline on one attempt at the store, five times its idle latency. Applied
+      to the worker's calls, which is where the amplification that sustains the
+      collapse comes from.
+
+  - name: max_attempts
+    expression: '3'
+    unit: '1'
+    summary: Attempts per call to the store, including the first.
+
+  - name: link_capacity
+    expression: '400'
+    unit: op
+    summary: The socket buffer and listen backlog in front of the API.
+
+scale_units: []
+
+interventions:
+  - id: no-surge
+    name: Never had the surge
+    summary: >
+      The same design under the same demand at the same moment, differing only
+      in what happened earlier. The control every other reading is against.
+    overrides:
+      - name: surge_factor
+        expression: '1'
+
+  - id: shed
+    name: Refuse what cannot be served
+    summary: >
+      Caps admitted demand just above the rate the queue drains at. Applied at
+      the edge, before anything is enqueued, which is the only place it can
+      prevent a backlog rather than merely work one off.
+
+      Note where the limit has to sit. Protecting a queue means refusing
+      everything the consumer cannot keep up with, so the limit is set by the
+      drain rate and not by anything the front end can serve. The API is
+      nowhere near its own capacity when this engages, which is why a limit
+      chosen from the front end's headroom is always too high.
+
+      It is a deliberate cost: refused requests are counted as failures and the
+      client's objective reports them. That is the trade — turn traffic away for
+      ten seconds, or accept all of it and be behind for minutes.
+    overrides:
+      - name: admission_limit
+        expression: '600'
+
+  - id: shed-late
+    name: Refuse only once it hurts
+    summary: >
+      The same limit, set from what the API could serve rather than from what
+      the queue can drain. It engages during the surge and still lets the
+      backlog build, which is the reading that shows a safety net set at the
+      wrong height is barely a net at all.
+    overrides:
+      - name: admission_limit
+        expression: '1000'
+
+  - id: no-retries
+    name: Stop retrying
+    summary: >
+      Reduces the worker's attempt budget to one. Removes the amplification that
+      makes draining the backlog more expensive than filling it was.
+    overrides:
+      - name: max_attempts
+        expression: '1'
+
+  - id: drain-slower
+    name: Drain the queue gently
+    summary: >
+      Cuts the rate the worker takes work off the queue by a fifth. Costs the
+      store less while recovery happens and makes recovery take far longer,
+      which is the trade a backpressured consumer is actually making.
+    overrides:
+      - name: drain_rate
+        expression: '450'

@@ -1,0 +1,195 @@
+schema_version: 2
+name: Deadlines and cancellation
+summary: >
+  A search path three services deep, where one user request becomes several
+  operations inside the service at the bottom. Every hop has a timeout, which is
+  what a careful engineer would check for. Only one thing varies: whether giving
+  up is passed on.
+
+  A timeout does two things, and they are usually confused for one. It bounds
+  what the caller waits for, and — if the cancellation travels — it withdraws
+  the work nobody is waiting for any more. The first protects the caller. The
+  second is the only one that protects the dependency, and it is the one a
+  timeout implemented as a local `select` on a socket does not do.
+
+  The difference does not show at rest. It shows when the service at the bottom
+  is struggling, because that is when the abandoned work is the difference
+  between a system that sheds load as its callers give up and one that keeps
+  doing work whose answer has already been thrown away.
+
+  Read it for why a deadline is a property of a request rather than of a call,
+  and why the penalty for getting it wrong scales with how much work each
+  request causes further down.
+
+scratchpad:
+  - name: base_demand
+    expression: '500'
+    unit: op/s
+    summary: Search requests per second at rest.
+
+  - name: surge_factor
+    expression: '2.5'
+    unit: '1'
+    summary: Multiple of resting demand during the surge.
+
+  - name: surge_from
+    expression: '5'
+    unit: s
+    summary: When the surge begins.
+
+  - name: surge_until
+    expression: '15'
+    unit: s
+    summary: When the surge ends.
+
+  - name: demand
+    expression: >
+      if t >= surge_from && t < surge_until then base_demand * surge_factor
+      else base_demand
+    unit: op/s
+    summary: Offered load over the run, with the surge in the middle.
+
+  - name: deadline_propagation
+    expression: '1'
+    unit: '1'
+    summary: >
+      Share of cancellation that survives the hop into the search service. One
+      is a deadline carried with the request, so a caller giving up withdraws
+      the work it caused. Zero is a timeout implemented where the call is made
+      and nowhere else: the caller stops waiting and nothing downstream is told.
+
+      This is the only quantity that separates the two designs. Everything else
+      — the deadlines themselves, the retries, the pool sizes — is identical, so
+      whatever moves between the readings moved because of this.
+
+  - name: user_deadline
+    expression: '0.1'
+    unit: s
+    summary: >
+      How long a browser waits for search before abandoning the request. The
+      deadline that ought to govern everything the request causes, and the only
+      one in this design that ever fires.
+
+  - name: follow_on_ops
+    expression: '6'
+    unit: '1'
+    summary: >
+      Index operations one search request performs. This is what makes the
+      difference matter: work abandoned at the top has already become six times
+      as much work at the bottom, and none of it is recalled unless the giving
+      up is passed on.
+
+      Rebind through `single-operation` to see the same design where each
+      request causes exactly one operation, and how much smaller the penalty is.
+
+  - name: api_service_time
+    expression: 0.002 * lognormal(0, 0.1)
+    unit: s
+    summary: The front end's own work per request.
+
+  - name: api_workers
+    expression: '400'
+    unit: op
+    summary: Requests the front end serves concurrently.
+
+  - name: search_service_time
+    expression: 0.004 * lognormal(0, 0.1)
+    unit: s
+    summary: The search service's own work per request, excluding index reads.
+
+  - name: search_workers
+    expression: '600'
+    unit: op
+    summary: >
+      Requests the search service serves concurrently. A worker is held for the
+      whole of the request including every index operation it performs, so this
+      is the resource that abandoned work occupies.
+
+  - name: index_idle_latency
+    expression: '0.004'
+    unit: s
+    summary: The index's answer time when it is holding almost nothing.
+
+  - name: index_service_time
+    expression: index_idle_latency * lognormal(0, 0.15)
+    unit: s
+    summary: The idle latency, with the spread a real measurement has.
+
+  - name: index_concurrency
+    expression: '150'
+    unit: op
+    summary: >
+      Operations the index holds in flight at once. Latency rises as this fills,
+      which is what makes the deadline start firing in the first place.
+
+      This is the limit that fan-out is measured against, and the reason it
+      matters that six branches hold six operations open rather than one.
+
+  - name: attempt_timeout
+    expression: '0.5'
+    unit: s
+    summary: >
+      Deadline on one index operation. Five times the browser's, because it was
+      chosen from what the index usually does rather than derived from what the
+      caller is waiting for.
+
+      It therefore never fires, which is the ordinary case and is worth seeing:
+      a design can be full of timeouts, every one of them defensible in
+      isolation, and still have exactly one deadline that governs anything.
+
+  - name: max_attempts
+    expression: '2'
+    unit: '1'
+    summary: Attempts per index operation, including the first.
+
+  - name: link_capacity
+    expression: '400'
+    unit: op
+    summary: The socket buffer and listen backlog in front of the front end.
+
+scale_units: []
+
+interventions:
+  - id: leaf-timeouts
+    name: Time out locally, tell nobody
+    summary: >
+      Stops cancellation at the front end. Every deadline in the design is
+      unchanged and every one of them still fires; what changes is that the
+      search service is never told the answer is no longer wanted.
+
+      This is the naive implementation, and it is naive in a specific way: it
+      looks correct in a code review, because every call really does have a
+      timeout on it.
+    overrides:
+      - name: deadline_propagation
+        expression: '0'
+
+  - id: single-operation
+    name: One operation per request
+    summary: >
+      Reduces the follow-on work each request causes to a single index
+      operation. The same comparison then costs far less, which is the point:
+      the penalty for not propagating a deadline is proportional to how much
+      work the abandoned request had already caused.
+    overrides:
+      - name: follow_on_ops
+        expression: '1'
+
+  - id: tighter-deadline
+    name: Give up sooner
+    summary: >
+      Halves the browser's deadline. Withdraws work earlier when cancellation
+      propagates, and merely fails sooner when it does not, which is the
+      cleanest way to see that a deadline without propagation is a reporting
+      change rather than a capacity one.
+    overrides:
+      - name: user_deadline
+        expression: '0.05'
+
+  - id: no-surge
+    name: Never had the surge
+    summary: >
+      The control: the same design with nothing in its past.
+    overrides:
+      - name: surge_factor
+        expression: '1'

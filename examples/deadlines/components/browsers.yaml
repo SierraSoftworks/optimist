@@ -1,0 +1,21 @@
+id: browsers
+name: Browsers
+type: client
+properties:
+  request_rate: demand
+  latency_target: '0.1'
+  success_target: '0.99'
+position:
+  x: 0
+  y: 0
+outgoing:
+  - to: api
+    capacity: link_capacity
+    summary: >
+      Search requests. The browser's deadline lives here: it is what the person
+      waiting is actually prepared to wait for, and every deadline further down
+      ought to be derived from it rather than chosen independently.
+    mutators:
+      - type: timeout
+        properties:
+          budget: user_deadline

@@ -1,0 +1,22 @@
+id: api
+name: Orders API
+type: compute
+properties:
+  service_time: api_service_time
+  parallelism: api_workers
+position:
+  x: 0
+  y: 160
+outgoing:
+  - to: orders
+    summary: >
+      Order lookups, with the two policies every client library ships with. The
+      timeout decides that a slow answer is a failure; the retry answers that
+      failure with another attempt. Each is defensible alone.
+    mutators:
+      - type: retry
+        properties:
+          attempts: max_attempts
+      - type: timeout
+        properties:
+          budget: attempt_timeout

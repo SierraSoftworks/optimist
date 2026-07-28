@@ -1,0 +1,180 @@
+schema_version: 2
+name: Saturation and retries
+summary: >
+  The smallest design that can go wrong: browsers call an API, the API reads
+  from a store, and that read is wrapped in the two policies every client
+  library ships with — a timeout and a retry.
+
+  Nothing here is exotic. The store holds a limited number of operations in
+  flight, which is the ordinary consequence of a connection pool. That single
+  limit is enough to make latency a function of load rather than a property of
+  the store, and once latency depends on load, the timeout has something to fire
+  on and the retry has something to answer.
+
+  Read it for three things: where saturation actually comes from, why adding
+  retries lowers the share of requests that succeed rather than raising it, and
+  why the design takes so much longer to recover than the surge took to arrive.
+
+scratchpad:
+  - name: base_demand
+    expression: '600'
+    unit: op/s
+    summary: >
+      Requests per second at rest. A quarter of the fold computed below, which
+      is the sort of headroom a capacity plan is signed off with.
+
+  - name: surge_factor
+    expression: '3.5'
+    unit: '1'
+    summary: >
+      Multiple of resting demand during the surge window. Rebind to one to ask
+      what the same design looks like with nothing in its past.
+
+  - name: surge_from
+    expression: '5'
+    unit: s
+    summary: When the surge begins.
+
+  - name: surge_until
+    expression: '15'
+    unit: s
+    summary: When the surge ends, ten seconds later.
+
+  - name: demand
+    expression: >
+      if t >= surge_from && t < surge_until then base_demand * surge_factor
+      else base_demand
+    unit: op/s
+    summary: Offered load over the run, with the surge in the middle.
+
+  - name: store_idle_latency
+    expression: '0.01'
+    unit: s
+    summary: >
+      Time the store takes to answer when it is holding almost nothing. The
+      figure a benchmark reports, and the one an engineer quotes when asked how
+      fast the store is. It is true, and it is only true at rest.
+
+  - name: store_service_time
+    expression: store_idle_latency * lognormal(0, 0.15)
+    unit: s
+    summary: The idle latency, with the spread a real measurement has.
+
+  - name: store_concurrency
+    expression: '100'
+    unit: op
+    summary: >
+      Operations the store holds in flight at once: its connection pool. This is
+      the limit that turns the store's latency into a function of how hard it is
+      being driven, and it is the only unusual thing in the design.
+
+  - name: fold_load
+    expression: store_concurrency / (4 * store_idle_latency)
+    unit: op/s
+    summary: >
+      Rate above which the store has no steady state at all.
+
+      Serving λ operations that are each held for L seconds means L·λ are in
+      flight, and a pool at fraction ρ of its limit answers in S/(1-ρ).
+      Substituting one into the other gives L = S / (1 - λL/C), a quadratic in L
+      whose solutions are real only while 4λS ≤ C. Past C/4S there is no latency
+      consistent with itself, and the design has nowhere to settle.
+
+      Note what the number is made of: an idle latency and a pool size. Neither
+      is a throughput figure, and neither appears on a capacity plan.
+
+  - name: api_service_time
+    expression: 0.002 * lognormal(0, 0.1)
+    unit: s
+    summary: >
+      The API's own work per request, excluding the call to the store. Small on
+      purpose: this service does almost nothing, and it will still be the thing
+      that fails.
+
+  - name: api_workers
+    expression: '150'
+    unit: op
+    summary: >
+      Requests the API serves concurrently. A worker is held for the whole of
+      the call to the store, so this pool is spent waiting rather than working,
+      and it is the store's latency rather than the API's own work that decides
+      how many requests a second it can carry.
+
+  - name: attempt_timeout
+    expression: '0.05'
+    unit: s
+    summary: >
+      How long one attempt at the store waits before it is abandoned and counted
+      as a failure. Five times the store's idle latency, which sounds generous
+      and is the number a careful engineer picks.
+
+      It is the most consequential quantity in the design and the one chosen with
+      the least evidence. Compare `patient-timeout`.
+
+  - name: max_attempts
+    expression: '3'
+    unit: '1'
+    summary: >
+      Attempts per call to the store, including the first. Three is the default
+      in most client libraries, and is chosen here for exactly that reason.
+
+  - name: link_capacity
+    expression: '400'
+    unit: op
+    summary: >
+      Requests the wire in front of the API will hold waiting. Nobody chooses
+      this: it is a socket buffer and a listen backlog, and it is there whether
+      or not the design mentions it.
+
+      It is also the design's memory. A surge arriving faster than the API can
+      serve is stored here, and recovery time is the time this takes to drain.
+
+scale_units: []
+
+interventions:
+  - id: no-surge
+    name: Never had the surge
+    summary: >
+      The same design under the same demand at the same moment, differing only
+      in what happened earlier. The control for every other reading.
+    overrides:
+      - name: surge_factor
+        expression: '1'
+
+  - id: no-retries
+    name: Stop retrying
+    summary: >
+      Reduces the attempt budget to one. The policy is still attached and still
+      costs nothing to attach, so whatever moves is amplification and nothing
+      else.
+    overrides:
+      - name: max_attempts
+        expression: '1'
+
+  - id: patient-timeout
+    name: Wait four times as long
+    summary: >
+      Raises the attempt deadline to twenty times the store's idle latency. The
+      timeout then stops firing before the store folds, which removes the
+      failures the retry policy was answering, and with them the amplification.
+    overrides:
+      - name: attempt_timeout
+        expression: '0.2'
+
+  - id: shallow-link
+    name: Fail fast instead of buffering
+    summary: >
+      Cuts the wire in front of the API to a tenth. Refuses work sooner, holds
+      far less of it, and therefore has far less to drain afterwards.
+    overrides:
+      - name: link_capacity
+        expression: '40'
+
+  - id: deep-link
+    name: Buffer the surge instead
+    summary: >
+      Widens the wire in front of the API fivefold. The instinct that a bigger
+      buffer absorbs a burst, priced in the time it then takes to clear.
+    overrides:
+      - name: link_capacity
+        expression: '2000'

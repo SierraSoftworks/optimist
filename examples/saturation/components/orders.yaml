@@ -1,0 +1,14 @@
+id: orders
+name: Order store
+type: datastore
+properties:
+  service_time: store_service_time
+  concurrency_limit: store_concurrency
+  operation_limit: '20000'
+  transfer_limit: '1e9'
+  volume_limit: '1e13'
+  record_size: '4096'
+  retention: '86400'
+position:
+  x: 0
+  y: 320
