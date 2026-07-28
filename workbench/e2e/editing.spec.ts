@@ -59,6 +59,13 @@ test.describe('editing', () => {
     // Put it back, so the rest of the run sees the design it expects.
     await page.getByTestId('quantity-description').fill('Requests per second at the daily peak.')
     await page.getByTestId('save-description').click()
+
+    // Rewriting an expression is where knowing what the number is for matters,
+    // so the description follows the field being edited.
+    await page.getByTestId('quantity-peak_rate').locator('.cm-content').click()
+    await expect(page.getByTestId('preview-summary')).toHaveText(
+      'Requests per second at the daily peak.',
+    )
   })
 
   /**

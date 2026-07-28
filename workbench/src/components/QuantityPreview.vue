@@ -13,6 +13,8 @@ const props = defineProps<{
   /** The quantity being edited, so the preview sees only what it may refer to. */
   entry?: string | null
   unit?: string
+  /** What the quantity is for, which is the thing the new expression has to keep being. */
+  summary?: string
 }>()
 
 /** How long the typing has to stop before the expression is worth evaluating. */
@@ -73,6 +75,8 @@ const certain = computed(() => !!quantity.value && quantity.value.draws.length =
   <aside class="preview" data-test="quantity-preview">
     <p class="heading">Preview</p>
 
+    <p v-if="summary" class="about" data-test="preview-summary">{{ summary }}</p>
+
     <p v-if="problem" class="problem" data-test="preview-problem">{{ problem }}</p>
 
     <template v-else-if="quantity">
@@ -126,6 +130,15 @@ const certain = computed(() => !!quantity.value && quantity.value.draws.length =
   font-weight: 700;
 }
 .value { margin: 0; font-family: var(--mono); font-size: var(--text-xl); line-height: 1.1; }
+.about {
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
 .says { margin: 2px 0 0; font-size: var(--text-2xs); color: var(--muted); }
 .problem {
   margin: 0;

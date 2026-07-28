@@ -361,6 +361,7 @@ async function add() {
         :expression="draftFor(editing).value.value"
         :entry="editing"
         :unit="model.scratchpad.find((entry) => entry.name === editing)?.unit"
+        :summary="model.scratchpad.find((entry) => entry.name === editing)?.summary"
       />
     </Teleport>
 
