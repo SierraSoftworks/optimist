@@ -7,4 +7,5 @@ properties:
   volume_limit: '5e11'
   record_size: '4096'
   retention: '2592000'
+  service_time: '0.002'
 outgoing: []

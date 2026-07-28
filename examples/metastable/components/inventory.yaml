@@ -1,12 +1,15 @@
 id: inventory
-name: Inventory service
-type: connection-pool
+name: Inventory store
+type: datastore
 properties:
-  connection_limit: connection_limit
-  service_time: service_time
-outgoing:
-  - to: checkout
-    summary: >
-      Responses. Drawn as a relationship because the latency this service returns
-      is what decides how long the caller keeps its connection, and that is the
-      arrow closing the feedback loop.
+  operation_limit: '1e6'
+  concurrency_limit: store_connections
+  transfer_limit: '2e8'
+  volume_limit: '5e11'
+  record_size: '512'
+  retention: '60'
+  service_time: store_service_time
+position:
+  x: 0
+  y: 320
+outgoing: []

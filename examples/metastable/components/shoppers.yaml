@@ -3,10 +3,27 @@ name: Shoppers
 type: client
 properties:
   request_rate: demand
+  latency_target: '0.5'
+  success_target: '0.99'
+position:
+  x: 0
+  y: 0
 outgoing:
   - to: checkout
-    summary: Checkout requests, refused above the admission limit.
+    capacity: link_capacity
+    summary: >
+      Checkout requests. The timeout calls a slow answer a failure, the retry
+      answers that failure with more load, and nothing tells checkout that the
+      abandoned attempt is no longer wanted. None of the three is unusual on its
+      own, and the combination is what sets the trap.
     mutators:
       - type: load-shed
         properties:
           limit: admission_limit
+      - type: retry
+        properties:
+          attempts: max_attempts
+      - type: timeout
+        properties:
+          budget: attempt_timeout
+      - type: ignores-cancellation

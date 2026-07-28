@@ -1,11 +1,14 @@
 id: checkout
 name: Checkout service
-type: request-handler
+type: compute
 properties:
-  call_depth: call_depth
-  attempt_timeout: attempt_timeout
-  max_attempts: max_attempts
-  deadline: request_deadline
+  service_time: service_time
+  parallelism: worker_pool
+position:
+  x: 0
+  y: 160
 outgoing:
   - to: inventory
-    summary: Sequential inventory calls, each holding a connection until it returns.
+    summary: >
+      Stock lookups. A worker is held for the whole of this call, which is how
+      the store's latency becomes checkout's saturation.

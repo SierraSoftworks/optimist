@@ -4,6 +4,8 @@ type: client
 properties:
   request_rate: peak_rate
   payload: '512'
+  latency_target: '0.75'
+  success_target: '0.995'
 outgoing:
   - to: api
     summary: Checkout requests arriving at the API.
@@ -11,4 +13,6 @@ outgoing:
       - type: retry
         properties:
           attempts: '3'
-          attempt_success: '0.995'
+      - type: timeout
+        properties:
+          budget: '1'
