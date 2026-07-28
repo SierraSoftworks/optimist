@@ -49,7 +49,7 @@ test.describe('review', () => {
   test('reads a proportion as a percentage', async ({ page }) => {
     await page.goto('/d/metastable/review')
 
-    const chart = page.locator('figure', { hasText: 'attempt_success' }).first()
+    const chart = page.locator('figure', { hasText: 'Success rate' }).first()
     await expect(chart).toBeVisible()
     // The axis runs the whole range rather than the range the data happened to
     // occupy, because a percentage has a ceiling worth showing.
@@ -62,7 +62,7 @@ test.describe('review', () => {
     // A quantity that carries a spread. Some channels solve to one certain
     // value, and those are drawn as a point on purpose, so hovering one would
     // prove nothing about the distribution readout.
-    const chart = page.locator('figure', { hasText: 'call_latency' }).first()
+    const chart = page.locator('figure', { hasText: 'Response time' }).first()
     await expect(chart).toBeVisible()
 
     const plot = chart.locator('svg.plot')
@@ -92,7 +92,7 @@ test.describe('review', () => {
     // Shedding is the lever that ends this collapse, so the constraint it
     // relieves must say so. A card that reported no movement would mean the
     // variant never reached the solver.
-    await expect(page.getByTestId('limit-cards').getByText('%')).toBeVisible()
+    await expect(page.getByTestId('limit-cards').getByText('%').first()).toBeVisible()
     await expect(page.getByTestId('limit-cards')).toContainText(/no longer binds|−|÷/, {
       timeout: 30_000,
     })
@@ -205,9 +205,9 @@ test.describe('review', () => {
     // The row's controls appear on hover, as they do in the list this borrows
     // its shape from.
     await page.getByTestId('variant-shed').hover()
-    await page.getByLabel('Edit Shed load').click()
+    await page.getByLabel('Edit Refuse what cannot be served').click()
 
-    await expect(page.getByTestId('variant-name')).toHaveValue('Shed load')
+    await expect(page.getByTestId('variant-name')).toHaveValue('Refuse what cannot be served')
     await expect(page.getByTestId('variant-id')).toHaveValue('shed')
     await expect(page.getByRole('textbox', { name: 'What this proposes, and why' })).not.toBeEmpty()
 
@@ -224,20 +224,20 @@ test.describe('review', () => {
     await page.goto('/d/metastable/review')
 
     await page.getByTestId('new-variant').click()
-    await page.getByTestId('variant-name').fill('Half the depth')
+    await page.getByTestId('variant-name').fill('Half the attempts')
     await page.getByTestId('add-override').click()
     await page
-      .locator('.pick-override .el-select-dropdown__item', { hasText: 'call_depth' })
+      .locator('.pick-override .el-select-dropdown__item', { hasText: 'max_attempts' })
       .first()
       .click()
     await page.getByTestId('save-variant').click()
 
     // Creating one selects it, so its effect is visible immediately.
-    await expect(page).toHaveURL(/\/review\/half-the-depth/)
-    await expect(page.getByTestId('variant-half-the-depth')).toBeVisible()
+    await expect(page).toHaveURL(/\/review\/half-the-attempts/)
+    await expect(page.getByTestId('variant-half-the-attempts')).toBeVisible()
 
     // And it is part of the design rather than of this tab.
     await page.reload()
-    await expect(page.getByTestId('variant-half-the-depth')).toBeVisible()
+    await expect(page.getByTestId('variant-half-the-attempts')).toBeVisible()
   })
 })

@@ -39,7 +39,7 @@ test.describe('routing', () => {
 
     // The same link, opened cold, comes back to the same variant.
     await page.goto('/d/metastable/review/shed')
-    await expect(page.getByRole('heading', { name: 'Shed load' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Refuse what cannot be served' })).toBeVisible()
   })
 
   test('an unknown address falls back to the picker', async ({ page }) => {
