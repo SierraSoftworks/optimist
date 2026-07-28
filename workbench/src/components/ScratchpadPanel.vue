@@ -1,17 +1,141 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
 import type { Catalogue, Mutation, ScratchpadEntry, SystemModel } from '../api/types'
 import { useDraft, type Draft } from '../composables/useDraft'
 import type { ExpressionScope } from '../domain/squiggleLanguage'
 import FieldStatus from './FieldStatus.vue'
+import QuantityPreview from './QuantityPreview.vue'
 import SquiggleEditor from './SquiggleEditor.vue'
 
 const props = defineProps<{
+  design: string
   model: SystemModel
   catalogue?: Catalogue
   apply: (mutations: Mutation[]) => Promise<unknown>
 }>()
+
+/**
+ * Which expression is being written, and therefore worth previewing.
+ *
+ * One at a time, following the focus. A preview beside every row would be a
+ * column of charts nobody asked for; beside the row being typed into it is the
+ * answer to the question the typing is asking.
+ */
+const editing = ref<string | null>(null)
+
+/** The row each quantity occupies, which is what the preview is anchored to. */
+const rows = new Map<string, HTMLElement>()
+
+function hold(name: string, element: unknown) {
+  if (element instanceof HTMLElement) rows.set(name, element)
+  else rows.delete(name)
+}
+
+/**
+ * Where the preview sits, in viewport coordinates.
+ *
+ * The panel this list lives in scrolls, so it clips anything positioned inside
+ * it. A preview meant to hang *outside* the panel is therefore rendered at the
+ * document root and placed against the viewport, which is the only frame of
+ * reference that no ancestor can crop.
+ */
+const anchor = ref<{ left: number; top: number } | null>(null)
+
+/** Clearance from the row and from the edges of the window. */
+const GAP = 12
+
+/**
+ * The preview's width, which has to be known before it has been rendered.
+ *
+ * Kept in step with the component's own stylesheet by [`settle`], which measures
+ * what was actually drawn and corrects this first guess. Without the guess the
+ * preview would appear at the wrong edge for one frame and jump.
+ */
+const PREVIEW_WIDTH = 268
+
+function locate(name: string) {
+  const row = rows.get(name)
+  if (!row) {
+    anchor.value = null
+    return
+  }
+  const rect = row.getBoundingClientRect()
+  anchor.value = {
+    left: Math.max(GAP, rect.left - PREVIEW_WIDTH - GAP),
+    top: Math.min(Math.max(GAP, rect.top), window.innerHeight - GAP),
+  }
+}
+
+/**
+ * Places the preview beside its row, inside the window.
+ *
+ * Its height depends on what the expression turned out to be — a constant is a
+ * line of text, a distribution is a chart — so it cannot be reserved for in
+ * advance and is measured instead. Everything is derived from the row afresh
+ * rather than adjusted from where it last sat, so that scrolling back and forth
+ * returns it to the same place instead of ratcheting it up the window.
+ */
+function settle() {
+  const element = preview.value?.$el
+  const row = editing.value ? rows.get(editing.value) : null
+  if (!(element instanceof HTMLElement) || !row) return
+  const anchored = row.getBoundingClientRect()
+  const { width, height } = element.getBoundingClientRect()
+  const placed = {
+    left: Math.max(GAP, anchored.left - width - GAP),
+    top: Math.max(GAP, Math.min(anchored.top, window.innerHeight - height - GAP)),
+  }
+  if (anchor.value?.left === placed.left && anchor.value.top === placed.top) return
+  anchor.value = placed
+}
+
+const preview = ref<InstanceType<typeof QuantityPreview> | null>(null)
+
+/**
+ * Follows the row for as long as the preview is open.
+ *
+ * A frame loop rather than scroll and resize listeners. The row moves for more
+ * reasons than a listener can enumerate — the panel scrolls, the window
+ * resizes, the preview itself grows from a line of text into a chart when the
+ * expression resolves, rows above it appear and disappear as the design changes
+ * underneath — and a `scroll` event does not bubble, so each scrolling ancestor
+ * would need its own listener found and attached and released again.
+ *
+ * Reading two rectangles per frame, for as long as one field has focus, is
+ * cheaper than any of that and cannot be wrong. Nothing is written unless the
+ * placement actually changed, so a still page costs no renders.
+ */
+let frame = 0
+
+function track() {
+  frame = requestAnimationFrame(track)
+  settle()
+}
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(frame)
+})
+
+/** Starts editing a quantity, bringing its row and its preview into view. */
+function beginEditing(name: string) {
+  editing.value = name
+  void nextTick(() => {
+    const row = rows.get(name)
+    if (!row) return
+    row.scrollIntoView({ block: 'nearest' })
+    locate(name)
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(track)
+  })
+}
+
+function endEditing(name: string) {
+  if (editing.value !== name) return
+  cancelAnimationFrame(frame)
+  editing.value = null
+  anchor.value = null
+}
 
 /**
  * What a shared quantity may refer to.
@@ -114,7 +238,12 @@ async function add() {
     />
 
     <ul class="entries">
-      <li v-for="(entry, index) in model.scratchpad" :key="entry.name" class="entry">
+      <li
+        v-for="(entry, index) in model.scratchpad"
+        :key="entry.name"
+        :ref="(element) => hold(entry.name, element)"
+        class="entry"
+      >
         <!--
           Name, unit and controls stack on the left so the expression gets the
           full width of the row. The expression is the part that is read and
@@ -163,8 +292,8 @@ async function add() {
             v-model="draftFor(entry.name).value.value"
             :scope="scopeFor(index)"
             :data-test="`quantity-${entry.name}`"
-            @focus="draftFor(entry.name).focus()"
-            @blur="draftFor(entry.name).blur()"
+            @focus="draftFor(entry.name).focus(); beginEditing(entry.name)"
+            @blur="draftFor(entry.name).blur(); endEditing(entry.name)"
           />
           <FieldStatus
             :state="draftFor(entry.name).state.value"
@@ -175,6 +304,26 @@ async function add() {
         </div>
       </li>
     </ul>
+
+    <!--
+      Rendered at the document root rather than beside the row it belongs to.
+      The panel holding these rows scrolls, and a scrolling box crops whatever
+      is positioned inside it — which is every pixel of a preview whose whole
+      purpose is to hang outside the panel, over the diagram, where there is
+      room for a chart.
+    -->
+    <Teleport to="body">
+      <QuantityPreview
+        v-if="editing && anchor"
+        ref="preview"
+        class="flyout"
+        :style="{ left: `${anchor.left}px`, top: `${anchor.top}px` }"
+        :design="design"
+        :expression="draftFor(editing).value.value"
+        :entry="editing"
+        :unit="model.scratchpad.find((entry) => entry.name === editing)?.unit"
+      />
+    </Teleport>
 
     <el-dialog v-model="adding" title="New shared quantity" width="480px">
       <el-form label-position="top" size="small" @submit.prevent="add">
@@ -236,5 +385,15 @@ h3 { font-size: var(--text-md); margin: 0; }
 .remove:hover { color: var(--danger); }
 .editor { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .editor > :first-child { flex: 1; min-width: 0; }
+/*
+ * Out to the left, over the diagram. The panel is not wide enough to hold a
+ * chart beside an expression, and the diagram behind it is the one thing on
+ * screen the author is not looking at while they type.
+ *
+ * Fixed to the viewport, and placed by script: the panel scrolls, so anything
+ * positioned within it is cropped at its edge, which is exactly where this
+ * needs to cross.
+ */
+.flyout { position: fixed; z-index: 2100; }
 .hint { color: var(--muted); font-size: var(--text-2xs); margin: 2px 0 0; }
 </style>

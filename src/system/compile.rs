@@ -23,7 +23,7 @@ use super::{
     evaluate::{EvaluationError, LinkId},
     expression::{STEP, TIME, references},
     manifest::ComponentType,
-    model::{Component, ComponentId, Relationship, SystemModel},
+    model::{Component, ComponentId, Relationship, ScratchpadEntry, SystemModel},
     mutator::Mutator,
     scale_unit::{Distribution as ScaleDistribution, enclosing},
     signal::{Signal, builtin_signals},
@@ -40,7 +40,7 @@ pub(super) struct Timing {
 
 impl Timing {
     /// Returns the bindings describing when this plan is being resolved.
-    fn clock(self) -> [(&'static str, Value); 2] {
+    pub(super) fn clock(self) -> [(&'static str, Value); 2] {
         [
             (TIME, Value::Number(self.time)),
             (STEP, Value::Number(self.step)),
@@ -124,7 +124,7 @@ pub(super) fn prepare(
     overrides: &BTreeMap<String, String>,
     config: Timing,
 ) -> Result<Plan, EvaluationError> {
-    let globals = evaluate_scratchpad(model, overrides, config)?;
+    let globals = quantities(&model.scratchpad, overrides, config)?;
     let mut signals = builtin_signals();
     for component_type in catalogue.values() {
         let ports = component_type
@@ -550,13 +550,16 @@ fn prepare_mutators(
 /// Replacements are substituted in place rather than appended, so an entry that
 /// refers to a rebound quantity sees the new value. That is what lets one
 /// rebinding reach every part of a design that sized itself against it.
-fn evaluate_scratchpad(
-    model: &SystemModel,
+///
+/// Takes the entries rather than the model so that a caller wanting the scope
+/// one entry can see — a preview of what is being typed into it — can pass the
+/// prefix ahead of it and get exactly what the solver would.
+pub(super) fn quantities(
+    scratchpad: &[ScratchpadEntry],
     overrides: &BTreeMap<String, String>,
     config: Timing,
 ) -> Result<BTreeMap<String, Value>, EvaluationError> {
-    let declared = model
-        .scratchpad
+    let declared = scratchpad
         .iter()
         .map(|entry| entry.name.as_str())
         .collect::<BTreeSet<_>>();
@@ -569,7 +572,7 @@ fn evaluate_scratchpad(
         });
     }
     let mut globals = BTreeMap::new();
-    for entry in &model.scratchpad {
+    for entry in scratchpad {
         let source = overrides.get(&entry.name).unwrap_or(&entry.expression);
         let program = syntax(source).map_err(|diagnostics| EvaluationError::Syntax {
             location: format!("scratchpad entry '{}'", entry.name),
@@ -716,7 +719,7 @@ thread_local! {
 /// fixed by the model. Parsing them again each step dominated a long run; the
 /// tree is small enough that handing back a copy costs a fraction of rebuilding
 /// one.
-fn syntax(source: &str) -> Result<Program, Vec<crate::squiggle::Diagnostic>> {
+pub(super) fn syntax(source: &str) -> Result<Program, Vec<crate::squiggle::Diagnostic>> {
     PARSED.with_borrow_mut(|cache| {
         if let Some(program) = cache.get(source) {
             return Ok(program.clone());

@@ -331,26 +331,42 @@ watch(
       @close="select(null)"
     />
     <aside v-else class="scratch">
-      <ScratchpadPanel :model="snapshot.model" :catalogue="catalogue" :apply="apply" />
+      <ScratchpadPanel
+        :design="design"
+        :model="snapshot.model"
+        :catalogue="catalogue"
+        :apply="apply"
+      />
     </aside>
 
-    <el-dialog v-model="adding" title="Add a component" width="440px">
-      <el-form label-position="top" size="small">
-        <el-form-item label="Type">
-          <el-select
-            v-model="chosenType"
-            placeholder="Choose a type"
-            data-test="component-type"
-            popper-class="pick-component-type"
-          >
-            <el-option v-for="type in types" :key="type.id" :label="type.name" :value="type.id">
-              <div class="option">
-                <strong>{{ type.name }}</strong>
-                <span>{{ type.summary.split('.')[0] }}</span>
-              </div>
-            </el-option>
-          </el-select>
-        </el-form-item>
+    <!--
+      A gallery rather than a dropdown. Choosing a component type is choosing
+      what a thing *is*, and a list of names in a select asks somebody to know
+      the vocabulary before they can browse it. The card says what the type
+      models and what it will want to know, so the decision is made before the
+      dialog closes rather than discovered in the inspector afterwards.
+    -->
+    <el-dialog v-model="adding" title="Add a component" width="620px">
+      <div class="gallery">
+        <button
+          v-for="type in types"
+          :key="type.id"
+          class="type"
+          :class="{ chosen: chosenType === type.id }"
+          :data-test="`component-type-${type.id}`"
+          @click="chooseType(type.id)"
+        >
+          <el-icon class="glyph"><component :is="glyphOf(type.id)" /></el-icon>
+          <span class="name">{{ type.name }}</span>
+          <span class="says">{{ type.summary.split('.')[0] }}.</span>
+          <span v-if="needs(type.id).length" class="needs">
+            needs {{ needs(type.id).join(', ') }}
+          </span>
+          <span v-else class="needs">nothing to supply</span>
+        </button>
+      </div>
+
+      <el-form label-position="top" size="small" class="naming">
         <el-form-item label="Identifier" :error="idProblem ?? undefined">
           <el-input v-model="newId" placeholder="api" data-test="component-id" />
         </el-form-item>

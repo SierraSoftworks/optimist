@@ -13,7 +13,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::get,
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,10 +31,68 @@ use super::{ApiState, designs::open, error::Rejected};
 pub(super) fn router() -> Router<super::ApiState> {
     Router::new()
         .route("/api/v1/designs/{design}/analysis", get(analysis))
+        .route("/api/v1/designs/{design}/preview", post(preview))
         .route(
             "/api/v1/designs/{design}/comparisons/{intervention}",
             get(comparison),
         )
+}
+
+/// An expression an author is in the middle of writing.
+#[derive(Debug, Deserialize)]
+struct Sketch {
+    /// Squiggle source to evaluate.
+    expression: String,
+    /// The shared quantity being edited, if this is an edit rather than a draft.
+    ///
+    /// A quantity sees only the ones declared ahead of it, so naming the entry
+    /// is what keeps a preview honest about what the solver will allow.
+    #[serde(default)]
+    entry: Option<String>,
+    /// Draws to carry, bounded like every other sampling request.
+    #[serde(default)]
+    samples: Option<usize>,
+}
+
+/// Evaluates one expression against the design, for a preview while typing.
+///
+/// A `POST` because the expression is the request rather than an address: it is
+/// unbounded text that changes on every keystroke, and neither a URL nor a cache
+/// wants either of those properties.
+async fn preview(
+    State(state): State<ApiState>,
+    Path(design): Path<String>,
+    Json(sketch): Json<Sketch>,
+) -> Result<Json<Quantity>, Rejected> {
+    let session = open(&state.workspace, &design)?;
+    // Fewer draws than a solve. This is a shape being glanced at while somebody
+    // types, not a figure being reasoned about, and the request happens far more
+    // often than a solve does.
+    let sample_count = sketch.samples.unwrap_or(2_000).clamp(64, 20_000);
+    let config = EvaluationConfig {
+        sample_count,
+        ..EvaluationConfig::default()
+    };
+
+    // Summarised inside the blocking task because an evaluated value may hold a
+    // reference-counted function, which cannot cross a thread boundary. The
+    // summary is plain numbers and travels freely.
+    let quantity = tokio::task::spawn_blocking(move || {
+        let snapshot = session.snapshot();
+        let value = crate::system::preview(
+            &snapshot.model,
+            &sketch.expression,
+            sketch.entry.as_deref(),
+            config,
+        )?;
+        Quantity::read(&value, DRAW_BUDGET).ok_or(crate::system::EvaluationError::Evaluation {
+            location: "expression".to_owned(),
+            message: format!("a {} is not a quantity that can be drawn", value.type_name()),
+        })
+    })
+    .await
+    .expect("evaluation does not panic")?;
+    Ok(Json(quantity))
 }
 
 /// Controls a caller may vary without editing the design.

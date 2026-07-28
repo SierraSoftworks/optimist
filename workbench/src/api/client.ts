@@ -5,6 +5,7 @@ import type {
   Comparison,
   DesignSummary,
   Mutation,
+  Quantity,
   Snapshot,
 } from './types'
 
@@ -105,6 +106,19 @@ export const api = {
 
   analysis: (design: string, controls: SolveControls = {}) =>
     request<Analysis>(`/designs/${encodeURIComponent(design)}/analysis${query(controls)}`),
+
+  /**
+   * Evaluates one expression the way the solver would, for a preview.
+   *
+   * `entry` names the shared quantity being edited, because a quantity sees only
+   * the ones declared ahead of it and a preview that ignored that would show a
+   * figure the solver is going to refuse.
+   */
+  preview: (design: string, expression: string, entry: string | null = null) =>
+    request<Quantity>(`/designs/${encodeURIComponent(design)}/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ expression, entry }),
+    }),
 
   comparison: (design: string, intervention: string, controls: SolveControls = {}) =>
     request<Comparison>(

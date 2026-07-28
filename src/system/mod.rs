@@ -45,6 +45,7 @@ mod intervention;
 mod manifest;
 mod model;
 mod mutator;
+mod preview;
 mod scale_unit;
 mod schema;
 mod signal;
@@ -65,6 +66,7 @@ pub use manifest::{
 };
 pub use model::{Component, ComponentId, Position, Relationship, ScratchpadEntry, SystemModel};
 pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
+pub use preview::preview;
 pub use scale_unit::{Distribution, ScaleUnit, ScaleUnitId};
 pub use schema::{
     ComponentDocument, LoadedSystem, OutgoingRelationship, SCHEMA_VERSION, SchemaError,
