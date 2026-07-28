@@ -127,7 +127,7 @@ impl Runtime {
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned_count([&distribution], self.config.sample_count);
+        let count = Distribution::aligned([&distribution], self.ensemble);
         let samples = distribution
             .draws(count, &mut self.rng)
             .map_err(|message| Diagnostic::runtime(message, span))?
@@ -153,7 +153,7 @@ impl Runtime {
         operator: &str,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned_count([&left, &right], self.config.sample_count);
+        let count = Distribution::aligned([&left, &right], self.ensemble);
         let left = left
             .draws(count, &mut self.rng)
             .map_err(|message| Diagnostic::runtime(message, span))?;
@@ -177,7 +177,7 @@ impl Runtime {
         transform: impl Fn(f64) -> f64,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned_count([&distribution], self.config.sample_count);
+        let count = Distribution::aligned([&distribution], self.ensemble);
         let samples = distribution
             .draws(count, &mut self.rng)
             .map_err(|message| Diagnostic::runtime(message, span))?

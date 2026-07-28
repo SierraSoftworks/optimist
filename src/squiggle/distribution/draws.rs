@@ -72,7 +72,7 @@ use std::sync::{Arc, OnceLock};
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
-use super::{Distribution, Kind};
+use super::{Distribution, Ensemble, Kind};
 
 /// A lazily materialised sample set shared by every clone of a distribution.
 ///
@@ -105,6 +105,11 @@ impl Distribution {
     /// length, so explicit draws are never silently reinterpolated. Pair this
     /// with `aligned_count` to choose a count that keeps authored data intact.
     ///
+    /// Sampling is always over the whole ensemble, and only the caller's share of
+    /// the result is handed back. Materialising the whole of it is what makes a
+    /// share identical to the same draws computed without splitting, and the
+    /// cache holds the whole so that two shares of one value still agree.
+    ///
     /// ```
     /// # use optimist::squiggle::{Runtime, RuntimeConfig, Value};
     /// let config = RuntimeConfig { sample_count: 1_000, ..RuntimeConfig::default() };
@@ -117,35 +122,40 @@ impl Distribution {
     /// ```
     pub(crate) fn draws<'a>(
         &'a self,
-        count: usize,
+        ensemble: Ensemble,
         rng: &mut ChaCha20Rng,
     ) -> Result<&'a [f64], String> {
         if let Kind::Samples(samples) = &self.kind
-            && samples.len() == count
+            && samples.len() == ensemble.size()
         {
-            return Ok(samples.as_ref());
+            return Ok(ensemble.window(samples.as_ref()));
         }
         if let Some(draws) = self.draws.get() {
-            return Ok(draws);
+            return Ok(ensemble.window(draws));
         }
-        Ok(self.draws.set(self.stratified(count, rng)?))
+        Ok(ensemble.window(
+            self.draws.set(self.stratified(ensemble.size(), rng)?),
+        ))
     }
 
-    /// Returns the draw count at which `operands` can be combined elementwise.
+    /// Returns the ensemble at which `operands` can be combined elementwise.
     ///
     /// Authored sample sets carry a fixed number of draws that resampling would
     /// distort, so the shortest authored length wins and symbolic operands
     /// materialise to match it. When no operand is an authored sample set the
-    /// runtime's configured count applies.
-    pub(crate) fn aligned_count<'a>(
+    /// runtime's configured count applies. The caller's share is carried through
+    /// unchanged: it is the same share, of however many draws the operands agree
+    /// on.
+    pub(crate) fn aligned<'a>(
         operands: impl IntoIterator<Item = &'a Self>,
-        configured: usize,
-    ) -> usize {
-        operands
+        configured: Ensemble,
+    ) -> Ensemble {
+        let size = operands
             .into_iter()
             .filter_map(|operand| operand.samples().map(<[f64]>::len))
             .min()
-            .unwrap_or(configured)
+            .unwrap_or_else(|| configured.size());
+        configured.resized(size)
     }
 
     fn stratified(&self, count: usize, rng: &mut ChaCha20Rng) -> Result<Vec<f64>, String> {
@@ -179,12 +189,16 @@ mod tests {
         ChaCha20Rng::seed_from_u64(7)
     }
 
+    fn whole(size: usize) -> Ensemble {
+        Ensemble::whole(size)
+    }
+
     #[test]
     fn clones_share_one_materialisation() -> Result<(), String> {
         let distribution = Distribution::normal(5.0, 1.0)?;
         let clone = distribution.clone();
-        let first = distribution.draws(512, &mut rng())?.to_vec();
-        let second = clone.draws(512, &mut rng())?;
+        let first = distribution.draws(whole(512), &mut rng())?.to_vec();
+        let second = clone.draws(whole(512), &mut rng())?;
         assert_eq!(first, second);
         Ok(())
     }
@@ -194,8 +208,8 @@ mod tests {
         let mut rng = rng();
         let first = Distribution::normal(5.0, 1.0)?;
         let second = Distribution::normal(5.0, 1.0)?;
-        let left = first.draws(512, &mut rng)?.to_vec();
-        let right = second.draws(512, &mut rng)?;
+        let left = first.draws(whole(512), &mut rng)?.to_vec();
+        let right = second.draws(whole(512), &mut rng)?;
         assert_ne!(left, right);
         Ok(())
     }
@@ -204,7 +218,7 @@ mod tests {
     fn strata_cover_the_unit_interval_exactly_once() -> Result<(), String> {
         let count = 1_000;
         let draws = Distribution::uniform(0.0, 1.0)?
-            .draws(count, &mut rng())?
+            .draws(whole(count), &mut rng())?
             .to_vec();
         let mut occupancy = vec![0_usize; count];
         for draw in &draws {
@@ -217,7 +231,7 @@ mod tests {
     #[test]
     fn draws_are_not_left_in_ascending_order() -> Result<(), String> {
         let draws = Distribution::normal(0.0, 1.0)?
-            .draws(512, &mut rng())?
+            .draws(whole(512), &mut rng())?
             .to_vec();
         assert!(draws.windows(2).any(|pair| pair[0] > pair[1]));
         Ok(())
@@ -226,7 +240,7 @@ mod tests {
     #[test]
     fn stratification_beats_independent_sampling_on_mean_error() -> Result<(), String> {
         let distribution = Distribution::normal(10.0, 3.0)?;
-        let stratified = distribution.draws(1_000, &mut rng())?;
+        let stratified = distribution.draws(whole(1_000), &mut rng())?;
         let mean = stratified.iter().sum::<f64>() / stratified.len() as f64;
         assert!((mean - 10.0).abs() < 0.01, "stratified mean was {mean}");
         Ok(())
@@ -236,14 +250,33 @@ mod tests {
     fn existing_sample_sets_of_matching_length_are_returned_unchanged() -> Result<(), String> {
         let samples = vec![1.0, 2.0, 3.0, 4.0];
         let distribution = Distribution::from_samples(samples.clone())?;
-        assert_eq!(distribution.draws(4, &mut rng())?, samples.as_slice());
+        assert_eq!(distribution.draws(whole(4), &mut rng())?, samples.as_slice());
         Ok(())
     }
 
     #[test]
     fn sample_sets_of_other_lengths_are_resampled_to_the_requested_count() -> Result<(), String> {
         let distribution = Distribution::from_samples(vec![1.0, 2.0, 3.0, 4.0])?;
-        assert_eq!(distribution.draws(64, &mut rng())?.len(), 64);
+        assert_eq!(distribution.draws(whole(64), &mut rng())?.len(), 64);
+        Ok(())
+    }
+
+    /// A share reads the draws the whole ensemble would have put at those indices.
+    ///
+    /// This is what lets one solve be computed in pieces: the pieces are not
+    /// merely similar to the whole, they are the whole, rearranged.
+    #[test]
+    fn shares_of_a_sample_set_reconstruct_the_whole() -> Result<(), String> {
+        let distribution = Distribution::lognormal(1.0, 0.5)?;
+        let whole = distribution.draws(whole(600), &mut rng())?.to_vec();
+
+        let mut assembled = Vec::new();
+        for share in Ensemble::split(600, 7) {
+            // A fresh value each time, so nothing is carried over in the cache.
+            let separate = Distribution::lognormal(1.0, 0.5)?;
+            assembled.extend_from_slice(separate.draws(share, &mut rng())?);
+        }
+        assert_eq!(assembled, whole);
         Ok(())
     }
 }

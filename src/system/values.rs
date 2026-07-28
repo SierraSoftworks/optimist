@@ -10,7 +10,7 @@ use rand_chacha::ChaCha20Rng;
 
 use crate::{
     profile::count,
-    squiggle::{Distribution, Value},
+    squiggle::{Distribution, Value, distribution::Ensemble},
 };
 
 /// Reads a quantity as `count` aligned draws.
@@ -22,7 +22,12 @@ pub(super) fn draws(value: &Value, count: usize, rng: &mut ChaCha20Rng) -> Optio
     count!(Draws, count);
     match value {
         Value::Number(number) => Some(vec![*number; count]),
-        Value::Distribution(distribution) => Some(distribution.draws(count, rng).ok()?.to_vec()),
+        Value::Distribution(distribution) => Some(
+            distribution
+                .draws(Ensemble::whole(count), rng)
+                .ok()?
+                .to_vec(),
+        ),
         _ => None,
     }
 }
@@ -58,9 +63,9 @@ impl<'a> Varying<'a> {
     pub(super) fn of(value: &'a Value, count: usize, rng: &mut ChaCha20Rng) -> Option<Self> {
         match value {
             Value::Number(number) => Some(Self::Uniform(*number)),
-            Value::Distribution(distribution) => {
-                Some(Self::PerDraw(distribution.draws(count, rng).ok()?))
-            }
+            Value::Distribution(distribution) => Some(Self::PerDraw(
+                distribution.draws(Ensemble::whole(count), rng).ok()?,
+            )),
             _ => None,
         }
     }

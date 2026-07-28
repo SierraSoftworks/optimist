@@ -14,7 +14,7 @@ use rand_chacha::ChaCha20Rng;
 
 use crate::profile::count;
 
-use super::{Diagnostic, Value, ast::Program, parse, value::Environment};
+use super::{Diagnostic, Value, ast::Program, distribution::Ensemble, parse, value::Environment};
 
 mod builtin;
 #[macro_use]
@@ -63,6 +63,8 @@ pub struct Runtime {
     pub(super) rng: ChaCha20Rng,
     pub(super) steps: usize,
     pub(super) modules: BTreeMap<String, Value>,
+    /// The draws to sample, and which share of them this runtime computes.
+    pub(super) ensemble: Ensemble,
     /// Standard globals, built once and shared by every run as a parent scope.
     pub(super) globals: Environment,
     /// Scope holding the values passed to [`Runtime::evaluate_values`], reused so
@@ -89,6 +91,7 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
         }
@@ -108,9 +111,45 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
         })
+    }
+
+    /// Restricts this runtime to one share of the configured draws.
+    ///
+    /// Every draw index carries an independent system, so a caller with several
+    /// runtimes can give each of them a share and concatenate the results. The
+    /// share changes only which draws are computed, never which are sampled, so
+    /// the pieces agree with what one runtime would have produced.
+    ///
+    /// ```
+    /// # use optimist::squiggle::{Distribution, Runtime, RuntimeConfig, Value};
+    /// let config = RuntimeConfig { sample_count: 400, ..RuntimeConfig::default() };
+    /// let whole = Runtime::with_config(config)?.evaluate("normal(5, 1) * 2")
+    ///     .expect("evaluates");
+    /// let Value::Distribution(whole) = whole else { panic!("a distribution") };
+    ///
+    /// let mut shared: Vec<f64> = Vec::new();
+    /// for part in 0..4 {
+    ///     let value = Runtime::with_config(config)?
+    ///         .sharing(part, 4)
+    ///         .evaluate("normal(5, 1) * 2")
+    ///         .expect("evaluates");
+    ///     let Value::Distribution(part) = value else { panic!("a distribution") };
+    ///     shared.extend_from_slice(part.samples().expect("draws"));
+    /// }
+    ///
+    /// assert_eq!(shared, whole.samples().expect("draws"));
+    /// # Ok::<(), String>(())
+    /// ```
+    #[must_use]
+    pub fn sharing(mut self, part: usize, parts: usize) -> Self {
+        self.ensemble = Ensemble::split(self.config.sample_count, parts)
+            .nth(part)
+            .unwrap_or_else(|| Ensemble::whole(self.config.sample_count));
+        self
     }
 
     /// Returns this runtime's immutable configuration.

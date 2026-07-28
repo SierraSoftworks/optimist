@@ -19,12 +19,15 @@
 //! and 1.3.6.6; Luc Devroye, *Non-Uniform Random Variate Generation* (1986).
 
 mod draws;
+mod ensemble;
 mod sample;
 mod stats;
 
 use std::sync::Arc;
 
 use draws::DrawCache;
+
+pub use ensemble::Ensemble;
 
 /// A validated symbolic or empirical scalar probability distribution.
 ///

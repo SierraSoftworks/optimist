@@ -282,7 +282,7 @@ fn truncate(
                 .with_help("widen the interval so it overlaps the distribution's support"),
         );
     }
-    let count = Distribution::aligned_count([distribution], runtime.config.sample_count);
+    let count = Distribution::aligned([distribution], runtime.ensemble);
     let samples = distribution
         .draws(count, &mut runtime.rng)
         .map_err(fail)?

@@ -78,26 +78,30 @@ pub(super) fn elementwise(
         return compute(&row).map(Value::Number).map_err(fail);
     }
 
-    let count = Distribution::aligned_count(
+    let ensemble = Distribution::aligned(
         arguments.iter().filter_map(|argument| match argument {
             Value::Distribution(distribution) => Some(distribution),
             _ => None,
         }),
-        runtime.config.sample_count,
+        runtime.ensemble,
     );
     let mut columns = Vec::with_capacity(arguments.len());
     for argument in arguments {
         columns.push(match argument {
             Value::Distribution(distribution) => {
-                Column::Draws(distribution.draws(count, &mut runtime.rng).map_err(fail)?)
+                Column::Draws(distribution.draws(ensemble, &mut runtime.rng).map_err(fail)?)
             }
             value => Column::Constant(number(value, span)?),
         });
     }
 
+    // The columns already hold this runtime's share, so the formula runs across
+    // the draws that share owns rather than the whole ensemble they came from.
+    let width = ensemble.len();
+
     let mut row = vec![0.0; columns.len()];
-    count!(Draws, count);
-    let samples = (0..count)
+    count!(Draws, width);
+    let samples = (0..width)
         .map(|index| {
             for (slot, column) in row.iter_mut().zip(&columns) {
                 *slot = column.at(index);
