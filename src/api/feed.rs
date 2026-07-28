@@ -26,7 +26,7 @@ use crate::session::{Change, Session, Snapshot, Workspace};
 
 use super::{designs::open, error::Rejected};
 
-pub(super) fn router() -> Router<Arc<Workspace>> {
+pub(super) fn router() -> Router<super::ApiState> {
     Router::new().route("/api/v1/designs/{design}/feed", get(subscribe))
 }
 

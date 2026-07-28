@@ -299,6 +299,49 @@ async fn solving_returns_the_draws_behind_each_quantity() {
     assert_eq!(capacity["mean"], 400.0);
 }
 
+/// A remembered answer must be about the design that was asked about.
+///
+/// The cache exists so that flicking between variants costs nothing, which is
+/// only safe if every input that changes the answer is part of what identifies
+/// it. This asks the same design four ways — twice identically, then with a
+/// different variant, then after an edit — and checks that only the repeat is
+/// answered from memory.
+#[tokio::test]
+async fn a_solved_answer_is_reused_only_for_the_same_question() {
+    let root = workspace("cached");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let path = "/api/v1/designs/checkout/analysis?samples=200";
+    let (_, first) = get(address, path).await;
+    let (_, again) = get(address, path).await;
+    assert_eq!(first, again, "the same question must give the same answer");
+
+    let (_, quieter) = get(address, &format!("{path}&intervention=quieter")).await;
+    assert_ne!(
+        first["components"]["api"]["offered"], quieter["components"]["api"]["offered"],
+        "a variant rebinds the demand, so it cannot share the baseline's answer"
+    );
+
+    let (status, _) = post(
+        address,
+        "/api/v1/designs/checkout/mutations",
+        json!({ "mutations": [{
+            "kind": "set_scratchpad_entry",
+            "entry": { "name": "peak_rate", "expression": "50", "unit": "op/s", "summary": "" }
+        }] }),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let (_, edited) = get(address, path).await;
+    assert_eq!(edited["sequence"], 1);
+    assert_ne!(
+        first["components"]["api"]["offered"], edited["components"]["api"]["offered"],
+        "an edit moves the design on, so the answer before it must not be reused"
+    );
+}
+
 /// A design can be started empty and edited into existence.
 ///
 /// The first thing anybody does is name the system they are about to model, so

@@ -28,6 +28,7 @@
 //! round trip rather than two.
 
 mod analysis;
+mod cache;
 mod designs;
 mod error;
 mod feed;
@@ -37,6 +38,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 use axum::{
     Json, Router,
+    extract::FromRef,
     routing::{any, get},
 };
 use serde::Serialize;
@@ -48,6 +50,36 @@ use crate::session::Workspace;
 
 /// How often loaded designs are checked for edits that have settled.
 const SWEEP_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Everything a request may need beyond what it carries itself.
+///
+/// The workspace is the authority on what a design says; the caches are a
+/// performance artifact over it. They are separate fields rather than one type
+/// because an answer's lifetime is decided by how often somebody asks for it,
+/// and a design's by whether anybody has it open.
+#[derive(Clone)]
+pub(super) struct ApiState {
+    workspace: Arc<Workspace>,
+    analyses: Arc<cache::Cache<analysis::Analysis>>,
+    comparisons: Arc<cache::Cache<crate::system::Comparison>>,
+}
+
+impl ApiState {
+    fn new(workspace: Arc<Workspace>) -> Self {
+        Self {
+            workspace,
+            analyses: Arc::new(cache::Cache::new()),
+            comparisons: Arc::new(cache::Cache::new()),
+        }
+    }
+}
+
+/// Lets a handler that only reads designs keep asking for the workspace alone.
+impl FromRef<ApiState> for Arc<Workspace> {
+    fn from_ref(state: &ApiState) -> Self {
+        Arc::clone(&state.workspace)
+    }
+}
 
 /// What the process needs in order to serve a workspace.
 #[derive(Clone, Debug)]
@@ -98,7 +130,7 @@ pub fn routes(workspace: Arc<Workspace>, web_root: Option<PathBuf>) -> Router {
         // 404 it is, and owning the refusal here means that holds whether or
         // not a frontend is being served at all.
         .route("/api/{*rest}", any(unknown_endpoint))
-        .with_state(workspace);
+        .with_state(ApiState::new(workspace));
     web::attach(api, web::Assets::new(web_root))
 }
 
