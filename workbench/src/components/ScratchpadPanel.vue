@@ -188,6 +188,38 @@ function remove(name: string) {
   void props.apply([{ kind: 'remove_scratchpad_entry', name }])
 }
 
+/**
+ * Rewriting what a quantity is for.
+ *
+ * Unlike the unit, the description carries no meaning the numbers depend on, so
+ * it is the one part of a declared quantity that stays open to correction — and
+ * the part most likely to need it, since it is written before the design that
+ * gave the quantity its purpose exists.
+ */
+const describing = ref<string | null>(null)
+const description = ref('')
+const descriptionFailure = ref<string | null>(null)
+
+function describe(name: string) {
+  description.value = props.model.scratchpad.find((entry) => entry.name === name)?.summary ?? ''
+  descriptionFailure.value = null
+  describing.value = name
+}
+
+async function saveDescription() {
+  const current = props.model.scratchpad.find((entry) => entry.name === describing.value)
+  if (!current) return
+  descriptionFailure.value = null
+  try {
+    await props.apply([
+      { kind: 'set_scratchpad_entry', entry: { ...current, summary: description.value } },
+    ])
+    describing.value = null
+  } catch (error) {
+    descriptionFailure.value = (error as Error).message
+  }
+}
+
 // Adding a quantity.
 const adding = ref(false)
 const draft = ref<ScratchpadEntry>({ name: '', expression: '', unit: '1', summary: '' })
@@ -261,14 +293,21 @@ async function add() {
               <span class="unit">{{ entry.unit || '1' }}</span>
             </el-tooltip>
             <el-popover
-              v-if="entry.summary"
               trigger="hover"
               placement="right"
               :width="300"
-              :content="entry.summary"
+              :content="entry.summary || 'Nothing written down yet. Click to say what this is.'"
             >
               <template #reference>
-                <el-icon class="about" tabindex="0" :aria-label="`About ${entry.name}`">
+                <el-icon
+                  class="about"
+                  :class="{ unwritten: !entry.summary }"
+                  tabindex="0"
+                  :aria-label="`Describe ${entry.name}`"
+                  :data-test="`describe-${entry.name}`"
+                  @click="describe(entry.name)"
+                  @keydown.enter.prevent="describe(entry.name)"
+                >
                   <i-info-filled />
                 </el-icon>
               </template>
@@ -324,6 +363,32 @@ async function add() {
         :unit="model.scratchpad.find((entry) => entry.name === editing)?.unit"
       />
     </Teleport>
+
+    <el-dialog
+      :model-value="describing !== null"
+      :title="describing ? `What ${describing} is` : ''"
+      width="480px"
+      @update:model-value="describing = null"
+    >
+      <el-form label-position="top" size="small" @submit.prevent="saveDescription">
+        <el-form-item label="What this number is">
+          <el-input v-model="description" type="textarea" :rows="3" data-test="quantity-description" />
+        </el-form-item>
+        <el-alert
+          v-if="descriptionFailure"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="descriptionFailure"
+        />
+      </el-form>
+      <template #footer>
+        <el-button size="small" @click="describing = null">Cancel</el-button>
+        <el-button type="primary" size="small" data-test="save-description" @click="saveDescription">
+          Save
+        </el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="adding" title="New shared quantity" width="480px">
       <el-form label-position="top" size="small" @submit.prevent="add">
@@ -381,7 +446,8 @@ h3 { font-size: var(--text-md); margin: 0; }
 .meta { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); }
 .unit { font-family: var(--mono); font-size: var(--text-2xs); cursor: help; }
 .about, .remove { font-size: 13px; cursor: pointer; }
-.about:hover { color: var(--green); }
+.about:hover { color: var(--green); opacity: 1; }
+.unwritten { opacity: 0.45; }
 .remove:hover { color: var(--danger); }
 .editor { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
 .editor > :first-child { flex: 1; min-width: 0; }

@@ -36,6 +36,32 @@ test.describe('editing', () => {
   })
 
   /**
+   * What a quantity is for is written before the design that gives it a
+   * purpose, so the first description is usually the wrong one. Fixing it used
+   * to mean deleting the quantity and every reference to it.
+   */
+  test('the description of a quantity can be rewritten', async ({ page }) => {
+    await page.goto('/d/checkout/design')
+
+    await page.getByTestId('describe-peak_rate').click()
+    const description = page.getByTestId('quantity-description')
+    await expect(description).toHaveValue('Requests per second at the daily peak.')
+
+    await description.fill('Requests per second during the Friday evening peak.')
+    await page.getByTestId('save-description').click()
+
+    await page.reload()
+    await page.getByTestId('describe-peak_rate').click()
+    await expect(page.getByTestId('quantity-description')).toHaveValue(
+      'Requests per second during the Friday evening peak.',
+    )
+
+    // Put it back, so the rest of the run sees the design it expects.
+    await page.getByTestId('quantity-description').fill('Requests per second at the daily peak.')
+    await page.getByTestId('save-description').click()
+  })
+
+  /**
    * A component with an empty property cannot be solved, and until it is filled
    * in every analysis of the design fails. Saying nothing about that is what
    * made the tool look broken rather than half-finished.
