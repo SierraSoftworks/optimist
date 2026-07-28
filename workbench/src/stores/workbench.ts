@@ -16,6 +16,25 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   // that a design still solves while somebody is typing into it.
   const horizon = ref(20)
   const seed = ref(0)
+  /**
+   * Whether to walk the design through time rather than solve for balance.
+   *
+   * Off by default because balance is what somebody editing a design wants: it
+   * answers immediately and says where the design comes to rest. Turning this on
+   * makes each queue fill and drain at a finite rate, which is the only way to
+   * see how long an incident outlasts its cause — and costs enough that it is a
+   * deliberate act rather than something to leave running.
+   */
+  const transient = ref(false)
+  /**
+   * Seconds each step covers.
+   *
+   * Only meaningful when walking through time, where integrating faithfully
+   * needs a step short against the time a queue takes to drain. A second is far
+   * too long for a service answering in milliseconds, which is why turning
+   * transient on shortens it.
+   */
+  const step = ref(1)
 
-  return { samples, horizon, seed }
+  return { samples, horizon, seed, transient, step }
 })

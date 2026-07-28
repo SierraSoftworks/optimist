@@ -11,10 +11,11 @@ const props = withDefaults(
     series: Frame[]
     component: string
     channel: string
+    label?: string
     unit?: string
     height?: number
   }>(),
-  { unit: '', height: 120 },
+  { label: '', unit: '', height: 120 },
 )
 
 const WIDTH = 640
@@ -159,7 +160,7 @@ const ticks = computed(() => {
 <template>
   <figure class="timeline">
     <figcaption>
-      <span class="channel">{{ channel }}</span>
+      <span class="channel">{{ label || channel }}</span>
       <span class="component">{{ component }}</span>
       <span class="unit">{{ scale.suffix || unit || '1' }}</span>
     </figcaption>

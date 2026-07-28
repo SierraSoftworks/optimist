@@ -37,10 +37,29 @@ const variant = computed(() => props.intervention || null)
 const controls = computed(() => ({
   samples: store.samples,
   horizon: store.horizon,
+  step: store.step,
+  transient: store.transient,
   intervention: variant.value,
   series: true,
 }))
 const sequence = computed(() => snapshot.value?.sequence)
+
+/**
+ * Whether to walk the design through time.
+ *
+ * Turning it on shortens the step and lengthens the horizon together, because
+ * either without the other is misleading: a step of a second cannot integrate a
+ * service answering in milliseconds, and a horizon of twenty short steps covers
+ * no time at all. Turning it off restores what somebody editing a design wants.
+ */
+const walking = computed({
+  get: () => store.transient,
+  set: (wanted: boolean) => {
+    store.transient = wanted
+    store.step = wanted ? 0.5 : 1
+    store.horizon = wanted ? 120 : 20
+  },
+})
 const { data: analysis, error: solveError, isFetching } = useAnalysis(design, controls, sequence)
 const { data: comparison } = useComparison(design, variant, controls, sequence)
 
@@ -74,30 +93,99 @@ function removeVariant(entry: Intervention) {
 /**
  * Which quantities to chart by default.
  *
- * Everything solved is too much to read at once, so the opening selection is the
- * component under the most pressure. A constraint names its component but not
- * the channels behind it — `demand` and `limit` are expressions, not references
- * — so the component is as precise as this can honestly be without the server
- * saying which channels a constraint reads.
+ * Everything solved is too much to read at once, so the opening selection is
+ * what a user of the system would have experienced: the latency and success a
+ * caller observed. Responses travel back to whoever made the call, so those two
+ * figures already account for every hop, retry, timeout and fan-out behind them,
+ * which makes them the only numbers that answer "is this design good enough"
+ * without further assembly.
+ *
+ * Falling back to the most pressured component keeps a design with no callers
+ * readable. A constraint names its component but not the channels behind it —
+ * `demand` and `limit` are expressions, not references — so the component is as
+ * precise as that fallback can honestly be.
  */
+const callers = computed(() => {
+  const types = catalogue.value?.component_types ?? {}
+  return (snapshot.value?.model.components ?? [])
+    .filter((component) => Object.keys(types[component.type]?.ports?.in ?? {}).length === 0)
+    .map((component) => component.id)
+})
+
 const strained = computed(() => analysis.value?.bottlenecks[0]?.component ?? null)
 
 const watching = ref<string[]>([])
 
+/** How a quantity reached the component, for grouping the picker. */
+function family(channel: string): 'input' | 'backpressure' | 'channel' {
+  if (channel.startsWith('in.')) return 'input'
+  if (channel.startsWith('out.')) return 'backpressure'
+  return 'channel'
+}
+
 const available = computed(() => {
-  const options: { value: string; component: string; channel: string }[] = []
+  const options: {
+    value: string
+    component: string
+    channel: string
+    family: 'input' | 'backpressure' | 'channel'
+  }[] = []
   for (const [component, channels] of Object.entries(analysis.value?.components ?? {})) {
     for (const channel of Object.keys(channels)) {
-      options.push({ value: `${component}.${channel}`, component, channel })
+      options.push({ value: `${component}.${channel}`, component, channel, family: family(channel) })
     }
   }
   return options
 })
 
+/** The picker's groups, in the order a reader works through them. */
+const grouped = computed(() => {
+  const labels = {
+    channel: 'Solved quantities',
+    input: 'Arriving demand',
+    backpressure: 'Returning from dependencies',
+  } as const
+  return (['channel', 'input', 'backpressure'] as const)
+    .map((key) => ({
+      label: labels[key],
+      options: available.value.filter((option) => option.family === key),
+    }))
+    .filter((group) => group.options.length > 0)
+})
+
+/**
+ * The service levels a caller actually observed.
+ *
+ * Success and failure are one fact stated twice — `failure` is the offered rate
+ * times one minus `success` — so charting both spends a second panel restating
+ * the first upside down. The share that succeeded is the form an objective is
+ * written in, and being dimensionless it renders as a percentage on its own.
+ */
+const SERVICE_LEVELS = ['success', 'latency']
+
+/** How a quantity reads when its channel name is not the clearest label. */
+const LABELS: Record<string, string> = {
+  success: 'Success rate',
+  latency: 'Response time',
+}
+
+function labelFor(channel: string): string {
+  return LABELS[channel] ?? ''
+}
+
 watch(
-  [strained, available],
+  [callers, strained, available],
   () => {
     if (watching.value.length || !available.value.length) return
+    const observed = callers.value.flatMap((caller) =>
+      SERVICE_LEVELS.map((channel) => `${caller}.${channel}`).filter((key) =>
+        available.value.some((option) => option.value === key),
+      ),
+    )
+    if (observed.length) {
+      watching.value = observed.slice(0, 4)
+      return
+    }
     const focused = available.value.filter((option) => option.component === strained.value)
     watching.value = (focused.length ? focused : available.value).slice(0, 4).map((o) => o.value)
   },
@@ -107,13 +195,24 @@ watch(
 const charts = computed(() =>
   watching.value
     .map((key) => available.value.find((option) => option.value === key))
-    .filter((option): option is { value: string; component: string; channel: string } => !!option),
+    .filter((option) => !!option),
 )
 
 const series = computed(() => analysis.value?.series ?? [])
 
+/**
+ * The unit a quantity carries.
+ *
+ * A port signal is named for the signal it carries rather than a channel, so its
+ * unit comes from the signal vocabulary; anything else is one of the component's
+ * own channels.
+ */
 function unitOf(component: string, channel: string): string {
   const type = snapshot.value?.model.components.find((entry) => entry.id === component)?.type
+  if (channel.includes('.')) {
+    const signal = channel.slice(channel.lastIndexOf('.') + 1)
+    return catalogue.value?.signals?.[signal]?.unit ?? ''
+  }
   return (type && catalogue.value?.component_types[type]?.channels[channel]?.unit) ?? ''
 }
 </script>
@@ -203,6 +302,18 @@ function unitOf(component: string, channel: string): string {
         <section class="timelines">
           <div class="picker">
             <h3>Over time</h3>
+            <el-tooltip
+              placement="bottom"
+              :show-after="400"
+              content="Fill and drain each queue at a finite rate instead of solving for where it balances. Shows how long an incident outlasts its cause, and takes considerably longer to compute."
+            >
+              <el-switch
+                v-model="walking"
+                size="small"
+                active-text="Through time"
+                data-test="transient-toggle"
+              />
+            </el-tooltip>
             <el-select
               v-model="watching"
               multiple
@@ -215,12 +326,18 @@ function unitOf(component: string, channel: string): string {
               data-test="watch-picker"
               popper-class="pick-watch"
             >
-              <el-option
-                v-for="option in available"
-                :key="option.value"
-                :label="option.value"
-                :value="option.value"
-              />
+              <el-option-group
+                v-for="group in grouped"
+                :key="group.label"
+                :label="group.label"
+              >
+                <el-option
+                  v-for="option in group.options"
+                  :key="option.value"
+                  :label="option.value"
+                  :value="option.value"
+                />
+              </el-option-group>
             </el-select>
           </div>
 
@@ -235,6 +352,7 @@ function unitOf(component: string, channel: string): string {
             :series="series"
             :component="chart.component"
             :channel="chart.channel"
+            :label="labelFor(chart.channel)"
             :unit="unitOf(chart.component, chart.channel)"
           />
         </section>

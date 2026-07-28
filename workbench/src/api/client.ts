@@ -36,6 +36,14 @@ export interface SolveControls {
   intervention?: string | null
   /** Ask for every step, not only the one the design settled on. */
   series?: boolean
+  /**
+   * Walk the design through time rather than solving for where it balances.
+   *
+   * Only this shows how long an incident outlasts its cause, because only this
+   * makes the queues fill and drain at a finite rate. Considerably slower, and
+   * wants a shorter step and a longer horizon to go with it.
+   */
+  transient?: boolean
 }
 
 function query(controls: SolveControls): string {
@@ -46,6 +54,7 @@ function query(controls: SolveControls): string {
   if (controls.step !== undefined) parameters.set('step', String(controls.step))
   if (controls.intervention) parameters.set('intervention', controls.intervention)
   if (controls.series) parameters.set('series', 'true')
+  if (controls.transient) parameters.set('transient', 'true')
   const rendered = parameters.toString()
   return rendered ? `?${rendered}` : ''
 }

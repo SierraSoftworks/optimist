@@ -122,9 +122,28 @@ export interface ConstraintDefinition {
 }
 
 /** How many relationships one side of a component type accepts. */
+/** A named place relationships attach to a component. */
 export interface Port {
   arity: string
   summary: string
+  /** Signals this port puts on the wire, keyed by signal name. */
+  publishes: Record<string, string>
+}
+
+/** The named places relationships attach, by side. */
+export interface Ports {
+  /** Ports callers attach to, receiving requests and publishing responses. */
+  in: Record<string, Port>
+  /** Ports dependencies attach to, publishing requests and receiving responses. */
+  out: Record<string, Port>
+}
+
+/** One quantity that may travel along a relationship. */
+export interface SignalDefinition {
+  unit: string
+  summary: string
+  aggregate: string
+  extensive: boolean
 }
 
 /** A kind of component a design may use. */
@@ -132,12 +151,10 @@ export interface ComponentType {
   id: string
   name: string
   summary: string
-  inbound?: Port | null
-  outbound?: Port | null
+  ports: Ports
   properties: Record<string, PropertyDefinition>
   channels: Record<string, ChannelDefinition>
   constraints: Record<string, ConstraintDefinition>
-  outputs: Record<string, string>
 }
 
 /** A behaviour a relationship may carry. */
@@ -146,7 +163,10 @@ export interface MutatorType {
   name: string
   summary: string
   properties: Record<string, PropertyDefinition>
-  transforms: Record<string, { unit: string; summary: string; expression: string }>
+  /** Signals rewritten on the way to the dependency. */
+  requests: Record<string, { unit: string; summary: string; expression: string }>
+  /** Signals rewritten on the way back to the caller. */
+  responses: Record<string, { unit: string; summary: string; expression: string }>
 }
 
 /**
@@ -158,6 +178,13 @@ export interface MutatorType {
 export interface Catalogue {
   component_types: Record<string, ComponentType>
   mutators: Record<string, MutatorType>
+  /**
+   * The quantities that travel along a relationship, by name.
+   *
+   * A port publishes signals rather than channels, so anything showing what
+   * arrived or what came back has no component type to read a unit from.
+   */
+  signals: Record<string, SignalDefinition>
   /** Every name an expression may call, for the editor to complete against. */
   builtins: string[]
 }
