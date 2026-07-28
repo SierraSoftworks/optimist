@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { Bottleneck, Catalogue, SystemModel } from '../api/types'
 import { glyphFor, glyphUri } from '../domain/componentIcons'
 import { formatSiNumber } from '../domain/humanNumber'
+import { inhabited, owner } from '../domain/scaleUnits'
 
 const props = defineProps<{
   model: SystemModel
@@ -56,15 +57,53 @@ function rank(model: SystemModel, id: string): number {
   return 1
 }
 
+/**
+ * The diagram node standing for a scale unit.
+ *
+ * Namespaced away from component identifiers, which share the same space in
+ * Cytoscape but not in the model.
+ */
+function boundary(unit: string): string {
+  return `unit:${unit}`
+}
+
+/**
+ * The scale units worth drawing, which are the ones containing something.
+ *
+ * An empty unit has no boundary to draw. Drawing one anyway would put an empty
+ * box on the diagram that nothing is inside and that dragging cannot fix, since
+ * membership is decided in the panel rather than on the canvas.
+ */
+function boundaries() {
+  const drawn = inhabited(props.model.scale_units)
+  return props.model.scale_units
+    .filter((unit) => drawn.has(unit.id))
+    .map((unit) => ({
+      data: {
+        id: boundary(unit.id),
+        label: `${unit.name || unit.id} \u00d7${unit.replicas.trim() || '1'}`,
+        unit: 'yes',
+        mirrored: unit.distribution === 'mirrored' ? 'yes' : 'no',
+        parent: unit.parent && drawn.has(unit.parent) ? boundary(unit.parent) : undefined,
+      },
+    }))
+}
+
 function elements(): ElementDefinition[] {
   const nodes = props.model.components.map((component) => {
     const strained = (pressure.value[component.id] ?? 0) >= 1
+    const holder = owner(props.model.scale_units, component.id)
     return {
       data: {
         id: component.id,
         label: component.name || component.id,
         kind: component.type,
         rank: rank(props.model, component.id),
+        // Membership is expressed as containment, which is what a scale unit
+        // means. Nesting comes free with it: a unit inside another is drawn
+        // inside it because it says so, without the diagram knowing about
+        // chains at all.
+        parent: holder ? boundary(holder.id) : undefined,
         // The type's own glyph, drawn into the node rather than beside it. A
         // diagram is scanned for shape before it is read for words, and a row of
         // identical rectangles makes a reader read every label to find the store.
@@ -85,7 +124,9 @@ function elements(): ElementDefinition[] {
       label: edge.mutators.map((mutator) => mutator.type).join(', '),
     },
   }))
-  return [...nodes, ...edges]
+  // Boundaries first: Cytoscape needs a compound parent to exist before the
+  // element naming it as their parent is added.
+  return [...boundaries(), ...nodes, ...edges]
 }
 
 const STYLE: cytoscape.StylesheetJson = [
@@ -119,6 +160,52 @@ const STYLE: cytoscape.StylesheetJson = [
   {
     selector: 'node[strained = "yes"]',
     style: { 'border-color': '#9a3e31', 'background-color': '#fff8f6', color: '#9a3e31' },
+  },
+  /*
+   * A scale unit is a boundary rather than a thing, so it is drawn as one: a
+   * dashed enclosure labelled with what it is and how many of it there are.
+   * Nothing is edited by pointing at it — membership is a decision about the
+   * model, not a position — so it takes no events at all and a click on the
+   * space inside it reaches the canvas underneath.
+   */
+  {
+    selector: 'node[unit = "yes"]',
+    style: {
+      label: 'data(label)',
+      shape: 'round-rectangle',
+      padding: '22px',
+      // Hung outside the top-left corner. Traffic runs down the diagram and
+      // therefore crosses the top edge of every boundary it enters, and edge
+      // labels are drawn over nodes, so a title centred there is overwritten by
+      // whichever behaviour happens to sit on the wire.
+      'text-valign': 'top',
+      'text-halign': 'left',
+      'text-margin-x': -6,
+      'text-margin-y': -4,
+      'text-max-width': '240px',
+      'font-family': 'IBM Plex Mono, monospace',
+      'font-size': 10,
+      'font-weight': 600,
+      color: '#69716d',
+      // The label sits on the boundary's own edge, which crosses whatever the
+      // enclosing unit holds. Without a background it reads as two overlapping
+      // words rather than as either of them.
+      'text-background-color': '#eef0eb',
+      'text-background-opacity': 1,
+      'text-background-padding': '3px',      'background-color': '#e3e7de',
+      'background-opacity': 0.55,
+      'background-image': 'none',
+      'border-width': 1.5,
+      'border-style': 'dashed',
+      'border-color': '#b9c0b8',
+      events: 'no',
+    },
+  },
+  // Mirrored units multiply cost without dividing load, which is the surprising
+  // one, so it is the one the diagram distinguishes.
+  {
+    selector: 'node[unit = "yes"][mirrored = "yes"]',
+    style: { 'border-style': 'dotted', 'border-color': '#a08a5c' },
   },
   {
     selector: 'node:selected',
@@ -178,11 +265,12 @@ function layout(force = false) {
     })
   }
 
-  const arrange = force
-    ? graph.nodes()
-    : graph.nodes().filter((node) => !saved.has(node.id()))
+  // A boundary has no position of its own: it is drawn around whatever is
+  // inside it, so laying it out would fight its own children.
+  const placeable = graph.nodes().filter((node) => node.data('unit') !== 'yes')
+  const arrange = force ? placeable : placeable.filter((node) => !saved.has(node.id()))
   if (arrange.length === 0) {
-    graph.fit(undefined, 45)
+    reframe()
     return
   }
 
@@ -202,7 +290,19 @@ function layout(force = false) {
       roots: sources.length ? sources : undefined,
     })
     .run()
-  graph.fit(undefined, 45)
+  reframe()
+}
+
+/**
+ * Frames the whole diagram once it has settled to its final size.
+ *
+ * A boundary is sized by what it contains, and that size is only known after a
+ * render. Fitting in the same tick as the layout therefore frames the diagram as
+ * it was before the boundaries grew, which leaves the bottom of a nested design
+ * off-screen.
+ */
+function reframe() {
+  requestAnimationFrame(() => graph?.fit(undefined, 45))
 }
 
 onMounted(() => {
@@ -299,6 +399,14 @@ const signature = () =>
       props.catalogue?.component_types[component.type]?.icon,
     ]),
     props.model.relationships.map((edge) => [edge.from, edge.to, edge.mutators.length]),
+    props.model.scale_units.map((unit) => [
+      unit.id,
+      unit.name,
+      unit.replicas,
+      unit.distribution,
+      unit.parent,
+      unit.members,
+    ]),
   ])
 
 watch(signature, () => {
@@ -338,6 +446,7 @@ watch(
   pressure,
   (loads) => {
     graph?.nodes().forEach((node) => {
+      if (node.data('unit') === 'yes') return
       const strained = (loads[node.id()] ?? 0) >= 1
       node.data('strained', strained ? 'yes' : 'no')
       const type = props.model.components.find((component) => component.id === node.id())?.type

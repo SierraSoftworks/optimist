@@ -5,6 +5,7 @@ import ElementPlus from 'element-plus'
 import {
   Document,
   MagicStick,
+  Box,
   Check,
   Close,
   Connection,
@@ -38,6 +39,7 @@ const app = createApp(App)
 // up as a resolution warning and a blank space, so the list is worth keeping in
 // step with the templates.
 const icons = {
+  Box,
   Check,
   Close,
   Connection,

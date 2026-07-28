@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import type { Bottleneck, Mutation } from '../api/types'
 import Inspector from '../components/Inspector.vue'
+import ScaleUnitsPanel from '../components/ScaleUnitsPanel.vue'
 import ScratchpadPanel from '../components/ScratchpadPanel.vue'
 import SolveProgress from '../components/SolveProgress.vue'
 import SystemGraph from '../components/SystemGraph.vue'
@@ -235,6 +236,21 @@ function removeComponent(id: string) {
   void apply([{ kind: 'remove_component', id }])
 }
 
+/**
+ * Whether the new scale unit dialog is open.
+ *
+ * Held here rather than in the panel because the panel is only on screen while
+ * nothing is selected, and grouping components is a thing somebody thinks of
+ * *while* looking at one of them. Clearing the selection brings the panel back,
+ * already asking the question.
+ */
+const groupingUp = ref(false)
+
+function beginGrouping() {
+  select(null)
+  groupingUp.value = true
+}
+
 // A selection that no longer exists would leave the inspector describing
 // something removed, which is worse than closing it.
 watch(
@@ -266,6 +282,14 @@ watch(
           >
             <el-icon><i-connection /></el-icon>
             <span>Connect</span>
+          </el-button>
+          <el-button
+            data-test="add-scale-unit-toolbar"
+            :disabled="!componentIds.length"
+            @click="beginGrouping"
+          >
+            <el-icon><i-box /></el-icon>
+            <span>Scale unit</span>
           </el-button>
         </el-button-group>
         <span class="spacer" />
@@ -333,6 +357,13 @@ watch(
     <aside v-else class="scratch">
       <ScratchpadPanel
         :design="design"
+        :model="snapshot.model"
+        :catalogue="catalogue"
+        :apply="apply"
+      />
+      <hr />
+      <ScaleUnitsPanel
+        v-model:adding="groupingUp"
         :model="snapshot.model"
         :catalogue="catalogue"
         :apply="apply"
@@ -488,6 +519,7 @@ watch(
   overflow: auto;
   padding: var(--space-4);
 }
+.scratch hr { margin: var(--space-5) 0; border: none; border-top: 1px solid var(--line); }
 .option { display: flex; flex-direction: column; line-height: 1.3; padding: 3px 0; }
 .option span { font-size: var(--text-2xs); color: var(--muted); }
 .message { margin: 0 0 var(--space-2); font-size: var(--text-xs); }

@@ -238,6 +238,14 @@ replicates a *set* of components together as a deployable whole. A pool of
 servers is the former; a cell containing a pool, its queue, and its store is the
 latter.
 
+In the workbench, the **Scale unit** button on the design toolbar builds one, and
+the **Scale units** panel beside the diagram maintains it: how many exist, how
+demand meets them, which components it holds, and which unit it is nested inside.
+Each unit reports how many times its members are deployed and what share of the
+flow one copy serves, so the product along a chain of nesting is stated rather
+than left to be worked out. On the diagram a unit is drawn as a dashed boundary
+around its members, nested where the units are.
+
 ## Interventions
 
 Comparing two designs only means something if the two are otherwise identical.
