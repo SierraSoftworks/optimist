@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
+use crate::profile::count;
+
 use super::{Diagnostic, Value, ast::Program, parse, value::Environment};
 
 mod builtin;
@@ -199,6 +201,7 @@ impl Runtime {
     ) -> Result<Value, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
+        count!(Programs);
         for (name, value) in bindings {
             self.bindings.rebind(name, value);
         }

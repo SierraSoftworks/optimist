@@ -29,6 +29,8 @@ use crate::squiggle::{Diagnostic, Distribution, Value, ast::Span};
 
 use super::{Runtime, builtin::number};
 
+use crate::profile::count;
+
 enum Column<'a> {
     Constant(f64),
     Draws(&'a [f64]),
@@ -56,6 +58,7 @@ pub(super) fn elementwise(
     compute: impl Fn(&[f64]) -> Result<f64, String>,
 ) -> Result<Value, Diagnostic> {
     let fail = |message: String| Diagnostic::runtime(message, span);
+    count!(Elementwise);
     if !arguments
         .iter()
         .any(|argument| matches!(argument, Value::Distribution(_)))
@@ -85,6 +88,7 @@ pub(super) fn elementwise(
     }
 
     let mut row = vec![0.0; columns.len()];
+    count!(Draws, count);
     let samples = (0..count)
         .map(|index| {
             for (slot, column) in row.iter_mut().zip(&columns) {

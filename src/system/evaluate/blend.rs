@@ -8,7 +8,7 @@ use crate::{
     squiggle::Value,
     system::{
         compile::{PreparedComponent, PreparedPort},
-        values::{blend, distance, draws, from_draws},
+        values::{Varying, converge as settle},
     },
 };
 
@@ -25,7 +25,7 @@ pub(super) fn converge(
     let mut blended = ComponentState::default();
     let mut moved: f64 = 0.0;
     for (name, next) in &computed.channels {
-        let Some(previous) = settled.channels.get(name) else {
+        let Some(settled) = settled.channels.get(name) else {
             // Nothing to blend against on the first pass, so the computed value
             // stands and the step cannot yet be treated as settled.
             blended.channels.insert(name.clone(), next.clone());
@@ -33,13 +33,15 @@ pub(super) fn converge(
             continue;
         };
         let count = config.sample_count;
-        let (Some(previous), Some(next)) = (draws(previous, count, rng), draws(next, count, rng))
-        else {
+        let (Some(settled), Some(computed)) = (
+            Varying::of(settled, count, rng),
+            Varying::of(next, count, rng),
+        ) else {
             blended.channels.insert(name.clone(), next.clone());
             continue;
         };
-        moved = moved.max(distance(&previous, &next));
-        let value = from_draws(blend(&previous, &next, weight)).unwrap_or(Value::Number(0.0));
+        let (value, gap) = settle(&settled, &computed, weight, count);
+        moved = moved.max(gap);
         blended.channels.insert(name.clone(), value);
     }
     // A port publishes quantities derived from the channels, so it follows

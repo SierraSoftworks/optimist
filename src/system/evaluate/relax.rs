@@ -4,9 +4,12 @@ use std::collections::BTreeMap;
 
 use rand_chacha::ChaCha20Rng;
 
-use crate::system::{
-    compile::{Plan, runtime},
-    model::ComponentId,
+use crate::{
+    profile::count,
+    system::{
+        compile::{Plan, runtime},
+        model::ComponentId,
+    },
 };
 
 use super::{
@@ -67,8 +70,10 @@ pub(super) fn relax(
     let mut runtime = runtime(config.seed, config.sample_count)?;
     while iterations < config.max_iterations {
         iterations += 1;
+        count!(Passes);
         movement = 0.0;
         for component in &plan.components {
+            count!(Components);
             let computed = evaluate_component(
                 plan,
                 component,
