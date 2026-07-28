@@ -56,7 +56,7 @@ pub(super) fn catalogue(loaded: &LoadedSystem) -> String {
             "behaviour\t{}\t{}\t{}",
             mutator.id,
             mutator.properties.len(),
-            mutator.transforms.len()
+            mutator.requests.len() + mutator.responses.len()
         )
     });
     rows("KIND\tID\tPROPERTIES\tLIMITS", types.chain(behaviours))
@@ -68,8 +68,8 @@ pub(super) fn channels(evaluation: &Evaluation, only: Option<&str>) -> String {
         .into_iter()
         .flat_map(|(id, channels)| {
             channels
-                .iter()
-                .map(move |(name, value)| format!("{id}\t{name}\t{}", quantity(value)))
+                .into_iter()
+                .map(move |(name, value)| format!("{id}\t{name}\t{}", quantity(&value)))
         });
     let table = rows("COMPONENT\tCHANNEL\tVALUE", entries);
     if step.converged {

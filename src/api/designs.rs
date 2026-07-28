@@ -73,6 +73,12 @@ async fn show(
 struct Catalogue {
     component_types: BTreeMap<String, ComponentType>,
     mutators: BTreeMap<String, Mutator>,
+    /// The quantities that travel along a relationship, by name.
+    ///
+    /// A port publishes signals rather than channels, so a client showing what
+    /// arrived or what came back has no component type to read a unit from. This
+    /// is where that unit lives.
+    signals: BTreeMap<String, crate::system::Signal>,
     /// Every name an expression may call.
     ///
     /// Sent with the catalogue because an editor needs it to complete what
@@ -90,6 +96,7 @@ async fn catalogue(
     Ok(Json(Catalogue {
         component_types,
         mutators,
+        signals: crate::system::signals(),
         builtins: crate::squiggle::builtin_names(),
     }))
 }

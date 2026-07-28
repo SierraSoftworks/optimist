@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 use clap::{Args, Subcommand};
 
 use crate::system::{
-    Bottleneck, ComponentId, Evaluation, EvaluationConfig, InterventionId, LoadedSystem,
+    Bottleneck, ComponentId, Evaluation, EvaluationConfig, InterventionId, LoadedSystem, SolveMode,
     bottlenecks, compare, evaluate, evaluate_intervention, read_system,
 };
 
@@ -52,6 +52,14 @@ struct SolveOptions {
     /// Length of one step, in seconds.
     #[arg(long, default_value_t = 1.0)]
     step: f64,
+    /// Advance queues through time rather than solving for where they balance.
+    ///
+    /// Gives a design memory, so a queue filled by a surge has to drain before
+    /// the design recovers. Faithful only while the step is short against the
+    /// time a queue takes to empty, so expect to shorten `--step` and lengthen
+    /// `--horizon` together.
+    #[arg(long)]
+    transient: bool,
 }
 
 impl SolveOptions {
@@ -61,6 +69,11 @@ impl SolveOptions {
             sample_count: self.samples.max(1),
             horizon: self.horizon.max(1),
             step: self.step,
+            mode: if self.transient {
+                SolveMode::Transient
+            } else {
+                SolveMode::Steady
+            },
             ..EvaluationConfig::default()
         }
     }
@@ -201,19 +214,45 @@ fn evaluation_error(error: crate::system::EvaluationError) -> human_errors::Erro
     )
 }
 
-/// Groups a step's channels by component for rendering.
-pub(super) fn channels<'a>(
-    evaluation: &'a Evaluation,
+/// Groups a step's solved quantities by component for rendering.
+///
+/// Channels appear under their own names, and the signals travelling on a port
+/// under the dotted name a manifest would use to read them: `in.<port>.<signal>`
+/// for what arrived, `out.<port>.<signal>` for what came back. A reader chasing
+/// a component's latency can therefore see the dependency latency that caused
+/// it in the same table, which is the whole point of carrying it back.
+pub(super) fn channels(
+    evaluation: &Evaluation,
     only: Option<&str>,
-) -> Vec<(
-    &'a ComponentId,
-    &'a BTreeMap<String, crate::squiggle::Value>,
-)> {
+) -> Vec<(ComponentId, BTreeMap<String, crate::squiggle::Value>)> {
     evaluation
         .settled()
         .components
         .iter()
         .filter(|(id, _)| only.is_none_or(|only| id.as_str() == only))
-        .map(|(id, state)| (id, &state.channels))
+        .map(|(id, state)| {
+            let ports = state
+                .arriving
+                .iter()
+                .map(|(port, signals)| (format!("in.{port}"), signals))
+                .chain(
+                    state
+                        .returning
+                        .iter()
+                        .map(|(port, signals)| (format!("out.{port}"), signals)),
+                )
+                .flat_map(|(prefix, signals)| {
+                    signals
+                        .iter()
+                        .map(move |(signal, value)| (format!("{prefix}.{signal}"), value.clone()))
+                });
+            let quantities = state
+                .channels
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .chain(ports)
+                .collect();
+            (id.clone(), quantities)
+        })
         .collect()
 }

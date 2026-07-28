@@ -49,6 +49,13 @@ struct Controls {
     /// Whether to return every step rather than only the one it settled on.
     #[serde(default)]
     series: bool,
+    /// Whether to advance queues through time rather than solve for balance.
+    ///
+    /// Costs a great deal more, because faithfulness needs a step short against
+    /// the time a queue takes to drain, so a caller asking for this should also
+    /// be asking for a shorter step and a longer horizon.
+    #[serde(default)]
+    transient: bool,
 }
 
 impl Controls {
@@ -67,6 +74,11 @@ impl Controls {
                 .clamp(64, 20_000),
             horizon: self.horizon.unwrap_or(defaults.horizon).clamp(1, 500),
             step: self.step.unwrap_or(defaults.step),
+            mode: if self.transient {
+                crate::system::SolveMode::Transient
+            } else {
+                crate::system::SolveMode::Steady
+            },
             ..defaults
         }
     }
@@ -138,21 +150,45 @@ impl Quantity {
     }
 }
 
-/// Every solved channel at one moment, by component and then by channel.
+/// Every solved quantity at one moment, by component and then by name.
+///
+/// Channels appear under their own names. Signals travelling on a port appear
+/// under the same dotted name a manifest would use to read them, so
+/// `in.requests.rate` is what arrived and `out.dependencies.latency` is what
+/// came back. A client plotting a series therefore names it exactly as an author
+/// writing an expression would, and the backpressure returning along a
+/// relationship is as readable as the demand going out.
 type Solved = BTreeMap<String, BTreeMap<String, Quantity>>;
 
 fn solved(step: &crate::system::Step, budget: usize) -> Solved {
     step.components
         .iter()
         .map(|(id, state)| {
-            let channels = state
+            let ports = state
+                .arriving
+                .iter()
+                .map(|(port, signals)| (format!("in.{port}"), signals))
+                .chain(
+                    state
+                        .returning
+                        .iter()
+                        .map(|(port, signals)| (format!("out.{port}"), signals)),
+                )
+                .flat_map(|(prefix, signals)| {
+                    signals
+                        .iter()
+                        .map(move |(signal, value)| (format!("{prefix}.{signal}"), value))
+                });
+            let quantities = state
                 .channels
                 .iter()
+                .map(|(name, value)| (name.clone(), value))
+                .chain(ports)
                 .filter_map(|(name, value)| {
-                    Quantity::read(value, budget).map(|quantity| (name.clone(), quantity))
+                    Quantity::read(value, budget).map(|quantity| (name, quantity))
                 })
                 .collect();
-            (id.to_string(), channels)
+            (id.to_string(), quantities)
         })
         .collect()
 }
