@@ -27,10 +27,11 @@ use optimist::squiggle::{
 };
 
 /// Catalogue expressions, chosen to separate the costs they exercise.
-const PROGRAMS: [(&str, &str); 8] = [
+const PROGRAMS: [(&str, &str); 9] = [
     ("field", "in.requests.rate"),
     ("scalar", "service_time + dependency_wait"),
     ("guarded", "max([arriving - salvaged, 0])"),
+    ("listed", "min([offered, capacity])"),
     (
         "queue",
         "min([arrivals + prev.backlog / dt, service_rate])",

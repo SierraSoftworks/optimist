@@ -24,10 +24,10 @@ builtins! {
     variance(values: [Number]) => numeric_statistic("variance", values, None, span),
     min(value: Distribution) => statistic("min", vec![Value::Distribution(value.clone())], span),
     min(values: [Number]) => numeric_statistic("min", values, None, span),
-    min(values: Array) => saturate(runtime, "min", values.clone(), span),
+    min(values: Array) => saturate(runtime, "min", values, span),
     max(value: Distribution) => statistic("max", vec![Value::Distribution(value.clone())], span),
     max(values: [Number]) => numeric_statistic("max", values, None, span),
-    max(values: Array) => saturate(runtime, "max", values.clone(), span),
+    max(values: Array) => saturate(runtime, "max", values, span),
     mode(value: Distribution) => statistic("mode", vec![Value::Distribution(value.clone())], span),
     sort(values: [Number]) => numeric_list("sort", vec![numbers(values)], span),
     cumsum(values: [Number]) => numeric_list("cumsum", vec![numbers(values)], span),
@@ -74,14 +74,14 @@ fn numbers(values: Vec<f64>) -> Value {
 fn saturate(
     runtime: &mut Runtime,
     name: &str,
-    values: Vec<Value>,
+    values: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     if values.is_empty() {
         return Err(Diagnostic::runtime("list must not be empty", span));
     }
     let take_least = name == "min";
-    elementwise(runtime, &values, span, move |row| {
+    elementwise(runtime, values, span, move |row| {
         row.iter()
             .copied()
             .reduce(|left, right| {

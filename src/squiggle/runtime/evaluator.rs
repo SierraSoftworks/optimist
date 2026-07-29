@@ -146,6 +146,13 @@ impl Runtime {
                 self.call(function, arguments, expression.span)
             }
             ExpressionKind::Lookup { value, key } => {
+                // `a.b` parses to a lookup with a literal key, so the key is
+                // known without building a String value to throw away.
+                if let ExpressionKind::String(name) = &key.kind {
+                    self.step(key.span)?;
+                    let value = self.eval_expr(value, environment)?;
+                    return field(value, name, expression.span);
+                }
                 let value = self.eval_expr(value, environment)?;
                 let key = self.eval_expr(key, environment)?;
                 lookup(value, key, expression.span)
@@ -298,6 +305,19 @@ impl Runtime {
                     "raise RuntimeConfig::max_steps for intentionally expensive programs",
                 )
             })
+    }
+}
+
+fn field(value: Value, name: &str, span: Span) -> Result<Value, Diagnostic> {
+    match value {
+        Value::Dictionary(values) => values
+            .get(name)
+            .cloned()
+            .ok_or_else(|| Diagnostic::runtime(format!("dictionary has no key '{name}'"), span)),
+        value => Err(Diagnostic::runtime(
+            format!("cannot index {} with String", value.type_name()),
+            span,
+        )),
     }
 }
 
