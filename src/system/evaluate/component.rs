@@ -50,27 +50,27 @@ pub(super) fn evaluate_component(
         links,
         runtime,
     )?;
-    let prior = previous.get(&component.id).cloned().unwrap_or_default();
-    let mut scope = plan.globals.clone();
-    scope.extend(component.properties.clone());
-    scope.insert(TIME.to_owned(), Value::Number(time));
-    scope.insert(STEP.to_owned(), Value::Number(config.step));
-    scope.insert(
-        STEADY.to_owned(),
-        Value::Boolean(config.mode == SolveMode::Steady),
-    );
-    scope.insert(INBOUND.to_owned(), ported(inbound.clone()));
-    scope.insert(OUTBOUND.to_owned(), ported(outbound.clone()));
-    scope.insert(
-        PREVIOUS.to_owned(),
-        Value::Dictionary(zeroed(component, &prior.channels)),
-    );
     // Bound once for the whole component. Every channel and every published
-    // signal reads the same scope, and it holds the inbound and outbound flows
-    // as dictionaries, so binding it per program copied them a dozen times over.
-    for (name, value) in &scope {
+    // signal reads the same names, and two of them are the inbound and outbound
+    // flows, so these are written straight into the runtime's scope: gathering
+    // them into a map first and then copying that in built and tore down a
+    // dictionary of every name, and copied the flows, twice per component per
+    // pass.
+    for (name, value) in &plan.globals {
         runtime.bind(name, value.clone());
     }
+    for (name, value) in &component.properties {
+        runtime.bind(name, value.clone());
+    }
+    runtime.bind(TIME, Value::Number(time));
+    runtime.bind(STEP, Value::Number(config.step));
+    runtime.bind(STEADY, Value::Boolean(config.mode == SolveMode::Steady));
+    runtime.bind(INBOUND, ported(&inbound));
+    runtime.bind(OUTBOUND, ported(&outbound));
+    runtime.bind(
+        PREVIOUS,
+        Value::Dictionary(zeroed(component, previous.get(&component.id))),
+    );
 
     let mut channels = BTreeMap::new();
     for (name, program) in &component.channels {
@@ -118,11 +118,11 @@ fn publish(
 }
 
 /// Wraps per-port flows so an expression can read `in.<port>.<signal>`.
-fn ported(ports: BTreeMap<String, BTreeMap<String, Value>>) -> Value {
+fn ported(ports: &BTreeMap<String, BTreeMap<String, Value>>) -> Value {
     Value::Dictionary(
         ports
-            .into_iter()
-            .map(|(name, signals)| (name, Value::Dictionary(signals)))
+            .iter()
+            .map(|(name, signals)| (name.clone(), Value::Dictionary(signals.clone())))
             .collect(),
     )
 }
@@ -130,14 +130,17 @@ fn ported(ports: BTreeMap<String, BTreeMap<String, Value>>) -> Value {
 /// Fills in every channel the type declares so a first step reads zero.
 fn zeroed(
     component: &PreparedComponent,
-    channels: &BTreeMap<String, Value>,
+    prior: Option<&ComponentState>,
 ) -> BTreeMap<String, Value> {
     component
         .component_type
         .channels
         .keys()
         .map(|name| {
-            let value = channels.get(name).cloned().unwrap_or(Value::Number(0.0));
+            let value = prior
+                .and_then(|prior| prior.channels.get(name))
+                .cloned()
+                .unwrap_or(Value::Number(0.0));
             (name.clone(), value)
         })
         .collect()
