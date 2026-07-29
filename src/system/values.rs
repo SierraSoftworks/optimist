@@ -158,15 +158,38 @@ fn span(previous: &Varying, next: &Varying, count: usize) -> usize {
         .fold(count, usize::min)
 }
 
+/// How far along the way to its computed value each draw travels this pass.
+///
+/// Held as two cases because the shared one is the one a solve spends most of
+/// its passes in, and it is what keeps a channel that agrees across every draw
+/// from being expanded into a thousand copies of the same number merely to be
+/// blended.
+pub(super) enum Stride<'a> {
+    /// Every draw steps the same fraction of the way.
+    Shared(f64),
+    /// Each draw steps its own fraction, having been damped separately.
+    PerDraw(&'a [f64]),
+}
+
+impl Stride<'_> {
+    fn at(&self, index: usize) -> f64 {
+        match self {
+            Self::Shared(weight) => *weight,
+            Self::PerDraw(weights) => weights[index],
+        }
+    }
+}
+
 /// Moves `settled` a fraction of the way toward `computed`, reporting how far
 /// the two were apart.
 ///
 /// Feedback around a loop can overshoot: a rise in utilisation lengthens the
 /// queue, which raises occupancy, which raises utilisation again. Taking a
 /// partial step damps that oscillation so the iteration settles instead of
-/// swinging between two states forever. Damping changes only the path to the
-/// fixed point, never the fixed point itself, because where the two iterates
-/// agree the blend returns that shared value unchanged.
+/// swinging between two states forever. Damping changes only the path a draw
+/// takes and never the value it arrives at, because where the two iterates agree
+/// the blend returns that shared value unchanged. Which of several fixed points
+/// a draw arrives at is a matter of the path, so the stride is a draw's own.
 ///
 /// The gap is scaled by the magnitude of the values being compared, so a
 /// throughput of millions and a probability near zero are held to the same
@@ -175,34 +198,46 @@ fn span(previous: &Varying, next: &Varying, count: usize) -> usize {
 /// have saturated, and a solver that stopped there would report a settled system
 /// that had not settled.
 ///
-/// Both come out of one pass because the solver never wants one without the
-/// other, and the pass is the expensive part.
+/// Each draw's gap is taken into `moved` at that draw's index, and the largest
+/// of them is returned. Both come out of one pass because the solver never wants
+/// one without the other, and the pass is the expensive part.
 pub(super) fn converge(
     settled: &Varying,
     computed: &Varying,
-    weight: f64,
+    stride: &Stride,
     count: usize,
+    moved: &mut [f64],
 ) -> (Value, f64) {
-    if let (Varying::Uniform(settled), Varying::Uniform(computed)) = (settled, computed) {
+    if let (Varying::Uniform(settled), Varying::Uniform(computed), Stride::Shared(weight)) =
+        (settled, computed, stride)
+    {
+        let distance = gap(*settled, *computed);
+        for slot in moved.iter_mut() {
+            *slot = slot.max(distance);
+        }
         return (
             Value::Number(settled + weight * (computed - settled)),
-            gap(*settled, *computed),
+            distance,
         );
     }
+    // Draws stepping at different rates pull a channel that agrees across all of
+    // them apart until their strides come back together, which is the price of
+    // letting one draw be damped without damping the rest.
     let span = span(settled, computed, count);
     count!(Draws, span);
-    let mut moved: f64 = 0.0;
+    let mut furthest: f64 = 0.0;
     let mut blended = Vec::with_capacity(span);
     for index in 0..span {
         let settled = settled.at(index);
         let computed = computed.at(index);
-        moved = moved.max(gap(settled, computed));
-        blended.push(settled + weight * (computed - settled));
+        let distance = gap(settled, computed);
+        furthest = furthest.max(distance);
+        if let Some(slot) = moved.get_mut(index) {
+            *slot = slot.max(distance);
+        }
+        blended.push(settled + stride.at(index) * (computed - settled));
     }
-    (
-        from_draws(blended).unwrap_or(Value::Number(0.0)),
-        moved,
-    )
+    (from_draws(blended).unwrap_or(Value::Number(0.0)), furthest)
 }
 
 /// How far apart two figures are, as a share of the larger of them.
@@ -258,11 +293,11 @@ mod tests {
     }
 
     fn blend(previous: &Varying, next: &Varying, weight: f64, count: usize) -> Option<Value> {
-        Some(converge(previous, next, weight, count).0)
+        Some(converge(previous, next, &Stride::Shared(weight), count, &mut [0.0; 8]).0)
     }
 
     fn distance(previous: &Varying, next: &Varying, count: usize) -> f64 {
-        converge(previous, next, 1.0, count).1
+        converge(previous, next, &Stride::Shared(1.0), count, &mut [0.0; 8]).1
     }
 
     #[test]
@@ -313,6 +348,66 @@ mod tests {
             panic!("disagreeing draws stay uncertain");
         };
         assert_eq!(blended.samples(), Some([10.0, 20.0].as_slice()));
+    }
+
+    /// Each draw travels at its own rate, so a draw damped hard does not hold
+    /// back the draws beside it.
+    #[test]
+    fn a_draw_blends_at_its_own_stride() {
+        let (before, after) = (sampled(&[0.0, 0.0, 0.0]), sampled(&[10.0, 10.0, 10.0]));
+        let strides = [1.0, 0.5, 0.1];
+        let (blended, _) = converge(
+            &varying(&before),
+            &varying(&after),
+            &Stride::PerDraw(&strides),
+            3,
+            &mut [0.0; 3],
+        );
+        let Value::Distribution(blended) = blended else {
+            panic!("draws stepping at different rates disagree");
+        };
+        assert_eq!(blended.samples(), Some([10.0, 5.0, 1.0].as_slice()));
+    }
+
+    /// The gap is reported per draw so that the stride can be adapted per draw,
+    /// and the furthest of them is what decides whether anything is still moving.
+    #[test]
+    fn every_draw_reports_its_own_gap() {
+        let (before, after) = (sampled(&[2.0, 2.0, 2.0]), sampled(&[3.0, 6.0, 2.0]));
+        let mut moved = [0.0; 3];
+        let (_, furthest) = converge(
+            &varying(&before),
+            &varying(&after),
+            &Stride::Shared(1.0),
+            3,
+            &mut moved,
+        );
+        assert_eq!(moved, [1.0 / 3.0, 2.0 / 3.0, 0.0]);
+        assert_eq!(furthest, 2.0 / 3.0);
+    }
+
+    /// A pass takes the furthest any channel moved each draw, so one settled
+    /// channel cannot mask another that is still moving.
+    #[test]
+    fn gaps_accumulate_across_the_channels_of_a_pass() {
+        let mut moved = [0.0; 2];
+        let still = sampled(&[5.0, 5.0]);
+        converge(
+            &varying(&still),
+            &varying(&still),
+            &Stride::Shared(1.0),
+            2,
+            &mut moved,
+        );
+        let (before, after) = (sampled(&[0.0, 0.0]), sampled(&[0.0, 4.0]));
+        converge(
+            &varying(&before),
+            &varying(&after),
+            &Stride::Shared(1.0),
+            2,
+            &mut moved,
+        );
+        assert_eq!(moved, [0.0, 1.0]);
     }
 
     #[test]

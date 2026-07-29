@@ -72,17 +72,14 @@ struct SolveOptions {
     transient: bool,
     /// Divide the draws this many ways and solve them at once.
     ///
-    /// Each draw settles independently, so the shares are one answer computed in
-    /// pieces, and this is worth several times on a design of any size. Left at
-    /// one because it is not yet free of the answer: the stride is adapted
-    /// against the worst draw anywhere, so a design with more than one resting
-    /// state can report a different one depending on how the draws were split.
+    /// Each draw settles independently and is damped separately, so the shares
+    /// are one answer computed in pieces rather than an approximation of it: the
+    /// values are the same however many ways the work was split.
     ///
-    /// This counts shares rather than threads. The count is part of the question
-    /// for that reason, so taking it from the machine would make the same design
-    /// answer differently on different hardware; the pool underneath uses
-    /// whatever cores it finds.
-    #[arg(long, default_value_t = 1)]
+    /// This counts shares rather than threads. Every share repeats the part of a
+    /// pass that does not depend on the draw count, so returns fall away past a
+    /// handful; the pool underneath uses whatever cores it finds.
+    #[arg(long, default_value_t = 4)]
     shares: usize,
 }
 

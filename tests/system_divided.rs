@@ -27,11 +27,10 @@ const SETTLING: [&str; 3] = ["checkout", "deadlines", "saturation"];
 
 /// Designs that admit more than one resting state.
 ///
-/// Which one a solve reports depends on the path it takes to get there, and a
-/// share damps against its own worst draw rather than the model's, so it can take
-/// a different path and arrive on the other branch. That is a property of the
-/// design rather than of the division, and it is the same reason the solver's
-/// damping cannot be retuned freely.
+/// Which one a solve reports depends on the path its draws take to get there,
+/// and each draw is damped on its own, so the path is a draw's own and does not
+/// depend on which other draws it was solved beside. These are held to the same
+/// agreement as the rest: the branch a draw lands on is a property of that draw.
 const BISTABLE: [&str; 2] = ["metastable", "queued-collapse"];
 
 fn solved(example: &str, config: EvaluationConfig) -> Step {
@@ -157,38 +156,16 @@ fn a_divided_solve_matches_an_undivided_one() {
     }
 }
 
-/// A bistable design still solves when divided, and still reports what it found.
+/// A bistable design lands its draws on the same branches when divided.
 ///
-/// Its draws are not required to land on the same branch an undivided solve put
-/// them on: a share damps against its own worst draw, takes a different path, and
-/// a design with more than one resting state can come to rest at the other one.
-/// That is a property of the design. What must hold is that dividing does not
-/// turn a solvable design into an unsolvable one, or invent values that are not
-/// numbers.
+/// This is what per-draw damping buys. A draw crossing a fold tightens its own
+/// stride and leaves the draws beside it alone, so which branch a draw comes to
+/// rest on follows from the draw and not from the company it was solved in.
 #[test]
-fn a_divided_solve_of_a_bistable_design_stays_on_a_branch() {
+fn a_divided_solve_of_a_bistable_design_keeps_every_draw_on_its_branch() {
     for example in BISTABLE {
-        let whole = solved(example, steady());
-        let divided = solved(
-            example,
-            EvaluationConfig {
-                shares: 4,
-                ..steady()
-            },
-        );
-        assert_eq!(
-            whole.converged, divided.converged,
-            "{example}: dividing changed whether it settled"
-        );
-        for (id, expected) in &whole.components {
-            let found = &divided.components[id];
-            for name in expected.channels.keys() {
-                let draws = spread(&found.channels[name], steady().sample_count);
-                assert!(
-                    draws.iter().all(|draw| draw.is_finite()),
-                    "{example}: {id}.{name} left the reals when divided"
-                );
-            }
+        for shares in [2, 3, 8] {
+            agree(example, steady(), shares);
         }
     }
 }

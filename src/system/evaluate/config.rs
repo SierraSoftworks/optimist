@@ -28,12 +28,11 @@ pub struct EvaluationConfig {
     /// answer, computed in parallel. One leaves the solve on the calling thread.
     ///
     /// This is a count of shares and not of threads, and the difference is the
-    /// point. Every share damps against its own worst draw, so a design with
-    /// more than one resting state can send a draw to a different branch
-    /// depending on how many ways the draws were split. Taking that count from
-    /// the machine would make the same design answer differently on a laptop
-    /// than on a build server, so it is fixed here and the pool underneath is
-    /// left to schedule however many threads it has.
+    /// point. Taking the count from the machine would make a solve's cost
+    /// reproducible but not its scheduling, and it would tie a figure that
+    /// belongs to the model to the hardware it happened to run on. It is fixed
+    /// here and the pool underneath is left to schedule however many threads it
+    /// has, so a laptop and a build server divide the same work the same way.
     pub shares: usize,
     /// Which share of the draws this solve computes.
     ///
@@ -90,31 +89,24 @@ impl Default for EvaluationConfig {
             // is the right trade when the alternative is reporting a design that
             // has a steady state as one that does not.
             //
-            // It is also what decides *which* steady state a design with more
-            // than one of them comes to rest on. Opening the stride near a fixed
-            // point — where it looks like pure convergence cost — destabilises
-            // the ones whose loop gain is strongly negative, and the solver
-            // settles on the congested branch instead of the branch reachable
-            // from rest. That is a different answer, not the same answer sooner,
-            // so this is not a free speed knob. See `relax`.
+            // This is where a draw opens rather than as far as it may go. A draw
+            // that has been closing steadily lengthens its own stride from here,
+            // and one that overshoots tightens its own; see `damping`. Opening
+            // wider is not a free speed knob, because the path a draw takes is
+            // what decides which resting state it reaches when a design has more
+            // than one.
             damping: 0.2,
             mode: SolveMode::Steady,
-            // One, because dividing is not yet free of the answer.
+            // Four, which is worth between two and five times on the shipped
+            // examples and is within reach of any machine a design is edited on.
             //
-            // The draws themselves are independent, but the damping is not: the
-            // stride is adapted against the worst draw anywhere in the model, so
-            // a draw's trajectory depends on which other draws it was solved
-            // alongside. On a design with a single resting state that only moves
-            // the answer by a few tolerances, but on one with two it decides
-            // which of them is reported — dividing `queued-collapse` four ways
-            // collapses its two steady states into one and the hysteresis the
-            // design exists to show disappears.
-            //
-            // Sharing is worth between three and seven times on the shipped
-            // examples and is available through `shares`. Making it the default
-            // wants the damping adapted per draw first, which would make a share
-            // solve its draws exactly as the whole ensemble would.
-            shares: 1,
+            // Dividing is free of the answer now that each draw is damped
+            // separately: a draw's path no longer depends on which other draws
+            // it was solved beside, so a share reaches the same values the whole
+            // ensemble would have. Past four the fixed per-pass cost every share
+            // has to repeat starts to outweigh what dividing saves, so a caller
+            // wanting more should measure rather than assume.
+            shares: 4,
             share: Ensemble::whole(0),
         }
     }

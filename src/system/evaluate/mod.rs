@@ -51,6 +51,7 @@ mod arrivals;
 mod blend;
 mod component;
 mod config;
+mod damping;
 mod error;
 mod flow;
 mod merge;

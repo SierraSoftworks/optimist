@@ -8,7 +8,7 @@ use crate::{
     squiggle::Value,
     system::{
         compile::{PreparedComponent, PreparedPort},
-        values::{Varying, converge as settle},
+        values::{Stride, Varying, converge as settle},
     },
 };
 
@@ -18,18 +18,20 @@ pub(super) fn converge(
     component: &PreparedComponent,
     settled: &ComponentState,
     computed: &ComponentState,
-    weight: f64,
+    stride: &Stride,
+    moved: &mut [f64],
     config: EvaluationConfig,
     rng: &mut ChaCha20Rng,
 ) -> (ComponentState, Moved) {
     let mut blended = ComponentState::default();
-    let mut moved = Moved::default();
+    let mut furthest = Moved::default();
     for (name, next) in &computed.channels {
         let Some(settled) = settled.channels.get(name) else {
             // Nothing to blend against on the first pass, so the computed value
             // stands and the step cannot yet be treated as settled.
             blended.channels.insert(name.clone(), next.clone());
-            moved.record(f64::INFINITY, name);
+            furthest.record(f64::INFINITY, name);
+            moved.fill(f64::INFINITY);
             continue;
         };
         let count = config.ensemble().len();
@@ -40,8 +42,8 @@ pub(super) fn converge(
             blended.channels.insert(name.clone(), next.clone());
             continue;
         };
-        let (value, gap) = settle(&settled, &computed, weight, count);
-        moved.record(gap, name);
+        let (value, gap) = settle(&settled, &computed, stride, count, moved);
+        furthest.record(gap, name);
         blended.channels.insert(name.clone(), value);
     }
     // A port publishes quantities derived from the channels, so it follows
@@ -51,7 +53,7 @@ pub(super) fn converge(
     blended.responses = republish(&component.inbound, &blended.channels, &computed.responses);
     blended.arriving = computed.arriving.clone();
     blended.returning = computed.returning.clone();
-    (blended, moved)
+    (blended, furthest)
 }
 
 /// How far a component moved, and which of its channels moved furthest.

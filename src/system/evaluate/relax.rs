@@ -17,6 +17,7 @@ use super::{
     blend::{Moved, converge},
     component::evaluate_component,
     config::{EvaluationConfig, SolveMode},
+    damping::Damping,
     error::EvaluationError,
     modes::modes,
     progress::Reporting,
@@ -24,12 +25,6 @@ use super::{
     state::{ComponentState, LinkId, LinkState, Mixture, Step, Unsettled},
     stationary::drift,
 };
-
-/// Smallest step the adaptive damping will tighten to.
-const MINIMUM_DAMPING: f64 = 0.02;
-
-/// Contracting passes that must pass before a tightened step is relaxed again.
-const RECOVERY_PASSES: usize = 8;
 
 /// Passes between checks that the iterate is still getting closer to something.
 ///
@@ -81,26 +76,11 @@ pub(super) fn relax(
         })
         .collect();
     let mut links = seeded_links(plan, carried, config);
+    let draws = config.ensemble().len().max(1);
+    let mut moved = vec![f64::INFINITY; draws];
     let mut movement = f64::INFINITY;
     let mut iterations = 0;
-    // Damping starts where the caller asked and tightens itself when the
-    // iterate overshoots. A model carries a thousand draws at once and they do
-    // not all sit in the same regime: most settle readily while a few, drawn
-    // near a fold, cycle at a step size the rest converge happily at. Halving
-    // on any pass that moved further than the one before it lets those few
-    // settle without slowing the rest more than they need, and means the figure
-    // in the configuration is a starting point rather than something an author
-    // has to get right.
-    //
-    // The tightening is undone again once the iterate has contracted steadily
-    // for a while, because `movement` is the worst draw anywhere in the model:
-    // a single draw crossing a fold early on would otherwise hold every other
-    // draw at a twentieth of the step for the rest of the solve, which costs an
-    // order of magnitude in passes to reach the same fixed point.
-    let ceiling = config.damping.clamp(f64::EPSILON, 1.0);
-    let mut weight = ceiling;
-    let mut before = f64::INFINITY;
-    let mut contracting = 0_usize;
+    let mut damping = Damping::opening(config.damping, draws);
     // One runtime serves the whole relaxation. Building the standard
     // environment costs more than evaluating the short expressions a model is
     // made of, and a solve evaluates them thousands of times.
@@ -121,6 +101,7 @@ pub(super) fn relax(
     while iterations < config.max_iterations {
         iterations += 1;
         count!(Passes);
+        moved.fill(0.0);
         movement = 0.0;
         unsettled = None;
         for component in &plan.components {
@@ -138,13 +119,21 @@ pub(super) fn relax(
             let settled = current
                 .get(&component.id)
                 .expect("every component was seeded above");
-            let (blended, moved) = time!(
+            let (blended, furthest) = time!(
                 Converge,
-                converge(component, settled, &computed, weight, config, rng)
+                converge(
+                    component,
+                    settled,
+                    &computed,
+                    &damping.stride(),
+                    &mut moved,
+                    config,
+                    rng
+                )
             );
-            if moved.distance >= movement || unsettled.is_none() {
-                movement = moved.distance;
-                unsettled = Some((component.id.clone(), moved));
+            if furthest.distance >= movement || unsettled.is_none() {
+                movement = furthest.distance;
+                unsettled = Some((component.id.clone(), furthest));
             }
             current.insert(component.id.clone(), blended);
         }
@@ -157,7 +146,7 @@ pub(super) fn relax(
                 Some((component, moved.channel.as_deref()?))
             }),
         );
-        if movement <= config.tolerance {
+        if moved.iter().all(|draw| *draw <= config.tolerance) {
             outcome = Outcome::Settled;
             break;
         }
@@ -182,17 +171,7 @@ pub(super) fn relax(
             since_checkpoint = 0;
             opened = current.clone();
         }
-        if movement > before * 1.05 {
-            weight = (weight * 0.5).max(MINIMUM_DAMPING);
-            contracting = 0;
-        } else {
-            contracting += 1;
-            if contracting >= RECOVERY_PASSES {
-                weight = (weight * 2.0).min(ceiling);
-                contracting = 0;
-            }
-        }
-        before = movement;
+        damping.adapt(&moved);
     }
     let moving = unsettled.and_then(|(component, moved)| {
         moved.channel.map(|channel| (component, channel, moved.distance))
