@@ -12,7 +12,7 @@ export interface Flyout {
 }
 
 /**
- * Places a panel to the left of an element, in viewport coordinates.
+ * Places a panel beside an element, in viewport coordinates.
  *
  * Viewport coordinates because the panels these fields live in scroll, and a
  * scrolling box crops whatever is positioned inside it — which is every pixel of
@@ -53,8 +53,12 @@ export function useFlyout(
     const measured = panel()?.getBoundingClientRect()
     const width = measured?.width ?? assumedWidth
     const height = measured?.height ?? 0
+    // Left where there is room for it, and the other side where there is not:
+    // an anchor near the left edge would otherwise be covered by its own panel.
+    const spare = rect.left - width - GAP >= GAP
+    const beyond = window.innerWidth - width - GAP
     const placed = {
-      left: Math.max(GAP, rect.left - width - GAP),
+      left: Math.max(GAP, spare ? rect.left - width - GAP : Math.min(rect.right + GAP, beyond)),
       top: Math.max(GAP, Math.min(rect.top, window.innerHeight - height - GAP)),
     }
     if (at.value?.left === placed.left && at.value.top === placed.top) return

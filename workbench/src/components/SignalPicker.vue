@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 
+import type { Solved } from '../api/types'
+import { useFlyout } from '../composables/useFlyout'
 import { describeChange, directionOf, emphasisOf } from '../domain/change'
+import QuantityCard from './QuantityCard.vue'
 
 /** One quantity that can be watched, and where it came from. */
 export interface SignalOption {
@@ -9,11 +12,17 @@ export interface SignalOption {
   component: string
   channel: string
   family: 'input' | 'backpressure' | 'channel'
+  /** What the quantity measures in, for the preview to label its axis with. */
+  unit: string
+  /** What the quantity is for, in the words of whoever defined it. */
+  summary: string
 }
 
 const props = defineProps<{
   options: SignalOption[]
   pinned: string[]
+  /** Every solved quantity, so a row can be previewed without asking for it. */
+  solved?: Solved
   /**
    * What each quantity settled at with and without the variant.
    *
@@ -27,6 +36,54 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:pinned': [string[]] }>()
 
 const search = ref('')
+
+/** The preview's width, kept in step with the card's own stylesheet. */
+const PREVIEW_WIDTH = 268
+
+/**
+ * How long a pointer has to rest on a row before it is asking about it.
+ *
+ * A list this long is scrolled by sweeping down it, and a card that appeared
+ * under every row on the way past would be a strobe rather than an answer.
+ */
+const DWELL_MS = 220
+
+const previewing = ref<SignalOption | null>(null)
+const row = ref<HTMLElement | null>(null)
+const card = ref<InstanceType<typeof QuantityCard> | null>(null)
+
+const { at, open, close } = useFlyout(
+  () => row.value,
+  () => (card.value?.$el instanceof HTMLElement ? card.value.$el : null),
+  PREVIEW_WIDTH,
+)
+
+let dwell: ReturnType<typeof setTimeout> | null = null
+
+function preview(option: SignalOption, event: Event) {
+  if (dwell) clearTimeout(dwell)
+  const beside = event.currentTarget
+  if (!(beside instanceof HTMLElement)) return
+  dwell = setTimeout(() => {
+    previewing.value = option
+    row.value = beside
+    open()
+  }, DWELL_MS)
+}
+
+function dismiss() {
+  if (dwell) clearTimeout(dwell)
+  previewing.value = null
+  row.value = null
+  close()
+}
+
+onBeforeUnmount(dismiss)
+
+/** The solved figure behind a row, which is absent until the design is solved. */
+function figureFor(option: SignalOption) {
+  return props.solved?.[option.component]?.[option.channel] ?? null
+}
 
 function movement(value: string) {
   const pair = props.moved?.[value]
@@ -127,11 +184,14 @@ const groups = computed(() => {
 })
 
 function pin(value: string) {
+  // The row is about to move to the watched list, taking its anchor with it.
+  dismiss()
   if (props.pinned.includes(value)) return
   emit('update:pinned', [...props.pinned, value])
 }
 
 function unpin(value: string) {
+  dismiss()
   emit(
     'update:pinned',
     props.pinned.filter((entry) => entry !== value),
@@ -158,8 +218,12 @@ function unpin(value: string) {
         <button
           class="signal chosen"
           :data-test="`unpin-${option.value}`"
-          :title="`Stop watching ${option.value}`"
+          :aria-label="`Stop watching ${option.value}`"
           @click="unpin(option.value)"
+          @mouseenter="preview(option, $event)"
+          @mouseleave="dismiss"
+          @focus="preview(option, $event)"
+          @blur="dismiss"
         >
           <el-icon class="mark"><i-view /></el-icon>
           <span class="name">
@@ -201,8 +265,12 @@ function unpin(value: string) {
           class="signal"
           :class="option.family"
           :data-test="`pin-${option.value}`"
-          :title="`Watch ${option.value}`"
+          :aria-label="`Watch ${option.value}`"
           @click="pin(option.value)"
+          @mouseenter="preview(option, $event)"
+          @mouseleave="dismiss"
+          @focus="preview(option, $event)"
+          @blur="dismiss"
         >
           <el-icon class="mark"><component :is="MARKS[option.family]" /></el-icon>
           <span class="name flat">
@@ -222,6 +290,25 @@ function unpin(value: string) {
         {{ options.length ? 'Nothing goes by that name.' : 'Solve the design to see its quantities.' }}
       </p>
     </div>
+
+    <!--
+      Rendered at the document root rather than beside the row it belongs to.
+      This rail scrolls, and a scrolling box crops whatever is positioned inside
+      it — which is every pixel of a card whose whole purpose is to hang outside,
+      where there is room for a chart.
+    -->
+    <Teleport v-if="at && previewing" to="body">
+      <QuantityCard
+        ref="card"
+        class="flyout"
+        :style="{ left: `${at.left}px`, top: `${at.top}px` }"
+        :heading="previewing.component"
+        :subject="previewing.channel"
+        :summary="previewing.summary"
+        :unit="previewing.unit"
+        :quantity="figureFor(previewing)"
+      />
+    </Teleport>
   </section>
 </template>
 
@@ -346,4 +433,6 @@ function unpin(value: string) {
   color: var(--ink);
   border-bottom: 1px solid var(--line);
 }
+/* Above dialogs, because a design can be reviewed with one open. */
+.flyout { position: fixed; z-index: 2100; }
 </style>

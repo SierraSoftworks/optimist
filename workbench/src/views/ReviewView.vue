@@ -207,7 +207,15 @@ const available = computed(() => {
   const options: SignalOption[] = []
   for (const [component, channels] of Object.entries(analysis.value?.components ?? {})) {
     for (const channel of Object.keys(channels)) {
-      options.push({ value: `${component}.${channel}`, component, channel, family: family(channel) })
+      const definition = definitionOf(component, channel)
+      options.push({
+        value: `${component}.${channel}`,
+        component,
+        channel,
+        family: family(channel),
+        unit: definition?.unit ?? '',
+        summary: definition?.summary ?? '',
+      })
     }
   }
   return options
@@ -291,19 +299,23 @@ const movedSignals = computed(() => {
 })
 
 /**
- * The unit a quantity carries.
+ * The catalogue entry behind a solved quantity, for its unit and what it means.
  *
- * A port signal is named for the signal it carries rather than a channel, so its
- * unit comes from the signal vocabulary; anything else is one of the component's
+ * A port signal is named for the signal it carries rather than a channel, so it
+ * is defined by the signal vocabulary; anything else is one of the component's
  * own channels.
  */
-function unitOf(component: string, channel: string): string {
-  const type = snapshot.value?.model.components.find((entry) => entry.id === component)?.type
+function definitionOf(component: string, channel: string): { unit: string; summary: string } | null {
   if (channel.includes('.')) {
     const signal = channel.slice(channel.lastIndexOf('.') + 1)
-    return catalogue.value?.signals?.[signal]?.unit ?? ''
+    return catalogue.value?.signals?.[signal] ?? null
   }
-  return (type && catalogue.value?.component_types[type]?.channels[channel]?.unit) ?? ''
+  const type = snapshot.value?.model.components.find((entry) => entry.id === component)?.type
+  return (type ? catalogue.value?.component_types[type]?.channels[channel] : null) ?? null
+}
+
+function unitOf(component: string, channel: string): string {
+  return definitionOf(component, channel)?.unit ?? ''
 }
 </script>
 
@@ -375,6 +387,7 @@ function unitOf(component: string, channel: string): string {
       <SignalPicker
         :options="available"
         :pinned="watching"
+        :solved="analysis?.components"
         :moved="movedSignals"
         @update:pinned="(next) => (watching = next)"
       />
