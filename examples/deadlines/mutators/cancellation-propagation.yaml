@@ -19,7 +19,7 @@ summary: >
   propagates some of the giving up and not the rest.
 properties:
   propagated:
-    unit: '1'
+    unit: share
     summary: >
       Share of arriving cancellation carried onward. One passes it all on, zero
       stops it here. Values outside the range are clamped rather than rejected,

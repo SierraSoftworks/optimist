@@ -40,7 +40,7 @@ responses:
       that timed out.
     expression: min([signal.latency, budget])
   success:
-    unit: '1'
+    unit: share
     summary: >
       Success reduced by the share of calls that had not answered in time. This
       is where a latency problem becomes a reliability problem, and it is the

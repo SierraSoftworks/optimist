@@ -21,7 +21,7 @@ requests:
     expression: min([signal.rate, limit])
 responses:
   success:
-    unit: '1'
+    unit: share
     summary: >
       Success reduced by the share of demand that was refused. Shedding is not
       free and is not invisible: a caller whose request is turned away at the

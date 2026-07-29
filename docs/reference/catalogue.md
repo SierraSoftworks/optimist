@@ -28,11 +28,11 @@ own: which way it travels is settled by the port publishing it.
 | --- | --- | --- | --- | --- |
 | `rate` | `op/s` | sum | yes | Operations per second travelling along the relationship. |
 | `cancellation` | `op/s` | sum | yes | Operations the caller has abandoned. Travels forward, because only the caller knows it has given up. |
-| `cancellation_effectiveness` | `1` | mean | no | Share of those cancellations arriving in time to save the work. Rests at a half rather than at an aggregation identity. |
+| `cancellation_effectiveness` | `share` | mean | no | Share of those cancellations arriving in time to save the work. Rests at a half rather than at an aggregation identity. |
 | `occupancy` | `op` | sum | yes | Operations in flight: work a caller is holding open against a dependency. |
 | `payload` | `B/op` | mean | no | Bytes carried by one operation. Read on an inbound port it is the request; on an outbound port it is the reply. |
 | `latency` | `s` | max | no | Time from receiving a request to answering it, including every downstream call. Travels back to the caller. |
-| `success` | `1` | product | no | Probability a request is answered successfully. Travels back to the caller. |
+| `success` | `share` | product | no | Probability a request is answered successfully. Travels back to the caller. |
 | `capacity` | `op/s` | min | yes | Rate the callee can sustain, reported back so the wire in front of it knows how fast it drains. |
 
 **Extensive** means the quantity is shared out across the replicas of a scale
@@ -72,7 +72,7 @@ constraint the engine can rank.
 | `request_rate` | `op/s` | *required* |
 | `payload` | `B/op` | `0` |
 | `latency_target` | `s` | `infinity` |
-| `success_target` | `1` | `0` |
+| `success_target` | `share` | `0` |
 
 **Channels** — `offered`, `latency`, `success`, `failure`.
 
@@ -350,7 +350,7 @@ sees every call.
 
 | Property | Unit | Default |
 | --- | --- | --- |
-| `hit_ratio` | `1` | *required* |
+| `hit_ratio` | `share` | *required* |
 
 Request `rate` becomes `signal.rate * (1 - hit_ratio)`, with the ratio clamped
 into zero and one so that a mistyped setting cannot send negative demand
@@ -384,7 +384,7 @@ off, turned on, or exposed to a fraction of requests.
 
 | Property | Unit | Default |
 | --- | --- | --- |
-| `exposure` | `1` | *required* |
+| `exposure` | `share` | *required* |
 
 Request `rate` becomes `signal.rate * min([max([exposure, 0]), 1])`. Point
 `exposure` at a shared quantity so an intervention can move it without touching
@@ -421,7 +421,7 @@ end.
 
 | Property | Unit | Default |
 | --- | --- | --- |
-| `effectiveness` | `1` | `0.5` |
+| `effectiveness` | `share` | `0.5` |
 
 Request `cancellation_effectiveness` becomes the value clamped into zero and one.
 Without it the share is a half, on the assumption that a cancellation is equally

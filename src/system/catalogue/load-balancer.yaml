@@ -84,11 +84,11 @@ channels:
     summary: Time a caller waits, the hop itself plus the backend answering it.
     expression: overhead + backend_wait
   backend_success:
-    unit: '1'
+    unit: share
     summary: Share of forwarded requests the backends answered successfully.
     expression: out.backends.success
   success_rate:
-    unit: '1'
+    unit: share
     summary: >
       Share of arriving requests answered successfully, which is the share the
       backends held.

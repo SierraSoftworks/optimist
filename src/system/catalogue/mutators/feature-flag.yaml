@@ -7,7 +7,7 @@ summary: >
   both with and without it by rebinding one quantity.
 properties:
   exposure:
-    unit: '1'
+    unit: share
     summary: >
       Share of traffic the flag admits. Zero leaves whatever is downstream
       unexercised, one admits everything, and a fraction is a partial rollout.

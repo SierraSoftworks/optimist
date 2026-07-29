@@ -34,7 +34,7 @@ requests:
     expression: signal.rate * Reliability.retryAttempts(response.success, attempts)
 responses:
   success:
-    unit: '1'
+    unit: share
     summary: >
       Probability at least one attempt succeeds. Assumes attempts fail
       independently, which is optimistic: attempts against a saturated

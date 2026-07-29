@@ -56,7 +56,7 @@ channels:
       the share in which the queue is the bottleneck.
     expression: min([arrivals + prev.backlog / dt, service_rate])
   load:
-    unit: '1'
+    unit: share
     summary: >
       Arrivals against the rate consumers drain at. The one ratio every other
       figure here follows from, and the reason a buffer's depth decides how bad
@@ -86,7 +86,7 @@ channels:
         then Queue.boundedLength(load, capacity)
         else min([max([prev.backlog + (arrivals * accepted_ratio - departures) * dt, 0]), capacity])
   accepted_ratio:
-    unit: '1'
+    unit: share
     summary: >
       Share of offered work the buffer had room to take. One until the queue
       approaches its depth, and falling once it does, because past that point

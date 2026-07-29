@@ -6,7 +6,7 @@ summary: >
   caller still sees every call.
 properties:
   hit_ratio:
-    unit: '1'
+    unit: share
     summary: >
       Share of calls served from cache. Uncertainty here should reflect how much
       the working set may change, because a hit ratio measured on today's

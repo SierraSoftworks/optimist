@@ -10,7 +10,7 @@ scratchpad:
     summary: Requests per second at the daily peak.
   - name: cache_hits
     expression: '0.5'
-    unit: '1'
+    unit: share
     summary: Share of reads served from cache.
   - name: pool_size
     expression: '8'

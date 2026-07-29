@@ -19,7 +19,7 @@ summary: >
   worth writing down rather than assuming.
 properties:
   effectiveness:
-    unit: '1'
+    unit: share
     summary: >
       Share of cancellations arriving early enough to save the work. Clamped into
       zero and one, because a share of cancellations has no meaning outside them
@@ -28,7 +28,7 @@ properties:
     default: '0.5'
 requests:
   cancellation_effectiveness:
-    unit: '1'
+    unit: share
     summary: >
       The share the far end should salvage, replacing the half it would otherwise
       assume. Travels with the cancellation it describes, so a chain of hops that

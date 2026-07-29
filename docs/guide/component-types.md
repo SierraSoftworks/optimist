@@ -65,7 +65,7 @@ channels:
     summary: Demand passed on, capped per draw at the refill rate.
     expression: min([offered, refill])
   admitted_ratio:
-    unit: '1'
+    unit: share
     summary: Share of callers served rather than refused.
     expression: min([admitted / max([offered, 0.000001]), 1])
 
@@ -174,7 +174,7 @@ properties:
     unit: s
     summary: Delay before a duplicate is issued.
   hedge_share:
-    unit: '1'
+    unit: share
     summary: Share of calls slow enough to be hedged.
 requests:
   rate:

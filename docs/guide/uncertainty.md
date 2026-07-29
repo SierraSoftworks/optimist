@@ -81,9 +81,16 @@ the result is a difference in the design rather than a difference in the draws.
 ## Units
 
 Every property, channel, transform, and signal carries a unit annotation such as
-`op/s`, `B/op`, `s`, or `1` for a dimensionless ratio. Annotations are parsed and
-validated when a definition loads, so a manifest with a malformed unit is
-rejected rather than discovered later.
+`op/s`, `B/op`, `s`, or `1` for a plain dimensionless number. Annotations are
+parsed and validated when a definition loads, so a manifest with a malformed unit
+is rejected rather than discovered later.
+
+A proportion of a whole says so with `share`, which carries no dimension of its
+own — multiplying a rate by a share still checks as a rate — and marks the figure
+as one to read as a percentage. The distinction is what separates a success of
+`0.97` from a fan-out of `3`: both are pure numbers, and only one of them is
+ninety-seven percent of anything. `ratio`, `fraction`, `proportion`, and
+`probability` are the same annotation under other names.
 
 Units document the intent of a quantity and are what allow a report to label a
 figure it derived. They are not currently used to reject a component that

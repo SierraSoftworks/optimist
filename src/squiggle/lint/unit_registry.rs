@@ -29,6 +29,14 @@
 //! partitioning demand into outcomes is a modelling claim, so it is written
 //! once and explicitly rather than assumed everywhere.
 //!
+//! # Proportions
+//!
+//! A dimensionless figure is either a proportion of a whole or a plain count,
+//! and the two want to be read differently: a success of `0.97` is ninety-seven
+//! percent, while a fan-out of `3` is three. `share` and its spellings say which
+//! without inventing a dimension, so an interface can present the figure the way
+//! it was meant while the algebra continues to treat it as the pure number it is.
+//!
 //! Unrecognised names are preserved verbatim rather than rejected, so a model
 //! may introduce its own quantity — `shard`, `tenant`, `widget` — and still have
 //! it checked consistently against itself.
@@ -100,6 +108,10 @@ const ALIASES: &[(&str, &str)] = &[
 ];
 
 /// Names that stand for a product or ratio of other units.
+///
+/// An empty factor list names a dimensionless quantity, which is how `share`
+/// declares a proportion: it says how the figure should be read without adding a
+/// dimension, so multiplying a rate by one still checks as a rate.
 const COMPOUND: &[(&str, &[(&str, f64)])] = &[
     ("rps", &[("op", 1.0), ("s", -1.0)]),
     ("qps", &[("op", 1.0), ("s", -1.0)]),
@@ -112,6 +124,11 @@ const COMPOUND: &[(&str, &[(&str, f64)])] = &[
     ("availability", &[("success", 1.0), ("op", -1.0)]),
     ("errorRatio", &[("error", 1.0), ("op", -1.0)]),
     ("errorBudget", &[("error", 1.0), ("op", -1.0)]),
+    ("share", &[]),
+    ("ratio", &[]),
+    ("fraction", &[]),
+    ("proportion", &[]),
+    ("probability", &[]),
 ];
 
 #[cfg(test)]
@@ -160,6 +177,13 @@ mod tests {
         );
         assert_eq!(units("availability"), units("slo"));
         assert_eq!(units("errorBudget"), units("errorRatio"));
+    }
+
+    #[test]
+    fn proportions_carry_no_dimension() {
+        assert_eq!(units("share"), Vec::new());
+        assert_eq!(units("share"), units("ratio"));
+        assert_eq!(units("probability"), units("fraction"));
     }
 
     #[test]

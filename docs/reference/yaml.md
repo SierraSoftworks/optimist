@@ -74,7 +74,7 @@ scratchpad:
     summary: Requests per second at the daily peak.
   - name: cache_hits
     expression: '0.5'
-    unit: '1'
+    unit: share
     summary: Share of reads served from cache.
 
 scale_units:
@@ -110,7 +110,7 @@ interventions:
 | --- | --- | --- |
 | `name` | yes | The binding component properties refer to. |
 | `expression` | yes | Squiggle source. |
-| `unit` | no | Unit annotation, such as `op/s`. |
+| `unit` | no | Unit annotation, such as `op/s`. Use `share` for a proportion of a whole and `1` for a plain count. |
 | `summary` | no | What the quantity is and where its value came from. |
 
 ### Scale unit

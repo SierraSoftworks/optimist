@@ -51,7 +51,7 @@ scratchpad:
 
   - name: deadline_propagation
     expression: '1'
-    unit: '1'
+    unit: share
     summary: >
       Share of cancellation that survives the hop into the search service. One
       is a deadline carried with the request, so a caller giving up withdraws

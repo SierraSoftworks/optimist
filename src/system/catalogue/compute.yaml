@@ -67,7 +67,7 @@ channels:
       answered, but only some of them are saved.
     expression: in.requests.cancellation
   salvage_share:
-    unit: '1'
+    unit: share
     summary: >
       Share of cancellations arriving early enough that the work is never
       started, as reported by the relationship they arrived on. Half unless a
@@ -120,7 +120,7 @@ channels:
       time each request holds one.
     expression: Little.rate(servers, hold_time)
   utilisation:
-    unit: '1'
+    unit: share
     summary: Share of capacity consumed by the offered load.
     expression: Queue.utilisation(offered, capacity)
   residence:
@@ -133,11 +133,11 @@ channels:
       delay.
     expression: hold_time
   dependency_success:
-    unit: '1'
+    unit: share
     summary: Share of requests whose dependencies all answered successfully.
     expression: out.dependencies.success
   success_rate:
-    unit: '1'
+    unit: share
     summary: >
       Share of arriving requests answered successfully, which is the share whose
       dependencies all held.

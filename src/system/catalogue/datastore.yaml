@@ -97,7 +97,7 @@ channels:
     summary: Bytes moved per second.
     expression: operations * record_size
   utilisation:
-    unit: '1'
+    unit: share
     summary: >
       Operation rate against the store's ceiling. Reported because it is the
       figure an operator recognises; the delay it causes is computed on the wire
@@ -131,7 +131,7 @@ channels:
       not something its configuration can tell you.
     expression: service_time / max([1 - concurrency, 0.001])
   success_rate:
-    unit: '1'
+    unit: share
     summary: >
       Share of arriving operations answered successfully. A store has nothing
       behind it that could fail on its behalf, so every operation that reaches it

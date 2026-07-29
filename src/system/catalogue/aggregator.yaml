@@ -91,13 +91,13 @@ channels:
       Time a caller waits: the slowest branch, then combining the results.
     expression: branch_wait + overhead
   branch_success:
-    unit: '1'
+    unit: share
     summary: >
       Share of requests whose branches all succeeded. Branch success rates
       multiply, so this falls faster than any one branch degrades.
     expression: out.branches.success
   success_rate:
-    unit: '1'
+    unit: share
     summary: >
       Share of arriving requests answered successfully, which is the share whose
       branches all held. Cancellation is counted by the behaviour that raised it

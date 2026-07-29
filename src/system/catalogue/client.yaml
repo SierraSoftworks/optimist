@@ -38,7 +38,7 @@ properties:
       design meets its objective rather than whether any one hop does.
     default: 'infinity'
   success_target:
-    unit: '1'
+    unit: share
     summary: >
       Lowest share of successful responses this population will accept. Set from
       the objective the design exists to meet.
@@ -55,7 +55,7 @@ channels:
       This is the figure an objective is written against.
     expression: out.calls.latency
   success:
-    unit: '1'
+    unit: share
     summary: >
       Share of requests answered successfully, as experienced here, including
       every downstream dependency the call relied upon.
