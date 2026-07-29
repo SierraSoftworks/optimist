@@ -59,13 +59,18 @@ pub(super) enum Varying<'a> {
 }
 
 impl<'a> Varying<'a> {
-    /// Reads a quantity, sampling it if it has not been drawn from yet.
-    pub(super) fn of(value: &'a Value, count: usize, rng: &mut ChaCha20Rng) -> Option<Self> {
+    /// Reads a quantity, sampling the whole ensemble if it has not been drawn from
+    /// yet and keeping this share of the result.
+    pub(super) fn of(
+        value: &'a Value,
+        ensemble: Ensemble,
+        rng: &mut ChaCha20Rng,
+    ) -> Option<Self> {
         match value {
             Value::Number(number) => Some(Self::Uniform(*number)),
-            Value::Distribution(distribution) => Some(Self::PerDraw(
-                distribution.draws(Ensemble::whole(count), rng).ok()?,
-            )),
+            Value::Distribution(distribution) => {
+                Some(Self::PerDraw(distribution.draws(ensemble, rng).ok()?))
+            }
             _ => None,
         }
     }
@@ -224,7 +229,7 @@ mod tests {
     #[test]
     fn a_certain_quantity_is_read_without_being_expanded() {
         assert!(matches!(
-            Varying::of(&Value::Number(2.5), 1_000, &mut rng()),
+            Varying::of(&Value::Number(2.5), Ensemble::whole(1_000), &mut rng()),
             Some(Varying::Uniform(2.5))
         ));
     }
@@ -233,7 +238,8 @@ mod tests {
     fn an_uncertain_quantity_is_read_as_its_own_draws() {
         let distribution = Distribution::from_samples(vec![1.0, 2.0, 3.0]).expect("samples");
         let value = Value::Distribution(distribution);
-        let Some(Varying::PerDraw(draws)) = Varying::of(&value, 3, &mut rng()) else {
+        let Some(Varying::PerDraw(draws)) = Varying::of(&value, Ensemble::whole(3), &mut rng())
+        else {
             panic!("an uncertain quantity carries draws");
         };
         assert_eq!(draws, [1.0, 2.0, 3.0]);

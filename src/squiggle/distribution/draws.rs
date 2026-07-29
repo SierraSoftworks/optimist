@@ -125,10 +125,15 @@ impl Distribution {
         ensemble: Ensemble,
         rng: &mut ChaCha20Rng,
     ) -> Result<&'a [f64], String> {
-        if let Kind::Samples(samples) = &self.kind
-            && samples.len() == ensemble.size()
-        {
-            return Ok(ensemble.window(samples.as_ref()));
+        if let Kind::Samples(samples) = &self.kind {
+            if samples.len() == ensemble.size() {
+                return Ok(ensemble.window(samples.as_ref()));
+            }
+            // Already narrowed to this share by whoever produced it. Narrowing a
+            // second time would take a share of a share.
+            if samples.len() == ensemble.len() {
+                return Ok(samples.as_ref());
+            }
         }
         if let Some(draws) = self.draws.get() {
             return Ok(ensemble.window(draws));
@@ -142,20 +147,26 @@ impl Distribution {
     ///
     /// Authored sample sets carry a fixed number of draws that resampling would
     /// distort, so the shortest authored length wins and symbolic operands
-    /// materialise to match it. When no operand is an authored sample set the
-    /// runtime's configured count applies. The caller's share is carried through
-    /// unchanged: it is the same share, of however many draws the operands agree
-    /// on.
+    /// materialise to match it.
+    ///
+    /// Operands that already hold exactly this share leave the share in place. A
+    /// symbolic operand joining them still has to be drawn across the whole
+    /// ensemble and narrowed, or it would be sampling its own strata rather than
+    /// the ones its neighbours came from, and the shares would stop fitting back
+    /// together.
     pub(crate) fn aligned<'a>(
         operands: impl IntoIterator<Item = &'a Self>,
         configured: Ensemble,
     ) -> Ensemble {
-        let size = operands
+        match operands
             .into_iter()
             .filter_map(|operand| operand.samples().map(<[f64]>::len))
             .min()
-            .unwrap_or_else(|| configured.size());
-        configured.resized(size)
+        {
+            None => configured,
+            Some(authored) if authored == configured.len() => configured,
+            Some(authored) => Ensemble::whole(authored),
+        }
     }
 
     fn stratified(&self, count: usize, rng: &mut ChaCha20Rng) -> Result<Vec<f64>, String> {

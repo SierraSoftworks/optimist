@@ -43,6 +43,7 @@ mod component;
 mod config;
 mod error;
 mod flow;
+mod merge;
 mod mutate;
 mod queue;
 mod relax;
@@ -126,6 +127,30 @@ pub fn evaluate_with_mutators(
     overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
+    let shares: Vec<EvaluationConfig> = config.divided().collect();
+    if let [whole] = shares.as_slice() {
+        return horizon(model, catalogue, mutators, overrides, *whole);
+    }
+    let solved = shares
+        .iter()
+        .map(|share| {
+            Ok(merge::Share {
+                width: share.ensemble().len(),
+                evaluation: horizon(model, catalogue, mutators, overrides, *share)?,
+            })
+        })
+        .collect::<Result<Vec<_>, EvaluationError>>()?;
+    Ok(merge::merge(solved))
+}
+
+/// Advances one share of the draws across the whole horizon.
+fn horizon(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
+    overrides: &BTreeMap<String, String>,
+    config: EvaluationConfig,
+) -> Result<Evaluation, EvaluationError> {
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut previous: BTreeMap<ComponentId, ComponentState> = BTreeMap::new();
     let mut carried: BTreeMap<LinkId, LinkState> = BTreeMap::new();
@@ -141,7 +166,7 @@ pub fn evaluate_with_mutators(
             overrides,
             Timing {
                 seed: config.seed,
-                sample_count: config.sample_count,
+                ensemble: config.ensemble(),
                 time,
                 step: config.step,
             },

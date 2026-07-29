@@ -52,7 +52,7 @@ pub(crate) fn quantities(
         })?;
         let value = runtime(
             derive_seed(config.seed, "scratchpad", &entry.name),
-            config.sample_count,
+            config.ensemble,
         )?
         .evaluate_values(
             &program,
@@ -92,7 +92,7 @@ pub(super) fn evaluate_properties(
             message: first_message(&diagnostics),
         })?;
         let seed = derive_seed(0, component.id.as_str(), name);
-        let value = runtime(seed, config.sample_count)?
+        let value = runtime(seed, config.ensemble)?
             .evaluate_values(
                 &program,
                 globals

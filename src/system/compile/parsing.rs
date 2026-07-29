@@ -50,12 +50,16 @@ pub(crate) fn compile(
     })
 }
 
-pub(crate) fn runtime(seed: u64, sample_count: usize) -> Result<Runtime, EvaluationError> {
+pub(crate) fn runtime(
+    seed: u64,
+    ensemble: crate::squiggle::distribution::Ensemble,
+) -> Result<Runtime, EvaluationError> {
     Runtime::with_config(RuntimeConfig {
         seed,
-        sample_count,
+        sample_count: ensemble.size(),
         max_steps: 4_000_000,
     })
+    .map(|runtime| runtime.sharing(ensemble))
     .map_err(|message| EvaluationError::Evaluation {
         location: "runtime".to_owned(),
         message,

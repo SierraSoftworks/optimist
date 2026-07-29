@@ -1,5 +1,7 @@
 //! How a solve is parameterised.
 
+use crate::squiggle::distribution::Ensemble;
+
 /// How a model should be solved.
 #[derive(Clone, Copy, Debug)]
 pub struct EvaluationConfig {
@@ -19,6 +21,40 @@ pub struct EvaluationConfig {
     pub damping: f64,
     /// Whether queues are solved for balance or advanced through time.
     pub mode: SolveMode,
+    /// How many ways to divide the draws across threads.
+    ///
+    /// Each draw settles on its own fixed point independently of the others, so
+    /// dividing them is exact rather than approximate: the pieces are the same
+    /// answer, computed in parallel. One leaves the solve on the calling thread.
+    pub threads: usize,
+    /// Which share of the draws this solve computes.
+    ///
+    /// Whole unless the solver has divided the work, and callers have no reason
+    /// to set it. Its size is always taken from `sample_count`, so the two cannot
+    /// drift apart.
+    pub share: Ensemble,
+}
+
+impl EvaluationConfig {
+    /// The draws to sample, and which share of them to keep.
+    ///
+    /// This is what a runtime is built with, because sampling is the one place
+    /// the share matters: strata are laid across the whole ensemble and only this
+    /// worker's window of the result is kept.
+    pub(crate) fn ensemble(self) -> Ensemble {
+        self.share.resized(self.sample_count.max(1))
+    }
+
+    /// This configuration divided into one solve per thread.
+    ///
+    /// Dividing further than there are draws leaves some shares empty, and an
+    /// empty share has nothing to sample and nothing to say, so it is dropped
+    /// rather than asked to solve.
+    pub(crate) fn divided(self) -> impl Iterator<Item = Self> {
+        Ensemble::split(self.sample_count.max(1), self.threads.max(1))
+            .filter(|share| !share.is_empty())
+            .map(move |share| Self { share, ..self })
+    }
 }
 
 impl Default for EvaluationConfig {
@@ -47,6 +83,8 @@ impl Default for EvaluationConfig {
             // has a steady state as one that does not.
             damping: 0.2,
             mode: SolveMode::Steady,
+            threads: 1,
+            share: Ensemble::whole(0),
         }
     }
 }

@@ -106,10 +106,34 @@ pub struct Step {
     pub links: BTreeMap<LinkId, LinkState>,
     /// Whether relaxation settled within the iteration cap.
     pub converged: bool,
+    /// What was still moving when it gave up, where it did not settle.
+    pub unsettled: Option<Unsettled>,
     /// Passes taken before settling or reaching the cap.
     pub iterations: usize,
     /// Largest relative movement in the final pass.
     pub movement: f64,
+}
+
+/// The quantity that kept a step from settling.
+///
+/// A step that does not settle is a result rather than a failure, but "nothing
+/// settled" sends an author looking through a whole design. Naming the quantity
+/// that was still moving, and how fast, points at the loop that is not closing.
+#[derive(Clone, Debug)]
+pub struct Unsettled {
+    /// Component owning the quantity that was still moving furthest.
+    pub component: ComponentId,
+    /// That component's channel which was still moving furthest.
+    pub channel: String,
+    /// How far it moved on the last pass, relative to its own magnitude.
+    pub movement: f64,
+    /// Whether the iterate had stopped getting closer, rather than merely run
+    /// out of passes.
+    ///
+    /// The two call for different answers. An iterate still closing in wants a
+    /// higher cap; one that has stopped has no steady state to find at this load,
+    /// and raising the cap only makes the same answer take longer to arrive.
+    pub stalled: bool,
 }
 
 /// A solved model across its horizon.

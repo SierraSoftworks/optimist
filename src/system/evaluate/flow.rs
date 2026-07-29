@@ -44,11 +44,11 @@ fn elementwise(
     config: EvaluationConfig,
     combine: impl Fn(f64, f64) -> f64,
 ) -> Value {
-    let count = config.sample_count.max(1);
+    let count = config.ensemble().len();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let (Some(left), Some(right)) = (
-        Varying::of(left, count, &mut rng),
-        Varying::of(right, count, &mut rng),
+        Varying::of(left, config.ensemble(), &mut rng),
+        Varying::of(right, config.ensemble(), &mut rng),
     ) else {
         return Value::Number(0.0);
     };

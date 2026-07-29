@@ -13,12 +13,12 @@ use crate::{
 };
 
 use super::{
-    blend::converge,
+    blend::{Moved, converge},
     component::evaluate_component,
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
     queue::advance,
-    state::{ComponentState, LinkId, LinkState, Step},
+    state::{ComponentState, LinkId, LinkState, Step, Unsettled},
 };
 
 /// Smallest step the adaptive damping will tighten to.
@@ -26,6 +26,21 @@ const MINIMUM_DAMPING: f64 = 0.02;
 
 /// Contracting passes that must pass before a tightened step is relaxed again.
 const RECOVERY_PASSES: usize = 8;
+
+/// Passes between checks that the iterate is still getting closer to something.
+///
+/// Long enough to sit out the adaptive damping's tighten-and-recover cycle and a
+/// stretch of the slow crawl a loop gain just under one produces, so that a
+/// design which is converging — merely without hurry — is never mistaken for one
+/// that has stopped.
+const PATIENCE: usize = 128;
+
+/// Improvement over that span below which the iterate is treated as stuck.
+///
+/// A loop that is contracting at all beats this comfortably: even a ratio of
+/// 0.999 per pass compounds to better than a tenth over the span. A loop with no
+/// fixed point to find does not improve at all.
+const PROGRESS: f64 = 0.98;
 
 pub(super) fn relax(
     plan: &Plan,
@@ -67,11 +82,21 @@ pub(super) fn relax(
     // One runtime serves the whole relaxation. Building the standard
     // environment costs more than evaluating the short expressions a model is
     // made of, and a solve evaluates them thousands of times.
-    let mut runtime = runtime(config.seed, config.sample_count)?;
+    let mut runtime = runtime(config.seed, config.ensemble())?;
+    // A design with no steady state to find will run to the iteration cap on
+    // every step of every horizon, which is where nearly all of the time goes in
+    // the one case where none of it buys anything. The iterate is watched for
+    // whether it is still closing on something, and abandoned when it is not.
+    let mut best = f64::INFINITY;
+    let mut checkpoint = f64::INFINITY;
+    let mut since_checkpoint = 0_usize;
+    let mut stalled = false;
+    let mut unsettled: Option<(ComponentId, Moved)> = None;
     while iterations < config.max_iterations {
         iterations += 1;
         count!(Passes);
         movement = 0.0;
+        unsettled = None;
         for component in &plan.components {
             count!(Components);
             let computed = evaluate_component(
@@ -88,11 +113,24 @@ pub(super) fn relax(
                 .get(&component.id)
                 .expect("every component was seeded above");
             let (blended, moved) = converge(component, settled, &computed, weight, config, rng);
-            movement = movement.max(moved);
+            if moved.distance >= movement || unsettled.is_none() {
+                movement = moved.distance;
+                unsettled = Some((component.id.clone(), moved));
+            }
             current.insert(component.id.clone(), blended);
         }
         if movement <= config.tolerance {
             break;
+        }
+        best = best.min(movement);
+        since_checkpoint += 1;
+        if since_checkpoint >= PATIENCE {
+            if best > checkpoint * PROGRESS {
+                stalled = true;
+                break;
+            }
+            checkpoint = best;
+            since_checkpoint = 0;
         }
         if movement > before * 1.05 {
             weight = (weight * 0.5).max(MINIMUM_DAMPING);
@@ -106,11 +144,23 @@ pub(super) fn relax(
         }
         before = movement;
     }
+    let converged = movement <= config.tolerance;
     Ok(Step {
         time,
         components: current,
         links,
-        converged: movement <= config.tolerance,
+        converged,
+        unsettled: (!converged)
+            .then(|| {
+                let (component, moved) = unsettled?;
+                Some(Unsettled {
+                    component,
+                    channel: moved.channel?,
+                    movement: moved.distance,
+                    stalled,
+                })
+            })
+            .flatten(),
         iterations,
         movement,
     })

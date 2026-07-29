@@ -125,16 +125,16 @@ impl Runtime {
     /// the pieces agree with what one runtime would have produced.
     ///
     /// ```
-    /// # use optimist::squiggle::{Distribution, Runtime, RuntimeConfig, Value};
+    /// # use optimist::squiggle::{Runtime, RuntimeConfig, Value, distribution::Ensemble};
     /// let config = RuntimeConfig { sample_count: 400, ..RuntimeConfig::default() };
     /// let whole = Runtime::with_config(config)?.evaluate("normal(5, 1) * 2")
     ///     .expect("evaluates");
     /// let Value::Distribution(whole) = whole else { panic!("a distribution") };
     ///
     /// let mut shared: Vec<f64> = Vec::new();
-    /// for part in 0..4 {
+    /// for share in Ensemble::split(400, 4) {
     ///     let value = Runtime::with_config(config)?
-    ///         .sharing(part, 4)
+    ///         .sharing(share)
     ///         .evaluate("normal(5, 1) * 2")
     ///         .expect("evaluates");
     ///     let Value::Distribution(part) = value else { panic!("a distribution") };
@@ -145,10 +145,8 @@ impl Runtime {
     /// # Ok::<(), String>(())
     /// ```
     #[must_use]
-    pub fn sharing(mut self, part: usize, parts: usize) -> Self {
-        self.ensemble = Ensemble::split(self.config.sample_count, parts)
-            .nth(part)
-            .unwrap_or_else(|| Ensemble::whole(self.config.sample_count));
+    pub fn sharing(mut self, share: Ensemble) -> Self {
+        self.ensemble = share.resized(self.config.sample_count);
         self
     }
 

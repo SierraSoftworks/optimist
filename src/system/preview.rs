@@ -56,7 +56,7 @@ pub fn preview(
 ) -> Result<Value, EvaluationError> {
     let timing = Timing {
         seed: config.seed,
-        sample_count: config.sample_count,
+        ensemble: config.ensemble(),
         time: 0.0,
         step: config.step,
     };
@@ -67,11 +67,12 @@ pub fn preview(
 
     let program = syntax(expression).map_err(|diagnostics| EvaluationError::Syntax {
         location: "expression".to_owned(),
-        message: diagnostics
-            .first()
-            .map_or_else(|| "invalid expression".to_owned(), |first| first.message.clone()),
+        message: diagnostics.first().map_or_else(
+            || "invalid expression".to_owned(),
+            |first| first.message.clone(),
+        ),
     })?;
-    runtime(config.seed, config.sample_count)?
+    runtime(config.seed, config.ensemble())?
         .evaluate_values(
             &program,
             globals
@@ -107,10 +108,10 @@ mod tests {
 
     #[test]
     fn an_expression_sees_the_quantities_declared_before_it() {
-        let design = model(
-            "scratchpad:\n- name: a\n  expression: '2'\n- name: b\n  expression: '3'\n",
-        );
-        let value = preview(&design, "a * b", None, EvaluationConfig::default()).expect("evaluates");
+        let design =
+            model("scratchpad:\n- name: a\n  expression: '2'\n- name: b\n  expression: '3'\n");
+        let value =
+            preview(&design, "a * b", None, EvaluationConfig::default()).expect("evaluates");
         assert_eq!(value.as_number(), Some(6.0));
     }
 
@@ -120,9 +121,8 @@ mod tests {
     /// showing them the refusal.
     #[test]
     fn an_expression_cannot_see_itself_or_what_follows() {
-        let design = model(
-            "scratchpad:\n- name: a\n  expression: '2'\n- name: b\n  expression: 'a * 3'\n",
-        );
+        let design =
+            model("scratchpad:\n- name: a\n  expression: '2'\n- name: b\n  expression: 'a * 3'\n");
         assert!(preview(&design, "b + 1", Some("b"), EvaluationConfig::default()).is_err());
         assert_eq!(
             preview(&design, "a + 1", Some("b"), EvaluationConfig::default())
@@ -145,7 +145,9 @@ mod tests {
         )
         .expect("evaluates");
         let distribution = value.as_distribution().expect("a distribution");
-        assert!(distribution.quantile(0.1).expect("p10") < distribution.quantile(0.9).expect("p90"));
+        assert!(
+            distribution.quantile(0.1).expect("p10") < distribution.quantile(0.9).expect("p90")
+        );
     }
 
     #[test]
