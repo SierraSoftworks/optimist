@@ -13,6 +13,7 @@
 mod diagnose;
 mod output;
 mod output_json;
+mod progress;
 mod render;
 mod report;
 mod server;
@@ -21,6 +22,7 @@ mod system;
 use clap::{Parser, Subcommand};
 
 use output::{ColourChoice, OutputFormat};
+use progress::ProgressChoice;
 use server::ServerArgs;
 use system::SystemCommand;
 
@@ -46,6 +48,9 @@ pub struct Cli {
     /// When to colour the output.
     #[arg(long, global = true, value_enum, default_value_t = ColourChoice::Auto)]
     colour: ColourChoice,
+    /// When to draw a progress bar on standard error while solving.
+    #[arg(long, global = true, value_enum, default_value_t = ProgressChoice::Auto)]
+    progress: ProgressChoice,
     #[command(subcommand)]
     command: Command,
 }
@@ -75,7 +80,7 @@ pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
     cli.colour.apply();
     match cli.command {
         Command::Serve(args) => server::run(args).await,
-        Command::Design(command) => system::run(command, cli.output),
+        Command::Design(command) => system::run(command, cli.output, cli.progress),
     }
 }
 

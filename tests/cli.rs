@@ -201,6 +201,50 @@ fn reports_stay_within_the_width_they_are_given() {
     }
 }
 
+/// Nobody is watching a pipe, and a bar written into one is only noise.
+#[test]
+fn progress_is_drawn_for_a_terminal_and_nothing_else() {
+    let (ok, _, stderr) = optimist(&["solve", &example("checkout"), "--samples", "4000"]);
+    assert!(ok);
+    assert!(stderr.is_empty(), "{stderr}");
+
+    let (ok, _, stderr) = optimist(&[
+        "--progress",
+        "never",
+        "solve",
+        &example("checkout"),
+        "--samples",
+        "4000",
+    ]);
+    assert!(ok);
+    assert!(stderr.is_empty(), "{stderr}");
+}
+
+/// The report is the answer; the bar is the tool saying it has not finished.
+///
+/// Anything drawn into standard output would end up inside whatever the answer
+/// was piped into, so the two are checked against each other rather than merely
+/// asserting that the bar appeared somewhere.
+#[test]
+fn drawing_progress_leaves_the_answer_untouched() {
+    let arguments = ["solve", &example("checkout"), "--samples", "4000"];
+    let (ok, quiet, _) = optimist(&arguments);
+    assert!(ok);
+
+    let forced: Vec<&str> = ["--progress", "always"]
+        .into_iter()
+        .chain(arguments.iter().copied())
+        .collect();
+    let (ok, drawn, stderr) = optimist(&forced);
+    assert!(ok);
+    assert_eq!(drawn, quiet, "the bar leaked into the answer");
+    assert!(stderr.contains('%'), "no bar was drawn: {stderr:?}");
+    assert!(
+        stderr.contains("pass "),
+        "the bar does not say what it is waiting on: {stderr:?}"
+    );
+}
+
 /// A throwaway directory that removes itself.
 mod tempdir {
     use std::path::PathBuf;

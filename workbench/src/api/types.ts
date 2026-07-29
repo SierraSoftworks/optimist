@@ -369,14 +369,49 @@ export interface Applied {
   applied: number
 }
 
+/** Which question a running solve is answering. */
+export type SolveKind = 'analysis' | 'comparison'
+
+/** Which solve a message is about. */
+export interface SolveTarget {
+  kind: SolveKind
+  /** The variant being solved, or null for the design as it stands. */
+  variant: string | null
+  /** Where the design stood when the solve started. */
+  sequence: number
+}
+
+/**
+ * A solve running on the server right now.
+ *
+ * Solves are reported to everyone watching a design rather than to whoever asked
+ * for one, because the server answers each question once: two people looking at
+ * the same variant are waiting on the same arithmetic, and somebody who reloads
+ * the page has not stopped waiting for it.
+ */
+export interface RunningSolve extends SolveTarget {
+  /** How much of it appears to be done, in 0..=1. */
+  fraction: number
+  /** The timestep being relaxed, counted from one. */
+  step: number
+  /** How many timesteps the horizon holds. */
+  steps: number
+  /** Passes taken over that timestep. */
+  pass: number
+  /** The quantity the relaxation is still waiting on. */
+  moving?: { component: string; channel: string }
+}
+
 /**
  * A message on a design's change feed.
  *
  * `snapshot` arrives first and describes the design as it stood when the socket
- * opened. `change` carries somebody's edit, which a client applies to its own
- * copy rather than refetching, so that an edit in progress elsewhere on the page
- * is not discarded. `lagged` means the client fell far enough behind that
- * changes were dropped and only a refetch can make it whole.
+ * opened, followed by `active` listing the solves already under way. `change`
+ * carries somebody's edit, which a client applies to its own copy rather than
+ * refetching, so that an edit in progress elsewhere on the page is not
+ * discarded. `solving` and `solved` say what the server is working on. `lagged`
+ * means the client fell far enough behind that changes were dropped and only a
+ * refetch can make it whole.
  *
  * The discriminator is `type` here and `kind` on a mutation. They are different
  * enums on the server and the names follow it rather than being unified, so that
@@ -384,5 +419,8 @@ export interface Applied {
  */
 export type FeedMessage =
   | ({ type: 'snapshot' } & Snapshot)
+  | { type: 'active'; solves: RunningSolve[] }
   | { type: 'change'; sequence: number; mutation: Mutation }
+  | { type: 'solving'; solve: RunningSolve }
+  | { type: 'solved'; solve: SolveTarget }
   | { type: 'lagged'; missed: number }

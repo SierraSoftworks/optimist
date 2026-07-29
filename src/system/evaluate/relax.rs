@@ -19,6 +19,7 @@ use super::{
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
     modes::modes,
+    progress::Reporting,
     queue::advance,
     state::{ComponentState, LinkId, LinkState, Mixture, Step, Unsettled},
     stationary::drift,
@@ -69,6 +70,7 @@ pub(super) fn relax(
     time: f64,
     config: EvaluationConfig,
     rng: &mut ChaCha20Rng,
+    reporting: Reporting<'_>,
 ) -> Result<Step, EvaluationError> {
     let mut current: BTreeMap<ComponentId, ComponentState> = plan
         .components
@@ -143,6 +145,15 @@ pub(super) fn relax(
             }
             current.insert(component.id.clone(), blended);
         }
+        reporting.pass(
+            iterations,
+            config.max_iterations,
+            movement,
+            config.tolerance,
+            unsettled.as_ref().and_then(|(component, moved)| {
+                Some((component, moved.channel.as_deref()?))
+            }),
+        );
         if movement <= config.tolerance {
             outcome = Outcome::Settled;
             break;

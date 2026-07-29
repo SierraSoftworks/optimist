@@ -212,8 +212,28 @@ test.describe('review', () => {
     await expect(page.getByRole('textbox', { name: 'What this proposes, and why' })).not.toBeEmpty()
 
     // Its rebinding is what makes it a proposal at all, so it has to be there
-    // to be changed.
-    await expect(page.getByText('admission_limit')).toBeVisible()
+    // to be changed. Named in the dialog specifically: hovering the row to
+    // reach its controls also opens the row's own summary, which says the same
+    // thing without offering to change it.
+    await expect(page.getByTestId('override-admission_limit')).toBeVisible()
+  })
+
+  /**
+   * What a variant proposes, without opening it.
+   *
+   * The rail has room for a name and nothing else, so a reader deciding which
+   * of five proposals to look at had to open each one to find out what it did.
+   * The same panel carries the solve, so a row turning over says what it is
+   * working on rather than only that it is busy.
+   */
+  test('a variant says what it proposes when it is hovered', async ({ page }) => {
+    await page.goto('/d/metastable/review')
+    await page.getByTestId('variant-shed').hover()
+
+    const about = page.getByTestId('about-shed')
+    await expect(about).toBeVisible()
+    await expect(about).toContainText('Refuse what cannot be served')
+    await expect(about).toContainText('admission_limit')
   })
 
   /**

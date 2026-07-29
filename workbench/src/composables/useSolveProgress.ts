@@ -1,5 +1,6 @@
 import { computed, onScopeDispose, ref, toValue, watch, type MaybeRefOrGetter } from 'vue'
 
+import type { RunningSolve } from '../api/types'
 import { expected, progress, remaining, remember } from '../domain/solveEstimate'
 
 /** How often the elapsed clock is read while a solve is in flight. */
@@ -16,10 +17,16 @@ const TICK_MS = 100
  * The `shape` is what makes two solves comparably expensive. Passing a shape
  * that includes the variant would mean every variant had to be solved once
  * before any of them could be predicted, and they all cost the same.
+ *
+ * `reported` is the server saying where it has actually got to, and is preferred
+ * whenever it is there. The prediction is still wanted either side of it: before
+ * the first frame arrives, and for an answer the server already had, which is
+ * handed over without any solve happening to report on.
  */
 export function useSolveProgress(
   active: MaybeRefOrGetter<boolean>,
   shape: MaybeRefOrGetter<string>,
+  reported: MaybeRefOrGetter<RunningSolve | null> = () => null,
 ) {
   const elapsed = ref(0)
   const started = ref<number | null>(null)
@@ -61,9 +68,11 @@ export function useSolveProgress(
    * curve for it would be theatre. Reporting null lets the indicator say "working"
    * honestly until there is something to say instead.
    */
-  const fraction = computed(() =>
-    estimate.value === null ? null : progress(elapsed.value, estimate.value),
-  )
+  const fraction = computed(() => {
+    const solve = toValue(reported)
+    if (solve && solve.fraction > 0) return solve.fraction
+    return estimate.value === null ? null : progress(elapsed.value, estimate.value)
+  })
 
   const secondsLeft = computed(() =>
     estimate.value === null ? null : remaining(elapsed.value, estimate.value),
@@ -71,6 +80,10 @@ export function useSolveProgress(
 
   /** What the wait should be called, once it has gone on long enough to name. */
   const caption = computed(() => {
+    const solve = toValue(reported)
+    // Said rather than predicted, so it is the horizon being walked and not a
+    // guess at how long walking it takes.
+    if (solve) return solve.steps > 1 ? `step ${solve.step} of ${solve.steps}` : `pass ${solve.pass}`
     if (secondsLeft.value === null) {
       return estimate.value === null ? 'solving' : 'nearly there'
     }

@@ -17,7 +17,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use optimist::{
     profile::{Counter, reset, snapshot},
-    system::{EvaluationConfig, SolveMode, evaluate_with_mutators, read_system},
+    system::{EvaluationConfig, Solve, SolveMode, read_system},
 };
 
 fn report(label: &str, config: EvaluationConfig, example: &str) {
@@ -27,14 +27,11 @@ fn report(label: &str, config: EvaluationConfig, example: &str) {
     let loaded = read_system(&path).expect("reads");
     reset();
     let started = std::time::Instant::now();
-    let evaluation = evaluate_with_mutators(
-        &loaded.model,
-        &loaded.component_types,
-        &loaded.mutators,
-        &BTreeMap::new(),
-        config,
-    )
-    .expect("solves");
+    let evaluation = Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(config)
+        .evaluate()
+        .expect("solves");
     let elapsed = started.elapsed();
     let counts = snapshot();
 

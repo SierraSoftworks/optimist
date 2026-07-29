@@ -56,6 +56,7 @@ mod flow;
 mod merge;
 mod modes;
 mod mutate;
+pub mod progress;
 mod queue;
 mod relax;
 mod state;
@@ -79,6 +80,7 @@ use crate::system::{
     mutator::Mutator,
 };
 
+use progress::Reporting;
 use relax::relax;
 
 /// Solves a model against a catalogue of component types.
@@ -87,12 +89,13 @@ pub fn evaluate(
     catalogue: &BTreeMap<String, ComponentType>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    evaluate_with_mutators(
+    solved(
         model,
         catalogue,
         &builtin_mutators_or_empty(),
         &BTreeMap::new(),
         config,
+        Reporting::to(None),
     )
 }
 
@@ -106,12 +109,14 @@ pub fn evaluate_intervention(
     intervention: &InterventionId,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
-    evaluate_intervention_with_mutators(
+    let overrides = model.intervention(intervention)?.bindings();
+    solved(
         model,
         catalogue,
         &builtin_mutators_or_empty(),
-        intervention,
+        &overrides,
         config,
+        Reporting::to(None),
     )
 }
 
@@ -121,6 +126,7 @@ pub fn evaluate_intervention(
 /// A design may define behaviours the shipped catalogue never anticipated, and
 /// solving without them would quietly drop the rewrites they apply to the flows
 /// travelling along a relationship.
+#[deprecated(since = "0.1.0", note = "use `Solve::intervention` and `Solve::evaluate`")]
 pub fn evaluate_intervention_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
@@ -129,10 +135,18 @@ pub fn evaluate_intervention_with_mutators(
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
     let overrides = model.intervention(intervention)?.bindings();
-    evaluate_with_mutators(model, catalogue, mutators, &overrides, config)
+    solved(
+        model,
+        catalogue,
+        mutators,
+        &overrides,
+        config,
+        Reporting::to(None),
+    )
 }
 
 /// Solves a model against explicit catalogues and scratchpad replacements.
+#[deprecated(since = "0.1.0", note = "use `Solve::overrides` and `Solve::evaluate`")]
 pub fn evaluate_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
@@ -140,9 +154,28 @@ pub fn evaluate_with_mutators(
     overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
+    solved(
+        model,
+        catalogue,
+        mutators,
+        overrides,
+        config,
+        Reporting::to(None),
+    )
+}
+
+/// Solves a model, telling a reporter how it is getting on.
+pub(super) fn solved(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
+    overrides: &BTreeMap<String, String>,
+    config: EvaluationConfig,
+    reporting: Reporting<'_>,
+) -> Result<Evaluation, EvaluationError> {
     let shares: Vec<EvaluationConfig> = config.divided().collect();
     if let [whole] = shares.as_slice() {
-        return horizon(model, catalogue, mutators, overrides, *whole);
+        return horizon(model, catalogue, mutators, overrides, *whole, reporting);
     }
     // Every draw index carries an independent system, so the shares are one
     // answer computed in pieces rather than several answers to reconcile, and
@@ -151,11 +184,13 @@ pub fn evaluate_with_mutators(
     let solved = std::thread::scope(|scope| {
         let workers = shares
             .iter()
-            .map(|share| {
+            .enumerate()
+            .map(|(index, share)| {
                 let share = *share;
+                let reporting = reporting.sharing(index, shares.len());
                 scope.spawn(move || {
                     let evaluation =
-                        horizon(model, catalogue, mutators, overrides, share)?;
+                        horizon(model, catalogue, mutators, overrides, share, reporting)?;
                     transfer::sent(&evaluation).map_err(|error| EvaluationError::Evaluation {
                         location: "a solved share".to_owned(),
                         message: error.to_string(),
@@ -188,12 +223,14 @@ fn horizon(
     mutators: &BTreeMap<String, Mutator>,
     overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
+    reporting: Reporting<'_>,
 ) -> Result<Evaluation, EvaluationError> {
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut previous: BTreeMap<ComponentId, ComponentState> = BTreeMap::new();
     let mut carried: BTreeMap<LinkId, LinkState> = BTreeMap::new();
-    let mut steps = Vec::with_capacity(config.horizon.max(1));
-    for index in 0..config.horizon.max(1) {
+    let steps = config.horizon.max(1);
+    let mut solved = Vec::with_capacity(steps);
+    for index in 0..steps {
         let time = index as f64 * config.step;
         // Shared quantities may depend on the elapsed time, so the plan is
         // resolved afresh at each step and held fixed while it relaxes.
@@ -209,12 +246,20 @@ fn horizon(
                 step: config.step,
             },
         )?;
-        let step = relax(&plan, &previous, &carried, time, config, &mut rng)?;
+        let step = relax(
+            &plan,
+            &previous,
+            &carried,
+            time,
+            config,
+            &mut rng,
+            reporting.at(index, steps),
+        )?;
         previous.clone_from(&step.components);
         carried.clone_from(&step.links);
-        steps.push(step);
+        solved.push(step);
     }
-    Ok(Evaluation { steps })
+    Ok(Evaluation { steps: solved })
 }
 
 pub(super) fn builtin_mutators_or_empty() -> BTreeMap<String, Mutator> {

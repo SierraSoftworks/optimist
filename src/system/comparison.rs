@@ -25,7 +25,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     bottleneck::{Bottleneck, rank},
-    evaluate::{EvaluationConfig, EvaluationError, evaluate_with_mutators},
+    evaluate::{
+        EvaluationConfig, EvaluationError,
+        progress::{Job, Reporting},
+    },
     intervention::InterventionId,
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
@@ -149,12 +152,13 @@ pub fn compare(
     intervention: &InterventionId,
     config: EvaluationConfig,
 ) -> Result<Comparison, EvaluationError> {
-    compare_with_mutators(
+    compared(
         model,
         catalogue,
         &super::evaluate::builtin_mutators_or_empty(),
         intervention,
         config,
+        Reporting::to(None),
     )
 }
 
@@ -162,12 +166,32 @@ pub fn compare(
 ///
 /// The two runs must see identical behaviours as well as identical structure,
 /// or the difference between them stops being attributable to the intervention.
+#[deprecated(since = "0.1.0", note = "use `Solve::compare`")]
 pub fn compare_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
     mutators: &BTreeMap<String, super::mutator::Mutator>,
     intervention: &InterventionId,
     config: EvaluationConfig,
+) -> Result<Comparison, EvaluationError> {
+    compared(
+        model,
+        catalogue,
+        mutators,
+        intervention,
+        config,
+        Reporting::to(None),
+    )
+}
+
+/// Weighs an intervention, saying how the two solves are getting on.
+pub(super) fn compared(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    intervention: &InterventionId,
+    config: EvaluationConfig,
+    reporting: Reporting<'_>,
 ) -> Result<Comparison, EvaluationError> {
     let overrides = model.intervention(intervention)?.bindings();
     let unchanged = BTreeMap::new();
@@ -177,8 +201,26 @@ pub fn compare_with_mutators(
     // comparison that took twice as long as the design it is about was spending
     // the second half of that wait on a machine that had cores to spare.
     let (baseline, proposed) = std::thread::scope(|scope| {
-        let baseline = scope.spawn(|| ranked(model, catalogue, mutators, &unchanged, config));
-        let proposed = scope.spawn(|| ranked(model, catalogue, mutators, &overrides, config));
+        let baseline = scope.spawn(|| {
+            ranked(
+                model,
+                catalogue,
+                mutators,
+                &unchanged,
+                config,
+                reporting.on(Job::Baseline, 2),
+            )
+        });
+        let proposed = scope.spawn(|| {
+            ranked(
+                model,
+                catalogue,
+                mutators,
+                &overrides,
+                config,
+                reporting.on(Job::Proposed(intervention), 2),
+            )
+        });
         (
             baseline.join().expect("solving does not panic"),
             proposed.join().expect("solving does not panic"),
@@ -204,58 +246,7 @@ pub fn compare_with_mutators(
 /// Every comparison therefore reads one baseline computed with one seed, which
 /// is what makes two proposals as comparable with each other as each is with the
 /// design they would replace.
-///
-/// ```
-/// use optimist::system::{
-///     EvaluationConfig, InterventionId, SystemModel, builtin_catalogue,
-///     builtin_mutators, compare_many_with_mutators,
-/// };
-///
-/// let model: SystemModel = serde_yaml_ng::from_str("
-/// scratchpad:
-///   - name: peak_rate
-///     expression: '900'
-/// components:
-///   - id: users
-///     name: Users
-///     type: client
-///     properties:
-///       request_rate: peak_rate
-///   - id: api
-///     name: API
-///     type: compute
-///     properties:
-///       service_time: '0.02'
-///       parallelism: '8'
-/// relationships:
-///   - from: users
-///     to: api
-/// interventions:
-///   - id: quieter
-///     name: Shift traffic away
-///     overrides:
-///       - name: peak_rate
-///         expression: '200'
-///   - id: bigger
-///     name: Add workers
-///     overrides:
-///       - name: peak_rate
-///         expression: '400'
-/// ")?;
-///
-/// let weighed = compare_many_with_mutators(
-///     &model,
-///     &builtin_catalogue()?,
-///     &builtin_mutators()?,
-///     &[InterventionId::new("quieter"), InterventionId::new("bigger")],
-///     EvaluationConfig::default(),
-/// )?;
-///
-/// assert_eq!(weighed.len(), 2);
-/// // Both proposals were weighed against the very same ranking of the design.
-/// assert_eq!(weighed[0].1.baseline[0].utilisation, weighed[1].1.baseline[0].utilisation);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
+#[deprecated(since = "0.1.0", note = "use `Solve::compare_many`")]
 pub fn compare_many_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
@@ -263,17 +254,58 @@ pub fn compare_many_with_mutators(
     interventions: &[InterventionId],
     config: EvaluationConfig,
 ) -> Result<Vec<(InterventionId, Comparison)>, EvaluationError> {
+    compared_many(
+        model,
+        catalogue,
+        mutators,
+        interventions,
+        config,
+        Reporting::to(None),
+    )
+}
+
+/// Weighs several proposals, saying how each of the solves is getting on.
+pub(super) fn compared_many(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    interventions: &[InterventionId],
+    config: EvaluationConfig,
+    reporting: Reporting<'_>,
+) -> Result<Vec<(InterventionId, Comparison)>, EvaluationError> {
     let unchanged = BTreeMap::new();
     let overrides = interventions
         .iter()
         .map(|intervention| Ok(model.intervention(intervention)?.bindings()))
         .collect::<Result<Vec<_>, EvaluationError>>()?;
+    let jobs = interventions.len() + 1;
 
     let (baseline, proposals) = std::thread::scope(|scope| {
-        let baseline = scope.spawn(|| ranked(model, catalogue, mutators, &unchanged, config));
-        let proposals = overrides
+        let baseline = scope.spawn(|| {
+            ranked(
+                model,
+                catalogue,
+                mutators,
+                &unchanged,
+                config,
+                reporting.on(Job::Baseline, jobs),
+            )
+        });
+        let proposals = interventions
             .iter()
-            .map(|overrides| scope.spawn(|| ranked(model, catalogue, mutators, overrides, config)))
+            .zip(&overrides)
+            .map(|(intervention, overrides)| {
+                scope.spawn(move || {
+                    ranked(
+                        model,
+                        catalogue,
+                        mutators,
+                        overrides,
+                        config,
+                        reporting.on(Job::Proposed(intervention), jobs),
+                    )
+                })
+            })
             .collect::<Vec<_>>();
         (
             baseline.join().expect("solving does not panic"),
@@ -309,8 +341,16 @@ fn ranked(
     mutators: &BTreeMap<String, super::mutator::Mutator>,
     overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
+    reporting: Reporting<'_>,
 ) -> Result<Vec<Bottleneck>, EvaluationError> {
-    let settled = evaluate_with_mutators(model, catalogue, mutators, overrides, config)?;
+    let settled = super::evaluate::solved(
+        model,
+        catalogue,
+        mutators,
+        overrides,
+        config,
+        reporting,
+    )?;
     rank(
         model,
         catalogue,

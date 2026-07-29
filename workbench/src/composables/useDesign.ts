@@ -5,6 +5,7 @@ import { api, type SolveControls } from '../api/client'
 import { watchDesign, type FeedStatus } from '../api/feed'
 import type { Mutation, Snapshot } from '../api/types'
 import { applyMutation } from '../domain/applyMutation'
+import { useSolvingStore } from '../stores/solving'
 
 /** The designs this server holds. */
 export function useDesigns() {
@@ -34,6 +35,7 @@ export function useCatalogue(design: MaybeRefOrGetter<string | null>) {
  */
 export function useDesign(design: MaybeRefOrGetter<string | null>) {
   const client = useQueryClient()
+  const solving = useSolvingStore()
   const status = ref<FeedStatus>('closed')
   const key = computed(() => ['design', toValue(design)])
 
@@ -51,12 +53,30 @@ export function useDesign(design: MaybeRefOrGetter<string | null>) {
       stop = null
       if (!id) return
       stop = watchDesign(id, {
-        onStatusChange: (next) => (status.value = next),
+        onStatusChange: (next) => {
+          status.value = next
+          // A dropped socket stops reporting solves without stopping them, and a
+          // bar left turning over a connection that is gone is a lie. The list
+          // arrives again with the snapshot when the socket comes back.
+          if (next !== 'open') solving.forget(id)
+        },
         onMessage: (message) => {
           const cacheKey = ['design', id]
           if (message.type === 'snapshot') {
             const { type: _type, ...snapshot } = message
             client.setQueryData(cacheKey, snapshot as Snapshot)
+            return
+          }
+          if (message.type === 'active') {
+            solving.replace(id, message.solves)
+            return
+          }
+          if (message.type === 'solving') {
+            solving.update(id, message.solve)
+            return
+          }
+          if (message.type === 'solved') {
+            solving.finish(id, message.solve)
             return
           }
           if (message.type === 'lagged') {

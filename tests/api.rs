@@ -593,6 +593,19 @@ async fn the_feed_opens_with_a_snapshot_and_streams_mutations() {
     assert_eq!(first["sequence"], 0);
     assert_eq!(first["name"], "Checkout");
 
+    let second: Value = serde_json::from_str(
+        socket
+            .next()
+            .await
+            .expect("message")
+            .expect("frame")
+            .to_text()
+            .expect("text"),
+    )
+    .expect("json");
+    assert_eq!(second["type"], "active");
+    assert_eq!(second["solves"].as_array().expect("a list").len(), 0);
+
     post(
         address,
         "/api/v1/designs/checkout/mutations",
@@ -632,6 +645,7 @@ async fn the_feed_is_scoped_to_its_design() {
             .await
             .expect("connects");
     let _snapshot = socket.next().await.expect("message").expect("frame");
+    let _active = socket.next().await.expect("message").expect("frame");
 
     post(
         address,
@@ -642,6 +656,117 @@ async fn the_feed_is_scoped_to_its_design() {
 
     let quiet = tokio::time::timeout(Duration::from_millis(300), socket.next()).await;
     assert!(quiet.is_err(), "billing should hear nothing");
+}
+
+/// Two people asking the same question wait on one solve rather than two.
+///
+/// Counted from the feed rather than from a timer, because what matters is that
+/// the work happened once and not that it happened quickly.
+#[tokio::test]
+async fn one_solve_answers_everyone_who_asked_for_it() {
+    use futures_util::StreamExt;
+
+    let root = workspace("solve-once");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (mut socket, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/api/v1/designs/checkout/feed"))
+            .await
+            .expect("connects");
+    let _snapshot = socket.next().await.expect("message").expect("frame");
+    let _active = socket.next().await.expect("message").expect("frame");
+
+    let question = "/api/v1/designs/checkout/analysis?samples=8000";
+    let (first, second) = tokio::join!(get(address, question), get(address, question));
+    assert_eq!(first.0, 200, "{:?}", first.1);
+    assert_eq!(second.0, 200, "{:?}", second.1);
+    assert_eq!(first.1["components"], second.1["components"]);
+
+    let mut announced = 0;
+    let mut retired = 0;
+    while let Ok(Some(Ok(frame))) =
+        tokio::time::timeout(Duration::from_millis(500), socket.next()).await
+    {
+        let update: Value = serde_json::from_str(frame.to_text().expect("text")).expect("json");
+        match update["type"].as_str() {
+            Some("solving") => {
+                announced += 1;
+                assert_eq!(update["solve"]["kind"], "analysis");
+                assert!(update["solve"]["variant"].is_null());
+                assert!(update["solve"]["fraction"].as_f64().is_some(), "{update}");
+                assert!(update["solve"]["steps"].as_u64().is_some(), "{update}");
+            }
+            Some("solved") => retired += 1,
+            _ => {}
+        }
+    }
+    assert!(announced >= 1, "the solve was never announced");
+    assert_eq!(retired, 1, "the same question was solved more than once");
+}
+
+/// Somebody arriving midway through a solve is told it is already running.
+#[tokio::test]
+async fn a_solve_already_running_is_reported_to_whoever_arrives() {
+    use futures_util::StreamExt;
+
+    let root = workspace("solve-resume");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (mut watching, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/api/v1/designs/checkout/feed"))
+            .await
+            .expect("connects");
+    let _snapshot = watching.next().await.expect("message").expect("frame");
+    let _active = watching.next().await.expect("message").expect("frame");
+
+    // Long enough that it is still going when the second watcher arrives.
+    let asking = tokio::spawn(async move {
+        get(
+            address,
+            "/api/v1/designs/checkout/analysis?samples=20000&horizon=60&step=0.5&transient=true",
+        )
+        .await
+    });
+
+    // Waited for rather than slept through, so the arrival is not a guess.
+    let started = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(Ok(frame)) = watching.next().await {
+            let update: Value = serde_json::from_str(frame.to_text().expect("text")).expect("json");
+            if update["type"] == "solving" {
+                return update;
+            }
+        }
+        panic!("the solve was never announced");
+    })
+    .await
+    .expect("a solve starts");
+    assert_eq!(started["solve"]["kind"], "analysis");
+
+    let (mut arriving, _) =
+        tokio_tungstenite::connect_async(format!("ws://{address}/api/v1/designs/checkout/feed"))
+            .await
+            .expect("connects");
+    let _snapshot = arriving.next().await.expect("message").expect("frame");
+    let active: Value = serde_json::from_str(
+        arriving
+            .next()
+            .await
+            .expect("message")
+            .expect("frame")
+            .to_text()
+            .expect("text"),
+    )
+    .expect("json");
+    assert_eq!(active["type"], "active");
+    let running = active["solves"].as_array().expect("a list");
+    assert_eq!(running.len(), 1, "{active}");
+    assert_eq!(running[0]["kind"], "analysis");
+    assert_eq!(running[0]["steps"], 60);
+
+    let (status, _) = asking.await.expect("the request finishes");
+    assert_eq!(status, 200);
 }
 
 /// Edits reach disk without anyone asking for them to.

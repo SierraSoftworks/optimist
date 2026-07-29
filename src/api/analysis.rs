@@ -21,12 +21,16 @@ use crate::{
     session::Session,
     squiggle::Value,
     system::{
-        Bottleneck, Comparison, EvaluationConfig, InterventionId, bottlenecks_with_mutators,
-        compare_with_mutators, evaluate_intervention_with_mutators, evaluate_with_mutators,
+        Bottleneck, Comparison, EvaluationConfig, InterventionId, Solve, bottlenecks_with_mutators,
     },
 };
 
-use super::{ApiState, designs::open, error::Rejected};
+use super::{
+    ApiState,
+    designs::open,
+    error::Rejected,
+    solving::{Kind, Reporter, Target},
+};
 
 pub(super) fn router() -> Router<super::ApiState> {
     Router::new()
@@ -377,7 +381,8 @@ async fn analysis(
 ) -> Result<Json<Arc<Analysis>>, Rejected> {
     let session = open(&state.workspace, &design)?;
     let answers = state.analyses.design(&design);
-    let key = controls.key(session.snapshot().sequence, "analysis");
+    let sequence = session.snapshot().sequence;
+    let key = controls.key(sequence, "analysis");
     if let Some(answer) = answers.get(&key) {
         return Ok(Json(answer));
     }
@@ -385,12 +390,23 @@ async fn analysis(
     let config = controls.config();
     let intervention = controls.intervention.clone();
     let wanted = controls.series;
+    // Built inside the solve, because a caller that joined one already running
+    // never runs this and must not announce, or retire, somebody else's work.
+    let solves = state.solving.design(&design);
+    let target = Target {
+        kind: Kind::Analysis,
+        variant: intervention.clone(),
+        sequence,
+    };
+    let announced = key.clone();
 
-    let analysis =
-        tokio::task::spawn_blocking(move || solve(&session, intervention, wanted, config))
-            .await
-            .expect("the solver does not panic")?;
-    let analysis = Arc::new(analysis);
+    let analysis = state
+        .pending
+        .answer(&design, &key, move || {
+            let reporter = Reporter::new(solves, announced, target, config.horizon);
+            solve(&session, intervention, wanted, config, &reporter)
+        })
+        .await?;
     answers.insert(key, Arc::clone(&analysis));
     Ok(Json(analysis))
 }
@@ -400,20 +416,18 @@ fn solve(
     intervention: Option<String>,
     wanted: bool,
     config: EvaluationConfig,
+    reporter: &Reporter,
 ) -> Result<Analysis, crate::system::EvaluationError> {
     let snapshot = session.snapshot();
     let (types, mutators) = session.catalogue();
-    let evaluation = match &intervention {
-        Some(id) => evaluate_intervention_with_mutators(
-            &snapshot.model,
-            &types,
-            &mutators,
-            &InterventionId::new(id.clone()),
-            config,
-        ),
-        None => {
-            evaluate_with_mutators(&snapshot.model, &types, &mutators, &BTreeMap::new(), config)
-        }
+    let applied = intervention.as_ref().map(InterventionId::new);
+    let asking = Solve::new(&snapshot.model, &types)
+        .mutators(&mutators)
+        .with(config)
+        .reporting(reporter);
+    let evaluation = match &applied {
+        Some(intervention) => asking.intervention(intervention).evaluate(),
+        None => asking.evaluate(),
     }?;
     let settled = evaluation.settled();
     let ranked = bottlenecks_with_mutators(&snapshot.model, &types, &mutators, settled, config)?;
@@ -465,29 +479,33 @@ async fn comparison(
 ) -> Result<Json<Arc<Comparison>>, Rejected> {
     let session = open(&state.workspace, &design)?;
     let answers = state.comparisons.design(&design);
-    let key = controls.key(
-        session.snapshot().sequence,
-        &format!("comparison:{intervention}"),
-    );
+    let sequence = session.snapshot().sequence;
+    let key = controls.key(sequence, &format!("comparison:{intervention}"));
     if let Some(answer) = answers.get(&key) {
         return Ok(Json(answer));
     }
 
     let config = controls.config();
-    let comparison = tokio::task::spawn_blocking(move || {
-        let snapshot = session.snapshot();
-        let (types, mutators) = session.catalogue();
-        compare_with_mutators(
-            &snapshot.model,
-            &types,
-            &mutators,
-            &InterventionId::new(intervention),
-            config,
-        )
-    })
-    .await
-    .expect("the solver does not panic")?;
-    let comparison = Arc::new(comparison);
+    let solves = state.solving.design(&design);
+    let target = Target {
+        kind: Kind::Comparison,
+        variant: Some(intervention.clone()),
+        sequence,
+    };
+    let announced = key.clone();
+    let comparison = state
+        .weighing
+        .answer(&design, &key, move || {
+            let reporter = Reporter::new(solves, announced, target, config.horizon);
+            let snapshot = session.snapshot();
+            let (types, mutators) = session.catalogue();
+            Solve::new(&snapshot.model, &types)
+                .mutators(&mutators)
+                .with(config)
+                .reporting(&reporter)
+                .compare(&InterventionId::new(intervention))
+        })
+        .await?;
     answers.insert(key, Arc::clone(&comparison));
     Ok(Json(comparison))
 }

@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::system::{EvaluationConfig, LoadedSystem, evaluate_with_mutators};
+use crate::system::{EvaluationConfig, LoadedSystem, Solve};
 
 /// How much a finding matters.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
@@ -252,13 +252,11 @@ fn smoke_test(loaded: &LoadedSystem, findings: &mut Vec<Finding>) {
         sample_count: 64,
         ..EvaluationConfig::default()
     };
-    match evaluate_with_mutators(
-        &loaded.model,
-        &loaded.component_types,
-        &loaded.mutators,
-        &std::collections::BTreeMap::new(),
-        config,
-    ) {
+    match Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(config)
+        .evaluate()
+    {
         Err(error) => findings.push(Finding::error(
             "model",
             format!("could not be solved: {error}"),

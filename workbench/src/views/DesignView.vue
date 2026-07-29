@@ -11,12 +11,14 @@ import SystemGraph from '../components/SystemGraph.vue'
 import { useAnalysis, useCatalogue, useDesign, useEditDesign } from '../composables/useDesign'
 import { glyphFor } from '../domain/componentIcons'
 import { readProblem } from '../domain/solverProblem'
+import { useSolvingStore } from '../stores/solving'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const props = defineProps<{ design: string; selected?: string }>()
 
 const router = useRouter()
 const store = useWorkbenchStore()
+const solving = useSolvingStore()
 const design = computed(() => props.design)
 
 const { data: snapshot } = useDesign(design)
@@ -294,7 +296,11 @@ watch(
         </el-button-group>
         <span class="spacer" />
 
-        <SolveProgress :solving="isFetching" :shape="shape" />
+        <SolveProgress
+          :solving="isFetching"
+          :shape="shape"
+          :solve="solving.variant(design, null)"
+        />
 
         <!--
           One line, always in the same place, saying whether the design can be

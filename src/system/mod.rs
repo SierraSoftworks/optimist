@@ -49,14 +49,18 @@ mod preview;
 mod scale_unit;
 mod schema;
 mod signal;
+mod solve;
 mod validate;
 mod values;
 
 pub use bottleneck::{Bottleneck, bottlenecks, bottlenecks_with_mutators};
 pub use catalogue::{CatalogueError, builtin_catalogue, builtin_mutators};
+#[allow(deprecated)]
 pub use comparison::{
     Comparison, Movement, compare, compare_many_with_mutators, compare_with_mutators,
 };
+pub use evaluate::progress;
+#[allow(deprecated)]
 pub use evaluate::{
     ComponentState, Evaluation, EvaluationConfig, EvaluationError, LinkId, LinkState, Mixture,
     SolveMode, Step, Unsettled, evaluate, evaluate_intervention,
@@ -75,6 +79,7 @@ pub use schema::{
     SystemDocument, read_system, safe_identifier, write_system,
 };
 pub use signal::{Aggregation, Signal};
+pub use solve::Solve;
 pub use validate::ComponentTypeError;
 
 /// The quantities that may travel along a relationship, by name.
