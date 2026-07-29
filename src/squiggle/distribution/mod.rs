@@ -20,6 +20,7 @@
 
 mod draws;
 mod ensemble;
+mod indexed;
 mod sample;
 mod stats;
 

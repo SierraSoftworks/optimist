@@ -52,6 +52,12 @@ fn step(shares: &[(usize, &Step)]) -> Step {
             .iter()
             .filter_map(|(_, step)| step.unsettled.clone())
             .max_by(|left, right| left.movement.total_cmp(&right.movement)),
+        // A mixture found in any share is a mixture the design has; the share
+        // that resolved the most states saw the most of it.
+        mixture: shares
+            .iter()
+            .filter_map(|(_, step)| step.mixture.clone())
+            .max_by_key(|mixture| mixture.states),
         iterations: shares
             .iter()
             .map(|(_, step)| step.iterations)
