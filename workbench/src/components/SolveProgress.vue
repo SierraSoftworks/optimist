@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import type { RunningSolve } from '../api/types'
 import { useSolveProgress } from '../composables/useSolveProgress'
 
 const props = defineProps<{
@@ -14,11 +15,14 @@ const props = defineProps<{
    * next one's.
    */
   shape: string
+  /** What the server says about the solve, where it is reporting one. */
+  solve?: RunningSolve | null
 }>()
 
 const { fraction, caption } = useSolveProgress(
   () => props.solving,
   () => props.shape,
+  () => props.solve ?? null,
 )
 
 const percentage = computed(() => Math.round((fraction.value ?? 0) * 100))

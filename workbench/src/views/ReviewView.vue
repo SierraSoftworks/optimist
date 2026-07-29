@@ -11,6 +11,7 @@ import SkeletonBlock from '../components/SkeletonBlock.vue'
 import SolveProgress from '../components/SolveProgress.vue'
 import SolvingVeil from '../components/SolvingVeil.vue'
 import VariantEditor from '../components/VariantEditor.vue'
+import VariantRow from '../components/VariantRow.vue'
 import {
   useAnalysis,
   useCatalogue,
@@ -20,12 +21,14 @@ import {
 } from '../composables/useDesign'
 import { formatSiNumber } from '../domain/humanNumber'
 import { readProblem } from '../domain/solverProblem'
+import { useSolvingStore } from '../stores/solving'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const props = defineProps<{ design: string; intervention?: string }>()
 
 const router = useRouter()
 const store = useWorkbenchStore()
+const solving = useSolvingStore()
 const design = computed(() => props.design)
 
 const { data: snapshot } = useDesign(design)
@@ -362,43 +365,22 @@ function unitOf(component: string, channel: string): string {
         </div>
         <ul>
           <li>
-            <button
-              class="variant"
-              :class="{ active: !variant }"
-              data-test="variant-baseline"
-              @click="choose(null)"
-            >
-              <el-icon class="mark"><i-document /></el-icon>
-              <span class="label">As designed</span>
-            </button>
+            <VariantRow
+              :entry="null"
+              :active="!variant"
+              :solving="solving.variant(design, null)"
+              @choose="choose(null)"
+            />
           </li>
           <li v-for="entry in snapshot.model.interventions" :key="entry.id">
-            <button
-              class="variant"
-              :class="{ active: variant === entry.id }"
-              :data-test="`variant-${entry.id}`"
-              :title="entry.name"
-              @click="choose(entry.id)"
-            >
-              <el-icon class="mark"><i-magic-stick /></el-icon>
-              <span class="label">{{ entry.name }}</span>
-              <span class="actions">
-                <el-icon
-                  class="action"
-                  :aria-label="`Edit ${entry.name}`"
-                  @click.stop="editVariant(entry)"
-                >
-                  <i-edit-pen />
-                </el-icon>
-                <el-popconfirm :title="`Remove ${entry.name}?`" @confirm="removeVariant(entry)">
-                  <template #reference>
-                    <el-icon class="action" :aria-label="`Remove ${entry.name}`" @click.stop>
-                      <i-delete />
-                    </el-icon>
-                  </template>
-                </el-popconfirm>
-              </span>
-            </button>
+            <VariantRow
+              :entry="entry"
+              :active="variant === entry.id"
+              :solving="solving.variant(design, entry.id)"
+              @choose="choose(entry.id)"
+              @edit="editVariant(entry)"
+              @remove="removeVariant(entry)"
+            />
           </li>
         </ul>
       </div>
@@ -436,7 +418,11 @@ function unitOf(component: string, channel: string): string {
           to find out.
         -->
         <div class="verdict">
-          <SolveProgress :solving="isFetching" :shape="shape" />
+          <SolveProgress
+            :solving="isFetching"
+            :shape="shape"
+            :solve="solving.variant(design, variant)"
+          />
           <SolvingVeil v-if="analysis" :busy="isFetching" :label="solvingLabel">
             <LimitCards
               :bottlenecks="analysis.bottlenecks"
@@ -578,29 +564,6 @@ function unitOf(component: string, channel: string): string {
 }
 .add:hover { background: var(--green-soft); color: var(--green); }
 .variants ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
-.variant {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-2);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  text-align: left;
-  font-size: var(--text-sm);
-  color: var(--ink);
-  min-width: 0;
-}
-.variant:hover { background: #e6eae2; }
-.variant.active { background: var(--green-soft); color: var(--green); font-weight: 650; }
-.mark { font-size: 13px; color: var(--muted); flex: 0 0 auto; }
-.variant.active .mark { color: var(--green); }
-.label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.actions { display: none; gap: var(--space-1); }
-.variant:hover .actions { display: flex; }
-.action { font-size: 12px; color: var(--muted); }
-.action:hover { color: var(--green); }
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .context {

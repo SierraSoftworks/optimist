@@ -1,12 +1,16 @@
 /**
  * How long a solve is likely to take, learned from the ones already done.
  *
- * The server does not report progress: a relaxation does not know how many
- * passes it needs until it has taken them, so any figure it sent partway through
- * would be a guess dressed as a measurement. What is genuinely known is how long
- * the same question took last time, and a design being reviewed is asked the
- * same question repeatedly — a variant switched, a control nudged, an edit made
- * and re-solved.
+ * The server reports where a solve has got to, not how long it has left: a
+ * relaxation does not know how many passes it needs until it has taken them, so
+ * any remaining time it sent would be a guess dressed as a measurement. What is
+ * genuinely known here is how long the same question took last time, and a
+ * design being reviewed is asked the same question repeatedly — a variant
+ * switched, a control nudged, an edit made and re-solved.
+ *
+ * This is what covers the two gaps the server's frames leave: the moment between
+ * asking and the first frame arriving, and an answer the server already had,
+ * which is handed back without any solve happening to report on.
  *
  * Estimates are therefore held per *shape*: the controls that decide how much
  * arithmetic there is, without the ones that only decide which answer comes out.
