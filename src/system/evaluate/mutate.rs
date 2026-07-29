@@ -41,31 +41,35 @@ pub(super) fn apply(
     if programs.is_empty() {
         return Ok(flow);
     }
+    // Bound once for the whole behaviour rather than handed to each transform in
+    // turn. Every transform reads the same names, three of which are whole flow
+    // dictionaries, and binding per program copied all three once per transform.
+    for (name, value) in &plan.globals {
+        runtime.bind(name, value.clone());
+    }
+    for (name, value) in &mutator.properties {
+        runtime.bind(name, value.clone());
+    }
+    runtime.bind(TIME, Value::Number(time));
+    runtime.bind(STEP, Value::Number(config.step));
+    let signal = Value::Dictionary(flow.clone());
+    let counterpart = Value::Dictionary(counterpart.clone());
     let (request, response) = match direction {
-        Direction::Request => (flow.clone(), counterpart.clone()),
-        Direction::Response => (counterpart.clone(), flow.clone()),
+        Direction::Request => (signal.clone(), counterpart),
+        Direction::Response => (counterpart, signal.clone()),
     };
-    let mut scope = plan.globals.clone();
-    scope.extend(mutator.properties.clone());
-    scope.insert(TIME.to_owned(), Value::Number(time));
-    scope.insert(STEP.to_owned(), Value::Number(config.step));
-    scope.insert(SIGNAL.to_owned(), Value::Dictionary(flow.clone()));
-    scope.insert(REQUEST.to_owned(), Value::Dictionary(request));
-    scope.insert(RESPONSE.to_owned(), Value::Dictionary(response));
+    runtime.bind(SIGNAL, signal);
+    runtime.bind(REQUEST, request);
+    runtime.bind(RESPONSE, response);
 
     let mut rewritten = flow;
     for (signal, program) in programs {
-        let value = runtime
-            .evaluate_values(
-                program,
-                scope
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), value.clone())),
-            )
-            .map_err(|diagnostic| EvaluationError::Evaluation {
+        let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
+            EvaluationError::Evaluation {
                 location: format!("transform '{signal}' of behaviour '{}'", mutator.id),
                 message: diagnostic.message,
-            })?;
+            }
+        })?;
         rewritten.insert(signal.clone(), value);
     }
     Ok(rewritten)
