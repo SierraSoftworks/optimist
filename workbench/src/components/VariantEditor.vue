@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import type { Intervention, Mutation, SystemModel } from '../api/types'
+import type { Catalogue, Intervention, Mutation, SystemModel } from '../api/types'
+import type { ExpressionScope } from '../domain/squiggleLanguage'
+import SquiggleField from './SquiggleField.vue'
 
 const props = defineProps<{
+  design: string
   model: SystemModel
+  catalogue?: Catalogue
   /** The variant open for editing, or null to create one. */
   editing: Intervention | null
   apply: (mutations: Mutation[]) => Promise<unknown>
@@ -68,6 +72,34 @@ const spare = computed(() => {
   const used = new Set(draft.value.overrides.map((override) => override.name))
   return props.model.scratchpad.filter((entry) => !used.has(entry.name))
 })
+
+function quantity(name: string) {
+  return props.model.scratchpad.find((entry) => entry.name === name)
+}
+
+/**
+ * What a rebound expression may refer to.
+ *
+ * The same names the quantity itself could see, because a rebind stands exactly
+ * where the original expression stood: everything declared ahead of it, and
+ * nothing declared after.
+ */
+function scopeFor(name: string): ExpressionScope {
+  const declared = props.model.scratchpad.findIndex((entry) => entry.name === name)
+  const ahead = declared < 0 ? props.model.scratchpad : props.model.scratchpad.slice(0, declared)
+  return {
+    builtins: props.catalogue?.builtins ?? [],
+    quantities: ahead.map((entry) => ({
+      name: entry.name,
+      unit: entry.unit,
+      summary: entry.summary,
+    })),
+    locals: [
+      { name: 't', detail: 'elapsed seconds' },
+      { name: 'dt', detail: 'seconds per step' },
+    ],
+  }
+}
 
 const idProblem = computed(() => {
   const id = draft.value.id.trim()
@@ -165,7 +197,16 @@ defineExpose({
         <div class="overrides">
           <div v-for="override in draft.overrides" :key="override.name" class="override">
             <code class="name">{{ override.name }}</code>
-            <el-input v-model="override.expression" size="small" class="expression" />
+            <SquiggleField
+              v-model="override.expression"
+              class="expression"
+              :design="design"
+              :scope="scopeFor(override.name)"
+              :entry="override.name"
+              :unit="quantity(override.name)?.unit"
+              :summary="quantity(override.name)?.summary"
+              :data-test="`override-${override.name}`"
+            />
             <el-button
               text
               circle
@@ -226,8 +267,7 @@ defineExpose({
 .overrides { width: 100%; display: flex; flex-direction: column; gap: var(--space-2); }
 .override { display: flex; align-items: center; gap: var(--space-2); }
 .override .name { font-family: var(--mono); font-size: var(--text-xs); min-width: 13ch; }
-.expression { flex: 1; }
-.expression :deep(input) { font-family: var(--mono); }
+.expression { flex: 1; min-width: 0; }
 .add { width: 100%; }
 .option { display: flex; flex-direction: column; line-height: 1.3; padding: 2px 0; }
 .option span { font-size: var(--text-2xs); color: var(--muted); font-family: var(--mono); }

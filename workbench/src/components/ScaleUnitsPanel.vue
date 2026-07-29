@@ -6,9 +6,10 @@ import { useDraft, type Draft } from '../composables/useDraft'
 import { chain, nestableIn, owner } from '../domain/scaleUnits'
 import type { ExpressionScope } from '../domain/squiggleLanguage'
 import FieldStatus from './FieldStatus.vue'
-import SquiggleEditor from './SquiggleEditor.vue'
+import SquiggleField from './SquiggleField.vue'
 
 const props = defineProps<{
+  design: string
   model: SystemModel
   catalogue?: Catalogue
   apply: (mutations: Mutation[]) => Promise<unknown>
@@ -252,9 +253,12 @@ const SPREADS: { value: Distribution; label: string; says: string }[] = [
         <div class="field">
           <label class="label"><span class="name">how many</span></label>
           <div class="row">
-            <SquiggleEditor
+            <SquiggleField
               v-model="fieldDraft(unit.id, 'replicas').value.value"
+              :design="design"
               :scope="scope"
+              :summary="unit.summary"
+              unit="replicas"
               placeholder="12"
               :data-test="`scale-unit-replicas-${unit.id}`"
               @focus="fieldDraft(unit.id, 'replicas').focus()"
@@ -361,9 +365,11 @@ const SPREADS: { value: Distribution; label: string; says: string }[] = [
           <el-input v-model="draft.name" placeholder="Serving cell" data-test="new-scale-unit-name" />
         </el-form-item>
         <el-form-item label="How many of them exist">
-          <SquiggleEditor
+          <SquiggleField
             v-model="draft.replicas"
+            :design="design"
             :scope="scope"
+            unit="replicas"
             placeholder="12"
             data-test="new-scale-unit-replicas"
           />

@@ -5,9 +5,10 @@ import type { Catalogue, Component, Mutation, Relationship, SystemModel } from '
 import { useDraft, type Draft } from '../composables/useDraft'
 import type { ExpressionScope } from '../domain/squiggleLanguage'
 import FieldStatus from './FieldStatus.vue'
-import SquiggleEditor from './SquiggleEditor.vue'
+import SquiggleField from './SquiggleField.vue'
 
 const props = defineProps<{
+  design: string
   model: SystemModel
   catalogue?: Catalogue
   selection: { kind: 'component' | 'relationship'; id: string } | null
@@ -279,9 +280,12 @@ const available = computed(() =>
             <span class="unit">{{ property.unit }}</span>
           </label>
           <div class="row">
-            <SquiggleEditor
+            <SquiggleField
               v-model="propertyDraft(component.id, String(name)).value.value"
+              :design="design"
               :scope="scope"
+              :unit="property.unit"
+              :summary="property.summary"
               :placeholder="property.default ?? 'expression'"
               :data-test="`property-${name}`"
               @focus="propertyDraft(component.id, String(name)).focus()"
@@ -324,9 +328,11 @@ const available = computed(() =>
         </p>
         <div class="field">
           <div class="row">
-            <SquiggleEditor
+            <SquiggleField
               v-model="capacityDraft().value.value"
+              :design="design"
               :scope="scope"
+              unit="operations"
               placeholder="100"
               data-test="relationship-capacity"
               @focus="capacityDraft().focus()"
@@ -371,9 +377,12 @@ const available = computed(() =>
               <span class="unit">{{ property.unit }}</span>
             </label>
             <div class="row">
-              <SquiggleEditor
+              <SquiggleField
                 v-model="mutatorDraft(mutator.type, String(name)).value.value"
+                :design="design"
                 :scope="scope"
+                :unit="property.unit"
+                :summary="property.summary"
                 @focus="mutatorDraft(mutator.type, String(name)).focus()"
                 @blur="mutatorDraft(mutator.type, String(name)).blur()"
               />

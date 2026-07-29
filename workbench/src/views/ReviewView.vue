@@ -445,7 +445,9 @@ function unitOf(component: string, channel: string): string {
 
     <VariantEditor
       ref="editor"
+      :design="design"
       :model="snapshot.model"
+      :catalogue="catalogue"
       :editing="editingVariant"
       :apply="apply"
       @close="editingVariant = null"

@@ -347,6 +347,7 @@ watch(
 
     <Inspector
       v-if="selection"
+      :design="design"
       :model="snapshot.model"
       :catalogue="catalogue"
       :selection="selection"
@@ -364,6 +365,7 @@ watch(
       <hr />
       <ScaleUnitsPanel
         v-model:adding="groupingUp"
+        :design="design"
         :model="snapshot.model"
         :catalogue="catalogue"
         :apply="apply"
