@@ -61,6 +61,13 @@ impl Default for RuntimeConfig {
 pub struct Runtime {
     pub(super) config: RuntimeConfig,
     pub(super) rng: ChaCha20Rng,
+    /// The stream as it stands at the start of a run.
+    ///
+    /// Every run restarts the stream, and the seed never changes, so the restart
+    /// is a copy of this rather than a key schedule and a fresh block. Held with
+    /// its buffer already filled so that a copy leaves the generator ready to
+    /// answer rather than ready to compute.
+    stream: ChaCha20Rng,
     pub(super) steps: usize,
     pub(super) modules: BTreeMap<String, Value>,
     /// The draws to sample, and which share of them this runtime computes.
@@ -86,9 +93,11 @@ impl Runtime {
     pub fn new() -> Self {
         let config = RuntimeConfig::default();
         let globals = standard::environment();
+        let stream = started(config.seed);
         Self {
             config,
-            rng: ChaCha20Rng::seed_from_u64(config.seed),
+            rng: stream.clone(),
+            stream,
             steps: 0,
             modules: BTreeMap::new(),
             ensemble: Ensemble::whole(config.sample_count),
@@ -106,9 +115,11 @@ impl Runtime {
             return Err("max_steps must be greater than zero".into());
         }
         let globals = standard::environment();
+        let stream = started(config.seed);
         Ok(Self {
             config,
-            rng: ChaCha20Rng::seed_from_u64(config.seed),
+            rng: stream.clone(),
+            stream,
             steps: 0,
             modules: BTreeMap::new(),
             ensemble: Ensemble::whole(config.sample_count),
@@ -197,7 +208,7 @@ impl Runtime {
         program: &Program,
     ) -> Result<ModuleOutput, Diagnostic> {
         self.steps = 0;
-        self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
+        self.rng.clone_from(&self.stream);
         let environment = self.globals.child();
         self.eval_program(program, &environment)
     }
@@ -259,12 +270,24 @@ impl Runtime {
     /// every channel that could have read them.
     pub(crate) fn evaluate_bound(&mut self, program: &Program) -> Result<Value, Diagnostic> {
         self.steps = 0;
-        self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
+        self.rng.clone_from(&self.stream);
         count!(Programs);
         let environment = self.bindings.child();
         self.eval_program(program, &environment)
             .map(|output| output.value)
     }
+}
+
+/// A generator at the start of its stream, with its first blocks already drawn.
+///
+/// [`ChaCha20Rng`] keeps a four-block window and fills it on first use, so a
+/// freshly seeded generator still owes that work to whoever reads from it. Doing
+/// it here once means restarting a run copies the window instead of computing
+/// it, which a solve does tens of thousands of times per step.
+fn started(seed: u64) -> ChaCha20Rng {
+    let mut rng = ChaCha20Rng::seed_from_u64(seed);
+    rng.set_word_pos(0);
+    rng
 }
 
 pub(crate) fn builtin_signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {
@@ -285,6 +308,22 @@ impl Default for Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Restarting by copy has to give the stream a fresh seeding would have.
+    ///
+    /// Every run depends on this: a program re-evaluated against the same
+    /// bindings must return the same answer, or a relaxation would be chasing
+    /// sampling noise it could never converge against.
+    #[test]
+    fn a_started_stream_matches_a_freshly_seeded_one() {
+        use rand::RngCore;
+
+        let mut seeded = ChaCha20Rng::seed_from_u64(90_210);
+        let mut started = started(90_210);
+        let expected: Vec<u64> = (0..200).map(|_| seeded.next_u64()).collect();
+        let copied: Vec<u64> = (0..200).map(|_| started.next_u64()).collect();
+        assert_eq!(copied, expected);
+    }
 
     type TestResult = Result<(), String>;
 
