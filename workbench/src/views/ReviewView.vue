@@ -62,6 +62,27 @@ const movements = computed(() =>
   ) as Record<string, Movement>,
 )
 
+/** Actual service-level performance for constraints which consume an error budget. */
+const serviceLevels = computed(() =>
+  Object.fromEntries(
+    (analysis.value?.bottlenecks ?? []).flatMap((entry) => {
+      if (entry.constraint !== 'success_objective') return []
+      const current = analysis.value?.components[entry.component]?.success?.mean
+      if (current === undefined) return []
+      const baselineValue = baseline.value?.components[entry.component]?.success?.mean
+      const errorBudget = Math.max(1 - current, 0) + entry.headroom
+      return [[
+        `${entry.component}/${entry.constraint}`,
+        {
+          current,
+          baseline: baselineValue,
+          objective: errorBudget < 1 ? Math.max(1 - errorBudget, 0) : undefined,
+        },
+      ]]
+    }),
+  ),
+)
+
 /**
  * The design as it stands, solved alongside whichever variant is on show.
  *
@@ -413,7 +434,11 @@ function unitOf(component: string, channel: string): string {
         <div class="verdict">
           <SolveProgress :solving="isFetching" :shape="shape" />
           <SolvingVeil v-if="analysis" :busy="isFetching" :label="solvingLabel">
-            <LimitCards :bottlenecks="analysis.bottlenecks" :movements="movements" />
+            <LimitCards
+              :bottlenecks="analysis.bottlenecks"
+              :movements="movements"
+              :service-levels="serviceLevels"
+            />
           </SolvingVeil>
           <div v-else-if="isFetching" class="cards" aria-busy="true">
             <SkeletonBlock v-for="card in 3" :key="card" width="104px" height="46px" />
