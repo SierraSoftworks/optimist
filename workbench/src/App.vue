@@ -52,20 +52,15 @@ function open(id: string) {
             :disabled="!!entry.unreadable"
           />
         </el-select>
-      </template>
 
-      <span class="spacer" />
-
-      <template v-if="design">
         <!--
           Two modes rather than a row of panels. Editing a design and judging one
           are different jobs done at different times, and the tool showing only
           what the current job needs is the point of separating them.
 
-          They sit at the right-hand end beside the settings that also belong to
-          the whole window. The design's name used to sit here and has gone: it
-          is already in the picker two inches to the left, and repeating it cost
-          the width that the mode switch now uses.
+          They read as labels beside the design they belong to rather than as
+          controls, because the pair is a statement of which job is in hand and
+          not another button competing with the ones inside the view.
         -->
         <el-radio-group
           :model-value="mode"
@@ -74,15 +69,14 @@ function open(id: string) {
           data-test="mode-switch"
           @change="(value: string | number | boolean) => go(value as 'design' | 'review')"
         >
-          <el-radio-button value="design">
-            <el-icon><i-edit-pen /></el-icon>
-            <span>Design</span>
-          </el-radio-button>
-          <el-radio-button value="review">
-            <el-icon><i-trend-charts /></el-icon>
-            <span>Simulation</span>
-          </el-radio-button>
+          <el-radio-button value="design">Design</el-radio-button>
+          <el-radio-button value="review">Simulation</el-radio-button>
         </el-radio-group>
+      </template>
+
+      <span class="spacer" />
+
+      <template v-if="design">
         <!--
           Behind a gear, because these decide how the answer was produced rather
           than what the answer is. Almost nobody needs to touch them, and having
@@ -204,9 +198,35 @@ function open(id: string) {
 }
 .brand:hover { background: var(--green-soft); }
 .picker { width: 190px; flex: 0 0 auto; }
-.modes { flex: 0 0 auto; }
-.modes :deep(.el-radio-group) { flex-wrap: nowrap; }
-.modes :deep(.el-radio-button__inner) { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.modes { flex: 0 0 auto; flex-wrap: nowrap; gap: var(--space-3); }
+.modes :deep(.el-radio-button__inner) {
+  padding: 4px 0;
+  border: none;
+  outline: none;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+.modes :deep(.el-radio-button__inner:hover) { color: var(--ink); }
+.modes :deep(.el-radio-button.is-active .el-radio-button__original-radio:not(:disabled) + .el-radio-button__inner) {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--green);
+  font-weight: 800;
+}
+.modes :deep(.el-radio-button__original-radio:focus-visible + .el-radio-button__inner) {
+  border: none;
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 .spacer { flex: 1; }
 .gear {
   display: inline-flex;
