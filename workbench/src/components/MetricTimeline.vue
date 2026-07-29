@@ -140,88 +140,220 @@ const band = computed(() => {
 })
 
 /** Shades between which a step's density is drawn, darkest for the likeliest. */
-const SHADES = 5
+const SHADES = 8
 
 /** Cells each step's column is divided into vertically. */
-const ROWS = 44
+const ROWS = 56
 
 /**
- * The distribution at every step, shaded by how much of it sits where.
+ * Density below which a row is left out of every band, as a fraction of the
+ * column's peak.
+ *
+ * Every kernel estimate has ripples in its tails, and without a floor they are
+ * drawn as a faint wash across the whole axis — which is exactly the false
+ * confidence a band between two percentiles gives, arrived at another way. The
+ * floor is far below a real minority branch, which holds a tenth of the draws
+ * and so peaks at about a tenth of the majority's height.
+ */
+const MIN_INK = 0.02
+
+/**
+ * Ink laid down by one band.
+ *
+ * The bands nest, so a point at the peak is covered by all {@link SHADES} of
+ * them and ends up at `1 - (1 - LAYER) ** SHADES`, a little under a half. One
+ * band alone is barely there, which is what the edge of a distribution should
+ * look like.
+ */
+const LAYER = 0.075
+
+/** A contiguous stretch of rows in one step's column, as `[from, to)`. */
+interface Run {
+  from: number
+  to: number
+}
+
+/** One step's run at one shade, and which step it belongs to. */
+interface Link {
+  column: number
+  run: Run
+}
+
+/**
+ * The distribution over time, drawn as bands of equal density.
  *
  * A band between two percentiles says where the middle four fifths of the draws
  * are and nothing about how they are arranged inside it. For most designs that
  * is a fair summary. For the ones worth simulating it is not: a design at a fold
  * puts a third of its draws at one value and two thirds at another, and drawn as
- * a band it looks identical to a design that is merely uncertain, with the
- * heaviest ink laid exactly where no draw landed.
+ * a percentile band it looks identical to a design that is merely uncertain,
+ * with the heaviest ink laid exactly where no draw landed.
  *
- * So each step is drawn as its own density: dark where the draws are, empty
- * where they are not, and visibly split where the design is. Every column is
- * scaled to its own tallest point, because the question a reader is asking of
+ * So the shading follows the density instead. Each shade covers the region where
+ * the density is at least that high, and the regions nest, so where they lie on
+ * top of one another the ink accumulates into the peak. Crucially a region is
+ * allowed to be in two pieces: where a design divides, so does the shading, and
+ * the gap between the branches is left white.
+ *
+ * Each piece is carried from step to step as one continuous ribbon rather than
+ * drawn as a column per step. A branch that persists then reads as a shape with
+ * a lower and an upper edge the eye can follow, which is what makes the mean
+ * line legible as something running between them rather than through a haze, and
+ * one path per band leaves no seams for the renderer to show at the joins. A
+ * branch that opens or closes is joined to the nearest branch on the step beside
+ * it, because its draws were somewhere on that step too.
+ *
+ * Every column is scaled to its own tallest point, because what a reader asks of
  * each one is the shape of that moment rather than how it compares with the
  * busiest moment in the run.
- *
- * The cells are collected into one path per shade rather than drawn
- * individually. A horizon of a few hundred steps is ordinary, and a rectangle
- * per cell would put tens of thousands of nodes in the document for a figure a
- * few hundred pixels wide.
  */
 const shading = computed(() => {
   const count = points.value.length
   if (count === 0) return []
   const { low, high } = bounds.value
   if (!(high > low)) return []
-  const cell = plot.height / ROWS
-  const shades: string[] = Array.from({ length: SHADES }, () => '')
-  let drew = false
+  const profiles = points.value.map((point) =>
+    densityProfile(point.quantity.draws, low, high, ROWS),
+  )
+  if (!profiles.some(Boolean)) return []
 
-  for (let index = 0; index < count; index += 1) {
-    const profile = densityProfile(points.value[index].quantity.draws, low, high, ROWS)
-    if (!profile) continue
-    drew = true
-    // Columns meet at the midpoints between steps, so the shading tiles without
-    // gaps while each step still owns the space nearest to it. No value exists
-    // between two steps, and this interpolates none: it fills a step's own
-    // neighbourhood with that step's answer.
-    const left = index === 0 ? x(0) : (x(index - 1) + x(index)) / 2
-    const right = index === count - 1 ? x(count - 1) : (x(index) + x(index + 1)) / 2
-    const width = right - left
-    if (!(width > 0)) continue
-
-    // Runs of equal shade are merged into one rectangle on the way down, which
-    // is most of the column for the flat-topped densities a saturated design
-    // produces.
-    let run = shadeOf(profile[0])
-    let from = 0
-    for (let row = 1; row <= ROWS; row += 1) {
-      const shade = row < ROWS ? shadeOf(profile[row]) : -1
-      if (shade === run) continue
-      if (run > 0) {
-        // Row zero is the bottom of the axis, so it is drawn from the bottom up.
-        const top = PADDING.top + plot.height - row * cell
-        shades[run - 1] += `M${left},${top}h${width}v${(row - from) * cell}h${-width}z`
-      }
-      run = shade
-      from = row
+  return Array.from({ length: SHADES }, (_, index) => {
+    const shade = index + 1
+    return {
+      shade,
+      path: ribbons(profiles.map((profile) => (profile ? runsAt(profile, shade) : []))),
     }
-  }
-  if (!drew) return []
-  return shades
-    .map((path, index) => ({ path, opacity: (index + 1) / SHADES }))
-    .filter((shade) => shade.path.length > 0)
+  }).filter((band) => band.path.length > 0)
 })
 
+/** The stretches of a column whose density reaches `shade`. */
+function runsAt(profile: number[], shade: number): Run[] {
+  const runs: Run[] = []
+  let from = -1
+  for (let row = 0; row <= profile.length; row += 1) {
+    const inside = row < profile.length && shadeOf(profile[row]) >= shade
+    if (inside && from < 0) from = row
+    if (!inside && from >= 0) {
+      runs.push({ from, to: row })
+      from = -1
+    }
+  }
+  return runs
+}
+
 /**
- * Which shade a density belongs in.
+ * Threads one shade's runs into ribbons.
  *
- * Compressed by a square root so that a branch holding a tenth of the draws —
- * which peaks at about a tenth of the majority's height — is drawn at a third of
- * the ink rather than a tenth of it. A minority branch is the thing this chart
- * exists to show, and linear ink would leave it invisible.
+ * A run continues into the run beside it that it shares the most rows with,
+ * which is the only sense in which two steps can be said to be showing the same
+ * branch: they are not the same draws, and nothing in the model gives a branch
+ * an identity that survives a step. Where two branches merge, the first to claim
+ * the run beside it carries on and the other ends, which is what a merge looks
+ * like.
+ */
+function ribbons(columns: Run[][]): string {
+  const paths: string[] = []
+  const threaded = columns.map((runs) => runs.map(() => false))
+
+  for (let column = 0; column < columns.length; column += 1) {
+    for (let index = 0; index < columns[column].length; index += 1) {
+      if (threaded[column][index]) continue
+      const chain: Link[] = []
+      let at = column
+      let which = index
+      while (at < columns.length && which >= 0 && !threaded[at][which]) {
+        threaded[at][which] = true
+        chain.push({ column: at, run: columns[at][which] })
+        which = at + 1 < columns.length ? overlapping(columns[at][which], columns[at + 1]) : -1
+        at += 1
+      }
+      paths.push(outline(chain, columns))
+    }
+  }
+  return paths.join('')
+}
+
+/** Which of `candidates` shares the most rows with `run`, or -1 if none does. */
+function overlapping(run: Run, candidates: Run[]): number {
+  let best = -1
+  let shared = 0
+  candidates.forEach((candidate, index) => {
+    const rows = Math.min(run.to, candidate.to) - Math.max(run.from, candidate.from)
+    if (rows > shared) {
+      shared = rows
+      best = index
+    }
+  })
+  return best
+}
+
+/**
+ * Where a ribbon that opens or closes at `run` meets the step beside it.
+ *
+ * The nearest point of the nearest branch there, so the ribbon grows out of that
+ * branch rather than out of nowhere. A collapse that takes a design from certain
+ * success to a split between success and failure is one continuous shape opening
+ * downward from the value it left, which is what happened; tapering it to a
+ * point at its own mid-height instead drew the failed branch as having arrived
+ * from a value the design was never at.
+ *
+ * Null where that step has no shading at this depth at all, which is the only
+ * case in which a branch really does begin from nothing.
+ */
+function joins(run: Run, neighbours: Run[]): number | null {
+  const centre = (run.from + run.to) / 2
+  const apart = (candidate: Run) =>
+    Math.max(candidate.from - centre, centre - candidate.to, 0)
+  const nearest = neighbours.reduce<Run | null>(
+    (best, candidate) => (best === null || apart(candidate) < apart(best) ? candidate : best),
+    null,
+  )
+  return nearest === null ? null : Math.min(Math.max(centre, nearest.from), nearest.to)
+}
+
+/** One ribbon: out along its upper edge and back along its lower one. */
+function outline(chain: Link[], columns: Run[][]): string {
+  const cell = plot.height / ROWS
+  // Row zero is the bottom of the axis, so rows count upward from the baseline.
+  const at = (row: number) => PADDING.top + plot.height - row * cell
+  const middle = (run: Run) => at((run.from + run.to) / 2)
+
+  const first = chain[0]
+  const last = chain[chain.length - 1]
+  const corners: string[] = []
+  if (first.column > 0) {
+    const joined = joins(first.run, columns[first.column - 1])
+    corners.push(
+      joined === null
+        ? `${(x(first.column - 1) + x(first.column)) / 2},${middle(first.run)}`
+        : `${x(first.column - 1)},${at(joined)}`,
+    )
+  }
+  for (const link of chain) corners.push(`${x(link.column)},${at(link.run.to)}`)
+  if (last.column < columns.length - 1) {
+    const joined = joins(last.run, columns[last.column + 1])
+    corners.push(
+      joined === null
+        ? `${(x(last.column) + x(last.column + 1)) / 2},${middle(last.run)}`
+        : `${x(last.column + 1)},${at(joined)}`,
+    )
+  }
+  for (const link of [...chain].reverse()) corners.push(`${x(link.column)},${at(link.run.from)}`)
+  return `M${corners.join(' L')}Z`
+}
+
+/**
+ * Which band a density reaches.
+ *
+ * Linear, because the layering does the lifting: a point covered by `k` bands
+ * ends up at `1 - (1 - LAYER) ** k`, which already gives the first few bands
+ * more ink than their share and so keeps a minority branch visible. Compressing
+ * the input as well left the valley between two branches half as dark as the
+ * branches themselves, which is the shape being looked for drawn as a smear.
  */
 function shadeOf(density: number): number {
-  const shade = Math.ceil(Math.sqrt(Math.max(density, 0)) * SHADES)
-  return Math.min(shade, SHADES)
+  if (!(density > MIN_INK)) return 0
+  return Math.min(Math.ceil(density * SHADES), SHADES)
 }
 
 /** The baseline's means, drawn dashed so it reads as a reference not a result. */
@@ -390,11 +522,11 @@ const ticks = computed(() => {
         <path v-if="difference" class="difference" :d="difference" />
         <path v-if="!shading.length && band" class="band" :d="band" />
         <path
-          v-for="shade in shading"
-          :key="shade.opacity"
+          v-for="band in shading"
+          :key="band.shade"
           class="density"
-          :d="shade.path"
-          :fill-opacity="shade.opacity * 0.34"
+          :d="band.path"
+          :fill-opacity="LAYER"
         />
         <polyline v-if="referenceLine" class="reference" :points="referenceLine" />
         <polyline v-if="average" class="average" :points="average" />
