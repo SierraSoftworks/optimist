@@ -93,7 +93,7 @@ test.describe('review', () => {
     // relieves must say so. A card that reported no movement would mean the
     // variant never reached the solver.
     await expect(page.getByTestId('limit-cards').getByText('%').first()).toBeVisible()
-    await expect(page.getByTestId('limit-cards')).toContainText(/no longer binds|−|÷/, {
+    await expect(page.getByTestId('limit-cards')).toContainText(/no longer binds|−/, {
       timeout: 30_000,
     })
   })

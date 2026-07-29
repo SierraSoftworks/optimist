@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import { describeChange, directionOf } from '../domain/change'
+import { describeChange, directionOf, emphasisOf } from '../domain/change'
 
 /** One quantity that can be watched, and where it came from. */
 export interface SignalOption {
@@ -33,14 +33,8 @@ function movement(value: string) {
   if (!pair) return null
   const label = describeChange(pair.before, pair.after)
   const direction = directionOf(pair.before, pair.after)
-  return label && direction ? { label, direction } : null
-}
-
-/** How far a quantity moved, for ordering by it. */
-function magnitude(value: string): number {
-  const pair = props.moved?.[value]
-  if (!pair || pair.before === 0) return pair ? Number.MAX_SAFE_INTEGER : 0
-  return Math.abs((pair.after - pair.before) / Math.abs(pair.before))
+  const emphasis = emphasisOf(pair.before, pair.after)
+  return label && direction && emphasis ? { label, direction, emphasis } : null
 }
 
 /**
@@ -84,11 +78,7 @@ const matching = computed(() => {
   const found = needle
     ? available.filter((option) => option.value.toLowerCase().includes(needle))
     : available
-  // What a variant changed most, first, and alphabetically within that.
-  return [...found].sort(
-    (left, right) =>
-      (props.moved ? magnitude(right.value) - magnitude(left.value) : 0) || byName(left, right),
-  )
+  return [...found].sort(byName)
 })
 
 const groups = computed(() =>
@@ -138,7 +128,11 @@ function unpin(value: string) {
             <span class="channel">{{ option.channel }}</span>
             <span class="component">{{ option.component }}</span>
           </span>
-          <span v-if="movement(option.value)" class="moved" :class="movement(option.value)!.direction">
+          <span
+            v-if="movement(option.value)"
+            class="moved"
+            :class="[movement(option.value)!.direction, movement(option.value)!.emphasis]"
+          >
             {{ movement(option.value)!.label }}
           </span>
           <el-icon class="act"><i-close /></el-icon>
@@ -176,7 +170,11 @@ function unpin(value: string) {
             <span class="channel">{{ option.channel }}</span>
             <span class="component">{{ option.component }}</span>
           </span>
-          <span v-if="movement(option.value)" class="moved" :class="movement(option.value)!.direction">
+          <span
+            v-if="movement(option.value)"
+            class="moved"
+            :class="[movement(option.value)!.direction, movement(option.value)!.emphasis]"
+          >
             {{ movement(option.value)!.label }}
           </span>
         </button>
@@ -254,9 +252,30 @@ function unpin(value: string) {
 /*
  * Which way it went, not whether that is good news. Higher latency and higher
  * throughput are the same arrow, and only the reader knows which they wanted.
+ *
+ * Colour therefore says how far it moved rather than taking a side: the house
+ * accent marks the handful worth opening, and everything else stays a quiet
+ * outline so a list where every row moved a little still reads as calm.
  */
-.moved { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 0 0 auto; }
-.signal:hover .moved { display: none; }
+.moved {
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: var(--surface);
+  flex: 0 0 auto;
+}
+.moved.notable {
+  border-color: #b7d0c3;
+  background: var(--green-soft);
+  color: var(--green);
+  font-weight: 600;
+}
+.signal.chosen .moved.notable { background: var(--surface-strong); }
+.signal.chosen:hover .moved { display: none; }
 .act { font-size: 11px; color: var(--muted); flex: 0 0 auto; opacity: 0; }
 .signal:hover .act { opacity: 1; }
 

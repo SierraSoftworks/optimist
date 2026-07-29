@@ -1,24 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeChange, directionOf } from './change'
+import { describeChange, directionOf, emphasisOf } from './change'
 
 describe('describeChange', () => {
-  it('reads a modest change as a share', () => {
+  it('reads a change as a signed share of what it started at', () => {
     expect(describeChange(100, 120)).toBe('+20%')
     expect(describeChange(100, 80)).toBe('\u221220%')
   })
 
   /**
-   * A share of a number near zero is arithmetically true and useless.
+   * One form, so that two figures side by side can be compared by eye.
    *
-   * A success rate that went from a millionth to nearly one is a hundred million
-   * per cent higher. Nobody can hold that figure; everybody can hold "a million
-   * times".
+   * A mix of shares and multiples makes a reader work out which arithmetic each
+   * figure used before they can tell which of the two moved further.
    */
-  it('switches to a multiple once the two are orders of magnitude apart', () => {
-    expect(describeChange(0.000001, 1)).toMatch(/^\u00d7/)
-    expect(describeChange(1, 0.000001)).toMatch(/^\u00f7/)
-    expect(describeChange(1, 1000)).toBe('\u00d71k')
+  it('keeps the same form however far the quantity moved', () => {
+    expect(describeChange(1, 1000)).toBe('+100k%')
+    expect(describeChange(0.000001, 1)).toMatch(/^\+\d/)
+    expect(describeChange(1, 0.000001)).toBe('\u2212100%')
   })
 
   /** Nothing has no proportion, so it is named rather than divided by. */
@@ -48,5 +47,30 @@ describe('directionOf', () => {
   it('stays quiet where nothing meaningful moved', () => {
     expect(directionOf(100, 100.2)).toBeNull()
     expect(directionOf(5, 5)).toBeNull()
+  })
+})
+
+describe('emphasisOf', () => {
+  it('marks out a movement worth opening', () => {
+    expect(emphasisOf(100, 250)).toBe('notable')
+    expect(emphasisOf(100, 40)).toBe('notable')
+    expect(emphasisOf(0, 5)).toBe('notable')
+  })
+
+  /** A doubling and the halving that undoes it are the same size of event. */
+  it('reads a rise and the fall that undoes it alike', () => {
+    expect(emphasisOf(100, 200)).toBe(emphasisOf(200, 100))
+    expect(emphasisOf(100, 150)).toBe(emphasisOf(150, 100))
+  })
+
+  it('keeps a small movement quiet', () => {
+    expect(emphasisOf(100, 130)).toBe('slight')
+    expect(emphasisOf(100, 80)).toBe('slight')
+  })
+
+  it('grades nothing the solver could have invented', () => {
+    expect(emphasisOf(100, 100.2)).toBeNull()
+    expect(emphasisOf(5, 5)).toBeNull()
+    expect(emphasisOf(Number.NaN, 1)).toBeNull()
   })
 })
