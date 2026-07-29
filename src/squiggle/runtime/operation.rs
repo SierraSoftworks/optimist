@@ -1,6 +1,6 @@
 use crate::squiggle::{Diagnostic, Distribution, DurationValue, Value, ast::Span};
 
-use super::Runtime;
+use super::{Runtime, elementwise::gathered};
 
 impl Runtime {
     pub(super) fn unary(
@@ -127,15 +127,17 @@ impl Runtime {
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        let numeric = Numeric::parse(operator)
+            .ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
         let ensemble = Distribution::aligned([&distribution], self.ensemble);
         let seed = distribution.stream(&mut self.rng);
         let drawn = distribution.drawn(seed, ensemble);
-        let samples = drawn
-            .iter()
-            .map(|draw| scalar(operator, left.unwrap_or(*draw), right.unwrap_or(*draw)))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|message| Diagnostic::runtime(message, span))?;
-        Distribution::from_samples(samples)
+        let samples = gathered(drawn.len(), |index| {
+            let draw = drawn[index];
+            Ok(numeric.apply(left.unwrap_or(draw), right.unwrap_or(draw)))
+        })
+        .map_err(|_| Diagnostic::runtime(non_finite(operator), span))?;
+        Distribution::from_drawn(samples)
             .map(Value::Distribution)
             .map_err(|message| Diagnostic::runtime(message, span))
     }
@@ -153,16 +155,15 @@ impl Runtime {
         operator: &str,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        let numeric = Numeric::parse(operator)
+            .ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
         let ensemble = Distribution::aligned([&left, &right], self.ensemble);
         let (left_seed, right_seed) = (left.stream(&mut self.rng), right.stream(&mut self.rng));
         let (left, right) = (left.drawn(left_seed, ensemble), right.drawn(right_seed, ensemble));
-        let samples = left
-            .iter()
-            .zip(right.iter())
-            .map(|(left, right)| scalar(operator, *left, *right))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|message| Diagnostic::runtime(message, span))?;
-        Distribution::from_samples(samples)
+        let width = left.len().min(right.len());
+        let samples = gathered(width, |index| Ok(numeric.apply(left[index], right[index])))
+            .map_err(|_| Diagnostic::runtime(non_finite(operator), span))?;
+        Distribution::from_drawn(samples)
             .map(Value::Distribution)
             .map_err(|message| Diagnostic::runtime(message, span))
     }
@@ -175,30 +176,71 @@ impl Runtime {
     ) -> Result<Value, Diagnostic> {
         let ensemble = Distribution::aligned([&distribution], self.ensemble);
         let seed = distribution.stream(&mut self.rng);
-        let samples = distribution
-            .drawn(seed, ensemble)
-            .iter()
-            .map(|draw| transform(*draw))
-            .collect();
-        Distribution::from_samples(samples)
+        let drawn = distribution.drawn(seed, ensemble);
+        let samples = gathered(drawn.len(), |index| Ok(transform(drawn[index])))
+            .map_err(|message| Diagnostic::runtime(message, span))?;
+        Distribution::from_drawn(samples)
             .map(Value::Distribution)
             .map_err(|message| Diagnostic::runtime(message, span))
     }
 }
 
+/// A numeric operator, resolved before the loop that applies it to every draw.
+///
+/// Distribution algebra applies one operator across a whole sample set, so
+/// matching the operator's spelling inside that loop costs a string comparison
+/// per draw, of which a solve performs hundreds of millions. The spelling cannot
+/// change part-way through, so it is resolved once and the loop body becomes a
+/// single arithmetic instruction the compiler can keep in registers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Numeric {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Raise,
+}
+
+impl Numeric {
+    fn parse(operator: &str) -> Option<Self> {
+        Some(match operator {
+            "+" | ".+" => Self::Add,
+            "-" | ".-" => Self::Subtract,
+            "*" | ".*" => Self::Multiply,
+            "/" | "./" => Self::Divide,
+            "^" | ".^" => Self::Raise,
+            _ => return None,
+        })
+    }
+
+    #[inline]
+    fn apply(self, left: f64, right: f64) -> f64 {
+        match self {
+            Self::Add => left + right,
+            Self::Subtract => left - right,
+            Self::Multiply => left * right,
+            Self::Divide => left / right,
+            Self::Raise => left.powf(right),
+        }
+    }
+}
+
+fn unknown(operator: &str) -> String {
+    format!("unknown numeric operator '{operator}'")
+}
+
+fn non_finite(operator: &str) -> String {
+    format!("operator '{operator}' produced a non-finite value")
+}
+
 fn scalar(operator: &str, left: f64, right: f64) -> Result<f64, String> {
-    let value = match operator {
-        "+" | ".+" => left + right,
-        "-" | ".-" => left - right,
-        "*" | ".*" => left * right,
-        "/" | "./" => left / right,
-        "^" | ".^" => left.powf(right),
-        _ => return Err(format!("unknown numeric operator '{operator}'")),
-    };
+    let value = Numeric::parse(operator)
+        .ok_or_else(|| unknown(operator))?
+        .apply(left, right);
     value
         .is_finite()
         .then_some(value)
-        .ok_or_else(|| format!("operator '{operator}' produced a non-finite value"))
+        .ok_or_else(|| non_finite(operator))
 }
 
 fn boolean(operator: &str, left: Value, right: Value, span: Span) -> Result<Value, Diagnostic> {

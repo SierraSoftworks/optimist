@@ -261,6 +261,24 @@ impl Runtime {
         self.bindings.rebind(name, value);
     }
 
+    /// Binds one name and evaluates against the bound scope, for benchmarks only.
+    ///
+    /// The interpreter's cost per program is the floor a solve cannot go below,
+    /// so it is measured on its own rather than inferred from a whole solve.
+    /// Reaching it needs the scope shape a solve actually uses, which is why this
+    /// exists; it is hidden because the reasoning in [`Runtime::evaluate_values`]
+    /// still applies to anyone else.
+    #[doc(hidden)]
+    pub fn bench_bind(&mut self, name: &str, value: Value) {
+        self.bind(name, value);
+    }
+
+    /// Evaluates against the benchmark scope built by [`Runtime::bench_bind`].
+    #[doc(hidden)]
+    pub fn bench_evaluate(&mut self, program: &Program) -> Result<Value, Diagnostic> {
+        self.evaluate_bound(program)
+    }
+
     /// Evaluates a program against the names already bound.
     ///
     /// A caller evaluating several programs against one scope binds it once and

@@ -184,6 +184,22 @@ impl Distribution {
         Ok(Self::symbolic(Kind::Samples(samples.into())))
     }
 
+    /// Adopts draws already gathered into their final array.
+    ///
+    /// [`Distribution::from_samples`] takes ownership of a [`Vec`], which it
+    /// cannot reuse: the draws are copied into a fresh allocation on the way in,
+    /// and scanned for finiteness on the way past. Distribution algebra produces
+    /// one of these for every operation it performs, and already knows both
+    /// answers, because it writes the array directly and rejects a non-finite
+    /// result at the draw that produced it. Callers that do not know are served
+    /// by [`Distribution::from_samples`].
+    pub(crate) fn from_drawn(samples: Arc<[f64]>) -> Result<Self, String> {
+        if samples.is_empty() {
+            return Err("an empirical distribution requires at least one sample".into());
+        }
+        Ok(Self::symbolic(Kind::Samples(samples)))
+    }
+
     /// Returns the canonical Squiggle family name.
     pub fn family(&self) -> &'static str {
         match self.kind {

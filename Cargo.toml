@@ -48,3 +48,7 @@ lto = "thin"
 [[bench]]
 name = "solve"
 harness = false
+
+[[bench]]
+name = "squiggle"
+harness = false

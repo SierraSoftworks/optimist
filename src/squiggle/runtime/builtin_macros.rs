@@ -6,11 +6,21 @@ macro_rules! builtins {
             ( $($parameters:tt)* ) => $body:expr
         ),* $(,)?
     ) => {
+        /// Whether this module owns `name`.
+        ///
+        /// Written as a match rather than a chain of comparisons because every
+        /// builtin call asks each module in turn, and a chain compares the name
+        /// against every entry it does not own. A match lets the compiler
+        /// discriminate on length and leading bytes first, so a miss costs a
+        /// handful of comparisons rather than one per builtin in the module.
         pub(super) fn handles(name: &str) -> bool {
-            false $(
-                || name == builtins!(@name $name)
-                $(|| name == builtins!(@name $alias))*
-            )*
+            #[allow(unreachable_patterns)]
+            match name {
+                $(
+                    builtins!(@name $name) $(| builtins!(@name $alias))* => true,
+                )*
+                _ => false,
+            }
         }
 
         pub(crate) fn signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {

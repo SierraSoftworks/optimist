@@ -103,18 +103,53 @@ pub(super) fn elementwise(
 
     let mut row = vec![0.0; columns.len()];
     count!(Draws, width);
-    let samples = (0..width)
-        .map(|index| {
-            for (slot, column) in row.iter_mut().zip(&columns) {
-                *slot = column.at(index);
-            }
-            compute(&row)
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(fail)?;
-    Distribution::from_samples(samples)
+    let samples = gathered(width, |index| {
+        for (slot, column) in row.iter_mut().zip(&columns) {
+            *slot = column.at(index);
+        }
+        compute(&row)
+    })
+    .map_err(&fail)?;
+    Distribution::from_drawn(samples)
         .map(Value::Distribution)
         .map_err(fail)
+}
+
+/// Gathers `width` draws into the array that will hold them, in one allocation.
+///
+/// The obvious spelling collects into a `Vec` and hands that to
+/// [`Distribution::from_samples`], which allocates a second time and copies
+/// every draw across. Collecting straight into the shared array avoids both, but
+/// the standard library builds one only from an infallible iterator of known
+/// length. The failure is therefore carried out of the loop in a slot rather
+/// than short-circuiting it: the loop runs to the end and the array is discarded
+/// unread, which costs a few arithmetic operations on the path where the caller
+/// is about to be handed an error anyway.
+///
+/// A non-finite draw is a failure here rather than in a later scan, because the
+/// draw that produced it is the only place that can say which one it was.
+pub(super) fn gathered(
+    width: usize,
+    mut draw: impl FnMut(usize) -> Result<f64, String>,
+) -> Result<std::sync::Arc<[f64]>, String> {
+    let mut failure: Option<String> = None;
+    let samples: std::sync::Arc<[f64]> = (0..width)
+        .map(|index| match draw(index) {
+            Ok(sample) if sample.is_finite() => sample,
+            Ok(_) => {
+                failure.get_or_insert_with(|| "a draw has no finite value".to_owned());
+                0.0
+            }
+            Err(message) => {
+                failure.get_or_insert(message);
+                0.0
+            }
+        })
+        .collect();
+    match failure {
+        Some(message) => Err(message),
+        None => Ok(samples),
+    }
 }
 
 /// Rejects a formula result that has left the representable domain.

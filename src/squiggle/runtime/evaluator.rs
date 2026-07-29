@@ -199,8 +199,10 @@ impl Runtime {
         let Value::Function(function) = function else {
             return Err(type_error("call", "Function", &function, span));
         };
-        let callable = function.clone();
-        match function.0.as_ref().clone() {
+        // Borrowed rather than taken: a user function owns its parameters, its
+        // whole body, and the scope it closed over, so matching by value copied
+        // an entire syntax tree on every call.
+        match &*function.0 {
             FunctionKind::Builtin(name) => builtin::call(self, name, arguments, span),
             FunctionKind::User {
                 name,
@@ -220,7 +222,7 @@ impl Runtime {
                 }
                 let call_environment = environment.child();
                 if let Some(name) = name {
-                    call_environment.define(name, Value::Function(callable));
+                    call_environment.define(name.as_str(), Value::Function(function.clone()));
                 }
                 for (parameter, argument) in parameters.iter().zip(&arguments) {
                     call_environment.define(&parameter.name, argument.clone());
@@ -229,7 +231,7 @@ impl Runtime {
                     let Some(annotation) = &parameter.annotation else {
                         continue;
                     };
-                    let validation = self.eval_expr(annotation, &environment)?;
+                    let validation = self.eval_expr(annotation, environment)?;
                     let valid = match validation {
                         Value::Domain(domain) => domain.contains(argument),
                         Value::Function(_) => {
@@ -265,7 +267,7 @@ impl Runtime {
                         ));
                     }
                 }
-                self.eval_expr(&body, &call_environment)
+                self.eval_expr(body, &call_environment)
             }
         }
     }
