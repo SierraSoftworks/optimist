@@ -290,6 +290,17 @@ impl Runtime {
         self.steps = 0;
         self.rng.clone_from(&self.stream);
         count!(Programs);
+        // A program that declares nothing cannot write to the scope it is handed,
+        // so it needs no scope of its own. Compiled channels are single
+        // expressions, which is what makes this the ordinary case rather than a
+        // special one: it saves a frame allocation and a level of the chain every
+        // name in the program would otherwise be searched through.
+        if program.imports.is_empty() && program.statements.is_empty() {
+            let bindings = self.bindings.clone();
+            return self
+                .eval_program(program, &bindings)
+                .map(|output| output.value);
+        }
         let environment = self.bindings.child();
         self.eval_program(program, &environment)
             .map(|output| output.value)

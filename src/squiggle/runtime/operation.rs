@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use crate::squiggle::{Diagnostic, Distribution, DurationValue, Value, ast::Span};
 
-use super::{Runtime, elementwise::gathered};
+use super::Runtime;
 
 impl Runtime {
     pub(super) fn unary(
@@ -132,14 +134,18 @@ impl Runtime {
         let ensemble = Distribution::aligned([&distribution], self.ensemble);
         let seed = distribution.stream(&mut self.rng);
         let drawn = distribution.drawn(seed, ensemble);
-        let samples = gathered(drawn.len(), |index| {
-            let draw = drawn[index];
-            Ok(numeric.apply(left.unwrap_or(draw), right.unwrap_or(draw)))
-        })
-        .map_err(|_| Diagnostic::runtime(non_finite(operator), span))?;
-        Distribution::from_drawn(samples)
-            .map(Value::Distribution)
-            .map_err(|message| Diagnostic::runtime(message, span))
+        let samples: Arc<[f64]> = match (left, right) {
+            (Some(left), _) => drawn.iter().map(|draw| numeric.apply(left, *draw)).collect(),
+            (None, Some(right)) => drawn
+                .iter()
+                .map(|draw| numeric.apply(*draw, right))
+                .collect(),
+            (None, None) => drawn
+                .iter()
+                .map(|draw| numeric.apply(*draw, *draw))
+                .collect(),
+        };
+        finished(samples, operator, span)
     }
 
     /// Combines two distributions elementwise at matching draw indices.
@@ -161,11 +167,12 @@ impl Runtime {
         let (left_seed, right_seed) = (left.stream(&mut self.rng), right.stream(&mut self.rng));
         let (left, right) = (left.drawn(left_seed, ensemble), right.drawn(right_seed, ensemble));
         let width = left.len().min(right.len());
-        let samples = gathered(width, |index| Ok(numeric.apply(left[index], right[index])))
-            .map_err(|_| Diagnostic::runtime(non_finite(operator), span))?;
-        Distribution::from_drawn(samples)
-            .map(Value::Distribution)
-            .map_err(|message| Diagnostic::runtime(message, span))
+        let samples: Arc<[f64]> = left[..width]
+            .iter()
+            .zip(&right[..width])
+            .map(|(left, right)| numeric.apply(*left, *right))
+            .collect();
+        finished(samples, operator, span)
     }
 
     pub(super) fn transform_distribution(
@@ -177,12 +184,25 @@ impl Runtime {
         let ensemble = Distribution::aligned([&distribution], self.ensemble);
         let seed = distribution.stream(&mut self.rng);
         let drawn = distribution.drawn(seed, ensemble);
-        let samples = gathered(drawn.len(), |index| Ok(transform(drawn[index])))
-            .map_err(|message| Diagnostic::runtime(message, span))?;
-        Distribution::from_drawn(samples)
-            .map(Value::Distribution)
-            .map_err(|message| Diagnostic::runtime(message, span))
+        let samples: Arc<[f64]> = drawn.iter().map(|draw| transform(*draw)).collect();
+        finished(samples, "transform", span)
     }
+}
+
+/// Accepts a finished sample set, or reports that the operator left the reals.
+///
+/// The check is a separate pass over the array rather than a test inside the
+/// loop that produced it. A branch per draw would keep that loop scalar, whereas
+/// applying one arithmetic operation across a thousand draws and then asking
+/// whether a thousand results are finite are both loops the compiler can run
+/// several draws at a time.
+fn finished(samples: Arc<[f64]>, operator: &str, span: Span) -> Result<Value, Diagnostic> {
+    if !samples.iter().all(|sample| sample.is_finite()) {
+        return Err(Diagnostic::runtime(non_finite(operator), span));
+    }
+    Distribution::from_drawn(samples)
+        .map(Value::Distribution)
+        .map_err(|message| Diagnostic::runtime(message, span))
 }
 
 /// A numeric operator, resolved before the loop that applies it to every draw.
