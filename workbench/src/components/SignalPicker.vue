@@ -67,16 +67,28 @@ const chosen = computed(() =>
   props.pinned.map((value) => byValue.value.get(value) ?? null).filter((option) => !!option),
 )
 
+/**
+ * Alphabetical by the quantity's own name, then by the component holding it.
+ *
+ * A reader looking for `success_rate` knows the name before they know which of
+ * a dozen components they want it from, so the name is what the list is ordered
+ * by and the component is how the repeats of it are told apart.
+ */
+function byName(left: SignalOption, right: SignalOption): number {
+  return left.channel.localeCompare(right.channel) || left.component.localeCompare(right.component)
+}
+
 const matching = computed(() => {
   const needle = search.value.trim().toLowerCase()
   const available = props.options.filter((option) => !props.pinned.includes(option.value))
   const found = needle
     ? available.filter((option) => option.value.toLowerCase().includes(needle))
     : available
-  // What a variant changed most, first. With nothing to compare against this
-  // leaves the order the solver gave, which is by component and then by name.
-  if (!props.moved) return found
-  return [...found].sort((left, right) => magnitude(right.value) - magnitude(left.value))
+  // What a variant changed most, first, and alphabetically within that.
+  return [...found].sort(
+    (left, right) =>
+      (props.moved ? magnitude(right.value) - magnitude(left.value) : 0) || byName(left, right),
+  )
 })
 
 const groups = computed(() =>
