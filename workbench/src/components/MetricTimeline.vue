@@ -55,13 +55,8 @@ const comparing = computed(
   () => reference.value.length > 0 && reference.value.length === points.value.length,
 )
 
-/** How to read this quantity, decided once from everything on screen. */
-const scale = computed(() =>
-  scaleFor(props.unit, [
-    ...points.value.flatMap((point) => [point.quantity.p10, point.quantity.p90]),
-    ...reference.value.map((point) => point.quantity.mean),
-  ]),
-)
+/** How to read this quantity, which its declaration settles. */
+const scale = computed(() => scaleFor(props.unit))
 
 /**
  * Vertical range covering the whole band, not just the means.

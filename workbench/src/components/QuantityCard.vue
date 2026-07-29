@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import type { Quantity } from '../api/types'
 import DistributionChart from './DistributionChart.vue'
-import { formatSiNumber } from '../domain/humanNumber'
+import { scaleFor, showScaled } from '../domain/units'
 
 const props = withDefaults(
   defineProps<{
@@ -25,6 +25,13 @@ const props = withDefaults(
 
 /** Whether this quantity is one number or a spread of them. */
 const certain = computed(() => !!props.quantity && props.quantity.draws.length === 0)
+
+/** How to read this quantity, which its declaration settles. */
+const scale = computed(() => scaleFor(props.unit))
+
+function show(value: number): string {
+  return showScaled(value, scale.value)
+}
 </script>
 
 <template>
@@ -43,23 +50,23 @@ const certain = computed(() => !!props.quantity && props.quantity.draws.length =
         picture of nothing that takes a moment to recognise as such.
       -->
       <template v-if="certain">
-        <p class="value" data-test="preview-value">{{ formatSiNumber(quantity.mean) }}</p>
-        <p class="says">certain{{ unit && unit !== '1' ? ` — ${unit}` : '' }}</p>
+        <p class="value" data-test="preview-value">{{ show(quantity.mean) }}</p>
+        <p class="says">certain{{ scale.suffix && scale.suffix !== '%' ? ` — ${scale.suffix}` : '' }}</p>
       </template>
       <template v-else>
         <DistributionChart :quantity="quantity" :unit="unit" :height="72" />
         <dl class="quantiles">
           <div>
             <dt>p10</dt>
-            <dd>{{ formatSiNumber(quantity.p10) }}</dd>
+            <dd>{{ show(quantity.p10) }}</dd>
           </div>
           <div>
             <dt>median</dt>
-            <dd>{{ formatSiNumber(quantity.p50) }}</dd>
+            <dd>{{ show(quantity.p50) }}</dd>
           </div>
           <div>
             <dt>p90</dt>
-            <dd>{{ formatSiNumber(quantity.p90) }}</dd>
+            <dd>{{ show(quantity.p90) }}</dd>
           </div>
         </dl>
       </template>

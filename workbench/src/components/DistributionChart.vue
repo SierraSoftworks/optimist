@@ -3,7 +3,7 @@ import { computed } from 'vue'
 
 import type { Quantity } from '../api/types'
 import { kernelDensity } from '../domain/density'
-import { formatSiNumber } from '../domain/humanNumber'
+import { scaleFor, showScaled, showWithUnit } from '../domain/units'
 
 const props = withDefaults(
   defineProps<{
@@ -61,8 +61,19 @@ const band = computed(() => {
 const certain = computed(() => props.quantity.draws.length === 0 || density.value === null)
 const branches = computed(() => density.value?.modes ?? 1)
 
+/** How to read this quantity, which its declaration settles. */
+const scale = computed(() => scaleFor(props.unit))
+
+/** What to write beside the figure, which a percentage already carries itself. */
+const suffix = computed(() => (scale.value.suffix === '%' ? '' : scale.value.suffix))
+
 function show(value: number): string {
-  return formatSiNumber(value)
+  return showScaled(value, scale.value)
+}
+
+/** The same figure with its unit spoken, for readers who cannot see the chart. */
+function spoken(value: number): string {
+  return showWithUnit(value, scale.value)
 }
 </script>
 
@@ -71,14 +82,14 @@ function show(value: number): string {
     <figcaption class="sr-only">
       {{
         certain
-          ? `Certain at ${show(quantity.mean)} ${unit}`
-          : `Distribution from ${show(quantity.p10)} to ${show(quantity.p90)} ${unit}, ${branches} mode or modes`
+          ? `Certain at ${spoken(quantity.mean)}`
+          : `Distribution from ${spoken(quantity.p10)} to ${spoken(quantity.p90)}, ${branches} mode or modes`
       }}
     </figcaption>
 
     <div v-if="certain" class="certain">
       <span class="value">{{ show(quantity.mean) }}</span>
-      <span v-if="unit" class="unit">{{ unit }}</span>
+      <span v-if="suffix" class="unit">{{ suffix }}</span>
       <span class="note">certain</span>
     </div>
 
@@ -99,7 +110,7 @@ function show(value: number): string {
         <span class="quantile">{{ show(quantity.p10) }}</span>
         <span class="middle">
           <strong>{{ show(quantity.p50) }}</strong>
-          <span v-if="unit" class="unit">{{ unit }}</span>
+          <span v-if="suffix" class="unit">{{ suffix }}</span>
         </span>
         <span class="quantile">{{ show(quantity.p90) }}</span>
       </div>

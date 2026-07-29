@@ -18,28 +18,23 @@ export interface Scale {
 /**
  * Chooses how to present a quantity.
  *
- * The only rescaling done is dimensionless-to-percent, and only when every value
- * on screen sits in the range a proportion occupies. Two reasons for the caution:
- * a dimensionless quantity is not always a proportion — a retry multiplier and a
- * call depth are both `1` — and a value above one would then be labelled 340%,
- * which reads as a proportion that cannot exist rather than as the ratio it is.
+ * The only rescaling done is share-to-percent. A share is a proportion of a
+ * whole and says so in its declaration, which is what separates a success of
+ * `0.97` from a fan-out of `3`: both are pure numbers, and only one of them is
+ * ninety-seven percent of anything.
  *
  * Nothing else is converted. Seconds are not turned into milliseconds and bytes
  * are not turned into mebibytes, because {@link formatSiNumber} already gives
  * those a magnitude prefix, and converting as well would apply the prefix twice.
  */
-export function scaleFor(unit: string, values: number[]): Scale {
-  const dimensionless = unit === '' || unit === '1'
-  if (!dimensionless) return { factor: 1, suffix: unit }
-
-  const finite = values.filter(Number.isFinite)
-  if (finite.length === 0) return { factor: 1, suffix: '' }
-
-  const lowest = Math.min(...finite)
-  const highest = Math.max(...finite)
-  const proportion = lowest >= 0 && highest <= 1.0000001
-  return proportion ? { factor: 100, suffix: '%' } : { factor: 1, suffix: '' }
+export function scaleFor(unit: string): Scale {
+  if (PROPORTIONS.has(unit)) return { factor: 100, suffix: '%' }
+  // The dimensionless annotation names no unit, so there is nothing to write.
+  return { factor: 1, suffix: unit === '1' ? '' : unit }
 }
+
+/** Spellings the manifests accept for a proportion of a whole. */
+const PROPORTIONS = new Set(['share', 'ratio', 'fraction', 'proportion', 'probability', '%'])
 
 /** Renders one value on a chosen scale. */
 export function showScaled(value: number, scale: Scale): string {

@@ -44,7 +44,14 @@ export function formatSiNumber(value: number, digits = 3) {
   if (value === 0) return '0'
   const magnitude = Math.abs(value)
   if (magnitude < 1e-15) return value.toExponential(1)
-  const [factor, prefix] = SI_PREFIXES.find(([threshold]) => magnitude >= threshold)
-    ?? SI_PREFIXES[SI_PREFIXES.length - 1]!
-  return `${Number((value / factor).toPrecision(digits))}${prefix}`
+  const index = SI_PREFIXES.findIndex(([threshold]) => magnitude >= threshold)
+  const [factor, prefix] = SI_PREFIXES[index] ?? SI_PREFIXES[SI_PREFIXES.length - 1]!
+  const mantissa = Number((value / factor).toPrecision(digits))
+  // Rounding can carry the mantissa up into the next prefix: 0.9999 belongs at
+  // `1` rather than at the `1000m` that dividing before rounding produces.
+  if (Math.abs(mantissa) >= 1000 && index > 0) {
+    const [next, carried] = SI_PREFIXES[index - 1]!
+    return `${Number((value / next).toPrecision(digits))}${carried}`
+  }
+  return `${mantissa}${prefix}`
 }
