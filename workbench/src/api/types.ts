@@ -353,6 +353,7 @@ export interface Comparison {
 export type Mutation =
   | { kind: 'set_scratchpad_entry'; entry: ScratchpadEntry }
   | { kind: 'remove_scratchpad_entry'; name: string }
+  | { kind: 'move_scratchpad_entry'; name: string; before: string | null }
   | { kind: 'set_component'; component: Component }
   | { kind: 'remove_component'; id: string }
   | { kind: 'set_relationship'; relationship: Relationship }

@@ -175,6 +175,7 @@ does not know about is told rather than having it silently dropped.
 | --- | --- |
 | `set_scratchpad_entry` | `entry`: a scratchpad entry. Replaces the one with the same `name`. |
 | `remove_scratchpad_entry` | `name` |
+| `move_scratchpad_entry` | `name`, `before`: another entry's name, or `null` to move it last. |
 | `set_component` | `component`. Replaces the one with the same `id`. |
 | `remove_component` | `id`. Also removes every relationship touching it. |
 | `set_relationship` | `relationship`. Replaces the one between the same two components. |

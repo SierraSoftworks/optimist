@@ -84,6 +84,40 @@ test('a shared quantity can be added', async ({ page }) => {
   await expect(page.getByTestId('quantity-peak_rate').locator('.cm-content')).toHaveText('900')
 })
 
+test('shared quantities can be reordered by dragging them', async ({ page }) => {
+  const id = `quantity-order-${Date.now()}`
+
+  await page.goto('/')
+  await page.getByTestId('new-design').click()
+  await page.getByTestId('design-name').fill('Quantity order')
+  await page.getByTestId('design-id').fill(id)
+  await page.getByTestId('create-design').click()
+
+  for (const [name, expression] of [
+    ['rate', '100'],
+    ['factor', '2'],
+    ['load', 'rate * factor'],
+  ]) {
+    await page.getByTestId('add-quantity').click()
+    await page.getByTestId('new-quantity-name').fill(name)
+    await page.getByTestId('new-quantity-expression').locator('.cm-content').fill(expression)
+    await page.getByTestId('save-quantity').click()
+  }
+
+  await page
+    .getByTestId('move-factor')
+    .dragTo(page.getByTestId('quantity-rate'), { targetPosition: { x: 100, y: 2 } })
+
+  await expect
+    .poll(async () => {
+      const snapshot = (await (await page.request.get(`/api/v1/designs/${id}`)).json()) as {
+        model: { scratchpad: { name: string }[] }
+      }
+      return snapshot.model.scratchpad.map((entry) => entry.name)
+    })
+    .toEqual(['factor', 'rate', 'load'])
+})
+
 /**
  * Grouping components into a replicated boundary, and nesting one boundary in
  * another.

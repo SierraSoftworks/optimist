@@ -108,6 +108,31 @@ fn the_last_writer_wins() {
     assert_eq!(scratchpad[0].expression, "900");
 }
 
+/// Shared quantities can be reordered without replacing or duplicating them.
+#[test]
+fn shared_quantities_can_be_moved_idempotently() {
+    let session = Session::open(&design("move-shared")).expect("opens");
+    session.apply(shared("rate", "100")).expect("applies");
+    session.apply(shared("factor", "2")).expect("applies");
+    session.apply(shared("load", "rate * factor")).expect("applies");
+    let movement = Mutation::MoveScratchpadEntry {
+        name: "factor".to_owned(),
+        before: Some("rate".to_owned()),
+    };
+
+    session.apply(movement.clone()).expect("moves");
+    session.apply(movement).expect("replaying the move is harmless");
+
+    let names = session
+        .snapshot()
+        .model
+        .scratchpad
+        .into_iter()
+        .map(|entry| entry.name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["factor", "rate", "load"]);
+}
+
 /// Edits to different things do not contend at all.
 #[test]
 fn separate_entities_never_conflict() {

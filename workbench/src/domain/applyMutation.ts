@@ -18,6 +18,11 @@ export function applyMutation(model: SystemModel, mutation: Mutation): SystemMod
       return { ...model, scratchpad: replace(model.scratchpad, mutation.entry, 'name') }
     case 'remove_scratchpad_entry':
       return { ...model, scratchpad: model.scratchpad.filter((e) => e.name !== mutation.name) }
+    case 'move_scratchpad_entry':
+      return {
+        ...model,
+        scratchpad: moveBefore(model.scratchpad, mutation.name, mutation.before, 'name'),
+      }
     case 'set_component':
       return { ...model, components: replace(model.components, mutation.component, 'id') }
     case 'remove_component':
@@ -78,4 +83,13 @@ function replace<T, K extends keyof T>(items: T[], next: T, key: K): T[] {
   const copy = items.slice()
   copy[index] = next
   return copy
+}
+
+function moveBefore<T, K extends keyof T>(items: T[], value: T[K], before: T[K] | null, key: K): T[] {
+  const moved = items.find((item) => item[key] === value)
+  if (!moved || value === before) return items
+  const rest = items.filter((item) => item[key] !== value)
+  const destination = before === null ? rest.length : rest.findIndex((item) => item[key] === before)
+  if (destination < 0) return items
+  return [...rest.slice(0, destination), moved, ...rest.slice(destination)]
 }

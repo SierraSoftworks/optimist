@@ -22,6 +22,35 @@ pub(super) fn apply(model: &mut SystemModel, mutation: &Mutation) -> Result<(), 
             remove(&mut model.scratchpad, |entry| &entry.name == name)
                 .ok_or_else(|| absent("shared quantity", name))
         }
+        Mutation::MoveScratchpadEntry { name, before } => {
+            if before.as_ref() == Some(name) {
+                return Ok(());
+            }
+            let source = model
+                .scratchpad
+                .iter()
+                .position(|entry| &entry.name == name)
+                .ok_or_else(|| absent("shared quantity", name))?;
+            if let Some(target) = before {
+                model
+                    .scratchpad
+                    .iter()
+                    .position(|entry| &entry.name == target)
+                    .ok_or_else(|| absent("shared quantity", target))?;
+            }
+            let entry = model.scratchpad.remove(source);
+            let destination = before
+                .as_ref()
+                .and_then(|target| {
+                    model
+                        .scratchpad
+                        .iter()
+                        .position(|entry| &entry.name == target)
+                })
+                .unwrap_or(model.scratchpad.len());
+            model.scratchpad.insert(destination, entry);
+            Ok(())
+        }
         Mutation::SetComponent { component } => {
             replace(&mut model.components, component.clone(), |existing| {
                 existing.id == component.id

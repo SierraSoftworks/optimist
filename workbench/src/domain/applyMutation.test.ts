@@ -44,6 +44,16 @@ describe('applyMutation', () => {
     expect(next.scratchpad[2].name).toBe('depth')
   })
 
+  it('moves a shared quantity before another one idempotently', () => {
+    const edit: Mutation = { kind: 'move_scratchpad_entry', name: 'size', before: 'rate' }
+
+    const once = apply(model(), edit)
+    const twice = apply(once, edit)
+
+    expect(once.scratchpad.map((entry) => entry.name)).toEqual(['size', 'rate'])
+    expect(twice).toEqual(once)
+  })
+
   /**
    * The feed replays edits, and a reconnect can deliver one that was already
    * seen. Applying it twice has to leave the same design or the local copy

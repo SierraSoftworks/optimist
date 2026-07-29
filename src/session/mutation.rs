@@ -32,6 +32,13 @@ pub enum Mutation {
         /// Name of the quantity.
         name: String,
     },
+    /// Moves a shared quantity before another, or to the end.
+    MoveScratchpadEntry {
+        /// Name of the quantity to move.
+        name: String,
+        /// Name to place it before, or none to place it last.
+        before: Option<String>,
+    },
     /// Adds a component, or replaces the one with the same identifier.
     SetComponent {
         /// The component being defined.

@@ -65,6 +65,43 @@ function remove(name: string) {
   void props.apply([{ kind: 'remove_scratchpad_entry', name }])
 }
 
+const dragging = ref<string | null>(null)
+const destination = ref<{ name: string; after: boolean } | null>(null)
+
+function beginMove(event: DragEvent, name: string) {
+  dragging.value = name
+  destination.value = null
+  event.dataTransfer?.setData('text/plain', name)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function considerMove(event: DragEvent, name: string) {
+  if (!dragging.value || dragging.value === name) {
+    destination.value = null
+    return
+  }
+  const row = event.currentTarget as HTMLElement
+  const bounds = row.getBoundingClientRect()
+  destination.value = { name, after: event.clientY > bounds.top + bounds.height / 2 }
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function finishMove() {
+  dragging.value = null
+  destination.value = null
+}
+
+function move(event: DragEvent, target: string) {
+  const name = dragging.value ?? event.dataTransfer?.getData('text/plain') ?? ''
+  const after = destination.value?.name === target && destination.value.after
+  const remaining = props.model.scratchpad.filter((entry) => entry.name !== name)
+  const targetIndex = remaining.findIndex((entry) => entry.name === target)
+  const before = after ? (remaining[targetIndex + 1]?.name ?? null) : target
+  finishMove()
+  if (!name || name === before || targetIndex < 0) return
+  void props.apply([{ kind: 'move_scratchpad_entry', name, before }])
+}
+
 /**
  * Rewriting what a quantity is for.
  *
@@ -147,7 +184,19 @@ async function add() {
     />
 
     <ul class="entries">
-      <li v-for="(entry, index) in model.scratchpad" :key="entry.name" class="entry">
+      <li
+        v-for="(entry, index) in model.scratchpad"
+        :key="entry.name"
+        class="entry"
+        :class="{
+          dragging: dragging === entry.name,
+          'drop-before': destination?.name === entry.name && !destination.after,
+          'drop-after': destination?.name === entry.name && destination.after,
+        }"
+        :data-test="`quantity-${entry.name}`"
+        @dragover.prevent="considerMove($event, entry.name)"
+        @drop.prevent="move($event, entry.name)"
+      >
         <!--
           Name, unit and controls stack on the left so the expression gets the
           full width of the row. The expression is the part that is read and
@@ -206,7 +255,7 @@ async function add() {
             :entry="entry.name"
             :unit="entry.unit"
             :summary="entry.summary"
-            :data-test="`quantity-${entry.name}`"
+            :data-test="`quantity-expression-${entry.name}`"
             @focus="draftFor(entry.name).focus()"
             @blur="draftFor(entry.name).blur()"
           />
@@ -217,6 +266,18 @@ async function add() {
             @revert="draftFor(entry.name).revert()"
           />
         </div>
+        <el-tooltip content="Drag to reorder" placement="bottom">
+          <span
+            class="move"
+            draggable="true"
+            role="button"
+            tabindex="0"
+            :aria-label="`Move ${entry.name}`"
+            :data-test="`move-${entry.name}`"
+            @dragstart="beginMove($event, entry.name)"
+            @dragend="finishMove"
+          />
+        </el-tooltip>
       </li>
     </ul>
 
@@ -294,14 +355,45 @@ h3 { font-size: var(--text-md); margin: 0; }
 .entries { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .entry {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: 148px minmax(0, 1fr) 18px;
   gap: var(--space-3);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line);
   align-items: start;
 }
+.entry.drop-before { box-shadow: inset 0 2px var(--green); }
+.entry.drop-after { box-shadow: inset 0 -2px var(--green); }
+.entry.dragging { opacity: 0.5; }
 .label { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 3px; }
 .name { font-family: var(--mono); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.move {
+  position: relative;
+  width: 18px;
+  height: 24px;
+  color: var(--muted);
+  cursor: grab;
+  align-self: center;
+}
+.move::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow:
+    7px 0 currentColor,
+    0 5px currentColor,
+    7px 5px currentColor,
+    0 10px currentColor,
+    7px 10px currentColor,
+    0 15px currentColor,
+    7px 15px currentColor;
+}
+.move:active { cursor: grabbing; }
+.move:hover { color: var(--ink); }
 .meta { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); }
 .unit { font-family: var(--mono); font-size: var(--text-2xs); cursor: help; }
 .about, .remove { font-size: 13px; cursor: pointer; }

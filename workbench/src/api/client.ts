@@ -76,8 +76,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   throw new ApiError(
     response.status,
     failure?.message ?? `The request failed with status ${response.status}.`,
-    failure?.advice ?? [],
+    adviceLines(failure?.advice),
   )
+}
+
+function adviceLines(advice: unknown): string[] {
+  if (typeof advice === 'string') return [advice]
+  if (Array.isArray(advice)) return advice.filter((line): line is string => typeof line === 'string')
+  return []
 }
 
 export const api = {
