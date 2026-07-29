@@ -13,8 +13,8 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use optimist::system::{
-    ComponentType, EvaluationConfig, InterventionId, Mutator, SolveMode, SystemModel,
-    bottlenecks_with_mutators, compare_many_with_mutators, evaluate_with_mutators, read_system,
+    ComponentType, EvaluationConfig, InterventionId, Mutator, Solve, SolveMode, SystemModel,
+    bottlenecks_with_mutators, read_system,
 };
 
 /// Examples worth timing, cheapest first.
@@ -46,14 +46,11 @@ fn design(name: &str) -> Design {
 }
 
 fn solve(design: &Design, config: EvaluationConfig) {
-    let evaluation = evaluate_with_mutators(
-        &design.model,
-        &design.types,
-        &design.mutators,
-        &BTreeMap::new(),
-        config,
-    )
-    .expect("solves");
+    let evaluation = Solve::new(&design.model, &design.types)
+        .mutators(&design.mutators)
+        .with(config)
+        .evaluate()
+        .expect("solves");
     std::hint::black_box(evaluation.settled().movement);
 }
 
@@ -128,14 +125,11 @@ fn ranking(criterion: &mut Criterion) {
             sample_count: 1_000,
             ..EvaluationConfig::default()
         };
-        let evaluation = evaluate_with_mutators(
-            &design.model,
-            &design.types,
-            &design.mutators,
-            &BTreeMap::new(),
-            config,
-        )
-        .expect("solves");
+        let evaluation = Solve::new(&design.model, &design.types)
+            .mutators(&design.mutators)
+            .with(config)
+            .evaluate()
+            .expect("solves");
         let settled = evaluation.settled();
         group.bench_function(name, |bencher| {
             bencher.iter(|| {
@@ -179,14 +173,11 @@ fn proposals(criterion: &mut Criterion) {
             &wanted,
             |bencher, wanted| {
                 bencher.iter(|| {
-                    let weighed = compare_many_with_mutators(
-                        &design.model,
-                        &design.types,
-                        &design.mutators,
-                        wanted,
-                        config,
-                    )
-                    .expect("compares");
+                    let weighed = Solve::new(&design.model, &design.types)
+                        .mutators(&design.mutators)
+                        .with(config)
+                        .compare_many(wanted)
+                        .expect("compares");
                     std::hint::black_box(weighed.len());
                 });
             },

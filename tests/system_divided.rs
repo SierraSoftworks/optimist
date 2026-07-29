@@ -19,9 +19,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use optimist::{
     squiggle::Value,
-    system::{
-        ComponentState, EvaluationConfig, SolveMode, Step, evaluate_with_mutators, read_system,
-    },
+    system::{ComponentState, EvaluationConfig, Solve, SolveMode, Step, read_system},
 };
 
 /// Designs with a single resting state, where dividing must reproduce it.
@@ -41,14 +39,11 @@ fn solved(example: &str, config: EvaluationConfig) -> Step {
         .join("examples")
         .join(example);
     let loaded = read_system(&path).unwrap_or_else(|error| panic!("reads {example}: {error}"));
-    let evaluation = evaluate_with_mutators(
-        &loaded.model,
-        &loaded.component_types,
-        &loaded.mutators,
-        &BTreeMap::new(),
-        config,
-    )
-    .unwrap_or_else(|error| panic!("solves {example}: {error}"));
+    let evaluation = Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(config)
+        .evaluate()
+        .unwrap_or_else(|error| panic!("solves {example}: {error}"));
     evaluation.settled().clone()
 }
 

@@ -14,9 +14,8 @@ use std::path::{Path, PathBuf};
 use clap::{Args, Subcommand};
 
 use crate::system::{
-    Bottleneck, Comparison, Evaluation, EvaluationConfig, InterventionId, LoadedSystem, SolveMode,
-    bottlenecks_with_mutators, compare_many_with_mutators, evaluate_intervention_with_mutators,
-    evaluate_with_mutators, read_system,
+    Bottleneck, Comparison, Evaluation, EvaluationConfig, InterventionId, LoadedSystem, Solve,
+    SolveMode, bottlenecks_with_mutators, read_system,
 };
 
 use super::{diagnose, output::OutputFormat};
@@ -256,21 +255,12 @@ fn solve(
     intervention: Option<&str>,
     options: &SolveOptions,
 ) -> Result<Evaluation, human_errors::Error> {
+    let asking = Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(options.config());
     match intervention {
-        Some(id) => evaluate_intervention_with_mutators(
-            &loaded.model,
-            &loaded.component_types,
-            &loaded.mutators,
-            &named(loaded, id)?,
-            options.config(),
-        ),
-        None => evaluate_with_mutators(
-            &loaded.model,
-            &loaded.component_types,
-            &loaded.mutators,
-            &std::collections::BTreeMap::new(),
-            options.config(),
-        ),
+        Some(id) => asking.intervention(&named(loaded, id)?).evaluate(),
+        None => asking.evaluate(),
     }
     .map_err(evaluation_error)
 }
@@ -338,14 +328,11 @@ fn compare(
         .iter()
         .map(|intervention| named(loaded, intervention))
         .collect::<Result<Vec<_>, _>>()?;
-    let weighed = compare_many_with_mutators(
-        &loaded.model,
-        &loaded.component_types,
-        &loaded.mutators,
-        &wanted,
-        options.config(),
-    )
-    .map_err(evaluation_error)?;
+    let weighed = Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(options.config())
+        .compare_many(&wanted)
+        .map_err(evaluation_error)?;
     Ok(interventions
         .iter()
         .cloned()

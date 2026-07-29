@@ -10,10 +10,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use optimist::{
     squiggle::Value,
-    system::{
-        ComponentState, EvaluationConfig, InterventionId, LoadedSystem,
-        evaluate_intervention_with_mutators, evaluate_with_mutators, read_system,
-    },
+    system::{ComponentState, EvaluationConfig, InterventionId, LoadedSystem, Solve, read_system},
 };
 
 fn design() -> PathBuf {
@@ -51,21 +48,14 @@ fn scalar(state: &ComponentState, channel: &str) -> f64 {
 fn at(seconds: usize, intervention: Option<&str>) -> BTreeMap<String, ComponentState> {
     let system = loaded();
     let config = config(seconds + 1);
-    let evaluation = match intervention {
-        Some(id) => evaluate_intervention_with_mutators(
-            &system.model,
-            &system.component_types,
-            &system.mutators,
-            &InterventionId::new(id),
-            config,
-        ),
-        None => evaluate_with_mutators(
-            &system.model,
-            &system.component_types,
-            &system.mutators,
-            &BTreeMap::new(),
-            config,
-        ),
+    let evaluation = {
+        let asking = Solve::new(&system.model, &system.component_types)
+            .mutators(&system.mutators)
+            .with(config);
+        match intervention {
+            Some(id) => asking.intervention(&InterventionId::new(id)).evaluate(),
+            None => asking.evaluate(),
+        }
     }
     .expect("solves");
     evaluation

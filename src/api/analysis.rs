@@ -21,8 +21,7 @@ use crate::{
     session::Session,
     squiggle::Value,
     system::{
-        Bottleneck, Comparison, EvaluationConfig, InterventionId, bottlenecks_with_mutators,
-        compare_with_mutators, evaluate_intervention_with_mutators, evaluate_with_mutators,
+        Bottleneck, Comparison, EvaluationConfig, InterventionId, Solve, bottlenecks_with_mutators,
     },
 };
 
@@ -403,17 +402,13 @@ fn solve(
 ) -> Result<Analysis, crate::system::EvaluationError> {
     let snapshot = session.snapshot();
     let (types, mutators) = session.catalogue();
-    let evaluation = match &intervention {
-        Some(id) => evaluate_intervention_with_mutators(
-            &snapshot.model,
-            &types,
-            &mutators,
-            &InterventionId::new(id.clone()),
-            config,
-        ),
-        None => {
-            evaluate_with_mutators(&snapshot.model, &types, &mutators, &BTreeMap::new(), config)
-        }
+    let applied = intervention.as_ref().map(InterventionId::new);
+    let asking = Solve::new(&snapshot.model, &types)
+        .mutators(&mutators)
+        .with(config);
+    let evaluation = match &applied {
+        Some(intervention) => asking.intervention(intervention).evaluate(),
+        None => asking.evaluate(),
     }?;
     let settled = evaluation.settled();
     let ranked = bottlenecks_with_mutators(&snapshot.model, &types, &mutators, settled, config)?;
@@ -477,13 +472,10 @@ async fn comparison(
     let comparison = tokio::task::spawn_blocking(move || {
         let snapshot = session.snapshot();
         let (types, mutators) = session.catalogue();
-        compare_with_mutators(
-            &snapshot.model,
-            &types,
-            &mutators,
-            &InterventionId::new(intervention),
-            config,
-        )
+        Solve::new(&snapshot.model, &types)
+            .mutators(&mutators)
+            .with(config)
+            .compare(&InterventionId::new(intervention))
     })
     .await
     .expect("the solver does not panic")?;

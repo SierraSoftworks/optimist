@@ -16,7 +16,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use optimist::{
     squiggle::Value,
-    system::{EvaluationConfig, evaluate_with_mutators, read_system},
+    system::{EvaluationConfig, Solve, read_system},
 };
 use serde::{Deserialize, Serialize};
 
@@ -108,14 +108,11 @@ fn settled(example: &str) -> Recorded {
         sample_count: 1_000,
         ..EvaluationConfig::default()
     };
-    let evaluation = evaluate_with_mutators(
-        &loaded.model,
-        &loaded.component_types,
-        &loaded.mutators,
-        &BTreeMap::new(),
-        config,
-    )
-    .unwrap_or_else(|error| panic!("solves {example}: {error}"));
+    let evaluation = Solve::new(&loaded.model, &loaded.component_types)
+        .mutators(&loaded.mutators)
+        .with(config)
+        .evaluate()
+        .unwrap_or_else(|error| panic!("solves {example}: {error}"));
     evaluation
         .settled()
         .components
