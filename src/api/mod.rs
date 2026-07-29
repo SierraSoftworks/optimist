@@ -32,6 +32,7 @@ mod cache;
 mod designs;
 mod error;
 mod feed;
+mod solving;
 mod web;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
@@ -57,11 +58,19 @@ const SWEEP_INTERVAL: Duration = Duration::from_millis(100);
 /// performance artifact over it. They are separate fields rather than one type
 /// because an answer's lifetime is decided by how often somebody asks for it,
 /// and a design's by whether anybody has it open.
+///
+/// The board and the in-flight registries are about the answers that do not
+/// exist yet: which solves are running, so that watchers can be told, and which
+/// have already been started, so that asking again joins one rather than
+/// starting another.
 #[derive(Clone)]
 pub(super) struct ApiState {
     workspace: Arc<Workspace>,
     analyses: Arc<cache::Cache<analysis::Analysis>>,
     comparisons: Arc<cache::Cache<crate::system::Comparison>>,
+    solving: Arc<solving::Board>,
+    pending: Arc<solving::InFlight<analysis::Analysis>>,
+    weighing: Arc<solving::InFlight<crate::system::Comparison>>,
 }
 
 impl ApiState {
@@ -70,6 +79,9 @@ impl ApiState {
             workspace,
             analyses: Arc::new(cache::Cache::new()),
             comparisons: Arc::new(cache::Cache::new()),
+            solving: Arc::new(solving::Board::default()),
+            pending: Arc::new(solving::InFlight::default()),
+            weighing: Arc::new(solving::InFlight::default()),
         }
     }
 }
