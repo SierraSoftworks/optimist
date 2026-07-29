@@ -77,7 +77,7 @@ impl Varying {
         }
     }
 
-    fn width(&self) -> Option<usize> {
+    pub(super) fn width(&self) -> Option<usize> {
         match self {
             Self::Uniform(_) => None,
             Self::PerDraw(draws) => Some(draws.len()),

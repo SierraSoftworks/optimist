@@ -60,6 +60,7 @@ mod mutate;
 pub mod progress;
 mod queue;
 mod relax;
+mod retire;
 mod state;
 mod stationary;
 mod transfer;

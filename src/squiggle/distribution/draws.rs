@@ -193,10 +193,18 @@ impl Distribution {
     /// narrowing again would take a share of a share.
     fn held<'a>(&self, samples: &'a [f64], ensemble: Ensemble) -> std::borrow::Cow<'a, [f64]> {
         if samples.len() == ensemble.size() {
-            ensemble.window(samples)
-        } else {
-            std::borrow::Cow::Borrowed(samples)
+            return ensemble.window(samples);
         }
+        let whole_share = ensemble.retaining(u64::MAX);
+        if ensemble.live() != u64::MAX && samples.len() == whole_share.len() {
+            return std::borrow::Cow::Owned(
+                ensemble
+                    .positions(ensemble.size())
+                    .map(|position| samples[position])
+                    .collect(),
+            );
+        }
+        std::borrow::Cow::Borrowed(samples)
     }
 
     /// This value's whole share of the ensemble, gathered into one array.
@@ -230,6 +238,7 @@ impl Distribution {
         {
             None => configured,
             Some(authored) if authored == configured.len() => configured,
+            Some(authored) if authored == configured.retaining(u64::MAX).len() => configured,
             // A set as long as the whole ensemble is this share's own quantity
             // seen at full width, so it is narrowed to the share rather than
             // mistaken for authored data that fixes its own draw count.
@@ -343,6 +352,23 @@ mod tests {
         let share = whole(64).retaining(0b1011);
         let seed = distribution.stream(&mut rng());
         assert_eq!(distribution.materialise(seed, share), vec![0.0, 1.0, 3.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn retiring_blocks_narrows_a_sample_set_that_already_holds_one_share() -> Result<(), String> {
+        let samples: Vec<f64> = (0..32).map(f64::from).collect();
+        let distribution = Distribution::from_samples(samples.clone())?;
+        let share = Ensemble::split(64, 2)
+            .nth(1)
+            .expect("two shares")
+            .retaining(0x0F0F_0F0F_0F0F_0F0F);
+        let expected = share
+            .positions(64)
+            .map(|position| samples[position])
+            .collect::<Vec<_>>();
+        let seed = distribution.stream(&mut rng());
+        assert_eq!(distribution.materialise(seed, share), expected);
         Ok(())
     }
 

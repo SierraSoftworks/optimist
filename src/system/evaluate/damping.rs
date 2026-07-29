@@ -79,6 +79,39 @@ impl Damping {
         }
         self.shared = shared;
     }
+
+    pub(super) fn retain(
+        &mut self,
+        before: crate::squiggle::distribution::Ensemble,
+        after: crate::squiggle::distribution::Ensemble,
+        size: usize,
+    ) {
+        self.strides = retained(&self.strides, before, after, size);
+        self.previous = retained(&self.previous, before, after, size);
+        self.contracting = retained(&self.contracting, before, after, size);
+        self.shared = self
+            .strides
+            .first()
+            .copied()
+            .filter(|first| self.strides.iter().all(|stride| stride == first));
+    }
+}
+
+fn retained<T: Copy>(
+    values: &[T],
+    before: crate::squiggle::distribution::Ensemble,
+    after: crate::squiggle::distribution::Ensemble,
+    size: usize,
+) -> Vec<T> {
+    let mut offset = 0;
+    let mut kept = Vec::with_capacity(after.width(size));
+    for (block, width) in before.live_blocks(size) {
+        if after.live() >> block & 1 != 0 {
+            kept.extend_from_slice(&values[offset..offset + width]);
+        }
+        offset += width;
+    }
+    kept
 }
 
 #[cfg(test)]
@@ -128,5 +161,15 @@ mod tests {
             damping.adapt(&[moved]);
         }
         assert_eq!(strides(&damping), vec![MINIMUM]);
+    }
+
+    #[test]
+    fn retiring_blocks_keeps_the_stride_of_each_live_draw() {
+        let before = crate::squiggle::distribution::Ensemble::whole(64);
+        let after = before.retaining(0x0000_0000_0000_0005);
+        let mut damping = Damping::opening(0.2, 64);
+        damping.strides = (0..64).map(|draw| draw as f64).collect();
+        damping.retain(before, after, 64);
+        assert_eq!(strides(&damping), vec![0.0, 2.0]);
     }
 }

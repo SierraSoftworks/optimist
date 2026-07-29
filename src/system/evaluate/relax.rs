@@ -22,6 +22,7 @@ use super::{
     modes::modes,
     progress::Reporting,
     queue::advance,
+    retire,
     state::{ComponentState, LinkId, LinkState, Mixture, Step, Unsettled},
     stationary::drift,
 };
@@ -63,7 +64,7 @@ pub(super) fn relax(
     previous: &BTreeMap<ComponentId, ComponentState>,
     carried: &BTreeMap<LinkId, LinkState>,
     time: f64,
-    config: EvaluationConfig,
+    mut config: EvaluationConfig,
     rng: &mut ChaCha20Rng,
     reporting: Reporting<'_>,
 ) -> Result<Step, EvaluationError> {
@@ -98,12 +99,16 @@ pub(super) fn relax(
     // where a design still moving slowly would look still.
     let mut opened = current.clone();
     let mut unsettled: Option<(ComponentId, Moved)> = None;
+    let size = config.sample_count.max(1);
+    let mut whole = current.clone();
+    let mut whole_links = links.clone();
     while iterations < config.max_iterations {
         iterations += 1;
         count!(Passes);
         moved.fill(0.0);
         movement = 0.0;
         unsettled = None;
+        let links_before = links.clone();
         for component in &plan.components {
             count!(Components);
             let computed = evaluate_component(
@@ -150,6 +155,22 @@ pub(super) fn relax(
             outcome = Outcome::Settled;
             break;
         }
+        damping.adapt(&moved);
+        retire::stirred(&links_before, &links, config, rng, &mut moved);
+        if let Some(spent) = retire::spent(&moved, config.share, size)
+            && spent != 0
+        {
+            whole = retire::widen(&current, &whole, config.share, size, rng);
+            whole_links = retire::widen_links(&links, &whole_links, config.share, size, rng);
+            opened = retire::widen(&opened, &whole, config.share, size, rng);
+            let live = config.share.retaining(config.share.live() & !spent);
+            damping.retain(config.share, live, size);
+            config.share = live;
+            runtime = runtime.sharing(config.ensemble());
+            current.clone_from(&whole);
+            links.clone_from(&whole_links);
+            moved = vec![0.0; config.ensemble().len()];
+        }
         best = best.min(movement);
         since_checkpoint += 1;
         if since_checkpoint >= PATIENCE {
@@ -171,7 +192,11 @@ pub(super) fn relax(
             since_checkpoint = 0;
             opened = current.clone();
         }
-        damping.adapt(&moved);
+    }
+    if config.share.live() != u64::MAX {
+        current = retire::widen(&current, &whole, config.share, size, rng);
+        links = retire::widen_links(&links, &whole_links, config.share, size, rng);
+        config.share = config.share.retaining(u64::MAX);
     }
     let moving = unsettled.and_then(|(component, moved)| {
         moved.channel.map(|channel| (component, channel, moved.distance))
