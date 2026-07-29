@@ -9,6 +9,7 @@ use crate::{
     system::{
         compile::{Plan, runtime},
         model::ComponentId,
+        values::Varying,
     },
 };
 
@@ -17,8 +18,10 @@ use super::{
     component::evaluate_component,
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
+    modes::modes,
     queue::advance,
-    state::{ComponentState, LinkId, LinkState, Step, Unsettled},
+    state::{ComponentState, LinkId, LinkState, Mixture, Step, Unsettled},
+    stationary::drift,
 };
 
 /// Smallest step the adaptive damping will tighten to.
@@ -41,6 +44,23 @@ const PATIENCE: usize = 128;
 /// 0.999 per pass compounds to better than a tenth over the span. A loop with no
 /// fixed point to find does not improve at all.
 const PROGRESS: f64 = 0.98;
+
+/// How a step stopped.
+enum Outcome {
+    /// Every draw reached a value it agrees with.
+    Settled,
+    /// The ensemble reached a distribution it agrees with while its draws went
+    /// on swapping between the branches making it up.
+    Mixed {
+        /// Largest movement of any quantile over the window that proved it.
+        drift: f64,
+    },
+    /// Something was still moving when the solver stopped.
+    Moving {
+        /// Whether the iterate had stopped closing, rather than run out of passes.
+        stalled: bool,
+    },
+}
 
 pub(super) fn relax(
     plan: &Plan,
@@ -90,7 +110,11 @@ pub(super) fn relax(
     let mut best = f64::INFINITY;
     let mut checkpoint = f64::INFINITY;
     let mut since_checkpoint = 0_usize;
-    let mut stalled = false;
+    let mut outcome = Outcome::Moving { stalled: false };
+    // The state this window opened on, kept so that the ensemble can be compared
+    // with itself across a long span rather than between two adjacent passes,
+    // where a design still moving slowly would look still.
+    let mut opened = current.clone();
     let mut unsettled: Option<(ComponentId, Moved)> = None;
     while iterations < config.max_iterations {
         iterations += 1;
@@ -120,17 +144,29 @@ pub(super) fn relax(
             current.insert(component.id.clone(), blended);
         }
         if movement <= config.tolerance {
+            outcome = Outcome::Settled;
             break;
         }
         best = best.min(movement);
         since_checkpoint += 1;
         if since_checkpoint >= PATIENCE {
             if best > checkpoint * PROGRESS {
-                stalled = true;
+                // The draws have stopped closing. Whether the design has is a
+                // different question, and this is the only place it is asked: an
+                // ensemble that has been still for the whole window has found its
+                // answer, and the draws underneath it are trading places between
+                // branches rather than still searching for one.
+                let settled = drift(&opened, &current, config, rng);
+                outcome = if settled <= config.tolerance {
+                    Outcome::Mixed { drift: settled }
+                } else {
+                    Outcome::Moving { stalled: true }
+                };
                 break;
             }
             checkpoint = best;
             since_checkpoint = 0;
+            opened = current.clone();
         }
         if movement > before * 1.05 {
             weight = (weight * 0.5).max(MINIMUM_DAMPING);
@@ -144,26 +180,70 @@ pub(super) fn relax(
         }
         before = movement;
     }
-    let converged = movement <= config.tolerance;
-    Ok(Step {
-        time,
-        components: current,
-        links,
-        converged,
-        unsettled: (!converged)
-            .then(|| {
-                let (component, moved) = unsettled?;
-                Some(Unsettled {
-                    component,
-                    channel: moved.channel?,
-                    movement: moved.distance,
-                    stalled,
-                })
-            })
-            .flatten(),
-        iterations,
-        movement,
+    let moving = unsettled.and_then(|(component, moved)| {
+        moved.channel.map(|channel| (component, channel, moved.distance))
+    });
+    Ok(match outcome {
+        Outcome::Settled => Step {
+            time,
+            components: current,
+            links,
+            converged: true,
+            unsettled: None,
+            mixture: None,
+            iterations,
+            movement,
+        },
+        Outcome::Mixed { drift } => {
+            let mixture = moving.map(|(component, channel, swing)| Mixture {
+                states: states(&current, &component, &channel, config, rng),
+                component,
+                channel,
+                swing,
+            });
+            Step {
+                time,
+                components: current,
+                links,
+                converged: true,
+                unsettled: None,
+                mixture,
+                iterations,
+                movement: drift,
+            }
+        }
+        Outcome::Moving { stalled } => Step {
+            time,
+            components: current,
+            links,
+            converged: false,
+            unsettled: moving.map(|(component, channel, movement)| Unsettled {
+                component,
+                channel,
+                movement,
+                stalled,
+            }),
+            mixture: None,
+            iterations,
+            movement,
+        },
     })
+}
+
+/// How many states one channel's draws divided between.
+fn states(
+    current: &BTreeMap<ComponentId, ComponentState>,
+    component: &ComponentId,
+    channel: &str,
+    config: EvaluationConfig,
+    rng: &mut ChaCha20Rng,
+) -> usize {
+    current
+        .get(component)
+        .and_then(|state| state.channels.get(channel))
+        .and_then(|value| Varying::of(value, config.ensemble(), rng))
+        .and_then(|varying| varying.spread().map(modes))
+        .unwrap_or(1)
 }
 
 /// Places every wire where the step begins.

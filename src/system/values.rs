@@ -88,6 +88,14 @@ impl<'a> Varying<'a> {
             Self::PerDraw(draws) => Some(draws.len()),
         }
     }
+
+    /// Borrows the draws, where this quantity has any of its own.
+    pub(super) fn spread(&self) -> Option<&'a [f64]> {
+        match self {
+            Self::Uniform(_) => None,
+            Self::PerDraw(draws) => Some(draws),
+        }
+    }
 }
 
 /// How many draws several quantities have in common.
@@ -202,7 +210,12 @@ pub(super) fn converge(
     )
 }
 
-fn gap(previous: f64, next: f64) -> f64 {
+/// How far apart two figures are, as a share of the larger of them.
+///
+/// Relative rather than absolute so that a throughput of millions and a
+/// probability near zero are held to the same standard, and floored at one so
+/// that a quantity approaching zero is not asked for ever finer agreement.
+pub(super) fn gap(previous: f64, next: f64) -> f64 {
     let scale = previous.abs().max(next.abs()).max(1.0);
     (next - previous).abs() / scale
 }
