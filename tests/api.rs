@@ -75,6 +75,16 @@ async fn post(address: SocketAddr, path: &str, body: Value) -> (u16, Value) {
     (status, body)
 }
 
+async fn delete(address: SocketAddr, path: &str) -> u16 {
+    reqwest::Client::new()
+        .delete(format!("http://{address}{path}"))
+        .send()
+        .await
+        .expect("request")
+        .status()
+        .as_u16()
+}
+
 fn component(id: &str) -> Value {
     json!({
         "kind": "set_component",
@@ -406,6 +416,49 @@ async fn a_design_cannot_be_created_twice() {
     // the filesystem.
     let (status, _) = post(address, "/api/v1/designs", json!({ "id": "../escape" })).await;
     assert_eq!(status, 400);
+}
+
+/// A design can be deleted, taking its directory with it.
+///
+/// An edit made moments before must not bring the design back: the write it was
+/// waiting for would recreate the directory from memory, leaving a design that
+/// nobody can account for.
+#[tokio::test]
+async fn a_design_can_be_deleted() {
+    let root = workspace("delete");
+    design(&root, "checkout", "Checkout");
+    design(&root, "billing", "Billing");
+    let address = serve(&root).await;
+
+    let (status, _) = post(
+        address,
+        "/api/v1/designs/checkout/mutations",
+        json!({ "mutations": [component("users")] }),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    assert_eq!(delete(address, "/api/v1/designs/checkout").await, 204);
+    assert!(!root.join("checkout").exists());
+
+    let (status, listing) = get(address, "/api/v1/designs").await;
+    assert_eq!(status, 200);
+    let ids: Vec<_> = listing
+        .as_array()
+        .expect("array")
+        .iter()
+        .map(|entry| entry["id"].as_str().expect("id").to_owned())
+        .collect();
+    assert_eq!(ids, ["billing"]);
+
+    let (status, _) = get(address, "/api/v1/designs/checkout").await;
+    assert_eq!(status, 404);
+
+    // Deleting again says so rather than pretending it worked, and an identifier
+    // that could name another directory never reaches the filesystem.
+    assert_eq!(delete(address, "/api/v1/designs/checkout").await, 404);
+    assert_eq!(delete(address, "/api/v1/designs/..%2Fescape").await, 400);
+    assert!(root.join("billing").exists());
 }
 
 /// Solving can report every step, which is what a chart over time needs.

@@ -148,6 +148,17 @@ impl<V> Cache<V> {
                 .or_insert_with(|| Arc::new(Answers::new())),
         )
     }
+    /// Drops everything remembered for one design.
+    ///
+    /// Positions in the change feed restart at zero for a design that is created
+    /// under an identifier that has been used before, so answers from the design
+    /// that is gone would otherwise be reachable from its replacement.
+    pub(super) fn forget(&self, design: &str) {
+        self.designs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(design);
+    }
 }
 
 impl<V> Default for Cache<V> {

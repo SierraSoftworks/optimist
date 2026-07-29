@@ -19,7 +19,7 @@ use super::error::Rejected;
 pub(super) fn router() -> Router<super::ApiState> {
     Router::new()
         .route("/api/v1/designs", get(list).post(create))
-        .route("/api/v1/designs/{design}", get(show))
+        .route("/api/v1/designs/{design}", get(show).delete(destroy))
         .route("/api/v1/designs/{design}/catalogue", get(catalogue))
         .route("/api/v1/designs/{design}/mutations", post(mutate))
 }
@@ -66,6 +66,22 @@ async fn show(
     Path(design): Path<String>,
 ) -> Result<Json<Snapshot>, Rejected> {
     Ok(Json(open(&workspace, &design)?.snapshot()))
+}
+
+/// Deletes a design, along with the answers computed for it.
+///
+/// A design that could not be read is deletable too. Being unable to remove the
+/// malformed thing cluttering the listing would leave editing a file by hand as
+/// the only way out, which is the situation this server exists to avoid.
+async fn destroy(
+    State(state): State<super::ApiState>,
+    Path(design): Path<String>,
+) -> Result<axum::http::StatusCode, Rejected> {
+    let id = DesignId::new(design)?;
+    state.workspace.remove(&id)?;
+    state.analyses.forget(id.as_str());
+    state.comparisons.forget(id.as_str());
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
 /// The definitions a design may draw on, shipped and project-local together.

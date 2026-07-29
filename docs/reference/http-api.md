@@ -110,6 +110,20 @@ applied mutation.
 
 ---
 
+## `DELETE /api/v1/designs/{design}`
+
+Deletes a design and everything under its directory. Responds `204 No Content`
+with no body, and `404 Not Found` if no design goes by that name.
+
+A design that cannot be read is deletable too, so a malformed one can be cleared
+out of the listing without going to find its directory by hand.
+
+The session is abandoned before the files go, so a write that was already waiting
+for the design to settle cannot put the directory back. Anyone still watching the
+feed keeps the design they had until they reconnect.
+
+---
+
 ## `GET /api/v1/designs/{design}/catalogue`
 
 Everything a design may draw on.

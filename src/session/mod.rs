@@ -87,6 +87,8 @@ struct State {
     sequence: u64,
     /// When the design last changed, if it has not been written since.
     touched: Option<Instant>,
+    /// Whether the design behind this session has been deleted.
+    discarded: bool,
 }
 
 /// A design as it stands, for answering a read.
@@ -122,6 +124,7 @@ impl Session {
                 mutators,
                 sequence: 0,
                 touched: None,
+                discarded: false,
             }),
             changes: broadcast::channel(FEED_DEPTH).0,
         })
@@ -186,9 +189,10 @@ impl Session {
     pub fn persist_if_due(&self) -> Result<bool, SchemaError> {
         let due = {
             let state = self.read();
-            state
-                .touched
-                .is_some_and(|touched| touched.elapsed() >= QUIET_PERIOD)
+            !state.discarded
+                && state
+                    .touched
+                    .is_some_and(|touched| touched.elapsed() >= QUIET_PERIOD)
         };
         if !due {
             return Ok(false);
@@ -200,6 +204,9 @@ impl Session {
     pub fn persist(&self) -> Result<(), SchemaError> {
         let (name, summary, model) = {
             let state = self.read();
+            if state.discarded {
+                return Ok(());
+            }
             (
                 state.name.clone(),
                 state.summary.clone(),
@@ -211,9 +218,21 @@ impl Session {
         Ok(())
     }
 
+    /// Abandons the session, so nothing it holds is ever written again.
+    ///
+    /// Called when the design has been deleted. A write already in flight would
+    /// otherwise recreate the directory from memory moments after it was
+    /// removed, leaving a design nobody asked for and nobody can account for.
+    pub fn discard(&self) {
+        let mut state = self.write();
+        state.discarded = true;
+        state.touched = None;
+    }
+
     /// Reports whether there are edits not yet on disk.
     pub fn pending(&self) -> bool {
-        self.read().touched.is_some()
+        let state = self.read();
+        !state.discarded && state.touched.is_some()
     }
 
     fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {

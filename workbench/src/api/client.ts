@@ -66,7 +66,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
   })
   if (response.ok) {
-    return (await response.json()) as T
+    // A deletion succeeds with no body, and asking for JSON that was never sent
+    // would turn it into a failure.
+    return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
   }
   // A refusal is expected to be JSON, but a proxy or a crash can produce
   // something else, and the status is worth reporting either way.
@@ -88,6 +90,10 @@ export const api = {
     }),
 
   design: (design: string) => request<Snapshot>(`/designs/${encodeURIComponent(design)}`),
+
+  /** Deletes a design and everything stored under it. */
+  remove: (design: string) =>
+    request<void>(`/designs/${encodeURIComponent(design)}`, { method: 'DELETE' }),
 
   catalogue: (design: string) =>
     request<Catalogue>(`/designs/${encodeURIComponent(design)}/catalogue`),

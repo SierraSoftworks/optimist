@@ -58,4 +58,22 @@ test.describe('routing', () => {
     await expect(page).toHaveURL(/\/d\/payments-ledger\/design/)
     await expect(page.getByTestId('design-picker')).toContainText('Payments Ledger')
   })
+
+  test('a design can be deleted from the listing', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('new-design').click()
+    await page.getByTestId('design-name').fill('Throwaway')
+    await page.getByTestId('create-design').click()
+    await expect(page).toHaveURL(/\/d\/throwaway\/design/)
+
+    await page.goto('/')
+    await page.getByTestId('delete-throwaway').click()
+    await page.locator('.el-popconfirm').getByRole('button', { name: 'Delete', exact: true }).click()
+
+    await expect(page.getByTestId('open-throwaway')).toHaveCount(0)
+    // The listing is what the server says, not what the page decided to hide.
+    await page.reload()
+    await expect(page.getByTestId('open-throwaway')).toHaveCount(0)
+    await expect(page.getByTestId('open-checkout')).toBeVisible()
+  })
 })

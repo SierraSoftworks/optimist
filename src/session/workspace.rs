@@ -255,6 +255,27 @@ impl Workspace {
         self.session(id)
     }
 
+    /// Deletes a design and everything under its directory.
+    ///
+    /// The session is dropped and abandoned before the files go, so a write that
+    /// was already waiting for the design to settle cannot put the directory
+    /// back. Anyone still holding a session keeps reading the design they had;
+    /// they are looking at something that no longer exists, which is the same
+    /// position they would be in had it been deleted a moment later.
+    pub fn remove(&self, id: &DesignId) -> Result<(), WorkspaceError> {
+        let directory = self.root.join(id.as_str());
+        if !directory.join("_system.yaml").is_file() {
+            return Err(WorkspaceError::NotFound { id: id.to_string() });
+        }
+        if let Some(session) = self.open().remove(id) {
+            session.discard();
+        }
+        fs::remove_dir_all(&directory).map_err(|source| WorkspaceError::Root {
+            path: directory.display().to_string(),
+            source,
+        })
+    }
+
     /// Opens a design, loading it if this is the first request for it.
     ///
     /// Everyone editing a design shares the returned session, which is what lets
