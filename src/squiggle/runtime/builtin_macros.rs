@@ -35,7 +35,7 @@ macro_rules! builtins {
         pub(super) fn call(
             $runtime: &mut Runtime,
             name: &str,
-            arguments: Vec<Value>,
+            arguments: &[Value],
             $span: Span,
         ) -> Result<Value, Diagnostic> {
             let _ = &$runtime;
@@ -162,7 +162,7 @@ macro_rules! builtins {
     (@invoke $arguments:ident, $body:expr;
         $( $parameter:ident : $kind:tt ),* $(,)?
     ) => {{
-        match $arguments.as_slice() {
+        match $arguments {
             [$(builtins!(@pattern $parameter : $kind)),*]
                 if true $(&& builtins!(@guard $parameter : $kind))* =>
             {

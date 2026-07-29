@@ -9,31 +9,31 @@ use super::{
 
 builtins! {
     context(runtime, span);
-        SampleSet | "SampleSet.make"(value: Number) => from_number(runtime, vec![Value::Number(value)], span),
-        SampleSet | "SampleSet.make"(values: [Number]) => from_list(vec![Value::Array(values.into_iter().map(Value::Number).collect())], span),
-        SampleSet | "SampleSet.make"(distribution: Distribution) => from_dist(runtime, vec![Value::Distribution(distribution.clone())], span),
-        SampleSet | "SampleSet.make"(function: Function) => from_function(runtime, vec![Value::Function(function.clone())], span),
-        "SampleSet.fromDist"(distribution: Distribution) => from_dist(runtime, vec![Value::Distribution(distribution.clone())], span),
-        "SampleSet.fromNumber"(value: Number) => from_number(runtime, vec![Value::Number(value)], span),
-        "SampleSet.fromList"(values: [Number]) => from_list(vec![Value::Array(values.into_iter().map(Value::Number).collect())], span),
-        "SampleSet.fromFn"(function: Function) => from_function(runtime, vec![Value::Function(function.clone())], span),
-        "SampleSet.toList"(distribution: Distribution) => to_list(runtime, vec![Value::Distribution(distribution.clone())], span),
-        "SampleSet.map"(distribution: Distribution, function: Function) => map(runtime, "SampleSet.map", vec![Value::Distribution(distribution.clone()), Value::Function(function.clone())], span),
-        "SampleSet.map2"(first: Distribution, second: Distribution, function: Function) => map(runtime, "SampleSet.map2", vec![Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Function(function.clone())], span),
-        "SampleSet.map3"(first: Distribution, second: Distribution, third: Distribution, function: Function) => map(runtime, "SampleSet.map3", vec![Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Distribution(third.clone()), Value::Function(function.clone())], span),
-        PointSet | "PointSet.make"(value: (Number | Distribution)) => point_set(vec![value.clone()], span),
-        "PointSet.fromNumber"(value: Number) => point_set(vec![Value::Number(value)], span),
-        "PointSet.fromDist"(distribution: Distribution) => point_set(vec![Value::Distribution(distribution.clone())], span),
-        "PointSet.downsample"(distribution: Distribution, count: NonNegativeInteger) => downsample(runtime, vec![Value::Distribution(distribution.clone()), Value::Number(count as f64)], span),
-    "PointSet.support"(distribution: Distribution) => support(vec![Value::Distribution(distribution.clone())], span),
+        SampleSet | "SampleSet.make"(value: Number) => from_number(runtime, &[Value::Number(value)], span),
+        SampleSet | "SampleSet.make"(values: [Number]) => from_list(&[Value::Array(values.into_iter().map(Value::Number).collect())], span),
+        SampleSet | "SampleSet.make"(distribution: Distribution) => from_dist(runtime, &[Value::Distribution(distribution.clone())], span),
+        SampleSet | "SampleSet.make"(function: Function) => from_function(runtime, &[Value::Function(function.clone())], span),
+        "SampleSet.fromDist"(distribution: Distribution) => from_dist(runtime, &[Value::Distribution(distribution.clone())], span),
+        "SampleSet.fromNumber"(value: Number) => from_number(runtime, &[Value::Number(value)], span),
+        "SampleSet.fromList"(values: [Number]) => from_list(&[Value::Array(values.into_iter().map(Value::Number).collect())], span),
+        "SampleSet.fromFn"(function: Function) => from_function(runtime, &[Value::Function(function.clone())], span),
+        "SampleSet.toList"(distribution: Distribution) => to_list(runtime, &[Value::Distribution(distribution.clone())], span),
+        "SampleSet.map"(distribution: Distribution, function: Function) => map(runtime, "SampleSet.map", &[Value::Distribution(distribution.clone()), Value::Function(function.clone())], span),
+        "SampleSet.map2"(first: Distribution, second: Distribution, function: Function) => map(runtime, "SampleSet.map2", &[Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Function(function.clone())], span),
+        "SampleSet.map3"(first: Distribution, second: Distribution, third: Distribution, function: Function) => map(runtime, "SampleSet.map3", &[Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Distribution(third.clone()), Value::Function(function.clone())], span),
+        PointSet | "PointSet.make"(value: (Number | Distribution)) => point_set(&[value.clone()], span),
+        "PointSet.fromNumber"(value: Number) => point_set(&[Value::Number(value)], span),
+        "PointSet.fromDist"(distribution: Distribution) => point_set(&[Value::Distribution(distribution.clone())], span),
+        "PointSet.downsample"(distribution: Distribution, count: NonNegativeInteger) => downsample(runtime, &[Value::Distribution(distribution.clone()), Value::Number(count as f64)], span),
+    "PointSet.support"(distribution: Distribution) => support(&[Value::Distribution(distribution.clone())], span),
 }
 
 fn from_dist(
     runtime: &mut Runtime,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+    arity(arguments, 1, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };
@@ -41,8 +41,8 @@ fn from_dist(
     finish(Distribution::from_samples(samples), span)
 }
 
-fn from_number(runtime: &Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn from_number(runtime: &Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     finish(
         Distribution::from_samples(vec![
             number(&arguments[0], span)?;
@@ -52,8 +52,8 @@ fn from_number(runtime: &Runtime, arguments: Vec<Value>, span: Span) -> Result<V
     )
 }
 
-fn from_list(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn from_list(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -70,10 +70,10 @@ fn from_list(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
 
 fn from_function(
     runtime: &mut Runtime,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+    arity(arguments, 1, span)?;
     let Value::Function(function) = &arguments[0] else {
         return Err(expected("Function", &arguments[0], span));
     };
@@ -86,15 +86,15 @@ fn from_function(
             Vec::new()
         };
         samples.push(number(
-            &runtime.call(arguments[0].clone(), args, span)?,
+            &runtime.call(arguments[0].clone(), &args, span)?,
             span,
         )?);
     }
     finish(Distribution::from_samples(samples), span)
 }
 
-fn to_list(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn to_list(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };
@@ -108,7 +108,7 @@ fn to_list(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<V
 fn map(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let distribution_count = match name {
@@ -116,7 +116,7 @@ fn map(
         "SampleSet.map2" => 2,
         _ => 3,
     };
-    arity(&arguments, distribution_count + 1, span)?;
+    arity(arguments, distribution_count + 1, span)?;
     let function = arguments
         .last()
         .cloned()
@@ -142,18 +142,17 @@ fn map(
         .min()
         .ok_or_else(|| Diagnostic::runtime("SampleSet.map requires a distribution", span))?;
     let mut samples = Vec::with_capacity(count);
+    let mut args = Vec::with_capacity(inputs.len());
     for index in 0..count {
-        let args = inputs
-            .iter()
-            .map(|values| Value::Number(values[index]))
-            .collect();
-        samples.push(number(&runtime.call(function.clone(), args, span)?, span)?);
+        args.clear();
+        args.extend(inputs.iter().map(|values| Value::Number(values[index])));
+        samples.push(number(&runtime.call(function.clone(), &args, span)?, span)?);
     }
     finish(Distribution::from_samples(samples), span)
 }
 
-fn point_set(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn point_set(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     match &arguments[0] {
         value @ Value::Distribution(_) => Ok(value.clone()),
         Value::Number(value) => finish(Distribution::point(*value), span),
@@ -163,10 +162,10 @@ fn point_set(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
 
 fn downsample(
     runtime: &mut Runtime,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+    arity(arguments, 2, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };
@@ -177,8 +176,8 @@ fn downsample(
     finish(Distribution::from_samples(samples), span)
 }
 
-fn support(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn support(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };

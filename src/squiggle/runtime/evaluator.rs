@@ -69,7 +69,7 @@ impl Runtime {
             for argument in &decorator.arguments {
                 arguments.push(self.eval_expr(argument, environment)?);
             }
-            value = self.call(function, arguments, decorator.span)?;
+            value = self.call(function, &arguments, decorator.span)?;
         }
         environment.define(&statement.name, value);
         Ok(())
@@ -139,11 +139,7 @@ impl Runtime {
                 arguments,
             } => {
                 let function = self.eval_expr(function, environment)?;
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| self.eval_expr(argument, environment))
-                    .collect::<Result<Vec<_>, _>>()?;
-                self.call(function, arguments, expression.span)
+                self.applied(function, arguments, None, environment, expression.span)
             }
             ExpressionKind::Lookup { value, key } => {
                 // `a.b` parses to a lookup with a literal key, so the key is
@@ -163,16 +159,40 @@ impl Runtime {
                 arguments,
             } => {
                 let function = self.eval_expr(function, environment)?;
-                let mut values = vec![self.eval_expr(value, environment)?];
-                values.extend(
-                    arguments
-                        .iter()
-                        .map(|argument| self.eval_expr(argument, environment))
-                        .collect::<Result<Vec<_>, _>>()?,
-                );
-                self.call(function, values, expression.span)
+                let piped = self.eval_expr(value, environment)?;
+                self.applied(function, arguments, Some(piped), environment, expression.span)
             }
         }
+    }
+
+    /// Evaluates the arguments of a call and applies `function` to them.
+    ///
+    /// The arguments go into a buffer this runtime lends out and takes back,
+    /// rather than a fresh allocation per call, because builtins only ever read
+    /// the list. A buffer abandoned by a failing argument is simply not returned:
+    /// a diagnostic ends the whole run, so the pool refilling afterwards costs
+    /// nothing worth branching for on the path that succeeds.
+    ///
+    /// A pool rather than one shared stack because a builtin may call back into
+    /// the evaluator — `List.map` does — while its own arguments are still
+    /// borrowed.
+    fn applied(
+        &mut self,
+        function: Value,
+        arguments: &[Expression],
+        piped: Option<Value>,
+        environment: &Environment,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let mut values = self.buffers.pop().unwrap_or_default();
+        values.extend(piped);
+        for argument in arguments {
+            values.push(self.eval_expr(argument, environment)?);
+        }
+        let result = self.call(function, &values, span);
+        values.clear();
+        self.buffers.push(values);
+        result
     }
 
     fn eval_binary(
@@ -199,7 +219,7 @@ impl Runtime {
     pub(super) fn call(
         &mut self,
         function: Value,
-        arguments: Vec<Value>,
+        arguments: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
         self.step(span)?;
@@ -231,10 +251,10 @@ impl Runtime {
                 if let Some(name) = name {
                     call_environment.define(name.as_str(), Value::Function(function.clone()));
                 }
-                for (parameter, argument) in parameters.iter().zip(&arguments) {
+                for (parameter, argument) in parameters.iter().zip(arguments) {
                     call_environment.define(&parameter.name, argument.clone());
                 }
-                for (parameter, argument) in parameters.iter().zip(&arguments) {
+                for (parameter, argument) in parameters.iter().zip(arguments) {
                     let Some(annotation) = &parameter.annotation else {
                         continue;
                     };
@@ -242,7 +262,7 @@ impl Runtime {
                     let valid = match validation {
                         Value::Domain(domain) => domain.contains(argument),
                         Value::Function(_) => {
-                            match self.call(validation, vec![argument.clone()], parameter.span)? {
+                            match self.call(validation, &[argument.clone()], parameter.span)? {
                                 Value::Boolean(valid) => valid,
                                 value => {
                                     return Err(type_error(

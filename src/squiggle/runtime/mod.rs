@@ -77,6 +77,8 @@ pub struct Runtime {
     /// Scope holding the values passed to [`Runtime::evaluate_values`], reused so
     /// that repeatedly binding the same names costs only the values.
     bindings: Environment,
+    /// Argument lists lent to calls and taken back, so a call allocates nothing.
+    pub(super) buffers: Vec<Vec<Value>>,
 }
 
 /// The value and named exports produced by evaluating a Squiggle module.
@@ -103,6 +105,7 @@ impl Runtime {
             ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
+            buffers: Vec::new(),
         }
     }
 
@@ -125,6 +128,7 @@ impl Runtime {
             ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
+            buffers: Vec::new(),
         })
     }
 

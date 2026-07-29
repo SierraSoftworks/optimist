@@ -57,7 +57,7 @@ fn map_keys(
     for (key, value) in values {
         let mapped = runtime.call(
             Value::Function(function.clone()),
-            vec![Value::String(key.clone())],
+            &[Value::String(key.clone())],
             span,
         )?;
         let Value::String(mapped) = mapped else {
