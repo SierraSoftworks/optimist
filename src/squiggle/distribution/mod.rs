@@ -65,6 +65,10 @@ pub(super) enum Kind {
     Triangular(f64, f64, f64),
     /// Empirical draws, shared between clones so that passing a sampled
     /// quantity around costs a reference count rather than a copy of every draw.
+    ///
+    /// Packed rather than sharing the buffer they were built in. Copying the
+    /// draws once costs less than the extra indirection would cost on every
+    /// element read thereafter, which was measured rather than assumed.
     Samples(Arc<[f64]>),
 }
 
