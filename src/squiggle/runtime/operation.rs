@@ -1,27 +1,32 @@
 use std::sync::Arc;
 
-use crate::squiggle::{Diagnostic, Distribution, DurationValue, Value, ast::Span};
+use crate::squiggle::{
+    Diagnostic, Distribution, DurationValue, Value,
+    ast::{BinaryOperator, Span, UnaryOperator},
+};
 
 use super::Runtime;
 
 impl Runtime {
     pub(super) fn unary(
         &mut self,
-        operator: &str,
+        operator: UnaryOperator,
         value: Value,
         span: Span,
     ) -> Result<Value, Diagnostic> {
+        use UnaryOperator::{Negate, NegateEach, Not};
         match (operator, value) {
-            ("!", Value::Boolean(value)) => Ok(Value::Boolean(!value)),
-            ("!", Value::Number(value)) => Ok(Value::Boolean(value == 0.0)),
-            ("-" | ".-", Value::Number(value)) => Ok(Value::Number(-value)),
-            ("-", Value::Duration(value)) => duration(-value.milliseconds(), span),
-            ("-" | ".-", Value::Distribution(value)) => {
+            (Not, Value::Boolean(value)) => Ok(Value::Boolean(!value)),
+            (Not, Value::Number(value)) => Ok(Value::Boolean(value == 0.0)),
+            (Negate | NegateEach, Value::Number(value)) => Ok(Value::Number(-value)),
+            (Negate, Value::Duration(value)) => duration(-value.milliseconds(), span),
+            (Negate | NegateEach, Value::Distribution(value)) => {
                 self.transform_distribution(value, |sample| -sample, span)
             }
-            (_, value) => Err(Diagnostic::runtime(
+            (operator, value) => Err(Diagnostic::runtime(
                 format!(
-                    "operator '{operator}' does not accept {}",
+                    "operator '{}' does not accept {}",
+                    operator.spelling(),
                     value.type_name()
                 ),
                 span,
@@ -31,12 +36,15 @@ impl Runtime {
 
     pub(super) fn binary(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: Value,
         right: Value,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        if operator == "to" {
+        use BinaryOperator::{
+            Add, And, Equal, Greater, GreaterOrEqual, Interval, Less, LessOrEqual, NotEqual, Or,
+        };
+        if operator == Interval {
             let (Value::Number(low), Value::Number(high)) = (left, right) else {
                 return Err(Diagnostic::runtime("'to' requires Number operands", span));
             };
@@ -62,11 +70,13 @@ impl Runtime {
             return temporal(operator, left, right, span);
         }
         match operator {
-            "==" => return Ok(Value::Boolean(left == right)),
-            "!=" => return Ok(Value::Boolean(left != right)),
-            "&&" | "||" => return boolean(operator, left, right, span),
-            "<" | "<=" | ">" | ">=" => return compare(operator, left, right, span),
-            "+" if matches!((&left, &right), (Value::String(_), Value::String(_))) => {
+            Equal => return Ok(Value::Boolean(left == right)),
+            NotEqual => return Ok(Value::Boolean(left != right)),
+            And | Or => return boolean(operator, left, right, span),
+            Less | LessOrEqual | Greater | GreaterOrEqual => {
+                return compare(operator, left, right, span);
+            }
+            Add if matches!((&left, &right), (Value::String(_), Value::String(_))) => {
                 if let (Value::String(left), Value::String(right)) = (left, right) {
                     return Ok(Value::String(left + &right));
                 }
@@ -75,7 +85,7 @@ impl Runtime {
                     span,
                 ));
             }
-            "+" if matches!((&left, &right), (Value::Array(_), Value::Array(_))) => {
+            Add if matches!((&left, &right), (Value::Array(_), Value::Array(_))) => {
                 if let (Value::Array(mut left), Value::Array(right)) = (left, right) {
                     left.extend(right);
                     return Ok(Value::Array(left));
@@ -92,7 +102,7 @@ impl Runtime {
 
     fn numeric_binary(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: Value,
         right: Value,
         span: Span,
@@ -112,7 +122,8 @@ impl Runtime {
             }
             (left, right) => Err(Diagnostic::runtime(
                 format!(
-                    "operator '{operator}' does not accept {} and {}",
+                    "operator '{}' does not accept {} and {}",
+                    operator.spelling(),
                     left.type_name(),
                     right.type_name()
                 ),
@@ -125,7 +136,7 @@ impl Runtime {
         &mut self,
         distribution: Distribution,
         left: Option<f64>,
-        operator: &str,
+        operator: BinaryOperator,
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
@@ -158,7 +169,7 @@ impl Runtime {
         &mut self,
         left: Distribution,
         right: Distribution,
-        operator: &str,
+        operator: BinaryOperator,
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let numeric = Numeric::parse(operator)
@@ -185,7 +196,7 @@ impl Runtime {
         let seed = distribution.stream(&mut self.rng);
         let drawn = distribution.drawn(seed, ensemble);
         let samples: Arc<[f64]> = drawn.iter().map(|draw| transform(*draw)).collect();
-        finished(samples, "transform", span)
+        finished(samples, BinaryOperator::Multiply, span)
     }
 }
 
@@ -196,7 +207,7 @@ impl Runtime {
 /// applying one arithmetic operation across a thousand draws and then asking
 /// whether a thousand results are finite are both loops the compiler can run
 /// several draws at a time.
-fn finished(samples: Arc<[f64]>, operator: &str, span: Span) -> Result<Value, Diagnostic> {
+fn finished(samples: Arc<[f64]>, operator: BinaryOperator, span: Span) -> Result<Value, Diagnostic> {
     if !samples.iter().all(|sample| sample.is_finite()) {
         return Err(Diagnostic::runtime(non_finite(operator), span));
     }
@@ -205,13 +216,13 @@ fn finished(samples: Arc<[f64]>, operator: &str, span: Span) -> Result<Value, Di
         .map_err(|message| Diagnostic::runtime(message, span))
 }
 
-/// A numeric operator, resolved before the loop that applies it to every draw.
+/// The arithmetic an operator performs on one pair of draws.
 ///
-/// Distribution algebra applies one operator across a whole sample set, so
-/// matching the operator's spelling inside that loop costs a string comparison
-/// per draw, of which a solve performs hundreds of millions. The spelling cannot
-/// change part-way through, so it is resolved once and the loop body becomes a
-/// single arithmetic instruction the compiler can keep in registers.
+/// Distribution algebra applies one operator across a whole sample set, so the
+/// choice is made once outside the loop and the loop body becomes a single
+/// arithmetic instruction the compiler can keep in registers. The elementwise
+/// spellings collapse into the plain ones here: they differ only in the operands
+/// they accept, which has already been decided by the time a draw is reached.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Numeric {
     Add,
@@ -222,13 +233,14 @@ enum Numeric {
 }
 
 impl Numeric {
-    fn parse(operator: &str) -> Option<Self> {
+    fn parse(operator: BinaryOperator) -> Option<Self> {
+        use BinaryOperator as Operator;
         Some(match operator {
-            "+" | ".+" => Self::Add,
-            "-" | ".-" => Self::Subtract,
-            "*" | ".*" => Self::Multiply,
-            "/" | "./" => Self::Divide,
-            "^" | ".^" => Self::Raise,
+            Operator::Add | Operator::AddEach => Self::Add,
+            Operator::Subtract | Operator::SubtractEach => Self::Subtract,
+            Operator::Multiply | Operator::MultiplyEach => Self::Multiply,
+            Operator::Divide | Operator::DivideEach => Self::Divide,
+            Operator::Power | Operator::PowerEach => Self::Raise,
             _ => return None,
         })
     }
@@ -245,15 +257,18 @@ impl Numeric {
     }
 }
 
-fn unknown(operator: &str) -> String {
-    format!("unknown numeric operator '{operator}'")
+fn unknown(operator: BinaryOperator) -> String {
+    format!("unknown numeric operator '{}'", operator.spelling())
 }
 
-fn non_finite(operator: &str) -> String {
-    format!("operator '{operator}' produced a non-finite value")
+fn non_finite(operator: BinaryOperator) -> String {
+    format!(
+        "operator '{}' produced a non-finite value",
+        operator.spelling()
+    )
 }
 
-fn scalar(operator: &str, left: f64, right: f64) -> Result<f64, String> {
+fn scalar(operator: BinaryOperator, left: f64, right: f64) -> Result<f64, String> {
     let value = Numeric::parse(operator)
         .ok_or_else(|| unknown(operator))?
         .apply(left, right);
@@ -263,76 +278,98 @@ fn scalar(operator: &str, left: f64, right: f64) -> Result<f64, String> {
         .ok_or_else(|| non_finite(operator))
 }
 
-fn boolean(operator: &str, left: Value, right: Value, span: Span) -> Result<Value, Diagnostic> {
+fn boolean(
+    operator: BinaryOperator,
+    left: Value,
+    right: Value,
+    span: Span,
+) -> Result<Value, Diagnostic> {
     let (Value::Boolean(left), Value::Boolean(right)) = (&left, &right) else {
         return Err(Diagnostic::runtime(
-            format!("operator '{operator}' requires Boolean operands"),
+            format!("operator '{}' requires Boolean operands", operator.spelling()),
             span,
         ));
     };
-    Ok(Value::Boolean(if operator == "&&" {
+    Ok(Value::Boolean(if operator == BinaryOperator::And {
         *left && *right
     } else {
         *left || *right
     }))
 }
 
-fn compare(operator: &str, left: Value, right: Value, span: Span) -> Result<Value, Diagnostic> {
+fn compare(
+    operator: BinaryOperator,
+    left: Value,
+    right: Value,
+    span: Span,
+) -> Result<Value, Diagnostic> {
     let (Value::Number(left), Value::Number(right)) = (left, right) else {
         return Err(Diagnostic::runtime(
-            format!("operator '{operator}' requires Number operands"),
+            format!("operator '{}' requires Number operands", operator.spelling()),
             span,
         ));
     };
-    Ok(Value::Boolean(match operator {
-        "<" => left < right,
-        "<=" => left <= right,
-        ">" => left > right,
-        _ => left >= right,
-    }))
+    Ok(Value::Boolean(order(operator, left, right)))
 }
 
-fn temporal(operator: &str, left: Value, right: Value, span: Span) -> Result<Value, Diagnostic> {
+fn temporal(
+    operator: BinaryOperator,
+    left: Value,
+    right: Value,
+    span: Span,
+) -> Result<Value, Diagnostic> {
+    use BinaryOperator::{Add, Divide, Greater, GreaterOrEqual, Less, LessOrEqual, Multiply, Subtract};
     match (operator, left, right) {
-        ("+", Value::Date(date), Value::Duration(duration))
-        | ("+", Value::Duration(duration), Value::Date(date)) => {
+        (Add, Value::Date(date), Value::Duration(duration))
+        | (Add, Value::Duration(duration), Value::Date(date)) => {
             Ok(Value::Date(date.add(duration)))
         }
-        ("-", Value::Date(left), Value::Date(right)) => Ok(Value::Duration(left.subtract(right))),
-        ("-", Value::Date(date), Value::Duration(duration)) => {
+        (Subtract, Value::Date(left), Value::Date(right)) => {
+            Ok(Value::Duration(left.subtract(right)))
+        }
+        (Subtract, Value::Date(date), Value::Duration(duration)) => {
             let negative = DurationValue::from_milliseconds(-duration.milliseconds())
                 .map_err(|error| Diagnostic::runtime(error, span))?;
             Ok(Value::Date(date.add(negative)))
         }
-        ("+", Value::Duration(left), Value::Duration(right)) => {
+        (Add, Value::Duration(left), Value::Duration(right)) => {
             duration(left.milliseconds() + right.milliseconds(), span)
         }
-        ("-", Value::Duration(left), Value::Duration(right)) => {
+        (Subtract, Value::Duration(left), Value::Duration(right)) => {
             duration(left.milliseconds() - right.milliseconds(), span)
         }
-        ("*", Value::Duration(value), Value::Number(scale))
-        | ("*", Value::Number(scale), Value::Duration(value)) => {
+        (Multiply, Value::Duration(value), Value::Number(scale))
+        | (Multiply, Value::Number(scale), Value::Duration(value)) => {
             duration(value.milliseconds() * scale, span)
         }
-        ("/", Value::Duration(left), Value::Duration(right)) => {
+        (Divide, Value::Duration(left), Value::Duration(right)) => {
             Ok(Value::Number(left.milliseconds() / right.milliseconds()))
         }
-        ("/", Value::Duration(value), Value::Number(divisor)) => {
+        (Divide, Value::Duration(value), Value::Number(divisor)) => {
             duration(value.milliseconds() / divisor, span)
         }
-        (operator @ ("<" | "<=" | ">" | ">="), Value::Date(left), Value::Date(right)) => Ok(
-            Value::Boolean(order(operator, left.unix_seconds(), right.unix_seconds())),
-        ),
-        (operator @ ("<" | "<=" | ">" | ">="), Value::Duration(left), Value::Duration(right)) => {
-            Ok(Value::Boolean(order(
-                operator,
-                left.milliseconds(),
-                right.milliseconds(),
-            )))
-        }
+        (
+            operator @ (Less | LessOrEqual | Greater | GreaterOrEqual),
+            Value::Date(left),
+            Value::Date(right),
+        ) => Ok(Value::Boolean(order(
+            operator,
+            left.unix_seconds(),
+            right.unix_seconds(),
+        ))),
+        (
+            operator @ (Less | LessOrEqual | Greater | GreaterOrEqual),
+            Value::Duration(left),
+            Value::Duration(right),
+        ) => Ok(Value::Boolean(order(
+            operator,
+            left.milliseconds(),
+            right.milliseconds(),
+        ))),
         (operator, left, right) => Err(Diagnostic::runtime(
             format!(
-                "operator '{operator}' does not accept {} and {}",
+                "operator '{}' does not accept {} and {}",
+                operator.spelling(),
                 left.type_name(),
                 right.type_name()
             ),
@@ -347,11 +384,11 @@ fn duration(milliseconds: f64, span: Span) -> Result<Value, Diagnostic> {
         .map_err(|error| Diagnostic::runtime(error, span))
 }
 
-fn order(operator: &str, left: f64, right: f64) -> bool {
+fn order(operator: BinaryOperator, left: f64, right: f64) -> bool {
     match operator {
-        "<" => left < right,
-        "<=" => left <= right,
-        ">" => left > right,
+        BinaryOperator::Less => left < right,
+        BinaryOperator::LessOrEqual => left <= right,
+        BinaryOperator::Greater => left > right,
         _ => left >= right,
     }
 }

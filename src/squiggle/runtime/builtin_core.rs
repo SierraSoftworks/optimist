@@ -1,25 +1,28 @@
-use crate::squiggle::{Diagnostic, Value, ast::Span};
+use crate::squiggle::{
+    Diagnostic, Value,
+    ast::{BinaryOperator as Infix, Span, UnaryOperator as Prefix},
+};
 
 use super::Runtime;
 
 builtins! {
     context(runtime, span);
-    add(left: *, right: *) => runtime.binary("+", left.clone(), right.clone(), span),
-    subtract(left: *, right: *) => runtime.binary("-", left.clone(), right.clone(), span),
-    multiply(left: *, right: *) => runtime.binary("*", left.clone(), right.clone(), span),
-    divide(left: *, right: *) => runtime.binary("/", left.clone(), right.clone(), span),
-    pow(left: *, right: *) => runtime.binary("^", left.clone(), right.clone(), span),
-    equal(left: *, right: *) => runtime.binary("==", left.clone(), right.clone(), span),
-    unequal(left: *, right: *) => runtime.binary("!=", left.clone(), right.clone(), span),
-    smaller(left: *, right: *) => runtime.binary("<", left.clone(), right.clone(), span),
-    smallerEq(left: *, right: *) => runtime.binary("<=", left.clone(), right.clone(), span),
-    larger(left: *, right: *) => runtime.binary(">", left.clone(), right.clone(), span),
-    largerEq(left: *, right: *) => runtime.binary(">=", left.clone(), right.clone(), span),
-    and(left: Boolean, right: Boolean) => runtime.binary("&&", Value::Boolean(left), Value::Boolean(right), span),
-    or(left: Boolean, right: Boolean) => runtime.binary("||", Value::Boolean(left), Value::Boolean(right), span),
-    not(value: Boolean) => runtime.unary("!", Value::Boolean(value), span),
-    not(value: Number) => runtime.unary("!", Value::Number(value), span),
-    unaryMinus(value: *) => runtime.unary("-", value.clone(), span),
+    add(left: *, right: *) => runtime.binary(Infix::Add, left.clone(), right.clone(), span),
+    subtract(left: *, right: *) => runtime.binary(Infix::Subtract, left.clone(), right.clone(), span),
+    multiply(left: *, right: *) => runtime.binary(Infix::Multiply, left.clone(), right.clone(), span),
+    divide(left: *, right: *) => runtime.binary(Infix::Divide, left.clone(), right.clone(), span),
+    pow(left: *, right: *) => runtime.binary(Infix::Power, left.clone(), right.clone(), span),
+    equal(left: *, right: *) => runtime.binary(Infix::Equal, left.clone(), right.clone(), span),
+    unequal(left: *, right: *) => runtime.binary(Infix::NotEqual, left.clone(), right.clone(), span),
+    smaller(left: *, right: *) => runtime.binary(Infix::Less, left.clone(), right.clone(), span),
+    smallerEq(left: *, right: *) => runtime.binary(Infix::LessOrEqual, left.clone(), right.clone(), span),
+    larger(left: *, right: *) => runtime.binary(Infix::Greater, left.clone(), right.clone(), span),
+    largerEq(left: *, right: *) => runtime.binary(Infix::GreaterOrEqual, left.clone(), right.clone(), span),
+    and(left: Boolean, right: Boolean) => runtime.binary(Infix::And, Value::Boolean(left), Value::Boolean(right), span),
+    or(left: Boolean, right: Boolean) => runtime.binary(Infix::Or, Value::Boolean(left), Value::Boolean(right), span),
+    not(value: Boolean) => runtime.unary(Prefix::Not, Value::Boolean(value), span),
+    not(value: Number) => runtime.unary(Prefix::Not, Value::Number(value), span),
+    unaryMinus(value: *) => runtime.unary(Prefix::Negate, value.clone(), span),
     concat(...values: String) => Ok(Value::String(values.into_iter().fold(
         String::new(),
         |mut output, value| {

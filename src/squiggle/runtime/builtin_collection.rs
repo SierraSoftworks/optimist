@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use crate::squiggle::{Diagnostic, Value, ast::Span};
+use crate::squiggle::{
+    Diagnostic, Value,
+    ast::{BinaryOperator, Span},
+};
 
 use super::{
     Runtime,
@@ -164,7 +167,11 @@ fn fold(
         return Err(expected("Array", &arguments[0], span));
     };
     let mut result = Value::Number(if name == "sum" { 0.0 } else { 1.0 });
-    let operator = if name == "sum" { "+" } else { "*" };
+    let operator = if name == "sum" {
+        BinaryOperator::Add
+    } else {
+        BinaryOperator::Multiply
+    };
     for value in values {
         result = runtime.binary(operator, result, value.clone(), span)?;
     }
@@ -434,7 +441,7 @@ fn dictionary(
             for (key, value) in values.iter() {
                 result.insert(
                     key.clone(),
-                    runtime.call(arguments[1].clone(), &[value.clone()], span)?,
+                    runtime.call(arguments[1].clone(), std::slice::from_ref(value), span)?,
                 );
             }
             Ok(Value::dictionary(result))

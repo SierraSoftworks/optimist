@@ -1,7 +1,7 @@
 use chumsky::{input::ValueInput, prelude::*};
 
 use crate::squiggle::{
-    ast::{Expression, ExpressionKind},
+    ast::{Expression, ExpressionKind, UnaryOperator},
     token::Token,
 };
 
@@ -72,9 +72,12 @@ where
     let unary =
         recursive(|unary| {
             select! {
-        Token::Operator(operator) if ["-", ".-", "!"].contains(&operator.as_str()) => operator
+        Token::Operator(operator) if UnaryOperator::parse(&operator).is_some() => operator
     }.then_ignore(separators.clone()).then(unary).map_with(|(operator, value), emitter| expression(
-        ExpressionKind::Unary { operator, expression: Box::new(value) }, emitter.span(),
+        ExpressionKind::Unary {
+            operator: UnaryOperator::parse(&operator).expect("a parsed prefix operator"),
+            expression: Box::new(value),
+        }, emitter.span(),
     )).or(post.clone()).boxed()
         });
     unary

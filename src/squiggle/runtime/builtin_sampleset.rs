@@ -21,7 +21,7 @@ builtins! {
         "SampleSet.map"(distribution: Distribution, function: Function) => map(runtime, "SampleSet.map", &[Value::Distribution(distribution.clone()), Value::Function(function.clone())], span),
         "SampleSet.map2"(first: Distribution, second: Distribution, function: Function) => map(runtime, "SampleSet.map2", &[Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Function(function.clone())], span),
         "SampleSet.map3"(first: Distribution, second: Distribution, third: Distribution, function: Function) => map(runtime, "SampleSet.map3", &[Value::Distribution(first.clone()), Value::Distribution(second.clone()), Value::Distribution(third.clone()), Value::Function(function.clone())], span),
-        PointSet | "PointSet.make"(value: (Number | Distribution)) => point_set(&[value.clone()], span),
+        PointSet | "PointSet.make"(value: (Number | Distribution)) => point_set(std::slice::from_ref(value), span),
         "PointSet.fromNumber"(value: Number) => point_set(&[Value::Number(value)], span),
         "PointSet.fromDist"(distribution: Distribution) => point_set(&[Value::Distribution(distribution.clone())], span),
         "PointSet.downsample"(distribution: Distribution, count: NonNegativeInteger) => downsample(runtime, &[Value::Distribution(distribution.clone()), Value::Number(count as f64)], span),

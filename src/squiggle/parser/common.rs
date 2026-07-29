@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 
 use crate::squiggle::{
-    ast::{Expression, ExpressionKind, Span, Statement},
+    ast::{BinaryOperator, Expression, ExpressionKind, Span, Statement},
     token::Token,
 };
 
@@ -35,7 +35,8 @@ pub(super) fn binary(
 ) -> Expression {
     expression(
         ExpressionKind::Binary {
-            operator,
+            // The precedence tables above only offer spellings this accepts.
+            operator: BinaryOperator::parse(&operator).expect("a parsed infix operator"),
             left: Box::new(left),
             right: Box::new(right),
         },

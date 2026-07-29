@@ -114,15 +114,15 @@ pub enum ExpressionKind {
     },
     /// A prefix operation.
     Unary {
-        /// Operator spelling.
-        operator: String,
+        /// Operator applied to the operand.
+        operator: UnaryOperator,
         /// Operand.
         expression: Box<Expression>,
     },
     /// An infix operation.
     Binary {
-        /// Operator spelling.
-        operator: String,
+        /// Operator applied to the operands.
+        operator: BinaryOperator,
         /// Left operand.
         left: Box<Expression>,
         /// Right operand.
@@ -160,6 +160,144 @@ pub enum ExpressionKind {
         /// Remaining arguments.
         arguments: Vec<Expression>,
     },
+}
+
+/// A prefix operator, resolved from its spelling while the module is parsed.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnaryOperator {
+    /// Logical negation, `!`.
+    Not,
+    /// Arithmetic negation, `-`.
+    Negate,
+    /// Arithmetic negation applied per draw, `.-`.
+    NegateEach,
+}
+
+impl UnaryOperator {
+    /// Resolves an operator from the way it was written, if it is one.
+    pub fn parse(spelling: &str) -> Option<Self> {
+        Some(match spelling {
+            "!" => Self::Not,
+            "-" => Self::Negate,
+            ".-" => Self::NegateEach,
+            _ => return None,
+        })
+    }
+
+    /// Returns the spelling this operator was written with.
+    pub fn spelling(self) -> &'static str {
+        match self {
+            Self::Not => "!",
+            Self::Negate => "-",
+            Self::NegateEach => ".-",
+        }
+    }
+}
+
+/// An infix operator, resolved from its spelling while the module is parsed.
+///
+/// Held as an operator rather than as the text that produced it because the
+/// spelling is only useful in a diagnostic, while the choice it encodes is made
+/// again for every evaluation of the expression. Deciding it once, where the
+/// text is already in hand, leaves the evaluator with a value to switch on.
+///
+/// The `.`-prefixed forms are the elementwise spellings. They agree with their
+/// plain counterparts on numbers and distributions and differ on the operands
+/// `+` also accepts: `"a" + "b"` joins two strings, where `"a" .+ "b"` is an
+/// arithmetic operation on values that are not numbers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryOperator {
+    /// Addition, `+`.
+    Add,
+    /// Subtraction, `-`.
+    Subtract,
+    /// Multiplication, `*`.
+    Multiply,
+    /// Division, `/`.
+    Divide,
+    /// Exponentiation, `^`.
+    Power,
+    /// Addition applied per draw, `.+`.
+    AddEach,
+    /// Subtraction applied per draw, `.-`.
+    SubtractEach,
+    /// Multiplication applied per draw, `.*`.
+    MultiplyEach,
+    /// Division applied per draw, `./`.
+    DivideEach,
+    /// Exponentiation applied per draw, `.^`.
+    PowerEach,
+    /// Equality, `==`.
+    Equal,
+    /// Inequality, `!=`.
+    NotEqual,
+    /// Ordering, `<`.
+    Less,
+    /// Ordering, `<=`.
+    LessOrEqual,
+    /// Ordering, `>`.
+    Greater,
+    /// Ordering, `>=`.
+    GreaterOrEqual,
+    /// Short-circuiting conjunction, `&&`.
+    And,
+    /// Short-circuiting disjunction, `||`.
+    Or,
+    /// A lognormal credible interval, `to`.
+    Interval,
+}
+
+impl BinaryOperator {
+    /// Resolves an operator from the way it was written, if it is one.
+    pub fn parse(spelling: &str) -> Option<Self> {
+        Some(match spelling {
+            "+" => Self::Add,
+            "-" => Self::Subtract,
+            "*" => Self::Multiply,
+            "/" => Self::Divide,
+            "^" => Self::Power,
+            ".+" => Self::AddEach,
+            ".-" => Self::SubtractEach,
+            ".*" => Self::MultiplyEach,
+            "./" => Self::DivideEach,
+            ".^" => Self::PowerEach,
+            "==" => Self::Equal,
+            "!=" => Self::NotEqual,
+            "<" => Self::Less,
+            "<=" => Self::LessOrEqual,
+            ">" => Self::Greater,
+            ">=" => Self::GreaterOrEqual,
+            "&&" => Self::And,
+            "||" => Self::Or,
+            "to" => Self::Interval,
+            _ => return None,
+        })
+    }
+
+    /// Returns the spelling this operator was written with.
+    pub fn spelling(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::Subtract => "-",
+            Self::Multiply => "*",
+            Self::Divide => "/",
+            Self::Power => "^",
+            Self::AddEach => ".+",
+            Self::SubtractEach => ".-",
+            Self::MultiplyEach => ".*",
+            Self::DivideEach => "./",
+            Self::PowerEach => ".^",
+            Self::Equal => "==",
+            Self::NotEqual => "!=",
+            Self::Less => "<",
+            Self::LessOrEqual => "<=",
+            Self::Greater => ">",
+            Self::GreaterOrEqual => ">=",
+            Self::And => "&&",
+            Self::Or => "||",
+            Self::Interval => "to",
+        }
+    }
 }
 
 /// A multiplicative unit type expression used by `::` signatures.

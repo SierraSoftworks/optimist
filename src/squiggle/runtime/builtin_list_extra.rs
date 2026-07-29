@@ -213,7 +213,7 @@ fn reduce(
             span,
         )?;
         if name == "List.reduceWhile" {
-            match runtime.call(arguments[3].clone(), &[next.clone()], span)? {
+            match runtime.call(arguments[3].clone(), std::slice::from_ref(&next), span)? {
                 Value::Boolean(true) => {}
                 Value::Boolean(false) => break,
                 value => return Err(expected("Boolean", &value, span)),
@@ -240,7 +240,7 @@ fn predicate_or_order(
             .map(|value| {
                 Ok((
                     number(
-                        &runtime.call(arguments[1].clone(), &[value.clone()], span)?,
+                        &runtime.call(arguments[1].clone(), std::slice::from_ref(value), span)?,
                         span,
                     )?,
                     value.clone(),
@@ -263,7 +263,7 @@ fn predicate_or_order(
         };
     }
     for (index, value) in values.iter().enumerate() {
-        let result = runtime.call(arguments[1].clone(), &[value.clone()], span)?;
+        let result = runtime.call(arguments[1].clone(), std::slice::from_ref(value), span)?;
         let Value::Boolean(matches) = result else {
             return Err(expected("Boolean", &result, span));
         };

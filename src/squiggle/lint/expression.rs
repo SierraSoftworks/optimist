@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::squiggle::ast::{Expression, ExpressionKind};
+use crate::squiggle::ast::{BinaryOperator, Expression, ExpressionKind, UnaryOperator};
 
 use super::{
     checker::Checker,
@@ -59,7 +59,7 @@ impl Checker {
                 expression: value,
             } => {
                 let value = self.infer(value);
-                self.infer_unary(operator, value, expression.span)
+                self.infer_unary(*operator, value, expression.span)
             }
             ExpressionKind::Binary {
                 operator,
@@ -68,7 +68,7 @@ impl Checker {
             } => {
                 let left = self.infer(left);
                 let right = self.infer(right);
-                self.infer_binary(operator, left, right, expression.span)
+                self.infer_binary(*operator, left, right, expression.span)
             }
             ExpressionKind::Conditional {
                 condition,
@@ -132,21 +132,23 @@ impl Checker {
 
     pub(super) fn infer_unary(
         &mut self,
-        operator: &str,
+        operator: UnaryOperator,
         value: Type,
         span: crate::squiggle::ast::Span,
     ) -> Type {
+        use UnaryOperator::{Negate, NegateEach, Not};
         match (operator, value) {
-            ("!", Type::Boolean | Type::Number { .. }) => Type::Boolean,
+            (Not, Type::Boolean | Type::Number { .. }) => Type::Boolean,
             (
-                "-" | ".-",
+                Negate | NegateEach,
                 value @ (Type::Number { .. } | Type::Distribution(_) | Type::Duration),
             ) => value,
             (_, Type::Unknown) => Type::Unknown,
             (operator, value) => {
                 self.report(
                     format!(
-                        "operator '{operator}' does not accept {}",
+                        "operator '{}' does not accept {}",
+                        operator.spelling(),
                         value.display_name()
                     ),
                     span,
@@ -158,50 +160,56 @@ impl Checker {
 
     pub(super) fn infer_binary(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: Type,
         right: Type,
         span: crate::squiggle::ast::Span,
     ) -> Type {
+        use BinaryOperator as Infix;
         if matches!(left, Type::Unknown) || matches!(right, Type::Unknown) {
             return Type::Unknown;
         }
         match operator {
-            "==" | "!=" => Type::Boolean,
-            "&&" | "||" if matches!((&left, &right), (Type::Boolean, Type::Boolean)) => {
+            Infix::Equal | Infix::NotEqual => Type::Boolean,
+            Infix::And | Infix::Or if matches!((&left, &right), (Type::Boolean, Type::Boolean)) => {
                 Type::Boolean
             }
-            "<" | "<=" | ">" | ">=" if comparable(&left, &right) => Type::Boolean,
-            "to" => self.numeric_result(operator, left, right, span, true),
-            "+" | ".+" => match (&left, &right) {
+            Infix::Less | Infix::LessOrEqual | Infix::Greater | Infix::GreaterOrEqual
+                if comparable(&left, &right) =>
+            {
+                Type::Boolean
+            }
+            Infix::Interval => self.numeric_result(operator, left, right, span, true),
+            Infix::Add | Infix::AddEach => match (&left, &right) {
                 (Type::String, Type::String) => Type::String,
                 (Type::Array(left), Type::Array(right)) => Type::Array(Box::new(join(left, right))),
                 (Type::Date, Type::Duration) | (Type::Duration, Type::Date) => Type::Date,
                 (Type::Duration, Type::Duration) => Type::Duration,
                 _ => self.numeric_result(operator, left, right, span, true),
             },
-            "-" | ".-" => match (&left, &right) {
+            Infix::Subtract | Infix::SubtractEach => match (&left, &right) {
                 (Type::Date, Type::Date) => Type::Duration,
                 (Type::Date, Type::Duration) => Type::Date,
                 (Type::Duration, Type::Duration) => Type::Duration,
                 _ => self.numeric_result(operator, left, right, span, true),
             },
-            "*" | ".*" => match (&left, &right) {
+            Infix::Multiply | Infix::MultiplyEach => match (&left, &right) {
                 (Type::Duration, Type::Number { .. }) | (Type::Number { .. }, Type::Duration) => {
                     Type::Duration
                 }
                 _ => self.numeric_result(operator, left, right, span, false),
             },
-            "/" | "./" => match (&left, &right) {
+            Infix::Divide | Infix::DivideEach => match (&left, &right) {
                 (Type::Duration, Type::Duration) => Type::number(None),
                 (Type::Duration, Type::Number { .. }) => Type::Duration,
                 _ => self.numeric_result(operator, left, right, span, false),
             },
-            "^" | ".^" => self.power_result(left, right, span),
+            Infix::Power | Infix::PowerEach => self.power_result(left, right, span),
             _ => {
                 self.report(
                     format!(
-                        "operator '{operator}' does not accept {} and {}",
+                        "operator '{}' does not accept {} and {}",
+                        operator.spelling(),
                         left.display_name(),
                         right.display_name()
                     ),
@@ -214,7 +222,7 @@ impl Checker {
 
     fn numeric_result(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: Type,
         right: Type,
         span: crate::squiggle::ast::Span,
@@ -229,7 +237,8 @@ impl Checker {
         if same_unit && left_unit != right_unit {
             self.report(
                 format!(
-                    "operator '{operator}' combines incompatible units {left_unit} and {right_unit}"
+                    "operator '{}' combines incompatible units {left_unit} and {right_unit}",
+                    operator.spelling()
                 ),
                 span,
             );
@@ -237,12 +246,15 @@ impl Checker {
         }
         let unit = if same_unit {
             left_unit
-        } else if operator.contains('/') {
+        } else if matches!(
+            operator,
+            BinaryOperator::Divide | BinaryOperator::DivideEach
+        ) {
             left_unit.combine(&right_unit, -1.0)
         } else {
             left_unit.combine(&right_unit, 1.0)
         };
-        if left_dist || right_dist || operator == "to" {
+        if left_dist || right_dist || operator == BinaryOperator::Interval {
             Type::Distribution(unit)
         } else {
             Type::Number {
@@ -254,14 +266,14 @@ impl Checker {
 
     fn power_result(&mut self, left: Type, right: Type, span: crate::squiggle::ast::Span) -> Type {
         let Some((unit, distribution)) = numeric_unit(&left) else {
-            return self.binary_error("^", left, right, span);
+            return self.binary_error(BinaryOperator::Power, left, right, span);
         };
         let Type::Number {
             literal,
             unit: exponent_unit,
         } = right
         else {
-            return self.binary_error("^", left, right, span);
+            return self.binary_error(BinaryOperator::Power, left, right, span);
         };
         if exponent_unit != Unit::default() {
             self.report("power exponent must be dimensionless", span);
@@ -280,14 +292,15 @@ impl Checker {
 
     fn binary_error(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: Type,
         right: Type,
         span: crate::squiggle::ast::Span,
     ) -> Type {
         self.report(
             format!(
-                "operator '{operator}' does not accept {} and {}",
+                "operator '{}' does not accept {} and {}",
+                operator.spelling(),
                 left.display_name(),
                 right.display_name()
             ),

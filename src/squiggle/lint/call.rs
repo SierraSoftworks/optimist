@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::squiggle::ast::{Expression, ExpressionKind, Span};
+use crate::squiggle::ast::{BinaryOperator, Expression, ExpressionKind, Span, UnaryOperator};
 
 use super::{
     BuiltinSignature,
@@ -129,19 +129,19 @@ impl Checker {
         }
         if let [left, right] = arguments {
             let operator = match name {
-                "add" => Some("+"),
-                "subtract" => Some("-"),
-                "multiply" => Some("*"),
-                "divide" => Some("/"),
-                "pow" => Some("^"),
-                "equal" => Some("=="),
-                "unequal" => Some("!="),
-                "smaller" => Some("<"),
-                "smallerEq" => Some("<="),
-                "larger" => Some(">"),
-                "largerEq" => Some(">="),
-                "and" => Some("&&"),
-                "or" => Some("||"),
+                "add" => Some(BinaryOperator::Add),
+                "subtract" => Some(BinaryOperator::Subtract),
+                "multiply" => Some(BinaryOperator::Multiply),
+                "divide" => Some(BinaryOperator::Divide),
+                "pow" => Some(BinaryOperator::Power),
+                "equal" => Some(BinaryOperator::Equal),
+                "unequal" => Some(BinaryOperator::NotEqual),
+                "smaller" => Some(BinaryOperator::Less),
+                "smallerEq" => Some(BinaryOperator::LessOrEqual),
+                "larger" => Some(BinaryOperator::Greater),
+                "largerEq" => Some(BinaryOperator::GreaterOrEqual),
+                "and" => Some(BinaryOperator::And),
+                "or" => Some(BinaryOperator::Or),
                 _ => None,
             };
             if let Some(operator) = operator {
@@ -151,7 +151,12 @@ impl Checker {
         if let [value] = arguments
             && matches!(name, "not" | "unaryMinus")
         {
-            return self.infer_unary(if name == "not" { "!" } else { "-" }, value.clone(), span);
+            let operator = if name == "not" {
+                UnaryOperator::Not
+            } else {
+                UnaryOperator::Negate
+            };
+            return self.infer_unary(operator, value.clone(), span);
         }
         builtin_result(name, arguments)
     }

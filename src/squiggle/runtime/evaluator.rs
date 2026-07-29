@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use super::{ModuleOutput, Runtime, builtin};
 use crate::squiggle::{
     Diagnostic, DurationValue, Value,
-    ast::{Expression, ExpressionKind, Program, Span, Statement},
+    ast::{BinaryOperator, Expression, ExpressionKind, Program, Span, Statement},
     value::{Environment, Function, FunctionKind},
 };
 
@@ -118,13 +118,13 @@ impl Runtime {
                 expression: value,
             } => {
                 let value = self.eval_expr(value, environment)?;
-                self.unary(operator, value, expression.span)
+                self.unary(*operator, value, expression.span)
             }
             ExpressionKind::Binary {
                 operator,
                 left,
                 right,
-            } => self.eval_binary(operator, left, right, environment, expression.span),
+            } => self.eval_binary(*operator, left, right, environment, expression.span),
             ExpressionKind::Conditional {
                 condition,
                 when_true,
@@ -197,18 +197,18 @@ impl Runtime {
 
     fn eval_binary(
         &mut self,
-        operator: &str,
+        operator: BinaryOperator,
         left: &Expression,
         right: &Expression,
         environment: &Environment,
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let left = self.eval_expr(left, environment)?;
-        if operator == "&&" || operator == "||" {
+        if let BinaryOperator::And | BinaryOperator::Or = operator {
             let Value::Boolean(left) = left else {
-                return Err(type_error(operator, "Boolean", &left, span));
+                return Err(type_error(operator.spelling(), "Boolean", &left, span));
             };
-            if (operator == "&&" && !left) || (operator == "||" && left) {
+            if left != (operator == BinaryOperator::And) {
                 return Ok(Value::Boolean(left));
             }
         }
@@ -262,7 +262,7 @@ impl Runtime {
                     let valid = match validation {
                         Value::Domain(domain) => domain.contains(argument),
                         Value::Function(_) => {
-                            match self.call(validation, &[argument.clone()], parameter.span)? {
+                            match self.call(validation, std::slice::from_ref(argument), parameter.span)? {
                                 Value::Boolean(valid) => valid,
                                 value => {
                                     return Err(type_error(
