@@ -79,7 +79,7 @@ builtins! {
         "Reliability.retrySuccess"(attempt: (Number | Distribution), attempts: (Number | Distribution)) =>
             elementwise(runtime, &[attempt.clone(), attempts.clone()], span, |row| {
                 let failure = 1.0 - probability(row[0], "attempt success")?;
-                finite(1.0 - failure.powf(tries(row[1])?), "retry success probability")
+                finite(1.0 - raised(failure, tries(row[1])?), "retry success probability")
             }),
         "Reliability.retryAttempts"(attempt: (Number | Distribution), attempts: (Number | Distribution)) =>
             elementwise(runtime, &[attempt.clone(), attempts.clone()], span, |row| {
@@ -88,14 +88,14 @@ builtins! {
                 let expected = if success <= f64::EPSILON {
                     tries
                 } else {
-                    (1.0 - (1.0 - success).powf(tries)) / success
+                    (1.0 - raised(1.0 - success, tries)) / success
                 };
                 finite(expected, "expected attempts")
             }),
         "Reliability.serialSuccess"(step: (Number | Distribution), steps: (Number | Distribution)) =>
             elementwise(runtime, &[step.clone(), steps.clone()], span, |row| {
                 let success = probability(row[0], "step success")?;
-                finite(success.powf(depth(row[1])?), "serial success probability")
+                finite(raised(success, depth(row[1])?), "serial success probability")
             }),
         "Reliability.deadlineSuccess"(steps: (Number | Distribution), service: (Number | Distribution), deadline: (Number | Distribution)) =>
             elementwise(runtime, &[steps.clone(), service.clone(), deadline.clone()], span, |row| {
@@ -142,6 +142,22 @@ fn depth(value: f64) -> Result<f64, String> {
         return Err("a call depth must be greater than zero".to_owned());
     }
     Ok(value)
+}
+
+/// Raises a base to an exponent that is nearly always a whole number.
+///
+/// Attempt budgets and call depths are counts. `powf` evaluates
+/// $e^{y \ln x}$ whether or not $y$ is whole, which costs several times what
+/// repeated squaring does and, for the small counts a design writes, is no more
+/// accurate: binary exponentiation of a handful of factors accumulates fewer
+/// rounding errors than a logarithm and an exponential do. The bound keeps the
+/// exponent inside `i32` and keeps the error of repeated squaring, which grows
+/// with the number of factors, negligible against the logarithmic form.
+fn raised(base: f64, exponent: f64) -> f64 {
+    if exponent.fract() == 0.0 && (0.0..=1_024.0).contains(&exponent) {
+        return base.powi(exponent as i32);
+    }
+    base.powf(exponent)
 }
 
 /// Probability that a chain of `steps` exponential stages finishes by `deadline`.
