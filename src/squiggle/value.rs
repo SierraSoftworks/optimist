@@ -1,6 +1,12 @@
 //! Runtime values produced by Squiggle evaluation.
 
-use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    fmt,
+    hash::{BuildHasherDefault, Hasher},
+    rc::Rc,
+};
 
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 
@@ -363,24 +369,73 @@ pub(crate) enum FunctionKind {
 #[derive(Clone, Debug)]
 pub(crate) struct Environment(Rc<Frame>);
 
+/// Names bound in one scope.
+///
+/// Hashed rather than ordered. Nothing reads a scope in order — a module's
+/// exports are gathered from its statements, not from the frame — while every
+/// name in every expression is resolved through here, and an ordered map spends
+/// that lookup comparing the name against several others before it finds the one
+/// it wants. The standard library alone binds over a hundred names in the frame
+/// every builtin call has to reach, so those comparisons were the largest single
+/// cost in evaluating a program.
+type Names = HashMap<String, Value, BuildHasherDefault<NameHasher>>;
+
+/// A hasher for short identifiers.
+///
+/// The default hasher is chosen to make collisions hard to provoke deliberately,
+/// which is the wrong trade here: the keys are identifiers written by whoever
+/// wrote the model, and the map lives for one evaluation. This is FxHash, the
+/// multiply-and-rotate mix used by the Rust compiler for its own symbol tables,
+/// which costs a few instructions per eight bytes of name.
+#[derive(Default)]
+struct NameHasher(u64);
+
+impl Hasher for NameHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.mix(u64::from_le_bytes(chunk.try_into().expect("eight bytes")));
+        }
+        let mut tail = 0u64;
+        for (index, byte) in chunks.remainder().iter().enumerate() {
+            tail |= u64::from(*byte) << (index * 8);
+        }
+        self.mix(tail);
+        self.0 = self.0.wrapping_mul(SEED);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+impl NameHasher {
+    #[inline]
+    fn mix(&mut self, word: u64) {
+        const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(SEED);
+    }
+}
+
 #[derive(Debug)]
 struct Frame {
     parent: Option<Environment>,
-    values: RefCell<BTreeMap<String, Value>>,
+    values: RefCell<Names>,
 }
 
 impl Environment {
     pub(crate) fn root() -> Self {
         Self(Rc::new(Frame {
             parent: None,
-            values: RefCell::new(BTreeMap::new()),
+            values: RefCell::new(Names::default()),
         }))
     }
 
     pub(crate) fn child(&self) -> Self {
         Self(Rc::new(Frame {
             parent: Some(self.clone()),
-            values: RefCell::new(BTreeMap::new()),
+            values: RefCell::new(Names::default()),
         }))
     }
 
