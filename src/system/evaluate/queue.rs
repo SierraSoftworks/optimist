@@ -101,12 +101,8 @@ pub(super) fn queued(
             return [0.0; 3];
         }
         let utilisation = rate / served;
-        let length = bounded_length(utilisation, held);
-        [
-            length,
-            length / served,
-            bounded_blocking(utilisation, held),
-        ]
+        let [length, blocked] = bounded(utilisation, held);
+        [length, length / served, blocked]
     });
     LinkState {
         backlog,
@@ -216,35 +212,35 @@ pub(super) fn advance(before: &LinkState, capacity: &Value, config: EvaluationCo
     }
 }
 
-/// Mean number waiting in a buffer of `capacity` at this load.
+/// Mean number waiting in a buffer of `capacity` at this load, and the chance an
+/// arrival finds it full.
 ///
-/// The M/M/1/K result. Kept alongside the solver rather than reached through the
+/// The M/M/1/K results. Kept alongside the solver rather than reached through the
 /// expression language because the wire is not something an author writes.
-fn bounded_length(utilisation: f64, capacity: f64) -> f64 {
-    if capacity <= 0.0 {
-        return 0.0;
-    }
+///
+/// The two are returned together because they share $\rho^{K+1}$, which is the
+/// expensive term in both and was being evaluated once for each.
+fn bounded(utilisation: f64, capacity: f64) -> [f64; 2] {
+    let held = capacity.max(0.0);
     let rho = utilisation.max(0.0);
     if (rho - 1.0).abs() < 1e-9 {
-        return capacity / 2.0;
+        return [capacity_or_zero(capacity, capacity / 2.0), 1.0 / (capacity + 1.0)];
     }
     let power = rho.powf(capacity + 1.0);
     if !power.is_finite() {
-        return capacity;
+        return [
+            capacity_or_zero(capacity, capacity),
+            (1.0 - 1.0 / rho).clamp(0.0, 1.0),
+        ];
     }
     let length = rho / (1.0 - rho) - (capacity + 1.0) * power / (1.0 - power);
-    length.clamp(0.0, capacity)
+    [
+        capacity_or_zero(capacity, length.clamp(0.0, held)),
+        ((1.0 - rho) * rho.powf(capacity) / (1.0 - power)).clamp(0.0, 1.0),
+    ]
 }
 
-/// Probability an arrival finds the buffer full and is refused.
-fn bounded_blocking(utilisation: f64, capacity: f64) -> f64 {
-    let rho = utilisation.max(0.0);
-    if (rho - 1.0).abs() < 1e-9 {
-        return 1.0 / (capacity + 1.0);
-    }
-    let power = rho.powf(capacity + 1.0);
-    if !power.is_finite() {
-        return (1.0 - 1.0 / rho).clamp(0.0, 1.0);
-    }
-    ((1.0 - rho) * rho.powf(capacity) / (1.0 - power)).clamp(0.0, 1.0)
+/// A buffer with no depth holds nothing, whatever the load.
+fn capacity_or_zero(capacity: f64, length: f64) -> f64 {
+    if capacity <= 0.0 { 0.0 } else { length }
 }
