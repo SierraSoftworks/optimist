@@ -74,4 +74,15 @@ fn where_a_solve_spends_its_work() {
         },
         "checkout",
     );
+    // Past step six this design stops settling, which is the case that used to
+    // cost a hundred times what its neighbours did.
+    report(
+        "saturation, transient, 20 steps, 1k draws",
+        EvaluationConfig {
+            horizon: 20,
+            mode: SolveMode::Transient,
+            ..steady(1_000)
+        },
+        "saturation",
+    );
 }
