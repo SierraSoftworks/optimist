@@ -76,10 +76,16 @@ const bounds = computed(() => {
   const low = Math.min(...values)
   const high = Math.max(...values)
 
-  // A proportion is drawn against the whole of its range. Adding breathing room
-  // above it would label the top of the axis 108%, which is not a share of
-  // anything, and it costs nothing to show the ceiling the value is approaching.
-  if (scale.value.factor === 100) return { low: 0, high: 1 }
+  // Keep the whole proportion range as context, but soften either end when a
+  // model deliberately reports over-capacity or otherwise leaves that range.
+  if (scale.value.factor === 100) {
+    const span = Math.max(1, high) - Math.min(0, low)
+    const margin = span * 0.08
+    return {
+      low: low < 0 ? low - margin : 0,
+      high: high > 1 ? high + margin : 1,
+    }
+  }
 
   if (high === low) return { low: low - 0.5, high: high + 0.5 }
   const margin = (high - low) * 0.08
