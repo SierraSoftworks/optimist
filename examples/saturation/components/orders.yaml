@@ -2,13 +2,14 @@ id: orders
 name: Order store
 type: datastore
 properties:
-  service_time: store_service_time
   concurrency_limit: store_concurrency
-  operation_limit: '20000'
-  transfer_limit: '1e9'
-  volume_limit: '1e13'
+  operation_limit: '1000'
   record_size: '4096'
   retention: '86400'
+  service_time: 0.01 * lognormal(0, 0.15)
+  transfer_limit: '1e9'
+  volume_limit: '1e13'
 position:
-  x: 0
-  y: 320
+  x: 0.0
+  y: 320.0
+outgoing: []

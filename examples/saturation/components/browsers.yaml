@@ -2,16 +2,28 @@ id: browsers
 name: Browsers
 type: client
 properties:
-  request_rate: demand
-  payload: '512'
   latency_target: '0.5'
+  payload: '512'
+  request_rate: demand
   success_target: '0.99'
 position:
-  x: 0
-  y: 0
+  x: 0.0
+  y: 0.0
 outgoing:
-  - to: api
-    capacity: link_capacity
-    summary: >
-      Checkout requests. No policy here: the browser waits, and whatever the API
-      reports is what the user experiences.
+- to: api
+  capacity: link_capacity
+  mutators:
+  - type: retry
+    properties:
+      attempts: '2'
+  - type: timeout
+    properties:
+      budget: '5'
+  - type: cancellation-effectiveness
+    properties:
+      effectiveness: '0.2'
+  - type: load-shed
+    properties:
+      limit: rate_limit
+  summary: |
+    Checkout requests. No policy here: the browser waits, and whatever the API reports is what the user experiences.

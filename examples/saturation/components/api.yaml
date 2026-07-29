@@ -2,21 +2,19 @@ id: api
 name: Orders API
 type: compute
 properties:
-  service_time: api_service_time
-  parallelism: api_workers
+  parallelism: api_parallelism
+  service_time: 0.002 * lognormal(0, 0.1)
 position:
-  x: 0
-  y: 160
+  x: 0.0
+  y: 160.0
 outgoing:
-  - to: orders
-    summary: >
-      Order lookups, with the two policies every client library ships with. The
-      timeout decides that a slow answer is a failure; the retry answers that
-      failure with another attempt. Each is defensible alone.
-    mutators:
-      - type: retry
-        properties:
-          attempts: max_attempts
-      - type: timeout
-        properties:
-          budget: attempt_timeout
+- to: orders
+  mutators:
+  - type: retry
+    properties:
+      attempts: max_attempts
+  - type: timeout
+    properties:
+      budget: attempt_timeout
+  summary: |
+    Order lookups, with the two policies every client library ships with. The timeout decides that a slow answer is a failure; the retry answers that failure with another attempt. Each is defensible alone.
