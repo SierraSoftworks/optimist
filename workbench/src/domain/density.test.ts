@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { kernelDensity, quantileOf } from './density'
+import { densityProfile, kernelDensity, quantileOf } from './density'
 
 /**
  * A deterministic normal sample.
@@ -111,5 +111,56 @@ describe('kernelDensity', () => {
   it('never returns a negative density', () => {
     const density = kernelDensity(normals(300, 0, 1, 31))!
     expect(density.y.every((value) => value >= 0)).toBe(true)
+  })
+})
+
+describe('densityProfile', () => {
+  /** Where the profile peaks, as a value on the grid it was asked for. */
+  function peakOf(profile: number[], low: number, high: number): number {
+    const width = (high - low) / profile.length
+    return low + (profile.indexOf(Math.max(...profile)) + 0.5) * width
+  }
+
+  it('declines to estimate what it cannot', () => {
+    expect(densityProfile([], 0, 1, 40)).toBeNull()
+    expect(densityProfile([0.5], 1, 0, 40)).toBeNull()
+    expect(densityProfile([0.5], 0, 1, 1)).toBeNull()
+  })
+
+  it('scales its tallest cell to one', () => {
+    const profile = densityProfile(normals(600, 5, 1, 3), 0, 10, 40)!
+    expect(Math.max(...profile)).toBeCloseTo(1, 10)
+    expect(profile.every((value) => value >= 0)).toBe(true)
+  })
+
+  it('peaks where the sample is', () => {
+    const profile = densityProfile(normals(600, 7, 0.5, 4), 0, 10, 40)!
+    expect(Math.abs(peakOf(profile, 0, 10) - 7)).toBeLessThan(0.5)
+  })
+
+  it('leaves a valley between two branches', () => {
+    const draws = [...normals(400, 1, 0.3, 5), ...normals(400, 9, 0.3, 6)]
+    const profile = densityProfile(draws, 0, 10, 40)!
+    const middle = profile.slice(16, 24)
+    expect(Math.max(...middle)).toBeLessThan(0.1)
+    expect(Math.max(...profile.slice(0, 8))).toBeGreaterThan(0.5)
+    expect(Math.max(...profile.slice(32))).toBeGreaterThan(0.5)
+  })
+
+  it('keeps a minority branch visible', () => {
+    const draws = [...normals(900, 1, 0.3, 7), ...normals(100, 9, 0.3, 8)]
+    const profile = densityProfile(draws, 0, 10, 40)!
+    expect(Math.max(...profile.slice(32))).toBeGreaterThan(0.05)
+  })
+
+  it('draws a sample with no spread as a cell rather than nothing', () => {
+    const profile = densityProfile(Array.from({ length: 200 }, () => 4), 0, 10, 40)!
+    expect(Math.max(...profile)).toBeCloseTo(1, 10)
+    expect(Math.abs(peakOf(profile, 0, 10) - 4)).toBeLessThan(0.5)
+  })
+
+  it('ignores draws outside the grid rather than folding them in', () => {
+    const profile = densityProfile([-100, 5, 5, 5, 200], 0, 10, 40)!
+    expect(Math.abs(peakOf(profile, 0, 10) - 5)).toBeLessThan(0.5)
   })
 })

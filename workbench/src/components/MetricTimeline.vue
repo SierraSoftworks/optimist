@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 
 import type { Frame, Quantity } from '../api/types'
-import { kernelDensity } from '../domain/density'
+import { densityProfile, kernelDensity } from '../domain/density'
 import { formatSiNumber } from '../domain/humanNumber'
 import { scaleFor, showScaled, showWithUnit } from '../domain/units'
 
@@ -59,23 +59,23 @@ const comparing = computed(
 const scale = computed(() =>
   scaleFor(props.unit, [
     ...points.value.flatMap((point) => [point.quantity.p10, point.quantity.p90]),
-    ...reference.value.map((point) => point.quantity.p50),
+    ...reference.value.map((point) => point.quantity.mean),
   ]),
 )
 
 /**
- * Vertical range covering the whole band, not just the medians.
+ * Vertical range covering the whole band, not just the means.
  *
- * Scaling to the median would clip the spread that the band exists to show, and
+ * Scaling to the mean would clip the spread that the shading exists to show, and
  * a reader would see a confident line where the model is anything but.
  */
 const bounds = computed(() => {
   const values = [
-    ...points.value.flatMap((point) => [point.quantity.p10, point.quantity.p90]),
+    ...points.value.flatMap((point) => [point.quantity.p10, point.quantity.mean, point.quantity.p90]),
     // The baseline is drawn on the same axis, so it has to fit on it. A variant
     // that halved a latency would otherwise put its reference line off the top
     // of the chart, which is where the whole point of the comparison lives.
-    ...reference.value.map((point) => point.quantity.p50),
+    ...reference.value.map((point) => point.quantity.mean),
   ]
   if (!values.length) return { low: 0, high: 1 }
   const low = Math.min(...values)
@@ -114,8 +114,21 @@ function y(value: number): number {
   return PADDING.top + plot.height - fraction * plot.height
 }
 
-const median = computed(() =>
-  points.value.map((point, index) => `${x(index)},${y(point.quantity.p50)}`).join(' '),
+/**
+ * The line, which tracks the mean.
+ *
+ * The median was the obvious choice and was wrong for the designs this tool
+ * exists to draw. Where a design divides between a healthy branch and a
+ * collapsed one, the median sits on whichever branch happens to hold more than
+ * half the draws and jumps to the other the moment that majority tips. A design
+ * whose success rate averaged a third was therefore drawn as a flat line along
+ * zero, and a variant that barely moved the distribution was drawn as a
+ * transformation because it had moved the majority by a few per cent. The mean
+ * is continuous in the mixture and does not do that. It is also, on its own,
+ * a figure no request ever sees — which is what the shading behind it is for.
+ */
+const average = computed(() =>
+  points.value.map((point, index) => `${x(index)},${y(point.quantity.mean)}`).join(' '),
 )
 
 /** The p10–p90 band, drawn as one closed path down the upper edge and back. */
@@ -126,15 +139,100 @@ const band = computed(() => {
   return `M${upper.join(' L')} L${lower.join(' L')} Z`
 })
 
-/** The baseline's medians, drawn dashed so it reads as a reference not a result. */
+/** Shades between which a step's density is drawn, darkest for the likeliest. */
+const SHADES = 5
+
+/** Cells each step's column is divided into vertically. */
+const ROWS = 44
+
+/**
+ * The distribution at every step, shaded by how much of it sits where.
+ *
+ * A band between two percentiles says where the middle four fifths of the draws
+ * are and nothing about how they are arranged inside it. For most designs that
+ * is a fair summary. For the ones worth simulating it is not: a design at a fold
+ * puts a third of its draws at one value and two thirds at another, and drawn as
+ * a band it looks identical to a design that is merely uncertain, with the
+ * heaviest ink laid exactly where no draw landed.
+ *
+ * So each step is drawn as its own density: dark where the draws are, empty
+ * where they are not, and visibly split where the design is. Every column is
+ * scaled to its own tallest point, because the question a reader is asking of
+ * each one is the shape of that moment rather than how it compares with the
+ * busiest moment in the run.
+ *
+ * The cells are collected into one path per shade rather than drawn
+ * individually. A horizon of a few hundred steps is ordinary, and a rectangle
+ * per cell would put tens of thousands of nodes in the document for a figure a
+ * few hundred pixels wide.
+ */
+const shading = computed(() => {
+  const count = points.value.length
+  if (count === 0) return []
+  const { low, high } = bounds.value
+  if (!(high > low)) return []
+  const cell = plot.height / ROWS
+  const shades: string[] = Array.from({ length: SHADES }, () => '')
+  let drew = false
+
+  for (let index = 0; index < count; index += 1) {
+    const profile = densityProfile(points.value[index].quantity.draws, low, high, ROWS)
+    if (!profile) continue
+    drew = true
+    // Columns meet at the midpoints between steps, so the shading tiles without
+    // gaps while each step still owns the space nearest to it. No value exists
+    // between two steps, and this interpolates none: it fills a step's own
+    // neighbourhood with that step's answer.
+    const left = index === 0 ? x(0) : (x(index - 1) + x(index)) / 2
+    const right = index === count - 1 ? x(count - 1) : (x(index) + x(index + 1)) / 2
+    const width = right - left
+    if (!(width > 0)) continue
+
+    // Runs of equal shade are merged into one rectangle on the way down, which
+    // is most of the column for the flat-topped densities a saturated design
+    // produces.
+    let run = shadeOf(profile[0])
+    let from = 0
+    for (let row = 1; row <= ROWS; row += 1) {
+      const shade = row < ROWS ? shadeOf(profile[row]) : -1
+      if (shade === run) continue
+      if (run > 0) {
+        // Row zero is the bottom of the axis, so it is drawn from the bottom up.
+        const top = PADDING.top + plot.height - row * cell
+        shades[run - 1] += `M${left},${top}h${width}v${(row - from) * cell}h${-width}z`
+      }
+      run = shade
+      from = row
+    }
+  }
+  if (!drew) return []
+  return shades
+    .map((path, index) => ({ path, opacity: (index + 1) / SHADES }))
+    .filter((shade) => shade.path.length > 0)
+})
+
+/**
+ * Which shade a density belongs in.
+ *
+ * Compressed by a square root so that a branch holding a tenth of the draws —
+ * which peaks at about a tenth of the majority's height — is drawn at a third of
+ * the ink rather than a tenth of it. A minority branch is the thing this chart
+ * exists to show, and linear ink would leave it invisible.
+ */
+function shadeOf(density: number): number {
+  const shade = Math.ceil(Math.sqrt(Math.max(density, 0)) * SHADES)
+  return Math.min(shade, SHADES)
+}
+
+/** The baseline's means, drawn dashed so it reads as a reference not a result. */
 const referenceLine = computed(() =>
   comparing.value
-    ? reference.value.map((point, index) => `${x(index)},${y(point.quantity.p50)}`).join(' ')
+    ? reference.value.map((point, index) => `${x(index)},${y(point.quantity.mean)}`).join(' ')
     : '',
 )
 
 /**
- * The ground between the two medians.
+ * The ground between the two lines.
  *
  * Shaded rather than left as two lines because the quantity being judged is the
  * gap, and a reader asked to measure the distance between two lines by eye will
@@ -145,9 +243,9 @@ const referenceLine = computed(() =>
  */
 const difference = computed(() => {
   if (!comparing.value || points.value.length < 2) return ''
-  const variant = points.value.map((point, index) => `${x(index)},${y(point.quantity.p50)}`)
+  const variant = points.value.map((point, index) => `${x(index)},${y(point.quantity.mean)}`)
   const settled = reference.value
-    .map((point, index) => `${x(index)},${y(point.quantity.p50)}`)
+    .map((point, index) => `${x(index)},${y(point.quantity.mean)}`)
     .reverse()
   return `M${variant.join(' L')} L${settled.join(' L')} Z`
 })
@@ -170,8 +268,8 @@ const activeReference = computed(() =>
  * and which one matters depends on where the reader started.
  */
 const shift = computed(() => {
-  const settled = activeReference.value?.quantity.p50
-  const now = active.value?.quantity.p50
+  const settled = activeReference.value?.quantity.mean
+  const now = active.value?.quantity.mean
   if (settled === undefined || now === undefined) return null
   const absolute = now - settled
   const relative = settled === 0 ? null : absolute / Math.abs(settled)
@@ -290,9 +388,16 @@ const ticks = computed(() => {
         </text>
 
         <path v-if="difference" class="difference" :d="difference" />
-        <path v-if="band" class="band" :d="band" />
+        <path v-if="!shading.length && band" class="band" :d="band" />
+        <path
+          v-for="shade in shading"
+          :key="shade.opacity"
+          class="density"
+          :d="shade.path"
+          :fill-opacity="shade.opacity * 0.34"
+        />
         <polyline v-if="referenceLine" class="reference" :points="referenceLine" />
-        <polyline v-if="median" class="median" :points="median" />
+        <polyline v-if="average" class="average" :points="average" />
 
         <template v-if="hovered !== null && active">
           <line
@@ -306,18 +411,17 @@ const ticks = computed(() => {
             v-if="activeReference"
             class="dot settled"
             :cx="x(hovered)"
-            :cy="y(activeReference.quantity.p50)"
+            :cy="y(activeReference.quantity.mean)"
             r="3"
           />
-          <circle class="dot" :cx="x(hovered)" :cy="y(active.quantity.p50)" r="3.5" />
+          <circle class="dot" :cx="x(hovered)" :cy="y(active.quantity.mean)" r="3.5" />
         </template>
       </svg>
 
       <!--
-        The step's own distribution, beside the point it belongs to. A line of
-        medians hides whether a value is one outcome or two, which for a design
-        near a fold is the thing being looked for, so stopping on a point has to
-        show the shape behind it rather than a number in a footer somewhere else.
+        The step's own distribution, beside the point it belongs to. The chart
+        behind it shades where the draws are, which answers how many states there
+        are but not what they are worth; stopping on a point puts numbers on it.
       -->
       <div
         v-if="active && anchor"
@@ -331,7 +435,7 @@ const ticks = computed(() => {
             {{ sketch.modes }} states
           </el-tag>
         </div>
-        <div class="value">{{ showWithUnit(active.quantity.p50, scale) }}</div>
+        <div class="value">{{ showWithUnit(active.quantity.mean, scale) }}</div>
         <p v-if="shift" class="shift" data-test="baseline-shift">
           <span class="delta" :class="shift.direction">
             <span class="arrow">{{ shift.direction === 'up' ? '▲' : shift.direction === 'down' ? '▼' : '—' }}</span>
@@ -350,8 +454,8 @@ const ticks = computed(() => {
             <dd>{{ showScaled(active.quantity.p10, scale) }}</dd>
           </div>
           <div>
-            <dt>mean</dt>
-            <dd>{{ showScaled(active.quantity.mean, scale) }}</dd>
+            <dt>p50</dt>
+            <dd>{{ showScaled(active.quantity.p50, scale) }}</dd>
           </div>
           <div>
             <dt>p90</dt>
@@ -407,13 +511,18 @@ figcaption {
 .tick { font-family: var(--mono); font-size: 9px; fill: var(--muted); }
 .band { fill: var(--green); fill-opacity: 0.16; }
 /*
+ * One path per shade, laid over each other. Opacity is set per path from the
+ * density rather than in the stylesheet, so the tint carries the figure.
+ */
+.density { fill: var(--green); stroke: none; }
+/*
  * The gap between the two, filled in one tint whichever way it goes. Which
  * direction counts as an improvement depends on the quantity, and a chart that
  * decided that for the reader would be wrong every time it drew a latency.
  */
 .difference { fill: var(--ink); fill-opacity: 0.1; }
 .reference { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-linejoin: round; }
-.median { fill: none; stroke: var(--green); stroke-width: 1.75; stroke-linejoin: round; }
+.average { fill: none; stroke: var(--green); stroke-width: 1.75; stroke-linejoin: round; }
 .cursor { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 2 2; }
 .dot { fill: var(--green); stroke: var(--surface-strong); stroke-width: 1.5; }
 .dot.settled { fill: var(--muted); }
