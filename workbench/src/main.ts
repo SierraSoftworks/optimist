@@ -24,9 +24,9 @@ import {
   Warning,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import '@fontsource-variable/manrope/index.css'
-import '@fontsource/ibm-plex-mono/400.css'
-import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource-variable/montserrat/index.css'
+import '@fontsource-variable/saira/index.css'
+import '@fontsource-variable/fira-code/index.css'
 import 'element-plus/dist/index.css'
 import './style.css'
 import App from './App.vue'

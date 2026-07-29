@@ -481,7 +481,7 @@ function unitOf(component: string, channel: string): string {
   justify-content: space-between;
   padding: var(--space-1) var(--space-2);
 }
-.title { font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+.title { font-family: var(--display); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
 .add {
   display: inline-flex;
   border: none;

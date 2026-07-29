@@ -193,6 +193,7 @@ function unpin(value: string) {
   padding: var(--space-1) var(--space-2);
 }
 .title {
+  font-family: var(--display);
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -251,6 +252,7 @@ function unpin(value: string) {
 .list { flex: 1; overflow: auto; min-height: 0; }
 .group {
   margin: var(--space-2) var(--space-2) 2px;
+  font-family: var(--display);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;

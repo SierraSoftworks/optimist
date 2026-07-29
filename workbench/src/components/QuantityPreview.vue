@@ -123,6 +123,7 @@ const certain = computed(() => !!quantity.value && quantity.value.draws.length =
 }
 .heading {
   margin: 0 0 var(--space-2);
+  font-family: var(--display);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;

@@ -1,5 +1,5 @@
 :root {
-  font-family: 'Manrope', sans-serif;
+  font-family: var(--sans);
   color: #25292b;
   background: #eef0eb;
   font-synthesis: none;
@@ -18,7 +18,10 @@
   --caution: #6f4f05;
   --caution-line: #e2c98f;
   --caution-surface: #fdf6e6;
-  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Montserrat Variable', sans-serif;
+  /* Reserved for the window's own furniture: the logo and the menu bar. */
+  --display: 'Saira Variable', sans-serif;
+  --mono: 'Fira Code Variable', monospace;
   letter-spacing: 0;
 
   /*
@@ -80,7 +83,7 @@
   --el-border-color-lighter: #eaeee7;
   --el-fill-color-blank: #ffffff;
   --el-bg-color: #ffffff;
-  --el-font-family: 'Manrope', sans-serif;
+  --el-font-family: var(--sans);
   --el-font-size-base: 13px;
   --el-border-radius-base: 5px;
 }
@@ -88,6 +91,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; font-size: var(--text-md); }
 #app { min-height: 100vh; }
+h1, h2, h3, h4, h5, h6, .el-dialog__title { font-family: var(--display); }
 button, input, select { font: inherit; letter-spacing: 0; }
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible {

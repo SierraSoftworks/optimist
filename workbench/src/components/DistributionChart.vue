@@ -134,7 +134,7 @@ function show(value: number): string {
 .unit { color: var(--muted); margin-left: 3px; }
 .certain { display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--mono); }
 .certain .value { font-size: var(--text-lg); }
-.note { font-size: var(--text-2xs); color: var(--muted); font-family: 'Manrope', sans-serif; }
+.note { font-size: var(--text-2xs); color: var(--muted); font-family: var(--sans); }
 .branches {
   margin: 2px 0 0;
   font-size: var(--text-2xs);

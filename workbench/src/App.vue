@@ -182,6 +182,7 @@ function open(id: string) {
   background: var(--surface-strong);
   flex: 0 0 auto;
   flex-wrap: nowrap;
+  font-family: var(--display);
 }
 .brand { flex: 0 0 auto; }
 .brand {

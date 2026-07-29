@@ -137,7 +137,7 @@ const STYLE: cytoscape.StylesheetJson = [
       'text-valign': 'center',
       'text-halign': 'center',
       'text-margin-x': 11,
-      'font-family': 'Manrope, sans-serif',
+      'font-family': 'Montserrat Variable, sans-serif',
       'font-size': 12,
       'font-weight': 700,
       color: '#25292b',
@@ -183,7 +183,7 @@ const STYLE: cytoscape.StylesheetJson = [
       'text-margin-x': -6,
       'text-margin-y': -4,
       'text-max-width': '240px',
-      'font-family': 'IBM Plex Mono, monospace',
+      'font-family': 'Fira Code Variable, monospace',
       'font-size': 10,
       'font-weight': 600,
       color: '#69716d',
@@ -215,7 +215,7 @@ const STYLE: cytoscape.StylesheetJson = [
     selector: 'edge',
     style: {
       label: 'data(label)',
-      'font-family': 'IBM Plex Mono, monospace',
+      'font-family': 'Fira Code Variable, monospace',
       'font-size': 10,
       color: '#69716d',
       'text-background-color': '#eef0eb',
@@ -682,6 +682,7 @@ defineExpose({
 }
 .heading {
   margin: 0 0 var(--space-2);
+  font-family: var(--display);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -712,6 +713,7 @@ defineExpose({
 .label {
   margin: 0;
   padding: var(--space-1) var(--space-2) var(--space-2);
+  font-family: var(--display);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
