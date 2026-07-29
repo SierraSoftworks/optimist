@@ -6,6 +6,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
+    profile::time,
     squiggle::{Runtime, Value},
     system::{
         compile::{Plan, PreparedComponent},
@@ -64,7 +65,7 @@ pub(super) fn arrivals(
         // had its say. The flows going the other way are what the mutators read,
         // and they read them as the caller would see them, so the queue below is
         // applied to this too.
-        let mine = {
+        let mine = time!(Gather, {
             let mut values = blank(plan);
             let published = own.and_then(|state| match direction {
                 Direction::Request => state.responses.get(name),
@@ -72,7 +73,7 @@ pub(super) fn arrivals(
             });
             values.extend(published.cloned().unwrap_or_default());
             values
-        };
+        });
         let mut collected: BTreeMap<String, Vec<Value>> = BTreeMap::new();
         for link in &port.links {
             let published = current.get(&link.peer).and_then(|state| match direction {
@@ -82,9 +83,11 @@ pub(super) fn arrivals(
             let Some(published) = published else {
                 continue;
             };
-            let mut flow = blank(plan);
-            flow.extend(published.clone());
-            let mut counterpart = mine.clone();
+            let (mut flow, mut counterpart) = time!(Gather, {
+                let mut flow = blank(plan);
+                flow.extend(published.clone());
+                (flow, mine.clone())
+            });
 
             // The wire itself is a queue, and its cost lands on the caller: work
             // waits in front of the callee, and once the buffer is full the
@@ -121,7 +124,7 @@ pub(super) fn arrivals(
             // pass answers with the previous pass's queue and the two converge
             // together, which is the same treatment every other loop in the
             // model gets.
-            let mut observed = response.clone();
+            let mut observed = time!(Gather, response.clone());
             if let Some(before) = links.get(&link.id) {
                 if let Some(latency) = observed.get_mut(LATENCY) {
                     *latency = sum(latency, &before.wait, config);
@@ -132,49 +135,58 @@ pub(super) fn arrivals(
             }
             // A behaviour reads the answer as it reaches it, which is the
             // callee's answer already rewritten by every behaviour beneath it.
-            let returned = returning(
-                plan,
-                &link.mutators,
-                observed,
-                request,
-                config,
-                time,
-                runtime,
-            )?;
-            let mut crossing = request.clone();
-            for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
-                crossing = apply(
+            let returned = time!(
+                Behaviours,
+                returning(
                     plan,
-                    mutator,
-                    crossing,
+                    &link.mutators,
                     observed,
-                    Direction::Request,
+                    request,
                     config,
                     time,
                     runtime,
-                )?;
-            }
-            let mut state = match config.mode {
-                // Balance: the backlog is whatever the current load implies, so
-                // it is recomputed as the load settles.
-                SolveMode::Steady => queued(&crossing, response, &link.capacity, config),
-                // Time: the backlog was fixed when the step began. Only the
-                // flows are recorded, so the next step has something to advance
-                // from once everything else has settled.
-                SolveMode::Transient => {
-                    let mut held = links.get(&link.id).cloned().unwrap_or_default();
-                    held.offered = crossing.get(RATE).cloned().unwrap_or(Value::Number(0.0));
-                    held.drain = response
-                        .get(CAPACITY)
-                        .cloned()
-                        .unwrap_or(Value::Number(0.0));
-                    held
+                )
+            )?;
+            let mut crossing = time!(Gather, request.clone());
+            time!(Behaviours, {
+                for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
+                    crossing = apply(
+                        plan,
+                        mutator,
+                        crossing,
+                        observed,
+                        Direction::Request,
+                        config,
+                        time,
+                        runtime,
+                    )?;
                 }
-            };
+                Ok::<(), EvaluationError>(())
+            })?;
+            let mut state = time!(
+                Queue,
+                match config.mode {
+                    // Balance: the backlog is whatever the current load implies, so
+                    // it is recomputed as the load settles.
+                    SolveMode::Steady => queued(&crossing, response, &link.capacity, config),
+                    // Time: the backlog was fixed when the step began. Only the
+                    // flows are recorded, so the next step has something to advance
+                    // from once everything else has settled.
+                    SolveMode::Transient => {
+                        let mut held = links.get(&link.id).cloned().unwrap_or_default();
+                        held.offered = crossing.get(RATE).cloned().unwrap_or(Value::Number(0.0));
+                        held.drain = response
+                            .get(CAPACITY)
+                            .cloned()
+                            .unwrap_or(Value::Number(0.0));
+                        held
+                    }
+                }
+            );
             // Both ends compute this and agree, so it is taken from the request
             // as it crosses and the answer as it arrives back rather than from
             // whichever end happened to be evaluated last.
-            state.transfer = carried(&crossing, &returned.settled, config);
+            state.transfer = time!(Queue, carried(&crossing, &returned.settled, config));
             state.bandwidth = link.bandwidth.clone();
             let queueing = match direction {
                 Direction::Request => &mut counterpart,
@@ -199,63 +211,76 @@ pub(super) fn arrivals(
                     // Rebuilt against the queue as it stands now rather than as
                     // it stood last pass, because this is the flow the component
                     // reads rather than the one the queue was solved from.
-                    let offered = flow.clone();
-                    let returned = returning(
-                        plan,
-                        &link.mutators,
-                        counterpart.clone(),
-                        &offered,
-                        config,
-                        time,
-                        runtime,
-                    )?;
-                    for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
-                        flow = apply(
+                    let offered = time!(Gather, flow.clone());
+                    let returned = time!(
+                        Behaviours,
+                        returning(
                             plan,
-                            mutator,
-                            flow,
-                            observed,
-                            Direction::Request,
+                            &link.mutators,
+                            counterpart.clone(),
+                            &offered,
                             config,
                             time,
                             runtime,
-                        )?;
-                    }
+                        )
+                    )?;
+                    time!(Behaviours, {
+                        for (mutator, observed) in link.mutators.iter().zip(&returned.views) {
+                            flow = apply(
+                                plan,
+                                mutator,
+                                flow,
+                                observed,
+                                Direction::Request,
+                                config,
+                                time,
+                                runtime,
+                            )?;
+                        }
+                        Ok::<(), EvaluationError>(())
+                    })?;
                 }
                 Direction::Response => {
-                    for mutator in link.mutators.iter().rev() {
-                        flow = apply(
-                            plan,
-                            mutator,
-                            flow,
-                            &counterpart,
-                            Direction::Response,
-                            config,
-                            time,
-                            runtime,
-                        )?;
-                    }
+                    time!(Behaviours, {
+                        for mutator in link.mutators.iter().rev() {
+                            flow = apply(
+                                plan,
+                                mutator,
+                                flow,
+                                &counterpart,
+                                Direction::Response,
+                                config,
+                                time,
+                                runtime,
+                            )?;
+                        }
+                        Ok::<(), EvaluationError>(())
+                    })?;
                 }
             }
-            for (signal, value) in flow {
-                collected.entry(signal).or_default().push(value);
-            }
+            time!(Gather, {
+                for (signal, value) in flow {
+                    collected.entry(signal).or_default().push(value);
+                }
+            });
         }
 
         let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
         let mut combined = BTreeMap::new();
-        for (signal, declaration) in &plan.signals {
-            let values = collected.remove(signal).unwrap_or_default();
-            let divisor = if declaration.extensive {
-                component.share
-            } else {
-                1.0
-            };
-            combined.insert(
-                signal.clone(),
-                combine(&values, declaration, divisor, config, &mut rng),
-            );
-        }
+        time!(Combine, {
+            for (signal, declaration) in &plan.signals {
+                let values = collected.remove(signal).unwrap_or_default();
+                let divisor = if declaration.extensive {
+                    component.share
+                } else {
+                    1.0
+                };
+                combined.insert(
+                    signal.clone(),
+                    combine(&values, declaration, divisor, config, &mut rng),
+                );
+            }
+        });
         gathered.insert(name.clone(), combined);
     }
     Ok(gathered)

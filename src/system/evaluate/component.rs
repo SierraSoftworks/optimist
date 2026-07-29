@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
+    profile::time,
     squiggle::{Runtime, Value},
     system::{
         compile::{Plan, PreparedComponent, PreparedPort},
@@ -30,25 +31,31 @@ pub(super) fn evaluate_component(
     links: &mut BTreeMap<LinkId, LinkState>,
     runtime: &mut Runtime,
 ) -> Result<ComponentState, EvaluationError> {
-    let inbound = arrivals(
-        plan,
-        component,
-        current,
-        config,
-        time,
-        Direction::Request,
-        links,
-        runtime,
+    let inbound = time!(
+        Arrivals,
+        arrivals(
+            plan,
+            component,
+            current,
+            config,
+            time,
+            Direction::Request,
+            links,
+            runtime,
+        )
     )?;
-    let outbound = arrivals(
-        plan,
-        component,
-        current,
-        config,
-        time,
-        Direction::Response,
-        links,
-        runtime,
+    let outbound = time!(
+        Arrivals,
+        arrivals(
+            plan,
+            component,
+            current,
+            config,
+            time,
+            Direction::Response,
+            links,
+            runtime,
+        )
     )?;
     // Bound once for the whole component. Every channel and every published
     // signal reads the same names, and two of them are the inbound and outbound
@@ -73,18 +80,21 @@ pub(super) fn evaluate_component(
     );
 
     let mut channels = BTreeMap::new();
-    for (name, program) in &component.channels {
-        let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
-            EvaluationError::Evaluation {
-                location: format!("channel '{name}' of component '{}'", component.id),
-                message: diagnostic.message,
-            }
-        })?;
-        runtime.bind(name, value.clone());
-        channels.insert(name.clone(), value);
-    }
-    let responses = publish(&component.inbound, &component.id, runtime)?;
-    let requests = publish(&component.outbound, &component.id, runtime)?;
+    time!(Channels, {
+        for (name, program) in &component.channels {
+            let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
+                EvaluationError::Evaluation {
+                    location: format!("channel '{name}' of component '{}'", component.id),
+                    message: diagnostic.message,
+                }
+            })?;
+            runtime.bind(name, value.clone());
+            channels.insert(name.clone(), value);
+        }
+        Ok::<(), EvaluationError>(())
+    })?;
+    let responses = time!(Channels, publish(&component.inbound, &component.id, runtime))?;
+    let requests = time!(Channels, publish(&component.outbound, &component.id, runtime))?;
     Ok(ComponentState {
         channels,
         requests,

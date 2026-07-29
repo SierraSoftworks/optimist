@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
-    profile::count,
+    profile::{count, time},
     system::{
         compile::{Plan, runtime},
         model::ComponentId,
@@ -138,7 +138,10 @@ pub(super) fn relax(
             let settled = current
                 .get(&component.id)
                 .expect("every component was seeded above");
-            let (blended, moved) = converge(component, settled, &computed, weight, config, rng);
+            let (blended, moved) = time!(
+                Converge,
+                converge(component, settled, &computed, weight, config, rng)
+            );
             if moved.distance >= movement || unsettled.is_none() {
                 movement = moved.distance;
                 unsettled = Some((component.id.clone(), moved));
