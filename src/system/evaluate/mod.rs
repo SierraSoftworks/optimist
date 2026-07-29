@@ -77,7 +77,7 @@ pub use error::EvaluationError;
 pub use state::{ComponentState, Evaluation, LinkId, LinkState, Mixture, Step, Unsettled};
 
 use crate::system::{
-    compile::{Timing, prepare},
+    compile::{Plan, Timing, clocked, prepare},
     intervention::InterventionId,
     manifest::ComponentType,
     model::{ComponentId, SystemModel},
@@ -234,28 +234,42 @@ fn horizon(
     let mut carried: BTreeMap<LinkId, LinkState> = BTreeMap::new();
     let steps = config.horizon.max(1);
     let mut solved = Vec::with_capacity(steps);
+    // Shared quantities may depend on the elapsed time, so the plan is resolved
+    // afresh at each step and held fixed while it relaxes. Where no expression
+    // in the design reads the clock, every step resolves the same plan, and the
+    // one already in hand is kept instead — on a long horizon that is the
+    // difference between resolving a design once and resolving it once per step
+    // per share.
+    let mut held: Option<Plan> = None;
+    let mut fixed = false;
     for index in 0..steps {
         let time = index as f64 * config.step;
-        // Shared quantities may depend on the elapsed time, so the plan is
-        // resolved afresh at each step and held fixed while it relaxes.
-        let plan = time!(
-            Prepare,
-            prepare(
-                model,
-                catalogue,
-                mutators,
-                overrides,
-                Timing {
-                    seed: config.seed,
-                    ensemble: config.ensemble(),
-                    time,
-                    step: config.step,
-                },
-            )
-        )?;
-            let step = time!(
-                Relax,
-                relax(
+        let plan = match held.take() {
+            Some(plan) => plan,
+            None => {
+                clocked();
+                let plan = time!(
+                    Prepare,
+                    prepare(
+                        model,
+                        catalogue,
+                        mutators,
+                        overrides,
+                        Timing {
+                            seed: config.seed,
+                            ensemble: config.ensemble(),
+                            time,
+                            step: config.step,
+                        },
+                    )
+                )?;
+                fixed = !clocked();
+                plan
+            }
+        };
+        let step = time!(
+            Relax,
+            relax(
                 &plan,
                 &previous,
                 &carried,
@@ -263,8 +277,11 @@ fn horizon(
                 config,
                 &mut rng,
                 reporting.at(index, steps),
-                )
-            )?;
+            )
+        )?;
+        if fixed {
+            held = Some(plan);
+        }
         previous.clone_from(&step.components);
         carried.clone_from(&step.links);
         solved.push(step);

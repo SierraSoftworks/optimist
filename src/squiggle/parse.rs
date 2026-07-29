@@ -10,6 +10,7 @@ use super::{
     diagnostic::Diagnostic,
     lexer::lexer,
     parser::program_parser,
+    token::Token,
 };
 
 /// Parses a complete Squiggle module into a source-spanned syntax tree.
@@ -60,6 +61,22 @@ pub fn parse(source: &str) -> Result<Program, Vec<Diagnostic>> {
     }
 }
 
+/// Whether `source` uses `name` as an identifier anywhere within it.
+///
+/// The answer is drawn from the token stream rather than the syntax tree so that
+/// it stays correct as the grammar grows: a name cannot hide inside a form the
+/// lexer does not know about, and an expression too broken to parse reports the
+/// names it does contain instead of none. That makes the answer an over-estimate
+/// — a lambda's own parameter counts as a use of the name — which suits callers
+/// asking whether something *might* depend on a binding.
+pub(crate) fn names(source: &str, name: &str) -> bool {
+    lexer().parse(source).into_output().is_some_and(|tokens| {
+        tokens
+            .iter()
+            .any(|(token, _)| matches!(token, Token::Identifier(found) if found == name))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +84,14 @@ mod tests {
 
     fn parse_test(source: &str) -> Result<Program, String> {
         parse(source).map_err(|errors| format!("{errors:?}"))
+    }
+
+    #[test]
+    fn a_name_is_found_only_where_it_stands_alone() {
+        assert!(names("if t > 5 then 1 else 2", "t"));
+        assert!(!names("total + attempts", "t"));
+        assert!(!names("\"t\"", "t"), "a string is not a name");
+        assert!(!names("1 to 10", "t"), "a keyword is not a name");
     }
 
     #[test]

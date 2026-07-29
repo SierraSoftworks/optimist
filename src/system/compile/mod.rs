@@ -27,7 +27,7 @@ use crate::{
     system::expression::{STEP, TIME},
 };
 
-pub(super) use parsing::{runtime, syntax};
+pub(super) use parsing::{clocked, runtime, syntax};
 pub(super) use plan::prepare;
 pub(super) use prepared::{Plan, PreparedComponent, PreparedMutator, PreparedPort};
 pub(super) use properties::quantities;

@@ -21,6 +21,7 @@ mod token;
 pub use diagnostic::{Diagnostic, DiagnosticKind};
 pub use distribution::Distribution;
 pub use lint::{lint, lint_program};
+pub(crate) use parse::names;
 pub use parse::parse;
 pub use runtime::{ModuleOutput, Runtime, RuntimeConfig, builtin_names};
 pub use snapshot::{Snapshot, SnapshotError, Transferred};

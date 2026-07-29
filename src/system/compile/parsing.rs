@@ -1,10 +1,13 @@
 //! Parsing expressions once and drawing each quantity from its own stream.
 
-use std::{cell::RefCell, collections::BTreeMap};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+};
 
 use crate::{
-    squiggle::{Diagnostic, Runtime, RuntimeConfig, ast::Program, parse},
-    system::{evaluate::EvaluationError, model::ComponentId},
+    squiggle::{Diagnostic, Runtime, RuntimeConfig, ast::Program, names, parse},
+    system::{evaluate::EvaluationError, expression::TIME, model::ComponentId},
 };
 
 /// Distinct expressions remembered before the cache is emptied and refilled.
@@ -15,7 +18,9 @@ use crate::{
 const CACHED_PROGRAMS: usize = 4_096;
 
 thread_local! {
-    static PARSED: RefCell<BTreeMap<String, Program>> = const { RefCell::new(BTreeMap::new()) };
+    static PARSED: RefCell<BTreeMap<String, (Program, bool)>> =
+        const { RefCell::new(BTreeMap::new()) };
+    static CLOCKED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Parses an expression, reusing the syntax tree if it has been seen before.
@@ -25,18 +30,41 @@ thread_local! {
 /// fixed by the model. Parsing them again each step dominated a long run; the
 /// tree is small enough that handing back a copy costs a fraction of rebuilding
 /// one.
+///
+/// Whether the expression reads the clock is remembered alongside the tree and
+/// reported through [`clocked`], so a caller can tell whether what it just
+/// compiled would differ at another point in time.
 pub(crate) fn syntax(source: &str) -> Result<Program, Vec<Diagnostic>> {
-    PARSED.with_borrow_mut(|cache| {
-        if let Some(program) = cache.get(source) {
-            return Ok(program.clone());
+    let program = PARSED.with_borrow_mut(|cache| {
+        if let Some((program, clocked)) = cache.get(source) {
+            return Ok((program.clone(), *clocked));
         }
         let program = parse(source)?;
+        let clocked = names(source, TIME);
         if cache.len() >= CACHED_PROGRAMS {
             cache.clear();
         }
-        cache.insert(source.to_owned(), program.clone());
-        Ok(program)
-    })
+        cache.insert(source.to_owned(), (program.clone(), clocked));
+        Ok((program, clocked))
+    });
+    program
+        .inspect(|(_, clocked)| {
+            if *clocked {
+                CLOCKED.set(true);
+            }
+        })
+        .map(|(program, _)| program)
+}
+
+/// Whether any expression parsed since the last call read the elapsed time.
+///
+/// Asking here rather than walking the model means the answer covers every
+/// expression a plan is built from, including ones added to the model later:
+/// they can only reach the solver by being parsed, and parsing is what is being
+/// watched. Reading the answer clears it, so a caller measures the region it
+/// cares about by asking once before it and once after.
+pub(crate) fn clocked() -> bool {
+    CLOCKED.replace(false)
 }
 
 pub(crate) fn compile(
@@ -86,4 +114,41 @@ pub(crate) fn first_message(diagnostics: &[Diagnostic]) -> String {
         || "invalid expression".to_owned(),
         |first| first.message.clone(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parsing_an_expression_that_reads_the_clock_is_reported() {
+        clocked();
+        syntax("if t > 5 then 200 else 100").expect("parses");
+        assert!(clocked(), "an expression naming t reads the clock");
+        assert!(!clocked(), "reading the answer clears it");
+    }
+
+    #[test]
+    fn parsing_an_expression_that_ignores_the_clock_is_not_reported() {
+        clocked();
+        syntax("100 to 200").expect("parses");
+        assert!(!clocked(), "an expression naming nothing is fixed in time");
+    }
+
+    #[test]
+    fn a_remembered_expression_still_reports_reading_the_clock() {
+        syntax("t * 2").expect("parses");
+        clocked();
+        syntax("t * 2").expect("parses");
+        assert!(clocked(), "the answer comes back with the cached tree");
+    }
+
+    #[test]
+    fn one_clocked_expression_among_many_is_enough() {
+        clocked();
+        syntax("100").expect("parses");
+        syntax("t * 2").expect("parses");
+        syntax("200").expect("parses");
+        assert!(clocked(), "the region is clocked if any part of it is");
+    }
 }
