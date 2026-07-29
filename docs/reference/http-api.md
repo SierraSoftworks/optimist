@@ -301,6 +301,29 @@ rather than a summary. It is empty for a certain quantity.
 With `series=true`, `series` is an array of frames, each with `time`,
 `converged`, and its own `components` map.
 
+`converged` is a claim about every step of the horizon, while `iterations`
+belongs to the last one. Where they differ — a design that collapsed under a
+surge and settled again once it passed — `moving` describes the step that settled
+worst, and is omitted when every step settled:
+
+```json
+"moving": {
+  "time": 5.0,
+  "iterations": 256,
+  "component": "browsers",
+  "channel": "failure",
+  "movement": 0.9013,
+  "stalled": true
+}
+```
+
+`stalled` distinguishes an iterate that stopped getting closer to a steady state
+from one that merely ran out of passes; only the second is worth more passes.
+
+`mixed` appears instead where the design settled on several states rather than
+one, giving the `time`, `component` and `channel` involved and how many `states`
+its draws divided between.
+
 `sequence` says which state of the design this analysis reflects, so a client can
 tell whether an answer predates an edit it has already seen.
 

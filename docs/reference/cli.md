@@ -225,7 +225,12 @@ back, so the dependency latency that caused a component's own latency sits in
 the same table.
 
 If the model did not settle, a note follows saying so, because a design with no
-steady state has no figures worth reading.
+steady state has no figures worth reading. It names the quantity that was still
+moving, which is what turns "nothing settled" into somewhere to look.
+
+If instead the model settled on several states, a note says how many and which
+quantity divided between them. The figures are then real, but every mean among
+them is taken across the branches and describes none of them.
 
 ### JSON shape
 
