@@ -29,6 +29,7 @@ const MANIFESTS: &[&str] = &[
 const MUTATORS: &[&str] = &[
     include_str!("catalogue/mutators/retry.yaml"),
     include_str!("catalogue/mutators/timeout.yaml"),
+    include_str!("catalogue/mutators/fallible.yaml"),
     include_str!("catalogue/mutators/fan-out.yaml"),
     include_str!("catalogue/mutators/batch.yaml"),
     include_str!("catalogue/mutators/cache.yaml"),
@@ -238,6 +239,7 @@ mod tests {
             "cache",
             "load-shed",
             "feature-flag",
+            "link",
         ] {
             assert!(mutators.contains_key(id), "missing '{id}'");
         }

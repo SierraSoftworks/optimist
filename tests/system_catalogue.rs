@@ -1042,6 +1042,10 @@ fn each_behaviour_has_a_setting_at_which_it_does_nothing() {
         attached("batch", &[("size", "1"), ("max_delay", "0")]),
         attached("load-shed", &[("limit", "1e9")]),
         attached("feature-flag", &[("exposure", "1")]),
+        attached(
+            "link",
+            &[("transmit_failure", "0"), ("receive_failure", "0")],
+        ),
     ];
     for identity in identities {
         let solved = solve(&behaved("100", "8", &identity));
@@ -1671,6 +1675,29 @@ fn a_flag_admits_the_share_it_is_set_to() {
             "an exposure of {exposure} must clamp rather than amplify, got {admitted}"
         );
     }
+}
+
+/// Request loss relieves the dependency; reply loss does not.
+#[test]
+fn a_fallible_link_loses_requests_and_replies_independently() {
+    let solved = solve(&behaved(
+        "100",
+        "8",
+        &attached(
+            "link",
+            &[("transmit_failure", "0.25"), ("receive_failure", "0.2")],
+        ),
+    ));
+    close(
+        solved.get("api", "offered"),
+        75.0,
+        "demand surviving transmit loss",
+    );
+    close(
+        solved.get("users", "success"),
+        0.6,
+        "success surviving transmit and receive loss",
+    );
 }
 
 /// Behaviours compose in the order they are declared, and the order matters.

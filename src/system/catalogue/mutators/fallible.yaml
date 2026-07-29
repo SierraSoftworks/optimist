@@ -1,0 +1,38 @@
+id: fallible
+name: Fallible link
+summary: >
+  Carries calls across a link that can independently lose requests and replies.
+  A request lost while transmitting never reaches the dependency, while a reply
+  lost while receiving leaves the dependency's work intact but makes the call
+  fail for its caller.
+properties:
+  transmit_failure:
+    unit: share
+    default: '0'
+    summary: >
+      Share of requests lost before reaching the dependency. Clamped into zero
+      and one because a probability outside that range has no physical meaning.
+  receive_failure:
+    unit: share
+    default: '0'
+    summary: >
+      Share of replies lost on their way back to the caller. The dependency has
+      already performed this work, so receive failure changes observed success
+      without relieving downstream demand. Clamped into zero and one.
+requests:
+  rate:
+    unit: op/s
+    summary: >
+      Demand that survives transmission and reaches the dependency. Lost
+      requests fail at the caller without consuming downstream capacity.
+    expression: signal.rate * (1 - min(max(transmit_failure, 0), 1))
+responses:
+  success:
+    unit: share
+    summary: >
+      Success observed by the caller after request and reply loss. Transmit loss
+      is charged here as well as removed from downstream demand; receive loss is
+      charged here alone because the dependency completed the call.
+    expression: >
+      signal.success * (1 - min(max(transmit_failure, 0), 1)) * (1 -
+      min(max(receive_failure, 0), 1))
