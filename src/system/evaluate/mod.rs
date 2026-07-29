@@ -60,6 +60,7 @@ mod queue;
 mod relax;
 mod state;
 mod stationary;
+mod transfer;
 
 use std::collections::BTreeMap;
 
@@ -143,12 +144,37 @@ pub fn evaluate_with_mutators(
     if let [whole] = shares.as_slice() {
         return horizon(model, catalogue, mutators, overrides, *whole);
     }
+    // Every draw index carries an independent system, so the shares are one
+    // answer computed in pieces rather than several answers to reconcile, and
+    // nothing passes between them while they run. A solved quantity cannot cross
+    // a thread boundary, so each worker describes its own result on the way out.
+    let solved = std::thread::scope(|scope| {
+        let workers = shares
+            .iter()
+            .map(|share| {
+                let share = *share;
+                scope.spawn(move || {
+                    let evaluation =
+                        horizon(model, catalogue, mutators, overrides, share)?;
+                    transfer::sent(&evaluation).map_err(|error| EvaluationError::Evaluation {
+                        location: "a solved share".to_owned(),
+                        message: error.to_string(),
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        workers
+            .into_iter()
+            .map(|worker| worker.join().expect("solving does not panic"))
+            .collect::<Vec<_>>()
+    });
     let solved = shares
         .iter()
-        .map(|share| {
+        .zip(solved)
+        .map(|(share, sent)| {
             Ok(merge::Share {
                 width: share.ensemble().len(),
-                evaluation: horizon(model, catalogue, mutators, overrides, *share)?,
+                evaluation: transfer::restored(sent?),
             })
         })
         .collect::<Result<Vec<_>, EvaluationError>>()?;

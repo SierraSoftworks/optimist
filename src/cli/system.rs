@@ -67,6 +67,15 @@ struct SolveOptions {
     /// `--horizon` together.
     #[arg(long)]
     transient: bool,
+    /// Divide the draws this many ways and solve them at once.
+    ///
+    /// Each draw settles independently, so the shares are one answer computed in
+    /// pieces. Left at one because dividing is not free: every share repeats the
+    /// per-pass work that does not depend on the draw count, and a design with
+    /// more than one resting state can send a draw to a different branch
+    /// depending on which share it was solved in.
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
 }
 
 impl SolveOptions {
@@ -76,6 +85,7 @@ impl SolveOptions {
             sample_count: self.samples.max(1),
             horizon: self.horizon.max(1),
             step: self.step,
+            threads: self.threads.max(1),
             mode: if self.transient {
                 SolveMode::Transient
             } else {
