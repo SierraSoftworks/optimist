@@ -69,7 +69,7 @@ pub(super) fn evaluate_component(
     runtime.bind(OUTBOUND, ported(&outbound));
     runtime.bind(
         PREVIOUS,
-        Value::Dictionary(zeroed(component, previous.get(&component.id))),
+        Value::dictionary(zeroed(component, previous.get(&component.id))),
     );
 
     let mut channels = BTreeMap::new();
@@ -119,10 +119,10 @@ fn publish(
 
 /// Wraps per-port flows so an expression can read `in.<port>.<signal>`.
 fn ported(ports: &BTreeMap<String, BTreeMap<String, Value>>) -> Value {
-    Value::Dictionary(
+    Value::dictionary(
         ports
             .iter()
-            .map(|(name, signals)| (name.clone(), Value::Dictionary(signals.clone())))
+            .map(|(name, signals)| (name.clone(), Value::dictionary(signals.clone())))
             .collect(),
     )
 }

@@ -199,7 +199,7 @@ fn support(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     };
     result.insert("points".into(), Value::Array(Vec::new()));
     result.insert("segments".into(), Value::Array(segments));
-    Ok(Value::Dictionary(result))
+    Ok(Value::dictionary(result))
 }
 
 fn finish(result: Result<Distribution, String>, span: Span) -> Result<Value, Diagnostic> {

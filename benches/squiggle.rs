@@ -60,7 +60,7 @@ fn drawn(sample_count: usize, centre: f64) -> Value {
 }
 
 fn dictionary<const N: usize>(entries: [(&str, Value); N]) -> Value {
-    Value::Dictionary(
+    Value::dictionary(
         entries
             .into_iter()
             .map(|(name, value)| (name.to_owned(), value))

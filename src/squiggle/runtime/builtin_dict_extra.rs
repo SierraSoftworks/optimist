@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
 use crate::squiggle::{Diagnostic, Value, ast::Span};
 
@@ -27,7 +27,7 @@ fn from_list(entries: Vec<&Vec<Value>>, span: Span) -> Result<Value, Diagnostic>
         };
         result.insert(key.clone(), value.clone());
     }
-    Ok(Value::Dictionary(result))
+    Ok(Value::dictionary(result))
 }
 
 fn to_list(values: &BTreeMap<String, Value>) -> Value {
@@ -39,12 +39,12 @@ fn to_list(values: &BTreeMap<String, Value>) -> Value {
     )
 }
 
-fn merge_many(dicts: Vec<&BTreeMap<String, Value>>) -> Value {
+fn merge_many(dicts: Vec<&Rc<BTreeMap<String, Value>>>) -> Value {
     let mut result = BTreeMap::new();
     for values in dicts {
-        result.extend(values.clone());
+        result.extend(values.as_ref().clone());
     }
-    Value::Dictionary(result)
+    Value::dictionary(result)
 }
 
 fn map_keys(
@@ -68,11 +68,11 @@ fn map_keys(
         };
         result.insert(mapped, value.clone());
     }
-    Ok(Value::Dictionary(result))
+    Ok(Value::dictionary(result))
 }
 
 fn select(values: &BTreeMap<String, Value>, keys: Vec<&String>, include: bool) -> Value {
-    Value::Dictionary(
+    Value::dictionary(
         values
             .iter()
             .filter(|(key, _)| keys.contains(key) == include)

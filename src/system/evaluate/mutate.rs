@@ -49,9 +49,9 @@ pub(super) fn apply(
     scope.extend(mutator.properties.clone());
     scope.insert(TIME.to_owned(), Value::Number(time));
     scope.insert(STEP.to_owned(), Value::Number(config.step));
-    scope.insert(SIGNAL.to_owned(), Value::Dictionary(flow.clone()));
-    scope.insert(REQUEST.to_owned(), Value::Dictionary(request));
-    scope.insert(RESPONSE.to_owned(), Value::Dictionary(response));
+    scope.insert(SIGNAL.to_owned(), Value::dictionary(flow.clone()));
+    scope.insert(REQUEST.to_owned(), Value::dictionary(request));
+    scope.insert(RESPONSE.to_owned(), Value::dictionary(response));
 
     let mut rewritten = flow;
     for (signal, program) in programs {

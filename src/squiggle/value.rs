@@ -23,7 +23,16 @@ pub enum Value {
     /// Ordered heterogeneous collection.
     Array(Vec<Value>),
     /// String-keyed insertion-independent dictionary.
-    Dictionary(BTreeMap<String, Value>),
+    ///
+    /// Shared rather than owned. A dictionary is how a solve carries a
+    /// component's inbound flows and how the standard library groups
+    /// `Little`, `Queue` and the rest, so naming one is the ordinary way to
+    /// reach a field. Reading a name copies the value it found, and copying a
+    /// map copied every key and every entry beneath it: reaching
+    /// `in.requests.rate` rebuilt two maps and three strings to read one
+    /// number. Sharing the map makes that a reference count, and writing to one
+    /// still copies, so a value is never seen to change under a holder.
+    Dictionary(Rc<BTreeMap<String, Value>>),
     /// Scalar probability distribution.
     Distribution(Distribution),
     /// UTC calendar date represented at midnight.
@@ -39,6 +48,11 @@ pub enum Value {
 }
 
 impl Value {
+    /// Wraps an owned map as a shared dictionary value.
+    pub fn dictionary(entries: BTreeMap<String, Value>) -> Self {
+        Self::Dictionary(Rc::new(entries))
+    }
+
     /// Returns the stable runtime type name used in diagnostics.
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -82,7 +96,9 @@ impl PartialEq for Value {
             (Self::Boolean(left), Self::Boolean(right)) => left == right,
             (Self::String(left), Self::String(right)) => left == right,
             (Self::Array(left), Self::Array(right)) => left == right,
-            (Self::Dictionary(left), Self::Dictionary(right)) => left == right,
+            (Self::Dictionary(left), Self::Dictionary(right)) => {
+                Rc::ptr_eq(left, right) || left == right
+            }
             (Self::Distribution(left), Self::Distribution(right)) => left == right,
             (Self::Date(left), Self::Date(right)) => left == right,
             (Self::Duration(left), Self::Duration(right)) => left == right,

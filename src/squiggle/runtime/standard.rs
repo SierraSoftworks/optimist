@@ -326,7 +326,7 @@ fn build() -> Environment {
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        environment.define(*namespace, Value::Dictionary(values));
+        environment.define(*namespace, Value::dictionary(values));
     }
     environment
 }
