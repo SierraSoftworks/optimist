@@ -18,7 +18,11 @@ use crate::system::{
     SolveMode, bottlenecks_with_mutators, read_system,
 };
 
-use super::{diagnose, output::OutputFormat};
+use super::{
+    diagnose,
+    output::OutputFormat,
+    progress::{Bars, ProgressChoice},
+};
 
 /// The things one can ask of a design held in a directory.
 #[derive(Debug, Subcommand)]
@@ -158,7 +162,11 @@ pub(super) struct CompareArgs {
 }
 
 /// Executes one design command.
-pub(super) fn run(command: SystemCommand, output: OutputFormat) -> Result<(), human_errors::Error> {
+pub(super) fn run(
+    command: SystemCommand,
+    output: OutputFormat,
+    progress: ProgressChoice,
+) -> Result<(), human_errors::Error> {
     match command {
         SystemCommand::Check(args) => check(args, output),
         SystemCommand::Catalogue(args) => {
@@ -167,12 +175,19 @@ pub(super) fn run(command: SystemCommand, output: OutputFormat) -> Result<(), hu
         }
         SystemCommand::Solve(args) => {
             let loaded = load(&args.design.directory)?;
-            let evaluation = solve(&loaded, args.intervention.as_deref(), &args.options)?;
+            // The bar comes down when this block ends, whether it answered or not.
+            let evaluation = {
+                let bars = Bars::new(progress);
+                solve(&loaded, args.intervention.as_deref(), &args.options, &bars)?
+            };
             print(output.solved(&evaluation, args.component.as_deref())?)
         }
         SystemCommand::Bottlenecks(args) => {
             let loaded = load(&args.design.directory)?;
-            let evaluation = solve(&loaded, args.intervention.as_deref(), &args.options)?;
+            let evaluation = {
+                let bars = Bars::new(progress);
+                solve(&loaded, args.intervention.as_deref(), &args.options, &bars)?
+            };
             let mut ranked = rank(&loaded, &evaluation, &args.options)?;
             if args.binding {
                 ranked.retain(Bottleneck::binds);
@@ -184,7 +199,10 @@ pub(super) fn run(command: SystemCommand, output: OutputFormat) -> Result<(), hu
         }
         SystemCommand::Compare(args) => {
             let loaded = load(&args.directory)?;
-            let compared = compare(&loaded, &args.interventions, &args.options)?;
+            let compared = {
+                let bars = Bars::new(progress);
+                compare(&loaded, &args.interventions, &args.options, &bars)?
+            };
             print(output.comparison(&compared)?)
         }
     }
@@ -254,10 +272,12 @@ fn solve(
     loaded: &LoadedSystem,
     intervention: Option<&str>,
     options: &SolveOptions,
+    bars: &Bars,
 ) -> Result<Evaluation, human_errors::Error> {
     let asking = Solve::new(&loaded.model, &loaded.component_types)
         .mutators(&loaded.mutators)
-        .with(options.config());
+        .with(options.config())
+        .reporting(bars);
     match intervention {
         Some(id) => asking.intervention(&named(loaded, id)?).evaluate(),
         None => asking.evaluate(),
@@ -323,6 +343,7 @@ fn compare(
     loaded: &LoadedSystem,
     interventions: &[String],
     options: &SolveOptions,
+    bars: &Bars,
 ) -> Result<Vec<(String, Comparison)>, human_errors::Error> {
     let wanted = interventions
         .iter()
@@ -331,6 +352,7 @@ fn compare(
     let weighed = Solve::new(&loaded.model, &loaded.component_types)
         .mutators(&loaded.mutators)
         .with(options.config())
+        .reporting(bars)
         .compare_many(&wanted)
         .map_err(evaluation_error)?;
     Ok(interventions
