@@ -8,6 +8,8 @@ pub mod ast;
 pub mod diagnostic;
 pub mod distribution;
 pub mod runtime;
+/// Moving evaluated values between threads.
+pub mod snapshot;
 pub mod value;
 
 mod lexer;
@@ -21,4 +23,5 @@ pub use distribution::Distribution;
 pub use lint::{lint, lint_program};
 pub use parse::parse;
 pub use runtime::{ModuleOutput, Runtime, RuntimeConfig, builtin_names};
+pub use snapshot::{Snapshot, SnapshotError, Transferred};
 pub use value::{DateValue, Domain, DurationValue, Function, Value};

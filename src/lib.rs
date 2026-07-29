@@ -13,6 +13,11 @@
 
 #![deny(missing_docs)]
 
+#[cfg(feature = "profiling")]
+pub mod profile;
+#[cfg(not(feature = "profiling"))]
+mod profile;
+
 /// HTTP and WebSocket access to a workspace of designs.
 pub mod api;
 /// Command-line argument types and dispatch used by the `optimist` binary.

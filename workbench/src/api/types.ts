@@ -273,11 +273,39 @@ export interface Frame {
   components: Solved
 }
 
+/**
+ * A step that did not settle, and what was still moving when the solver stopped.
+ *
+ * Reported alongside `Analysis.converged` because that flag is a claim about
+ * every step of a horizon while `iterations` belongs to the last one, and a
+ * surge that has passed leaves the last step settling in a pass or two.
+ */
+export interface Moving {
+  time: number
+  iterations: number
+  component: string
+  channel: string
+  movement: number
+  stalled: boolean
+}
+
+/** A step whose draws settled on several states rather than one. */
+export interface Mixed {
+  time: number
+  component: string
+  channel: string
+  states: number
+}
+
 /** A solved design and what constrains it. */
 export interface Analysis {
   sequence: number
   converged: boolean
   iterations: number
+  /** Present only where some step failed to settle. */
+  moving?: Moving
+  /** Present only where the design settled on several states. */
+  mixed?: Mixed
   components: Solved
   /** Present only where the caller asked for a series. */
   series?: Frame[]

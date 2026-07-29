@@ -177,28 +177,8 @@ pub fn compare_with_mutators(
     // comparison that took twice as long as the design it is about was spending
     // the second half of that wait on a machine that had cores to spare.
     let (baseline, proposed) = std::thread::scope(|scope| {
-        let baseline = scope.spawn(|| {
-            let settled = evaluate_with_mutators(model, catalogue, mutators, &unchanged, config)?;
-            rank(
-                model,
-                catalogue,
-                mutators,
-                &unchanged,
-                settled.settled(),
-                config,
-            )
-        });
-        let proposed = scope.spawn(|| {
-            let settled = evaluate_with_mutators(model, catalogue, mutators, &overrides, config)?;
-            rank(
-                model,
-                catalogue,
-                mutators,
-                &overrides,
-                settled.settled(),
-                config,
-            )
-        });
+        let baseline = scope.spawn(|| ranked(model, catalogue, mutators, &unchanged, config));
+        let proposed = scope.spawn(|| ranked(model, catalogue, mutators, &overrides, config));
         (
             baseline.join().expect("solving does not panic"),
             proposed.join().expect("solving does not panic"),
@@ -211,6 +191,134 @@ pub fn compare_with_mutators(
         baseline,
         proposed,
     })
+}
+
+/// Weighs several proposals against one shared baseline.
+///
+/// Comparing proposals one at a time solves the unchanged design once for each
+/// of them, which is the same answer every time: the baseline does not depend on
+/// which proposal it is being weighed against. It is solved once here and shared,
+/// so `n` proposals cost `n + 1` solves rather than `2n`, and the proposals are
+/// solved alongside each other because none of them can observe another.
+///
+/// Every comparison therefore reads one baseline computed with one seed, which
+/// is what makes two proposals as comparable with each other as each is with the
+/// design they would replace.
+///
+/// ```
+/// use optimist::system::{
+///     EvaluationConfig, InterventionId, SystemModel, builtin_catalogue,
+///     builtin_mutators, compare_many_with_mutators,
+/// };
+///
+/// let model: SystemModel = serde_yaml_ng::from_str("
+/// scratchpad:
+///   - name: peak_rate
+///     expression: '900'
+/// components:
+///   - id: users
+///     name: Users
+///     type: client
+///     properties:
+///       request_rate: peak_rate
+///   - id: api
+///     name: API
+///     type: compute
+///     properties:
+///       service_time: '0.02'
+///       parallelism: '8'
+/// relationships:
+///   - from: users
+///     to: api
+/// interventions:
+///   - id: quieter
+///     name: Shift traffic away
+///     overrides:
+///       - name: peak_rate
+///         expression: '200'
+///   - id: bigger
+///     name: Add workers
+///     overrides:
+///       - name: peak_rate
+///         expression: '400'
+/// ")?;
+///
+/// let weighed = compare_many_with_mutators(
+///     &model,
+///     &builtin_catalogue()?,
+///     &builtin_mutators()?,
+///     &[InterventionId::new("quieter"), InterventionId::new("bigger")],
+///     EvaluationConfig::default(),
+/// )?;
+///
+/// assert_eq!(weighed.len(), 2);
+/// // Both proposals were weighed against the very same ranking of the design.
+/// assert_eq!(weighed[0].1.baseline[0].utilisation, weighed[1].1.baseline[0].utilisation);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn compare_many_with_mutators(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    interventions: &[InterventionId],
+    config: EvaluationConfig,
+) -> Result<Vec<(InterventionId, Comparison)>, EvaluationError> {
+    let unchanged = BTreeMap::new();
+    let overrides = interventions
+        .iter()
+        .map(|intervention| Ok(model.intervention(intervention)?.bindings()))
+        .collect::<Result<Vec<_>, EvaluationError>>()?;
+
+    let (baseline, proposals) = std::thread::scope(|scope| {
+        let baseline = scope.spawn(|| ranked(model, catalogue, mutators, &unchanged, config));
+        let proposals = overrides
+            .iter()
+            .map(|overrides| scope.spawn(|| ranked(model, catalogue, mutators, overrides, config)))
+            .collect::<Vec<_>>();
+        (
+            baseline.join().expect("solving does not panic"),
+            proposals
+                .into_iter()
+                .map(|proposal| proposal.join().expect("solving does not panic"))
+                .collect::<Vec<_>>(),
+        )
+    });
+    let baseline = baseline?;
+
+    interventions
+        .iter()
+        .zip(proposals)
+        .map(|(intervention, proposed)| {
+            let proposed = proposed?;
+            Ok((
+                intervention.clone(),
+                Comparison {
+                    movements: movements(&baseline, &proposed),
+                    baseline: baseline.clone(),
+                    proposed,
+                },
+            ))
+        })
+        .collect()
+}
+
+/// Solves one scenario and ranks what it is closest to exhausting.
+fn ranked(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, super::mutator::Mutator>,
+    overrides: &BTreeMap<String, String>,
+    config: EvaluationConfig,
+) -> Result<Vec<Bottleneck>, EvaluationError> {
+    let settled = evaluate_with_mutators(model, catalogue, mutators, overrides, config)?;
+    rank(
+        model,
+        catalogue,
+        mutators,
+        overrides,
+        settled.settled(),
+        config,
+    )
 }
 
 fn movements(baseline: &[Bottleneck], proposed: &[Bottleneck]) -> Vec<Movement> {

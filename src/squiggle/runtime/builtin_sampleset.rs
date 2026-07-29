@@ -37,10 +37,7 @@ fn from_dist(
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };
-    let samples = distribution
-        .draws(runtime.config.sample_count, &mut runtime.rng)
-        .map_err(|error| Diagnostic::runtime(error, span))?
-        .to_vec();
+    let samples = distribution.materialise(distribution.stream(&mut runtime.rng), runtime.ensemble);
     finish(Distribution::from_samples(samples), span)
 }
 
@@ -101,11 +98,8 @@ fn to_list(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<V
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
     };
-    let count = Distribution::aligned_count([distribution], runtime.config.sample_count);
-    let samples = distribution
-        .draws(count, &mut runtime.rng)
-        .map_err(|error| Diagnostic::runtime(error, span))?
-        .to_vec();
+    let count = Distribution::aligned([distribution], runtime.ensemble);
+    let samples = distribution.materialise(distribution.stream(&mut runtime.rng), count);
     Ok(Value::Array(
         samples.into_iter().map(Value::Number).collect(),
     ))
@@ -137,15 +131,10 @@ fn map(
         };
         operands.push(distribution);
     }
-    let count = Distribution::aligned_count(operands.iter().copied(), runtime.config.sample_count);
+    let count = Distribution::aligned(operands.iter().copied(), runtime.ensemble);
     let mut inputs = Vec::new();
     for distribution in operands {
-        inputs.push(
-            distribution
-                .draws(count, &mut runtime.rng)
-                .map_err(|error| Diagnostic::runtime(error, span))?
-                .to_vec(),
-        );
+        inputs.push(distribution.materialise(distribution.stream(&mut runtime.rng), count));
     }
     let count = inputs
         .iter()

@@ -35,7 +35,7 @@ pub(in crate::system) fn rank(
         overrides,
         Timing {
             seed: config.seed,
-            sample_count: config.sample_count,
+            ensemble: config.ensemble(),
             time: step.time,
             step: config.step,
         },
@@ -59,7 +59,7 @@ pub(in crate::system) fn rank(
         scope.insert(OUTBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
         scope.insert(PREVIOUS.to_owned(), Value::Dictionary(BTreeMap::new()));
 
-        let mut runtime = runtime(config.seed, config.sample_count)?;
+        let mut runtime = runtime(config.seed, config.ensemble())?;
         for (name, (demand, limit)) in &component.constraints {
             let location = || format!("constraint '{name}' of component '{}'", component.id);
             let bindings = || {

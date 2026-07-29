@@ -28,13 +28,23 @@
 //! not searched for; a wide converged distribution is the signal that the system
 //! is operating near the fold between them.
 //!
+//! # Settling on several states is also a result
+//!
+//! Past a fold the draws divide between branches, and a draw on a branch too
+//! steep for the damped step to follow swaps between values indefinitely. The
+//! per-draw test then never passes although the ensemble has been still for
+//! hundreds of passes. The solver therefore also asks whether the *distribution*
+//! has stopped moving, and where it has, reports the step as settled on a
+//! mixture and says how many states its draws divided between.
+//!
 //! # Not converging is a result
 //!
-//! An iteration that never settles is reported rather than hidden behind a last
-//! iterate. A loop whose gain exceeds one has no steady state to find, and
-//! saying so is more useful than returning whichever values the cap happened to
-//! stop at. The share of draws still moving is carried alongside the values so a
-//! caller can tell a wholly unstable system from one unstable in its tail.
+//! An iteration that never settles — in draws or in distribution — is reported
+//! rather than hidden behind a last iterate. A loop whose gain exceeds one has
+//! no steady state to find, and saying so is more useful than returning
+//! whichever values the cap happened to stop at. The quantity still moving is
+//! named alongside the values so a caller can tell a wholly unstable system from
+//! one unstable in its tail.
 
 mod aggregate;
 mod arrivals;
@@ -43,10 +53,13 @@ mod component;
 mod config;
 mod error;
 mod flow;
+mod merge;
+mod modes;
 mod mutate;
 mod queue;
 mod relax;
 mod state;
+mod stationary;
 
 use std::collections::BTreeMap;
 
@@ -55,7 +68,7 @@ use rand_chacha::ChaCha20Rng;
 
 pub use config::{EvaluationConfig, SolveMode};
 pub use error::EvaluationError;
-pub use state::{ComponentState, Evaluation, LinkId, LinkState, Step};
+pub use state::{ComponentState, Evaluation, LinkId, LinkState, Mixture, Step, Unsettled};
 
 use crate::system::{
     compile::{Timing, prepare},
@@ -126,6 +139,30 @@ pub fn evaluate_with_mutators(
     overrides: &BTreeMap<String, String>,
     config: EvaluationConfig,
 ) -> Result<Evaluation, EvaluationError> {
+    let shares: Vec<EvaluationConfig> = config.divided().collect();
+    if let [whole] = shares.as_slice() {
+        return horizon(model, catalogue, mutators, overrides, *whole);
+    }
+    let solved = shares
+        .iter()
+        .map(|share| {
+            Ok(merge::Share {
+                width: share.ensemble().len(),
+                evaluation: horizon(model, catalogue, mutators, overrides, *share)?,
+            })
+        })
+        .collect::<Result<Vec<_>, EvaluationError>>()?;
+    Ok(merge::merge(solved))
+}
+
+/// Advances one share of the draws across the whole horizon.
+fn horizon(
+    model: &SystemModel,
+    catalogue: &BTreeMap<String, ComponentType>,
+    mutators: &BTreeMap<String, Mutator>,
+    overrides: &BTreeMap<String, String>,
+    config: EvaluationConfig,
+) -> Result<Evaluation, EvaluationError> {
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let mut previous: BTreeMap<ComponentId, ComponentState> = BTreeMap::new();
     let mut carried: BTreeMap<LinkId, LinkState> = BTreeMap::new();
@@ -141,7 +178,7 @@ pub fn evaluate_with_mutators(
             overrides,
             Timing {
                 seed: config.seed,
-                sample_count: config.sample_count,
+                ensemble: config.ensemble(),
                 time,
                 step: config.step,
             },

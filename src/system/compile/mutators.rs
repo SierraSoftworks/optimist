@@ -44,7 +44,7 @@ pub(super) fn prepare_mutators(
                 message: first_message(&diagnostics),
             })?;
             let seed = derive_seed(0, &format!("{owner}/{}", mutator.id), name);
-            let value = runtime(seed, config.sample_count)?
+            let value = runtime(seed, config.ensemble)?
                 .evaluate_values(
                     &program,
                     globals

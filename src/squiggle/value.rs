@@ -4,6 +4,8 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 
 use chrono::{DateTime, Datelike, NaiveDate, Utc};
 
+use crate::profile::count;
+
 use super::{
     ast::{Expression, Parameter},
     distribution::Distribution,
@@ -394,11 +396,23 @@ impl Environment {
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<Value> {
-        self.0
-            .values
-            .borrow()
-            .get(name)
-            .cloned()
-            .or_else(|| self.0.parent.as_ref()?.get(name))
+        count!(Lookups);
+        match self.0.values.borrow().get(name).cloned() {
+            Some(value) => {
+                count!(LookupEntries, copied(&value));
+                Some(value)
+            }
+            None => self.0.parent.as_ref()?.get(name),
+        }
+    }
+}
+
+/// Counts the entries a lookup copied, so a costly name can be told from a cheap one.
+#[cfg(feature = "profiling")]
+fn copied(value: &Value) -> u64 {
+    match value {
+        Value::Dictionary(entries) => entries.values().map(copied).sum::<u64>() + 1,
+        Value::Array(items) => items.iter().map(copied).sum::<u64>() + 1,
+        _ => 1,
     }
 }

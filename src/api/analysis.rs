@@ -293,6 +293,42 @@ struct Frame {
     components: Solved,
 }
 
+/// A step that did not settle, and what was still moving when it stopped.
+///
+/// Carried instead of a bare flag because the flag alone cannot be reported
+/// honestly: whether a design settled is a claim about every step of its
+/// horizon, while the pass count belongs to one step, and a surge that has
+/// passed leaves a design settling again in a pass or two. Pairing the two
+/// produced a banner reading "did not settle after 1 passes".
+#[derive(Serialize)]
+struct Moving {
+    /// Elapsed seconds of the step this describes.
+    time: f64,
+    /// Passes that step took before the solver stopped.
+    iterations: usize,
+    /// Component owning the quantity that was still moving furthest.
+    component: String,
+    /// That component's channel which was still moving furthest.
+    channel: String,
+    /// How far it moved on the last pass, relative to its own magnitude.
+    movement: f64,
+    /// Whether the iterate had stopped closing, rather than run out of passes.
+    stalled: bool,
+}
+
+/// A step whose draws settled on several states rather than one.
+#[derive(Serialize)]
+struct Mixed {
+    /// Elapsed seconds of the step this describes.
+    time: f64,
+    /// Component owning the quantity that settled on several values.
+    component: String,
+    /// That component's channel which settled on several values.
+    channel: String,
+    /// How many states its draws divided between.
+    states: usize,
+}
+
 /// A solved design and what constrains it.
 #[derive(Serialize)]
 pub(super) struct Analysis {
@@ -306,6 +342,12 @@ pub(super) struct Analysis {
     converged: bool,
     /// Passes taken in the final step.
     iterations: usize,
+    /// The step that settled worst, where any step failed to settle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moving: Option<Moving>,
+    /// Where the design settled on several states rather than one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mixed: Option<Mixed>,
     /// Every solved channel, by component and then by channel.
     ///
     /// Sent alongside the ranking because a constraint's utilisation says how
@@ -387,6 +429,26 @@ fn solve(
         sequence: snapshot.sequence,
         converged: evaluation.converged(),
         iterations: settled.iterations,
+        moving: evaluation.unsettled().and_then(|step| {
+            let moving = step.unsettled.as_ref()?;
+            Some(Moving {
+                time: step.time,
+                iterations: step.iterations,
+                component: moving.component.to_string(),
+                channel: moving.channel.clone(),
+                movement: moving.movement,
+                stalled: moving.stalled,
+            })
+        }),
+        mixed: evaluation.mixed().and_then(|step| {
+            let mixture = step.mixture.as_ref()?;
+            Some(Mixed {
+                time: step.time,
+                component: mixture.component.to_string(),
+                channel: mixture.channel.clone(),
+                states: mixture.states,
+            })
+        }),
         components: solved(settled, DRAW_BUDGET),
         series,
         bottlenecks: ranked,

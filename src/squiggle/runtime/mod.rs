@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
-use super::{Diagnostic, Value, ast::Program, parse, value::Environment};
+use crate::profile::count;
+
+use super::{Diagnostic, Value, ast::Program, distribution::Ensemble, parse, value::Environment};
 
 mod builtin;
 #[macro_use]
@@ -61,6 +63,8 @@ pub struct Runtime {
     pub(super) rng: ChaCha20Rng,
     pub(super) steps: usize,
     pub(super) modules: BTreeMap<String, Value>,
+    /// The draws to sample, and which share of them this runtime computes.
+    pub(super) ensemble: Ensemble,
     /// Standard globals, built once and shared by every run as a parent scope.
     pub(super) globals: Environment,
     /// Scope holding the values passed to [`Runtime::evaluate_values`], reused so
@@ -87,6 +91,7 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
         }
@@ -106,9 +111,43 @@ impl Runtime {
             rng: ChaCha20Rng::seed_from_u64(config.seed),
             steps: 0,
             modules: BTreeMap::new(),
+            ensemble: Ensemble::whole(config.sample_count),
             bindings: globals.child(),
             globals,
         })
+    }
+
+    /// Restricts this runtime to one share of the configured draws.
+    ///
+    /// Every draw index carries an independent system, so a caller with several
+    /// runtimes can give each of them a share and concatenate the results. The
+    /// share changes only which draws are computed, never which are sampled, so
+    /// the pieces agree with what one runtime would have produced.
+    ///
+    /// ```
+    /// # use optimist::squiggle::{Runtime, RuntimeConfig, Value, distribution::Ensemble};
+    /// let config = RuntimeConfig { sample_count: 400, ..RuntimeConfig::default() };
+    /// let whole = Runtime::with_config(config)?.evaluate("normal(5, 1) * 2")
+    ///     .expect("evaluates");
+    /// let Value::Distribution(whole) = whole else { panic!("a distribution") };
+    ///
+    /// let mut shared: Vec<f64> = Vec::new();
+    /// for share in Ensemble::split(400, 4) {
+    ///     let value = Runtime::with_config(config)?
+    ///         .sharing(share)
+    ///         .evaluate("normal(5, 1) * 2")
+    ///         .expect("evaluates");
+    ///     let Value::Distribution(part) = value else { panic!("a distribution") };
+    ///     shared.extend_from_slice(part.samples().expect("draws"));
+    /// }
+    ///
+    /// assert_eq!(shared, whole.samples().expect("draws"));
+    /// # Ok::<(), String>(())
+    /// ```
+    #[must_use]
+    pub fn sharing(mut self, share: Ensemble) -> Self {
+        self.ensemble = share.resized(self.config.sample_count);
+        self
     }
 
     /// Returns this runtime's immutable configuration.
@@ -197,11 +236,31 @@ impl Runtime {
         program: &Program,
         bindings: impl IntoIterator<Item = (&'a str, Value)>,
     ) -> Result<Value, Diagnostic> {
+        for (name, value) in bindings {
+            self.bind(name, value);
+        }
+        self.evaluate_bound(program)
+    }
+
+    /// Binds one name for the programs evaluated after it.
+    ///
+    /// Writes over an existing key rather than allocating a fresh one, so a
+    /// caller that rebinds the same names repeatedly pays only for the values.
+    pub(crate) fn bind(&mut self, name: &str, value: Value) {
+        self.bindings.rebind(name, value);
+    }
+
+    /// Evaluates a program against the names already bound.
+    ///
+    /// A caller evaluating several programs against one scope binds it once and
+    /// calls this for each of them, rather than handing over the same scope again
+    /// per program. That matters where the scope holds dictionaries: binding is a
+    /// copy, and a component's inbound flows would otherwise be copied once for
+    /// every channel that could have read them.
+    pub(crate) fn evaluate_bound(&mut self, program: &Program) -> Result<Value, Diagnostic> {
         self.steps = 0;
         self.rng = ChaCha20Rng::seed_from_u64(self.config.seed);
-        for (name, value) in bindings {
-            self.bindings.rebind(name, value);
-        }
+        count!(Programs);
         let environment = self.bindings.child();
         self.eval_program(program, &environment)
             .map(|output| output.value)

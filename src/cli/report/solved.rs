@@ -60,11 +60,30 @@ pub(crate) fn channels(evaluation: &Evaluation, only: Option<&str>) -> Report {
             "These figures mean nothing",
             format!(
                 "The design did not settle after {} passes; the largest movement on the last \
-                 one was {}. A loop whose gain exceeds one has no steady state to find, so \
+                 one was {}{}. A loop whose gain exceeds one has no steady state to find, so \
                  these are the numbers the solver stopped at rather than the numbers the \
                  design reaches.",
                 step.iterations,
-                number(step.movement)
+                number(step.movement),
+                step.unsettled
+                    .as_ref()
+                    .map(|moving| format!(", on `{}` of `{}`", moving.channel, moving.component))
+                    .unwrap_or_default(),
+            ),
+        );
+    } else if let Some(mixture) = &step.mixture {
+        // Several stable states is a finding rather than a fault, and the
+        // figures above are the mixture of them. The warning is that a mean
+        // taken across two branches describes neither.
+        report.note(
+            Tone::Warn,
+            format!("This design has {} stable states", mixture.states),
+            format!(
+                "`{}` of `{}` settled on {} values rather than one: the draws divide between \
+                 branches and stay there. Every figure above is a mixture of those states, so \
+                 read the interval rather than the mean — no request sees the average of two \
+                 branches.",
+                mixture.channel, mixture.component, mixture.states
             ),
         );
     }

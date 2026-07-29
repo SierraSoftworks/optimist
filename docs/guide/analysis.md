@@ -41,6 +41,25 @@ The commonest cause is unbounded amplification: a retry policy against a
 dependency that cannot serve the amplified demand, or a component type on a
 response leg that publishes `rate` and so feeds demand back into its own caller.
 
+## Settling on several states is also a result
+
+Not settling and having several answers are different things, and only the first
+is a failure. Past a fold a draw can sit on a branch steeper than the damped step
+can follow and swap between two values indefinitely, while the ensemble it
+belongs to is perfectly still — the same values in the same proportions on every
+pass, only trading places.
+
+So where the per-draw test gives up, the solver asks a second question: has the
+*distribution* stopped moving? It compares order statistics rather than draws,
+which removes the assignment of values to draws and leaves the empirical
+distribution, invariant under any permutation of the branches. A stationary
+mixture then reads as no movement at all, and is reported as settled on several
+states with the quantity and the count named.
+
+That is a finding rather than a fault: the figures are what the design does. What
+it warns about is the mean, which is taken across the branches and describes
+none of them.
+
 ## Steady state and transient
 
 The same equations either way. What differs is whether the backlog on each wire

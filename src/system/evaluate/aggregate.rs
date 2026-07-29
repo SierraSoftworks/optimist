@@ -43,17 +43,20 @@ pub(super) fn combine(
     if let ([only], 1.0) = (values, scale) {
         return only.clone();
     }
-    let count = values
+    let ensemble = values
         .iter()
         .filter_map(|value| match value {
             Value::Distribution(distribution) => distribution.samples().map(<[f64]>::len),
             _ => None,
         })
         .min()
-        .unwrap_or(config.sample_count.max(1));
+        .map_or_else(|| config.ensemble(), |authored| {
+            config.ensemble().resized(authored)
+        });
+    let count = ensemble.len();
     let columns = values
         .iter()
-        .filter_map(|value| Varying::of(value, count, rng))
+        .filter_map(|value| Varying::of(value, ensemble, rng))
         .collect::<Vec<_>>();
     if columns.is_empty() {
         return Value::Number(declaration.rest());

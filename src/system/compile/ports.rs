@@ -143,7 +143,7 @@ fn quantity(
         message: first_message(&diagnostics),
     })?;
     let seed = derive_seed(config.seed, &id.to_string(), what);
-    runtime(seed, config.sample_count)?
+    runtime(seed, config.ensemble)?
         .evaluate_values(
             &program,
             globals

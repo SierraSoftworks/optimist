@@ -18,6 +18,7 @@ import {
   useDesign,
   useEditDesign,
 } from '../composables/useDesign'
+import { formatSiNumber } from '../domain/humanNumber'
 import { readProblem } from '../domain/solverProblem'
 import { useWorkbenchStore } from '../stores/workbench'
 
@@ -119,6 +120,30 @@ const solvingLabel = computed(() =>
 )
 
 const problem = computed(() => readProblem(solveError.value))
+
+/**
+ * What to call a design that did not settle.
+ *
+ * The step named is the worst one rather than the last, because the two are
+ * rarely the same: a design collapses under a surge and settles again once it
+ * passes, and it is the collapse a reader needs pointed at.
+ */
+const unsettledTitle = computed(() => {
+  const moving = analysis.value?.moving
+  if (!moving) return 'This design did not settle'
+  return `This design did not settle at t = ${formatSiNumber(moving.time)}s`
+})
+
+const unsettledDescription = computed(() => {
+  const moving = analysis.value?.moving
+  if (!moving) {
+    return 'A loop whose gain exceeds one has no steady state, so the figures below are wherever the solver stopped rather than what the design does.'
+  }
+  const cause = moving.stalled
+    ? 'stopped getting closer to one'
+    : 'ran out of passes before reaching one'
+  return `\`${moving.channel}\` of \`${moving.component}\` was still moving by ${(moving.movement * 100).toFixed(moving.movement < 0.001 ? 3 : 1)}% a pass after ${moving.iterations} passes, and ${cause}. A loop whose gain exceeds one has no steady state, so the figures below are wherever the solver stopped rather than what the design does.`
+})
 
 function choose(id: string | null) {
   void router.replace({
@@ -395,7 +420,10 @@ function unitOf(component: string, channel: string): string {
       />
       <!--
         A design with no steady state has no figures worth reading, so this is
-        said where the figures are rather than beside them.
+        said where the figures are rather than beside them. The step named is the
+        one that settled worst rather than the last one: a surge that has passed
+        leaves the last step settling in a pass or two, and quoting its pass
+        count said "did not settle after 1 passes" about a ten-second collapse.
       -->
       <el-alert
         v-else-if="analysis && !analysis.converged"
@@ -404,8 +432,23 @@ function unitOf(component: string, channel: string): string {
         show-icon
         class="problem"
         data-test="did-not-settle"
-        :title="`This design did not settle after ${analysis.iterations} passes`"
-        description="A loop whose gain exceeds one has no steady state, so the figures below are wherever the solver stopped rather than what the design does."
+        :title="unsettledTitle"
+        :description="unsettledDescription"
+      />
+      <!--
+        Several stable states is a finding rather than a fault: the design does
+        settle, on a mixture. It earns a note because every mean below is taken
+        across branches and describes none of them.
+      -->
+      <el-alert
+        v-else-if="analysis?.mixed"
+        type="info"
+        :closable="false"
+        show-icon
+        class="problem"
+        data-test="several-states"
+        :title="`This design has ${analysis.mixed.states} stable states`"
+        :description="`\`${analysis.mixed.channel}\` of \`${analysis.mixed.component}\` settles on ${analysis.mixed.states} values rather than one, so the figures below are a mixture of them. Read the shading rather than the line: no request sees the average of two branches.`"
       />
 
       <div class="body">

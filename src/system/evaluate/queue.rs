@@ -34,17 +34,17 @@ pub(super) fn carried(
     response: &BTreeMap<String, Value>,
     config: EvaluationConfig,
 ) -> Value {
-    let count = config.sample_count.max(1);
+    let count = config.ensemble().len();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let rate = request
         .get(RATE)
-        .and_then(|value| Varying::of(value, count, &mut rng));
+        .and_then(|value| Varying::of(value, config.ensemble(), &mut rng));
     let sent = request
         .get(PAYLOAD)
-        .and_then(|value| Varying::of(value, count, &mut rng));
+        .and_then(|value| Varying::of(value, config.ensemble(), &mut rng));
     let received = response
         .get(PAYLOAD)
-        .and_then(|value| Varying::of(value, count, &mut rng));
+        .and_then(|value| Varying::of(value, config.ensemble(), &mut rng));
     let (Some(rate), Some(sent), Some(received)) = (rate, sent, received) else {
         return Value::Number(0.0);
     };
@@ -77,15 +77,15 @@ pub(super) fn queued(
     capacity: &Value,
     config: EvaluationConfig,
 ) -> LinkState {
-    let count = config.sample_count.max(1);
+    let count = config.ensemble().len();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let offered = request
         .get(RATE)
-        .and_then(|value| Varying::of(value, count, &mut rng));
+        .and_then(|value| Varying::of(value, config.ensemble(), &mut rng));
     let drain = response
         .get(CAPACITY)
-        .and_then(|value| Varying::of(value, count, &mut rng));
-    let depth = Varying::of(capacity, count, &mut rng);
+        .and_then(|value| Varying::of(value, config.ensemble(), &mut rng));
+    let depth = Varying::of(capacity, config.ensemble(), &mut rng);
     let (Some(offered), Some(drain), Some(depth)) = (offered, drain, depth) else {
         return LinkState::default();
     };
@@ -172,12 +172,12 @@ fn solved<const N: usize>(
 /// drain and the integration will overshoot and oscillate, in the solver rather
 /// than in the design.
 pub(super) fn advance(before: &LinkState, capacity: &Value, config: EvaluationConfig) -> LinkState {
-    let count = config.sample_count.max(1);
+    let count = config.ensemble().len();
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
-    let held = Varying::of(&before.backlog, count, &mut rng);
-    let offered = Varying::of(&before.offered, count, &mut rng);
-    let drain = Varying::of(&before.drain, count, &mut rng);
-    let depth = Varying::of(capacity, count, &mut rng);
+    let held = Varying::of(&before.backlog, config.ensemble(), &mut rng);
+    let offered = Varying::of(&before.offered, config.ensemble(), &mut rng);
+    let drain = Varying::of(&before.drain, config.ensemble(), &mut rng);
+    let depth = Varying::of(capacity, config.ensemble(), &mut rng);
     let (Some(held), Some(offered), Some(drain), Some(depth)) = (held, offered, drain, depth)
     else {
         return before.clone();

@@ -282,13 +282,12 @@ fn truncate(
                 .with_help("widen the interval so it overlaps the distribution's support"),
         );
     }
-    let count = Distribution::aligned_count([distribution], runtime.config.sample_count);
+    let count = Distribution::aligned([distribution], runtime.ensemble);
     let samples = distribution
-        .draws(count, &mut runtime.rng)
-        .map_err(fail)?
-        .iter()
+        .materialise(distribution.stream(&mut runtime.rng), count)
+        .into_iter()
         .map(|draw| {
-            let position = distribution.cdf(*draw)?;
+            let position = distribution.cdf(draw)?;
             distribution.quantile(lower + position * retained)
         })
         .collect::<Result<Vec<_>, _>>()

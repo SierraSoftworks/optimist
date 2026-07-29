@@ -36,7 +36,7 @@ pub(super) use properties::quantities;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Timing {
     pub(crate) seed: u64,
-    pub(crate) sample_count: usize,
+    pub(crate) ensemble: crate::squiggle::distribution::Ensemble,
     pub(crate) time: f64,
     pub(crate) step: f64,
 }

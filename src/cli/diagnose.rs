@@ -267,9 +267,15 @@ fn smoke_test(loaded: &LoadedSystem, findings: &mut Vec<Finding>) {
         Ok(evaluation) if !evaluation.settled().converged => findings.push(Finding::warning(
             "model",
             format!(
-                "did not settle after {} passes; largest movement {}",
+                "did not settle after {} passes; largest movement {}{}",
                 evaluation.settled().iterations,
-                super::render::number(evaluation.settled().movement)
+                super::render::number(evaluation.settled().movement),
+                evaluation
+                    .settled()
+                    .unsettled
+                    .as_ref()
+                    .map(|moving| format!(" on `{}` of `{}`", moving.channel, moving.component))
+                    .unwrap_or_default(),
             ),
             "A loop whose gain exceeds one has no steady state. Look for a component on a \
              response edge that publishes `rate`, or solve with `--transient` to watch it \

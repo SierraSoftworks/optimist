@@ -37,7 +37,7 @@ pub(super) fn resolve_scaling(
         })?;
         let value = runtime(
             derive_seed(0, "scale-unit", unit.id.as_str()),
-            config.sample_count,
+            config.ensemble,
         )?
         .evaluate_values(
             &program,

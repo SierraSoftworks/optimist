@@ -117,6 +117,86 @@ export function kernelDensity(draws: number[]): Density | null {
   return { x: grid(sample, bandwidth), y, bandwidth, modes: Math.max(1, countModes(y)) }
 }
 
+/**
+ * Estimates a sample's density on a caller's grid, scaled so its tallest point
+ * is one.
+ *
+ * Separate from {@link kernelDensity} because the two answer different
+ * questions. That one describes a sample on a grid of its own choosing, which is
+ * what a chart of a single distribution wants. This one describes a sample on a
+ * grid shared with other samples, which is what a chart of a distribution
+ * *changing over time* needs: the columns have to be measured against a common
+ * axis or they cannot be laid side by side.
+ *
+ * The estimate is binned rather than evaluated draw by draw. A timeline holds
+ * one of these per step, and evaluating the kernel at every grid point against
+ * every draw costs the product of the two; binning first costs their sum. The
+ * draws are spread linearly between the two bins either side of each, so a draw
+ * moving across a bin boundary moves the estimate smoothly rather than in a
+ * step, and the bins are then convolved with the same Gaussian kernel. That is
+ * an approximation to the estimate {@link kernelDensity} computes exactly, with
+ * an error below the bin width, which is a fraction of the bandwidth and far
+ * below what a chart can draw.
+ *
+ * Scaled per call rather than across a series on purpose: what is being shown is
+ * the shape of each step's distribution, and normalising a whole timeline
+ * against its widest moment would erase the shape of every other one.
+ *
+ * @param draws the sample.
+ * @param low the value at the bottom of the grid.
+ * @param high the value at the top of it.
+ * @param bins how many cells to divide that range into.
+ * @returns density at each cell in `[0, 1]`, or null where there is nothing to
+ *   estimate.
+ */
+export function densityProfile(
+  draws: number[],
+  low: number,
+  high: number,
+  bins: number,
+): number[] | null {
+  const sample = draws.filter(Number.isFinite).sort((a, b) => a - b)
+  if (sample.length === 0 || !(high > low) || bins < 2) return null
+
+  const width = (high - low) / bins
+  const counts = new Array<number>(bins).fill(0)
+  for (const draw of sample) {
+    // Placed against bin centres, so a draw exactly on a boundary splits evenly
+    // between the two rather than landing wholly in the upper one.
+    const position = (draw - low) / width - 0.5
+    const lower = Math.floor(position)
+    const share = position - lower
+    if (lower >= 0 && lower < bins) counts[lower] += 1 - share
+    if (lower + 1 >= 0 && lower + 1 < bins) counts[lower + 1] += share
+  }
+
+  // A sample pinned at one value has no scale of its own, so the kernel is given
+  // the narrowest one the grid can express rather than collapsing to a spike
+  // that falls between two cells and disappears.
+  const spread = sample.length > 1 ? ruleOfThumb(sample) : 0
+  const bandwidth = spread > 0 ? Math.max(spread, width) : width
+  const smoothed = smooth(counts, bandwidth / width)
+  const tallest = Math.max(...smoothed)
+  if (!(tallest > 0)) return null
+  return smoothed.map((value) => value / tallest)
+}
+
+/** Convolves binned counts with a Gaussian of `spread` bins. */
+function smooth(counts: number[], spread: number): number[] {
+  const reach = Math.max(1, Math.ceil(4 * spread))
+  const kernel = Array.from({ length: 2 * reach + 1 }, (_, index) =>
+    Math.exp(-0.5 * ((index - reach) / spread) ** 2),
+  )
+  return counts.map((_, index) => {
+    let total = 0
+    for (let offset = -reach; offset <= reach; offset += 1) {
+      const at = index + offset
+      if (at >= 0 && at < counts.length) total += counts[at] * kernel[offset + reach]
+    }
+    return total
+  })
+}
+
 /** Silverman's rule of thumb with a robust scale estimate. */
 function ruleOfThumb(sorted: number[]): number {
   const n = sorted.length

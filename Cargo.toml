@@ -24,8 +24,24 @@ textwrap = { version = "0.16.2", features = ["terminal_size"] }
 tokio = { version = "1.46.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
 
 [dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
 futures-util = "0.3.31"
 proptest = "1.7.0"
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
 rstest = "0.26.1"
 tokio-tungstenite = "0.29.0"
+
+[features]
+# Counts the work a solve does. Off by default so the counters compile away.
+profiling = []
+
+# A solve is thousands of passes through the same short expressions, so whether
+# the small functions making up a pass get inlined across module boundaries
+# matters more here than build time does.
+[profile.release]
+codegen-units = 1
+lto = "thin"
+
+[[bench]]
+name = "solve"
+harness = false

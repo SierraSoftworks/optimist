@@ -29,16 +29,19 @@ use crate::squiggle::{Diagnostic, Distribution, Value, ast::Span};
 
 use super::{Runtime, builtin::number};
 
-enum Column<'a> {
+use crate::profile::count;
+
+enum Column {
     Constant(f64),
-    Draws(&'a [f64]),
+    /// This value's share, resolved once so the loop below indexes memory.
+    Drawn(std::sync::Arc<[f64]>),
 }
 
-impl Column<'_> {
+impl Column {
     fn at(&self, index: usize) -> f64 {
         match self {
             Self::Constant(value) => *value,
-            Self::Draws(draws) => draws[index],
+            Self::Drawn(draws) => draws.get(index).copied().unwrap_or(f64::NAN),
         }
     }
 }
@@ -49,6 +52,14 @@ impl Column<'_> {
 /// soon as any argument is uncertain. `compute` receives one value per argument
 /// in the order supplied and returns a domain error message when the formula has
 /// no finite value for that combination.
+///
+/// Draws are independent, so this loop looks like somewhere to spread work
+/// across threads, and it is not. A solve calls this tens of thousands of times
+/// with a sample set of a thousand and a formula of two or three arithmetic
+/// operations; splitting that costs several times what evaluating it costs.
+/// Measured on the shipped examples, doing so made a solve five times slower at
+/// a thousand draws and was still losing at ten thousand. Parallelism belongs
+/// where the unit of work is a whole relaxation, not a single formula.
 pub(super) fn elementwise(
     runtime: &mut Runtime,
     arguments: &[Value],
@@ -56,6 +67,7 @@ pub(super) fn elementwise(
     compute: impl Fn(&[f64]) -> Result<f64, String>,
 ) -> Result<Value, Diagnostic> {
     let fail = |message: String| Diagnostic::runtime(message, span);
+    count!(Elementwise);
     if !arguments
         .iter()
         .any(|argument| matches!(argument, Value::Distribution(_)))
@@ -67,25 +79,31 @@ pub(super) fn elementwise(
         return compute(&row).map(Value::Number).map_err(fail);
     }
 
-    let count = Distribution::aligned_count(
+    let ensemble = Distribution::aligned(
         arguments.iter().filter_map(|argument| match argument {
             Value::Distribution(distribution) => Some(distribution),
             _ => None,
         }),
-        runtime.config.sample_count,
+        runtime.ensemble,
     );
     let mut columns = Vec::with_capacity(arguments.len());
     for argument in arguments {
         columns.push(match argument {
             Value::Distribution(distribution) => {
-                Column::Draws(distribution.draws(count, &mut runtime.rng).map_err(fail)?)
+                let seed = distribution.stream(&mut runtime.rng);
+                Column::Drawn(distribution.drawn(seed, ensemble))
             }
             value => Column::Constant(number(value, span)?),
         });
     }
 
+    // The columns already hold this runtime's share, so the formula runs across
+    // the draws that share owns rather than the whole ensemble they came from.
+    let width = ensemble.len();
+
     let mut row = vec![0.0; columns.len()];
-    let samples = (0..count)
+    count!(Draws, width);
+    let samples = (0..width)
         .map(|index| {
             for (slot, column) in row.iter_mut().zip(&columns) {
                 *slot = column.at(index);

@@ -144,18 +144,124 @@ fn depth(value: f64) -> Result<f64, String> {
     Ok(value)
 }
 
+/// Probability that a chain of `steps` exponential stages finishes by `deadline`.
+///
+/// A request that makes `k` calls in series, each taking an exponentially
+/// distributed time with mean `s`, finishes in the sum of those times, which is
+/// Erlang-distributed with shape `k` and rate `1/s`. The chance it beats a
+/// deadline `d` is that distribution's CDF, the regularised lower incomplete
+/// gamma function $P(k, d/s)$.
+///
+/// For integer `k` — which is what a call depth is — that function has a closed
+/// form rather than needing a series or continued fraction (Abramowitz and
+/// Stegun, *Handbook of Mathematical Functions* (1964), equation 6.5.13):
+///
+/// $$P(k, x) = 1 - \sum_{n=0}^{k-1} \frac{x^n e^{-x}}{n!}, \qquad x = d/s$$
+///
+/// The summands are Poisson probabilities, and they are accumulated as such:
+/// starting from $e^{-x}$ and carrying $t_n = t_{n-1} \cdot x / n$. Writing it
+/// this way rather than summing $x^n/n!$ and multiplying by $e^{-x}$ at the end
+/// is what keeps it usable across the whole domain — the bare series overflows
+/// for $x \gtrsim 10^2$ while the factor it would be multiplied by has already
+/// underflowed, producing `inf * 0`. Every term here lies in $[0, 1]$, no
+/// factorial is formed, and all terms are positive so the sum does not cancel.
+///
+/// A single stage is the exponential CDF, evaluated as $-\mathrm{expm1}(-x)$ so
+/// that a deadline far shorter than the service time keeps its significant
+/// figures instead of losing them to $1 - (1 - \epsilon)$.
+///
+/// Accuracy is otherwise limited by the subtraction from one, so a near-certain
+/// race resolves to about `k` machine epsilons absolute while a near-hopeless one
+/// is exact to a relative epsilon.
+///
+/// Non-integer shapes are left to [`statrs`], which evaluates the general
+/// incomplete gamma. They arise only when a design makes call depth itself
+/// uncertain, which is off the path this exists to serve.
 fn erlang_cdf(steps: f64, service: f64, deadline: f64) -> Result<f64, String> {
     if deadline <= 0.0 {
         return Ok(0.0);
     }
-    Gamma::new(steps, 1.0 / service)
-        .map_err(|_| "the deadline race has no valid gamma parameters".to_owned())
-        .map(|gamma| gamma.cdf(deadline).clamp(0.0, 1.0))
+    let x = deadline / service;
+    let Some(stages) = integer_stages(steps) else {
+        return Gamma::new(steps, 1.0 / service)
+            .map_err(|_| "the deadline race has no valid gamma parameters".to_owned())
+            .map(|gamma| gamma.cdf(deadline).clamp(0.0, 1.0));
+    };
+    if stages == 1 {
+        return Ok((-(-x).exp_m1()).clamp(0.0, 1.0));
+    }
+    let mut term = (-x).exp();
+    let mut unfinished = term;
+    for stage in 1..stages {
+        term *= x / f64::from(stage);
+        unfinished += term;
+    }
+    Ok((1.0 - unfinished).clamp(0.0, 1.0))
+}
+
+/// Reads a call depth as a whole number of stages, when it is one.
+fn integer_stages(steps: f64) -> Option<u32> {
+    (steps.fract() == 0.0 && (1.0..=1_000.0).contains(&steps)).then_some(steps as u32)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The closed form and the general incomplete gamma must agree, because which
+    /// one a call takes is decided only by whether its depth happens to be whole.
+    #[test]
+    fn the_closed_form_agrees_with_the_general_incomplete_gamma() {
+        for steps in [1.0_f64, 2.0, 3.0, 5.0, 12.0, 40.0] {
+            for service in [1e-3_f64, 0.05, 1.0, 25.0] {
+                for deadline in [1e-4_f64, 0.02, 0.5, 3.0, 100.0] {
+                    let closed = erlang_cdf(steps, service, deadline).expect("closed form");
+                    let general = Gamma::new(steps, 1.0 / service)
+                        .expect("gamma")
+                        .cdf(deadline)
+                        .clamp(0.0, 1.0);
+                    assert!(
+                        (closed - general).abs() < 1e-9,
+                        "k={steps} s={service} d={deadline}: {closed} vs {general}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A single stage is exponential, which is the one case with an elementary form.
+    #[test]
+    fn one_stage_is_the_exponential_distribution() {
+        for (service, deadline) in [(1.0, 1.0), (0.25, 0.1), (10.0, 45.0)] {
+            let expected: f64 = 1.0 - (-deadline / service as f64).exp();
+            assert!((erlang_cdf(1.0, service, deadline).expect("cdf") - expected).abs() < 1e-12);
+        }
+    }
+
+    /// A deadline race is a probability, and it has to behave like one at the edges.
+    #[test]
+    fn the_deadline_race_stays_a_probability() {
+        for steps in [1.0_f64, 4.0, 37.0] {
+            assert_eq!(erlang_cdf(steps, 1.0, 0.0).expect("cdf"), 0.0);
+            assert_eq!(erlang_cdf(steps, 1.0, -1.0).expect("cdf"), 0.0);
+            assert!(erlang_cdf(steps, 1.0, 1e12).expect("cdf") > 1.0 - 1e-12);
+            assert!(erlang_cdf(steps, 1e12, 1.0).expect("cdf") < 1e-9);
+        }
+    }
+
+    /// More work in series, or less time to do it in, can only lower the odds.
+    #[test]
+    fn the_deadline_race_is_monotone_in_depth_and_in_time() {
+        let deeper: Vec<f64> = (1..=8)
+            .map(|steps| erlang_cdf(f64::from(steps), 0.1, 0.5).expect("cdf"))
+            .collect();
+        assert!(deeper.windows(2).all(|pair| pair[1] < pair[0]));
+        let longer: Vec<f64> = [0.1_f64, 0.2, 0.4, 0.8]
+            .iter()
+            .map(|deadline| erlang_cdf(3.0, 0.1, *deadline).expect("cdf"))
+            .collect();
+        assert!(longer.windows(2).all(|pair| pair[1] > pair[0]));
+    }
 
     fn expected_attempts(success: f64, tries: f64) -> f64 {
         (1.0 - (1.0 - success).powf(tries)) / success

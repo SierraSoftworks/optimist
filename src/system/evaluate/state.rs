@@ -105,11 +105,69 @@ pub struct Step {
     /// What is waiting on each relationship.
     pub links: BTreeMap<LinkId, LinkState>,
     /// Whether relaxation settled within the iteration cap.
+    ///
+    /// True of a step that settled on a mixture as well as one that settled on a
+    /// single value per draw: both have stopped changing, and the figures
+    /// reported are what the design does rather than where the solver gave up.
     pub converged: bool,
+    /// What was still moving when it gave up, where it did not settle.
+    pub unsettled: Option<Unsettled>,
+    /// What the design settled between, where it settled on more than one state.
+    pub mixture: Option<Mixture>,
     /// Passes taken before settling or reaching the cap.
     pub iterations: usize,
     /// Largest relative movement in the final pass.
+    ///
+    /// Of the draws where the step settled on a single value each, and of the
+    /// quantiles where it settled on a mixture, so that in both cases this is the
+    /// movement of the thing that stopped moving.
     pub movement: f64,
+}
+
+/// The quantity that kept a step from settling.
+///
+/// A step that does not settle is a result rather than a failure, but "nothing
+/// settled" sends an author looking through a whole design. Naming the quantity
+/// that was still moving, and how fast, points at the loop that is not closing.
+#[derive(Clone, Debug)]
+pub struct Unsettled {
+    /// Component owning the quantity that was still moving furthest.
+    pub component: ComponentId,
+    /// That component's channel which was still moving furthest.
+    pub channel: String,
+    /// How far it moved on the last pass, relative to its own magnitude.
+    pub movement: f64,
+    /// Whether the iterate had stopped getting closer, rather than merely run
+    /// out of passes.
+    ///
+    /// The two call for different answers. An iterate still closing in wants a
+    /// higher cap; one that has stopped has no steady state to find at this load,
+    /// and raising the cap only makes the same answer take longer to arrive.
+    pub stalled: bool,
+}
+
+/// The states a step settled between, where it settled on more than one.
+///
+/// Past a fold a design has several fixed points and its draws divide between
+/// them. The ensemble is then still — the same values in the same proportions on
+/// every pass — while no individual draw is, because a draw sitting on a branch
+/// the damped step cannot follow swaps between values indefinitely. Reporting
+/// that as a failure to settle is wrong twice over: the figures are exactly what
+/// the design does, and the thing worth saying about them is that they describe
+/// several states rather than one.
+#[derive(Clone, Debug)]
+pub struct Mixture {
+    /// Component owning the quantity that settled on several values.
+    pub component: ComponentId,
+    /// That component's channel which settled on several values.
+    pub channel: String,
+    /// How many states its draws divided between.
+    pub states: usize,
+    /// How far that channel's draws still move on a pass, relative to their own
+    /// magnitude. Large by construction: it is what swapping between branches
+    /// costs, and it is reported so that a reader can see the mixture is a
+    /// property of the design rather than a tolerance that was loosened.
+    pub swing: f64,
 }
 
 /// A solved model across its horizon.
@@ -128,5 +186,25 @@ impl Evaluation {
     /// Reports whether every step settled within the iteration cap.
     pub fn converged(&self) -> bool {
         self.steps.iter().all(|step| step.converged)
+    }
+
+    /// Borrows the step that settled worst, where any step failed to settle.
+    ///
+    /// The worst rather than the last, because a surge that has passed leaves a
+    /// design settling again in a pass or two and the step a reader needs to see
+    /// is the one in the middle of it.
+    pub fn unsettled(&self) -> Option<&Step> {
+        self.steps
+            .iter()
+            .filter(|step| step.unsettled.is_some())
+            .max_by(|left, right| left.movement.total_cmp(&right.movement))
+    }
+
+    /// Borrows the step that divided between the most states, where any did.
+    pub fn mixed(&self) -> Option<&Step> {
+        self.steps
+            .iter()
+            .filter(|step| step.mixture.is_some())
+            .max_by_key(|step| step.mixture.as_ref().map_or(0, |mixture| mixture.states))
     }
 }

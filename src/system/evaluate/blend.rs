@@ -8,7 +8,7 @@ use crate::{
     squiggle::Value,
     system::{
         compile::{PreparedComponent, PreparedPort},
-        values::{blend, distance, draws, from_draws},
+        values::{Varying, converge as settle},
     },
 };
 
@@ -21,25 +21,27 @@ pub(super) fn converge(
     weight: f64,
     config: EvaluationConfig,
     rng: &mut ChaCha20Rng,
-) -> (ComponentState, f64) {
+) -> (ComponentState, Moved) {
     let mut blended = ComponentState::default();
-    let mut moved: f64 = 0.0;
+    let mut moved = Moved::default();
     for (name, next) in &computed.channels {
-        let Some(previous) = settled.channels.get(name) else {
+        let Some(settled) = settled.channels.get(name) else {
             // Nothing to blend against on the first pass, so the computed value
             // stands and the step cannot yet be treated as settled.
             blended.channels.insert(name.clone(), next.clone());
-            moved = f64::INFINITY;
+            moved.record(f64::INFINITY, name);
             continue;
         };
-        let count = config.sample_count;
-        let (Some(previous), Some(next)) = (draws(previous, count, rng), draws(next, count, rng))
-        else {
+        let count = config.ensemble().len();
+        let (Some(settled), Some(computed)) = (
+            Varying::of(settled, config.ensemble(), rng),
+            Varying::of(next, config.ensemble(), rng),
+        ) else {
             blended.channels.insert(name.clone(), next.clone());
             continue;
         };
-        moved = moved.max(distance(&previous, &next));
-        let value = from_draws(blend(&previous, &next, weight)).unwrap_or(Value::Number(0.0));
+        let (value, gap) = settle(&settled, &computed, weight, count);
+        moved.record(gap, name);
         blended.channels.insert(name.clone(), value);
     }
     // A port publishes quantities derived from the channels, so it follows
@@ -50,6 +52,26 @@ pub(super) fn converge(
     blended.arriving = computed.arriving.clone();
     blended.returning = computed.returning.clone();
     (blended, moved)
+}
+
+/// How far a component moved, and which of its channels moved furthest.
+///
+/// The name is what makes an unsettled solve actionable. "Nothing settled" sends
+/// an author looking through the whole design; "utilisation is still moving by a
+/// tenth every pass" sends them to the loop that is not closing.
+#[derive(Clone, Debug, Default)]
+pub(super) struct Moved {
+    pub(super) distance: f64,
+    pub(super) channel: Option<String>,
+}
+
+impl Moved {
+    fn record(&mut self, distance: f64, channel: &str) {
+        if distance > self.distance || self.channel.is_none() {
+            self.distance = distance;
+            self.channel = Some(channel.to_owned());
+        }
+    }
 }
 
 /// Re-derives each port's published signals from the blended channels.

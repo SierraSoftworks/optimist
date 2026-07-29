@@ -19,12 +19,16 @@
 //! and 1.3.6.6; Luc Devroye, *Non-Uniform Random Variate Generation* (1986).
 
 mod draws;
+mod ensemble;
+mod indexed;
 mod sample;
 mod stats;
 
 use std::sync::Arc;
 
-use draws::DrawCache;
+use draws::Stream;
+
+pub use ensemble::Ensemble;
 
 /// A validated symbolic or empirical scalar probability distribution.
 ///
@@ -35,7 +39,7 @@ use draws::DrawCache;
 #[derive(Clone, Debug)]
 pub struct Distribution {
     kind: Kind,
-    draws: DrawCache,
+    stream: Stream,
 }
 
 impl PartialEq for Distribution {
@@ -61,6 +65,10 @@ pub(super) enum Kind {
     Triangular(f64, f64, f64),
     /// Empirical draws, shared between clones so that passing a sampled
     /// quantity around costs a reference count rather than a copy of every draw.
+    ///
+    /// Packed rather than sharing the buffer they were built in. Copying the
+    /// draws once costs less than the extra indirection would cost on every
+    /// element read thereafter, which was measured rather than assumed.
     Samples(Arc<[f64]>),
 }
 
@@ -68,7 +76,7 @@ impl Distribution {
     fn symbolic(kind: Kind) -> Self {
         Self {
             kind,
-            draws: DrawCache::default(),
+            stream: Stream::default(),
         }
     }
 

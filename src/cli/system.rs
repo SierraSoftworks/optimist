@@ -15,7 +15,7 @@ use clap::{Args, Subcommand};
 
 use crate::system::{
     Bottleneck, Comparison, Evaluation, EvaluationConfig, InterventionId, LoadedSystem, SolveMode,
-    bottlenecks_with_mutators, compare_with_mutators, evaluate_intervention_with_mutators,
+    bottlenecks_with_mutators, compare_many_with_mutators, evaluate_intervention_with_mutators,
     evaluate_with_mutators, read_system,
 };
 
@@ -324,20 +324,23 @@ fn compare(
     interventions: &[String],
     options: &SolveOptions,
 ) -> Result<Vec<(String, Comparison)>, human_errors::Error> {
-    interventions
+    let wanted = interventions
         .iter()
-        .map(|intervention| {
-            let comparison = compare_with_mutators(
-                &loaded.model,
-                &loaded.component_types,
-                &loaded.mutators,
-                &named(loaded, intervention)?,
-                options.config(),
-            )
-            .map_err(evaluation_error)?;
-            Ok((intervention.clone(), comparison))
-        })
-        .collect()
+        .map(|intervention| named(loaded, intervention))
+        .collect::<Result<Vec<_>, _>>()?;
+    let weighed = compare_many_with_mutators(
+        &loaded.model,
+        &loaded.component_types,
+        &loaded.mutators,
+        &wanted,
+        options.config(),
+    )
+    .map_err(evaluation_error)?;
+    Ok(interventions
+        .iter()
+        .cloned()
+        .zip(weighed.into_iter().map(|(_, comparison)| comparison))
+        .collect())
 }
 
 fn evaluation_error(error: crate::system::EvaluationError) -> human_errors::Error {
