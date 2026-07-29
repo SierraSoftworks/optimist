@@ -97,9 +97,16 @@ use super::{Distribution, Ensemble, Kind, indexed::Indexed};
 ///
 /// The handle participates in neither equality nor hashing: two distributions are
 /// equal when their parameters agree, regardless of whether either has drawn.
+///
+/// Both cells live behind one allocation. Every result of distribution algebra
+/// creates a stream, so a second allocation and a second reference count per
+/// value are paid tens of thousands of times per solve for two words.
 #[derive(Clone, Debug, Default)]
-pub(super) struct Stream {
-    seed: Arc<OnceLock<u64>>,
+pub(super) struct Stream(Arc<Shared>);
+
+#[derive(Debug, Default)]
+struct Shared {
+    seed: OnceLock<u64>,
     /// The share this value has already been drawn for, if any.
     ///
     /// Inverting a quantile costs far more than reading one back, and a property
@@ -108,12 +115,16 @@ pub(super) struct Stream {
     /// relaxation and a single slot would serve — the share is worth keeping.
     /// It is the draws of a few dozen authored quantities, not of the thousands
     /// of values derived from them.
-    held: Arc<OnceLock<(Ensemble, Arc<[f64]>)>>,
+    held: OnceLock<(Ensemble, Arc<[f64]>)>,
 }
 
 impl Stream {
     fn seed(&self, rng: &mut ChaCha20Rng) -> u64 {
-        *self.seed.get_or_init(|| rng.next_u64())
+        *self.0.seed.get_or_init(|| rng.next_u64())
+    }
+
+    fn held(&self) -> &OnceLock<(Ensemble, Arc<[f64]>)> {
+        &self.0.held
     }
 }
 
@@ -147,7 +158,7 @@ impl Distribution {
                 held.into_owned().into()
             };
         }
-        if let Some((held, draws)) = self.stream.held.get()
+        if let Some((held, draws)) = self.stream.held().get()
             && *held == ensemble
         {
             return Arc::clone(draws);
@@ -155,7 +166,7 @@ impl Distribution {
         let drawn: Arc<[f64]> = self.compute(seed, ensemble).into();
         let (held, kept) = self
             .stream
-            .held
+            .held()
             .get_or_init(|| (ensemble, Arc::clone(&drawn)));
         if *held == ensemble {
             return Arc::clone(kept);
