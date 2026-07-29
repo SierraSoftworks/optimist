@@ -39,7 +39,7 @@ builtins! {
 }
 
 fn tagged(tag: &str, value: Value) -> Result<Value, Diagnostic> {
-    Ok(Value::Dictionary(
+    Ok(Value::dictionary(
         [
             ("tag".into(), Value::String(tag.into())),
             ("value".into(), value),

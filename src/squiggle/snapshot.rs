@@ -196,7 +196,7 @@ impl Snapshot for Value {
             Transferred::Array(items) => {
                 Self::Array(items.into_iter().map(Value::restore).collect())
             }
-            Transferred::Dictionary(entries) => Self::Dictionary(
+            Transferred::Dictionary(entries) => Self::dictionary(
                 entries
                     .into_iter()
                     .map(|(name, value)| (name, Value::restore(value)))
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn nested_collections_survive_the_crossing() {
-        let value = Value::Dictionary(BTreeMap::from([
+        let value = Value::dictionary(BTreeMap::from([
             ("rate".to_owned(), Value::Number(500.0)),
             (
                 "stages".to_owned(),
@@ -287,7 +287,7 @@ mod tests {
     fn a_callable_inside_a_collection_is_refused_too() {
         let mut runtime = crate::squiggle::Runtime::new();
         let function = runtime.evaluate("{|x| x}").expect("evaluates");
-        let value = Value::Dictionary(BTreeMap::from([("apply".to_owned(), function)]));
+        let value = Value::dictionary(BTreeMap::from([("apply".to_owned(), function)]));
         assert!(value.snapshot().is_err());
     }
 }

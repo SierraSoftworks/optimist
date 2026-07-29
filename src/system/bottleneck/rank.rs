@@ -55,9 +55,9 @@ pub(in crate::system) fn rank(
             STEADY.to_owned(),
             Value::Boolean(config.mode == SolveMode::Steady),
         );
-        scope.insert(INBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
-        scope.insert(OUTBOUND.to_owned(), Value::Dictionary(BTreeMap::new()));
-        scope.insert(PREVIOUS.to_owned(), Value::Dictionary(BTreeMap::new()));
+        scope.insert(INBOUND.to_owned(), Value::dictionary(BTreeMap::new()));
+        scope.insert(OUTBOUND.to_owned(), Value::dictionary(BTreeMap::new()));
+        scope.insert(PREVIOUS.to_owned(), Value::dictionary(BTreeMap::new()));
 
         let mut runtime = runtime(config.seed, config.ensemble())?;
         for (name, (demand, limit)) in &component.constraints {

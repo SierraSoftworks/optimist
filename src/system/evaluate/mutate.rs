@@ -52,8 +52,8 @@ pub(super) fn apply(
     }
     runtime.bind(TIME, Value::Number(time));
     runtime.bind(STEP, Value::Number(config.step));
-    let signal = Value::Dictionary(flow.clone());
-    let counterpart = Value::Dictionary(counterpart.clone());
+    let signal = Value::dictionary(flow.clone());
+    let counterpart = Value::dictionary(counterpart.clone());
     let (request, response) = match direction {
         Direction::Request => (signal.clone(), counterpart),
         Direction::Response => (counterpart, signal.clone()),

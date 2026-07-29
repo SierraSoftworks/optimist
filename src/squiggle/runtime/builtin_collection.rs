@@ -408,35 +408,35 @@ fn dictionary(
         }
         "Dict.set" => {
             arity(&arguments, 3, span)?;
-            let mut result = values.clone();
+            let mut result = values.as_ref().clone();
             result.insert(string(&arguments[1], span)?, arguments[2].clone());
-            Ok(Value::Dictionary(result))
+            Ok(Value::dictionary(result))
         }
         "Dict.delete" => {
             arity(&arguments, 2, span)?;
-            let mut result = values.clone();
+            let mut result = values.as_ref().clone();
             result.remove(&string(&arguments[1], span)?);
-            Ok(Value::Dictionary(result))
+            Ok(Value::dictionary(result))
         }
         "Dict.merge" => {
             arity(&arguments, 2, span)?;
             let Value::Dictionary(right) = &arguments[1] else {
                 return Err(expected("Dictionary", &arguments[1], span));
             };
-            let mut result = values.clone();
-            result.extend(right.clone());
-            Ok(Value::Dictionary(result))
+            let mut result = values.as_ref().clone();
+            result.extend(right.as_ref().clone());
+            Ok(Value::dictionary(result))
         }
         _ => {
             arity(&arguments, 2, span)?;
             let mut result = BTreeMap::new();
-            for (key, value) in values {
+            for (key, value) in values.iter() {
                 result.insert(
                     key.clone(),
                     runtime.call(arguments[1].clone(), vec![value.clone()], span)?,
                 );
             }
-            Ok(Value::Dictionary(result))
+            Ok(Value::dictionary(result))
         }
     }
 }

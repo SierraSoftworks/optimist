@@ -286,7 +286,7 @@ impl Runtime {
             };
             result.insert(key, self.eval_expr(value, environment)?);
         }
-        Ok(Value::Dictionary(result))
+        Ok(Value::dictionary(result))
     }
 
     fn step(&mut self, span: Span) -> Result<(), Diagnostic> {
