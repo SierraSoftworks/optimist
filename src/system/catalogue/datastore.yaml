@@ -92,7 +92,7 @@ channels:
       Operations that consume the store. A cancellation arriving too late to
       prevent the work saves nothing, which is why cancelling saves less than it
       appears to.
-    expression: max([arriving - salvaged, 0])
+    expression: max(arriving - salvaged, 0)
   transfer:
     unit: B/s
     summary: Bytes moved per second.
@@ -132,7 +132,7 @@ channels:
       held decide the store's delay. A pair like that has two resting states over
       a band of load rather than one, and which of them a design is sitting in is
       not something its configuration can tell you.
-    expression: service_time / max([1 - concurrency, 0.001])
+    expression: service_time / max(1 - concurrency, 0.001)
   success_rate:
     unit: share
     emphasis: key

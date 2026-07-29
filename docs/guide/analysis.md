@@ -118,7 +118,7 @@ backlog:
   expression: >
     if steady
       then Queue.boundedLength(load, capacity)
-      else max([prev.backlog + (arrivals - departures) * dt, 0])
+      else max(prev.backlog + (arrivals - departures) * dt, 0)
 ```
 
 ## More than one fixed point

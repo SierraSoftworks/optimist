@@ -64,12 +64,12 @@ channels:
     unit: op/s
     emphasis: key
     summary: Demand passed on, capped per draw at the refill rate.
-    expression: min([offered, refill])
+    expression: min(offered, refill)
   admitted_ratio:
     unit: share
     emphasis: key
     summary: Share of callers served rather than refused.
-    expression: min([admitted / max([offered, 0.000001]), 1])
+    expression: min(admitted / max(offered, 0.000001), 1)
 
 constraints:
   throughput:
@@ -156,7 +156,7 @@ channels:
     expression: >
       if steady
         then Queue.boundedLength(load, capacity)
-        else max([prev.backlog + (arrivals - departures) * dt, 0])
+        else max(prev.backlog + (arrivals - departures) * dt, 0)
 ```
 
 Integrating from rest answers "how far did one step move it", which is the right
@@ -197,7 +197,7 @@ responses:
   latency:
     unit: s
     summary: Waiting bounded by the hedge delay plus one service time.
-    expression: min([signal.latency, hedge_after + signal.latency * (1 - hedge_share)])
+    expression: min(signal.latency, hedge_after + signal.latency * (1 - hedge_share))
 ```
 
 `requests` rewrites signals on the way downstream — what the caller is asking its

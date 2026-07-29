@@ -60,14 +60,14 @@ channels:
   offered:
     unit: op/s
     summary: Demand still wanted by the time it reaches the balancer.
-    expression: max([arriving - propagated_cancellation, 0])
+    expression: max(arriving - propagated_cancellation, 0)
   admitted:
     unit: op/s
     emphasis: key
     summary: >
       Demand allowed through, capped per draw at the admission limit. Draws
       pinned to the limit are the ones being shed.
-    expression: min([offered, admission_limit])
+    expression: min(offered, admission_limit)
   shed:
     unit: op/s
     emphasis: key

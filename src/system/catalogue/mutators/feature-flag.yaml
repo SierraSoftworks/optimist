@@ -29,4 +29,4 @@ requests:
 
       Two connections carrying complementary shares model a routed rollout, where
       part of the traffic takes a new path and the remainder keeps the old one.
-    expression: signal.rate * min([max([exposure, 0]), 1])
+    expression: signal.rate * min(max(exposure, 0), 1)

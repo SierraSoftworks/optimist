@@ -56,14 +56,14 @@ channels:
 
       Saturation is per draw, so the share of draws pinned to the service rate is
       the share in which the queue is the bottleneck.
-    expression: min([arrivals + prev.backlog / dt, service_rate])
+    expression: min(arrivals + prev.backlog / dt, service_rate)
   load:
     unit: share
     summary: >
       Arrivals against the rate consumers drain at. The one ratio every other
       figure here follows from, and the reason a buffer's depth decides how bad
       overload feels rather than whether it happens.
-    expression: arrivals / max([service_rate, 0.000001])
+    expression: arrivals / max(service_rate, 0.000001)
   backlog:
     unit: op
     emphasis: key
@@ -87,7 +87,7 @@ channels:
     expression: >
       if steady
         then Queue.boundedLength(load, capacity)
-        else min([max([prev.backlog + (arrivals * accepted_ratio - departures) * dt, 0]), capacity])
+        else min(max(prev.backlog + (arrivals * accepted_ratio - departures) * dt, 0), capacity)
   accepted_ratio:
     unit: share
     emphasis: key
@@ -109,7 +109,7 @@ channels:
     expression: >
       if steady
         then 1 - Queue.boundedBlocking(load, capacity)
-        else min([(max([capacity - prev.backlog, 0]) / dt + departures) / max([arrivals, 0.000001]), 1])
+        else min((max(capacity - prev.backlog, 0) / dt + departures) / max(arrivals, 0.000001), 1)
   wait:
     unit: s
     emphasis: key
@@ -122,7 +122,7 @@ channels:
       infinite one: with nothing resident there is no unit of work whose wait
       could be asked about. Guarding the divisor rather than testing it keeps
       this defined per draw, which a comparison against a sample set would not.
-    expression: Little.residence(backlog, max([departures, 0.000001]))
+    expression: Little.residence(backlog, max(departures, 0.000001))
 constraints:
   depth:
     emphasis: key

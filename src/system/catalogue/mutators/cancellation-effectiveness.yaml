@@ -34,4 +34,4 @@ requests:
       assume. Travels with the cancellation it describes, so a chain of hops that
       each honour cancellation differently is expressible without every component
       along it having to know.
-    expression: min([max([effectiveness, 0]), 1])
+    expression: min(max(effectiveness, 0), 1)

@@ -34,4 +34,4 @@ requests:
       work that stops: it is work that carries on being done with nobody waiting
       for the answer, which is why the rate downstream is unchanged while the
       useful part of it falls.
-    expression: signal.cancellation * min([max([propagated, 0]), 1])
+    expression: signal.cancellation * min(max(propagated, 0), 1)

@@ -386,7 +386,7 @@ off, turned on, or exposed to a fraction of requests.
 | --- | --- | --- |
 | `exposure` | `share` | *required* |
 
-Request `rate` becomes `signal.rate * min([max([exposure, 0]), 1])`. Point
+Request `rate` becomes `signal.rate * min(max(exposure, 0), 1)`. Point
 `exposure` at a shared quantity so an intervention can move it without touching
 the structure of the model, and give two connections complementary shares to
 model a routed rollout.

@@ -66,7 +66,7 @@ channels:
   failure:
     unit: op/s
     summary: Requests per second that did not receive a successful answer.
-    expression: offered * max([1 - success, 0])
+    expression: offered * max(1 - success, 0)
 constraints:
   latency_objective:
     emphasis: key
@@ -82,5 +82,5 @@ constraints:
       Observed failure rate against what the objective allows. Saturating means
       the design is losing more requests than it is permitted to, wherever in the
       system that loss originates.
-    demand: max([1 - success, 0])
-    limit: max([1 - success_target, 0.000001])
+    demand: max(1 - success, 0)
+    limit: max(1 - success_target, 0.000001)

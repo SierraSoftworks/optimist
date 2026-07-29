@@ -245,12 +245,12 @@ channels:
   admitted:
     unit: op/s
     summary: Demand passed on, capped per draw at the refill rate.
-    expression: min([offered, refill])
+    expression: min(offered, refill)
   admitted_ratio:
     unit: '1'
     emphasis: key
     summary: Share of callers served rather than refused.
-    expression: min([admitted / max([offered, 0.000001]), 1])
+    expression: min(admitted / max(offered, 0.000001), 1)
 constraints:
   throughput:
     emphasis: key

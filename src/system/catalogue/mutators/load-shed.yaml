@@ -18,7 +18,7 @@ requests:
       Demand capped per draw at the limit. The share of draws pinned to the
       limit is the share being refused, and it is a cost paid deliberately in
       exchange for the rest of the traffic being served.
-    expression: min([signal.rate, limit])
+    expression: min(signal.rate, limit)
 responses:
   success:
     unit: share
@@ -32,4 +32,4 @@ responses:
       successful while it refused most of its traffic, which is precisely the
       reading that makes shedding look like a solution rather than a choice
       about who to disappoint.
-    expression: signal.success * min([limit / max([request.rate, 0.000001]), 1])
+    expression: signal.success * min(limit / max(request.rate, 0.000001), 1)

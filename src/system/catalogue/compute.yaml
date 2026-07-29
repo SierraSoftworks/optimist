@@ -86,7 +86,7 @@ channels:
       Requests that actually consume a worker. Cancelling late costs exactly as
       much as not cancelling at all, which is why abandoning a request is a poor
       substitute for not making it.
-    expression: max([arriving - salvaged, 0])
+    expression: max(arriving - salvaged, 0)
   propagated_cancellation:
     unit: op/s
     summary: >
@@ -172,7 +172,7 @@ channels:
       front, and the caller is told. What would be wrong is capping the figure a
       constraint reads, because then a design asked for ten times what it can
       serve would report itself comfortably at its limit.
-    expression: min([offered, capacity])
+    expression: min(offered, capacity)
   concurrency:
     unit: op
     summary: >

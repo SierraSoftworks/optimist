@@ -23,4 +23,4 @@ requests:
       calls has no meaning above all of them, and an unclamped ratio above one
       would send negative demand downstream, which every quantity derived from it
       would then carry without complaint.
-    expression: signal.rate * (1 - min([max([hit_ratio, 0]), 1]))
+    expression: signal.rate * (1 - min(max(hit_ratio, 0), 1))

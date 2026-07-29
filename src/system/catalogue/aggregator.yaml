@@ -63,7 +63,7 @@ channels:
     summary: >
       Branch requests issued. One request becomes as many as there are branches,
       which is the amplification a diagram of this component does not show.
-    expression: max([arriving - salvaged, 0]) * branches
+    expression: max(arriving - salvaged, 0) * branches
   branch_capacity:
     unit: op/s
     summary: >
@@ -79,7 +79,7 @@ channels:
       would fail to evaluate and take the whole model with it, and any ceiling
       this far above the load is read as no ceiling by everything downstream of
       it.
-    expression: min([out.branches.capacity, 1e15]) / max([branches, 1])
+    expression: min(out.branches.capacity, 1e15) / max(branches, 1)
   branch_wait:
     unit: s
     summary: >
