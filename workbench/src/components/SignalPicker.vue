@@ -40,14 +40,40 @@ function movement(value: string) {
 /**
  * How a quantity reached its component, in the order a reader works through it.
  *
- * The component's own channels first, because that is what somebody came to
- * look at; what arrived and what came back are context for it.
+ * The component's own solved quantities first, because that is what somebody
+ * came to look at; what crossed a port is context for them.
  */
-const FAMILIES = [
-  { key: 'channel', label: 'Solved quantities' },
-  { key: 'input', label: 'Arriving demand' },
-  { key: 'backpressure', label: 'Returning from dependencies' },
-] as const
+const FAMILY_ORDER: Record<SignalOption['family'], number> = {
+  channel: 0,
+  input: 1,
+  backpressure: 2,
+}
+
+/** What marks each kind of quantity, so a port reading is spotted by its shape. */
+const MARKS: Record<SignalOption['family'], string> = {
+  channel: 'i-plus',
+  input: 'i-download',
+  backpressure: 'i-upload',
+}
+
+/**
+ * A quantity split into what was measured and where.
+ *
+ * `in.requests.rate` is the rate at the `requests` port. Written out in full it
+ * repeats a prefix on every row of a group and pushes the part that differs
+ * towards the end of a narrow column, so the port is carried separately.
+ */
+function reading(option: SignalOption): { name: string; port: string | null } {
+  if (option.family === 'channel') return { name: option.channel, port: null }
+  const [, port, ...measure] = option.channel.split('.')
+  return { name: measure.join('.'), port: port ?? null }
+}
+
+/** Where a pinned quantity came from, once it is out of its component's group. */
+function origin(option: SignalOption): string {
+  const port = reading(option).port
+  return port ? `${option.component} \u00b7 ${port}` : option.component
+}
 
 const byValue = computed(() => new Map(props.options.map((option) => [option.value, option])))
 
@@ -62,31 +88,43 @@ const chosen = computed(() =>
 )
 
 /**
- * Alphabetical by the quantity's own name, then by the component holding it.
+ * Solved quantities first, then alphabetically by the quantity's own name.
  *
- * A reader looking for `success_rate` knows the name before they know which of
- * a dozen components they want it from, so the name is what the list is ordered
- * by and the component is how the repeats of it are told apart.
+ * A reader looking for `success_rate` knows the name before they know anything
+ * else about it, and within a component that is all it takes to find.
  */
 function byName(left: SignalOption, right: SignalOption): number {
-  return left.channel.localeCompare(right.channel) || left.component.localeCompare(right.component)
+  return (
+    FAMILY_ORDER[left.family] - FAMILY_ORDER[right.family] ||
+    left.channel.localeCompare(right.channel)
+  )
 }
 
 const matching = computed(() => {
   const needle = search.value.trim().toLowerCase()
   const available = props.options.filter((option) => !props.pinned.includes(option.value))
-  const found = needle
+  return needle
     ? available.filter((option) => option.value.toLowerCase().includes(needle))
     : available
-  return [...found].sort(byName)
 })
 
-const groups = computed(() =>
-  FAMILIES.map(({ key, label }) => ({
-    label,
-    options: matching.value.filter((option) => option.family === key),
-  })).filter((group) => group.options.length > 0),
-)
+/**
+ * One group per component, because that is the unit somebody reasons about.
+ *
+ * A design's quantities all have the same few names, so a list headed by the
+ * name asks a reader to pick their component out of a dozen identical rows.
+ */
+const groups = computed(() => {
+  const held = new Map<string, SignalOption[]>()
+  for (const option of matching.value) {
+    const kept = held.get(option.component)
+    if (kept) kept.push(option)
+    else held.set(option.component, [option])
+  }
+  return [...held.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([component, options]) => ({ label: component, options: [...options].sort(byName) }))
+})
 
 function pin(value: string) {
   if (props.pinned.includes(value)) return
@@ -125,8 +163,8 @@ function unpin(value: string) {
         >
           <el-icon class="mark"><i-view /></el-icon>
           <span class="name">
-            <span class="channel">{{ option.channel }}</span>
-            <span class="component">{{ option.component }}</span>
+            <span class="channel">{{ reading(option).name }}</span>
+            <span class="component">{{ origin(option) }}</span>
           </span>
           <span
             v-if="movement(option.value)"
@@ -161,14 +199,15 @@ function unpin(value: string) {
           v-for="option in group.options"
           :key="option.value"
           class="signal"
+          :class="option.family"
           :data-test="`pin-${option.value}`"
           :title="`Watch ${option.value}`"
           @click="pin(option.value)"
         >
-          <el-icon class="mark"><i-plus /></el-icon>
-          <span class="name">
-            <span class="channel">{{ option.channel }}</span>
-            <span class="component">{{ option.component }}</span>
+          <el-icon class="mark"><component :is="MARKS[option.family]" /></el-icon>
+          <span class="name flat">
+            <span class="channel">{{ reading(option).name }}</span>
+            <span v-if="reading(option).port" class="port">{{ reading(option).port }}</span>
           </span>
           <span
             v-if="movement(option.value)"
@@ -241,6 +280,8 @@ function unpin(value: string) {
 .signal.chosen .mark { color: var(--green); }
 .mark { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
 .name { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+/* Grouped by component, so a row has room to read on one line. */
+.name.flat { flex-direction: row; align-items: baseline; gap: 6px; }
 .channel {
   font-family: var(--mono);
   font-size: var(--text-2xs);
@@ -249,6 +290,16 @@ function unpin(value: string) {
   white-space: nowrap;
 }
 .component { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.port {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  /* Never truncated: a two-letter stub of a port name says less than nothing. */
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.signal.input .mark { color: #5b8d7c; }
+.signal.backpressure .mark { color: #a08a56; }
 /*
  * Which way it went, not whether that is good news. Higher latency and higher
  * throughput are the same arrow, and only the reader knows which they wanted.
@@ -281,12 +332,18 @@ function unpin(value: string) {
 
 .find { margin: 0 var(--space-2) var(--space-2); width: auto; }
 .list { flex: 1; overflow: auto; min-height: 0; }
+/* A component name, so it is written the way the design writes it. */
 .group {
-  margin: var(--space-2) var(--space-2) 2px;
-  font-family: var(--display);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: var(--space-2) 0 2px;
+  padding: 3px var(--space-2);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
 }
 </style>
