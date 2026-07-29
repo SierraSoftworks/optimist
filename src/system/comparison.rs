@@ -280,8 +280,8 @@ pub(super) fn compared_many(
         .collect::<Result<Vec<_>, EvaluationError>>()?;
     let jobs = interventions.len() + 1;
 
-    let (baseline, proposals) = std::thread::scope(|scope| {
-        let baseline = scope.spawn(|| {
+    let (baseline, proposals) = rayon::join(
+        || {
             ranked(
                 model,
                 catalogue,
@@ -290,12 +290,13 @@ pub(super) fn compared_many(
                 config,
                 reporting.on(Job::Baseline, jobs),
             )
-        });
-        let proposals = interventions
-            .iter()
-            .zip(&overrides)
-            .map(|(intervention, overrides)| {
-                scope.spawn(move || {
+        },
+        || {
+            use rayon::prelude::*;
+            interventions
+                .par_iter()
+                .zip(&overrides)
+                .map(|(intervention, overrides)| {
                     ranked(
                         model,
                         catalogue,
@@ -305,16 +306,9 @@ pub(super) fn compared_many(
                         reporting.on(Job::Proposed(intervention), jobs),
                     )
                 })
-            })
-            .collect::<Vec<_>>();
-        (
-            baseline.join().expect("solving does not panic"),
-            proposals
-                .into_iter()
-                .map(|proposal| proposal.join().expect("solving does not panic"))
-                .collect::<Vec<_>>(),
-        )
-    });
+                .collect::<Vec<_>>()
+        },
+    );
     let baseline = baseline?;
 
     interventions

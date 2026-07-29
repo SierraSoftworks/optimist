@@ -21,12 +21,20 @@ pub struct EvaluationConfig {
     pub damping: f64,
     /// Whether queues are solved for balance or advanced through time.
     pub mode: SolveMode,
-    /// How many ways to divide the draws across threads.
+    /// How many ways to divide the draws.
     ///
     /// Each draw settles on its own fixed point independently of the others, so
     /// dividing them is exact rather than approximate: the pieces are the same
     /// answer, computed in parallel. One leaves the solve on the calling thread.
-    pub threads: usize,
+    ///
+    /// This is a count of shares and not of threads, and the difference is the
+    /// point. Every share damps against its own worst draw, so a design with
+    /// more than one resting state can send a draw to a different branch
+    /// depending on how many ways the draws were split. Taking that count from
+    /// the machine would make the same design answer differently on a laptop
+    /// than on a build server, so it is fixed here and the pool underneath is
+    /// left to schedule however many threads it has.
+    pub shares: usize,
     /// Which share of the draws this solve computes.
     ///
     /// Whole unless the solver has divided the work, and callers have no reason
@@ -51,7 +59,7 @@ impl EvaluationConfig {
     /// empty share has nothing to sample and nothing to say, so it is dropped
     /// rather than asked to solve.
     pub(crate) fn divided(self) -> impl Iterator<Item = Self> {
-        Ensemble::split(self.sample_count.max(1), self.threads.max(1))
+        Ensemble::split(self.sample_count.max(1), self.shares.max(1))
             .filter(|share| !share.is_empty())
             .map(move |share| Self { share, ..self })
     }
@@ -81,9 +89,32 @@ impl Default for EvaluationConfig {
             // on the same fixed point and takes more passes to get there, which
             // is the right trade when the alternative is reporting a design that
             // has a steady state as one that does not.
+            //
+            // It is also what decides *which* steady state a design with more
+            // than one of them comes to rest on. Opening the stride near a fixed
+            // point — where it looks like pure convergence cost — destabilises
+            // the ones whose loop gain is strongly negative, and the solver
+            // settles on the congested branch instead of the branch reachable
+            // from rest. That is a different answer, not the same answer sooner,
+            // so this is not a free speed knob. See `relax`.
             damping: 0.2,
             mode: SolveMode::Steady,
-            threads: 1,
+            // One, because dividing is not yet free of the answer.
+            //
+            // The draws themselves are independent, but the damping is not: the
+            // stride is adapted against the worst draw anywhere in the model, so
+            // a draw's trajectory depends on which other draws it was solved
+            // alongside. On a design with a single resting state that only moves
+            // the answer by a few tolerances, but on one with two it decides
+            // which of them is reported — dividing `queued-collapse` four ways
+            // collapses its two steady states into one and the hysteresis the
+            // design exists to show disappears.
+            //
+            // Sharing is worth between three and seven times on the shipped
+            // examples and is available through `shares`. Making it the default
+            // wants the damping adapted per draw first, which would make a share
+            // solve its draws exactly as the whole ensemble would.
+            shares: 1,
             share: Ensemble::whole(0),
         }
     }

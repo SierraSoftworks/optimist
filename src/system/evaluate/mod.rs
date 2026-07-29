@@ -67,6 +67,9 @@ use std::collections::BTreeMap;
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use rayon::prelude::*;
+
+use crate::profile::time;
 
 pub use config::{EvaluationConfig, SolveMode};
 pub use error::EvaluationError;
@@ -181,28 +184,28 @@ pub(super) fn solved(
     // answer computed in pieces rather than several answers to reconcile, and
     // nothing passes between them while they run. A solved quantity cannot cross
     // a thread boundary, so each worker describes its own result on the way out.
-    let solved = std::thread::scope(|scope| {
-        let workers = shares
-            .iter()
-            .enumerate()
-            .map(|(index, share)| {
-                let share = *share;
-                let reporting = reporting.sharing(index, shares.len());
-                scope.spawn(move || {
-                    let evaluation =
-                        horizon(model, catalogue, mutators, overrides, share, reporting)?;
-                    transfer::sent(&evaluation).map_err(|error| EvaluationError::Evaluation {
-                        location: "a solved share".to_owned(),
-                        message: error.to_string(),
-                    })
-                })
+    //
+    // They go to the shared pool rather than to threads of their own, so that a
+    // caller already spreading work across it — weighing several proposals, say —
+    // divides one machine between them instead of multiplying its cores.
+    let solved: Vec<Result<transfer::Sent, EvaluationError>> = shares
+        .par_iter()
+        .enumerate()
+        .map(|(index, share)| {
+            let evaluation = horizon(
+                model,
+                catalogue,
+                mutators,
+                overrides,
+                *share,
+                reporting.sharing(index, shares.len()),
+            )?;
+            transfer::sent(&evaluation).map_err(|error| EvaluationError::Evaluation {
+                location: "a solved share".to_owned(),
+                message: error.to_string(),
             })
-            .collect::<Vec<_>>();
-        workers
-            .into_iter()
-            .map(|worker| worker.join().expect("solving does not panic"))
-            .collect::<Vec<_>>()
-    });
+        })
+        .collect();
     let solved = shares
         .iter()
         .zip(solved)
@@ -234,27 +237,33 @@ fn horizon(
         let time = index as f64 * config.step;
         // Shared quantities may depend on the elapsed time, so the plan is
         // resolved afresh at each step and held fixed while it relaxes.
-        let plan = prepare(
-            model,
-            catalogue,
-            mutators,
-            overrides,
-            Timing {
-                seed: config.seed,
-                ensemble: config.ensemble(),
+        let plan = time!(
+            Prepare,
+            prepare(
+                model,
+                catalogue,
+                mutators,
+                overrides,
+                Timing {
+                    seed: config.seed,
+                    ensemble: config.ensemble(),
+                    time,
+                    step: config.step,
+                },
+            )
+        )?;
+            let step = time!(
+                Relax,
+                relax(
+                &plan,
+                &previous,
+                &carried,
                 time,
-                step: config.step,
-            },
-        )?;
-        let step = relax(
-            &plan,
-            &previous,
-            &carried,
-            time,
-            config,
-            &mut rng,
-            reporting.at(index, steps),
-        )?;
+                config,
+                &mut rng,
+                reporting.at(index, steps),
+                )
+            )?;
         previous.clone_from(&step.components);
         carried.clone_from(&step.links);
         solved.push(step);

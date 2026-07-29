@@ -26,10 +26,32 @@ macro_rules! count {
     ($($ignored:tt)*) => {};
 }
 
-pub(crate) use count;
+/// Times an expression, or evaluates it untouched when profiling is off.
+///
+/// Phases nest, so a total is not a partition of the solve. Read each against
+/// the whole rather than adding them together.
+#[cfg(feature = "profiling")]
+macro_rules! time {
+    ($phase:ident, $body:expr) => {{
+        let started = std::time::Instant::now();
+        let outcome = $body;
+        $crate::profile::spend($crate::profile::Phase::$phase, started.elapsed());
+        outcome
+    }};
+}
+
+/// Times an expression, or evaluates it untouched when profiling is off.
+#[cfg(not(feature = "profiling"))]
+macro_rules! time {
+    ($phase:ident, $body:expr) => {
+        $body
+    };
+}
+
+pub(crate) use {count, time};
 
 #[cfg(feature = "profiling")]
-pub use enabled::{Counter, Counts, bump, reset, snapshot};
+pub use enabled::{Counter, Counts, Phase, Spans, bump, reset, snapshot, spend, spans};
 
 #[cfg(feature = "profiling")]
 mod enabled {
@@ -113,5 +135,85 @@ mod enabled {
         for slot in &COUNTS {
             slot.store(0, Ordering::Relaxed);
         }
+        for slot in &NANOS {
+            slot.store(0, Ordering::Relaxed);
+        }
+    }
+
+    /// One stretch of a solve worth timing separately.
+    ///
+    /// These nest: `Channels` runs inside `Relax`, which runs inside the
+    /// horizon that `Prepare` is charged against. The total of every phase is
+    /// therefore larger than the solve, and each is meaningful only against the
+    /// whole rather than against its siblings.
+    #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+    pub enum Phase {
+        /// Resolving the plan, which happens once per step of the horizon.
+        Prepare,
+        /// Everything one step's relaxation does.
+        Relax,
+        /// Gathering what arrives on a component's ports, queues included.
+        Arrivals,
+        /// Copying flow dictionaries around inside that gathering.
+        Gather,
+        /// Running the behaviours attached to a relationship.
+        Behaviours,
+        /// Solving or carrying the queue on a wire.
+        Queue,
+        /// Reducing several arrivals of one signal to the figure a component reads.
+        Combine,
+        /// Evaluating a component's channels and published signals.
+        Channels,
+        /// Damping a computed component toward the value it is converging on.
+        Converge,
+    }
+
+    impl Phase {
+        /// Every phase, in declaration order.
+        pub const ALL: [Self; 9] = [
+            Self::Prepare,
+            Self::Relax,
+            Self::Arrivals,
+            Self::Gather,
+            Self::Behaviours,
+            Self::Queue,
+            Self::Combine,
+            Self::Channels,
+            Self::Converge,
+        ];
+    }
+
+    /// How long each phase took, summed over every thread.
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+    pub struct Spans([u64; Phase::ALL.len()]);
+
+    impl Spans {
+        /// Reads one phase's total.
+        pub fn get(&self, phase: Phase) -> std::time::Duration {
+            std::time::Duration::from_nanos(self.0[phase as usize])
+        }
+
+        /// Pairs each phase with its total, for reporting.
+        pub fn entries(&self) -> impl Iterator<Item = (Phase, std::time::Duration)> {
+            let spans = *self;
+            Phase::ALL.into_iter().map(move |phase| (phase, spans.get(phase)))
+        }
+    }
+
+    static NANOS: [AtomicU64; Phase::ALL.len()] =
+        [const { AtomicU64::new(0) }; Phase::ALL.len()];
+
+    /// Charges a duration against a phase.
+    pub fn spend(phase: Phase, elapsed: std::time::Duration) {
+        NANOS[phase as usize].fetch_add(elapsed.as_nanos() as u64, Ordering::Relaxed);
+    }
+
+    /// Reads every phase's total without disturbing it.
+    pub fn spans() -> Spans {
+        let mut spans = Spans::default();
+        for phase in Phase::ALL {
+            spans.0[phase as usize] = NANOS[phase as usize].load(Ordering::Relaxed);
+        }
+        spans
     }
 }

@@ -114,6 +114,61 @@ fn draws(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// A long horizon at the step length the guide asks authors to use.
+///
+/// The shipped transient benchmarks step a whole second, which no design being
+/// walked through time is faithful at. This is the regime an author actually
+/// works in, and it costs a different order of magnitude.
+fn walking(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("walking");
+    group.sample_size(10);
+    for name in ["metastable", "queued-collapse"] {
+        let design = design(name);
+        for horizon in [60_usize, 300] {
+            let config = EvaluationConfig {
+                seed: 0,
+                sample_count: 1_000,
+                horizon,
+                step: 0.05,
+                mode: SolveMode::Transient,
+                ..EvaluationConfig::default()
+            };
+            group.bench_with_input(BenchmarkId::new(name, horizon), &horizon, |bencher, _| {
+                bencher.iter(|| solve(&design, config));
+            });
+        }
+    }
+    group.finish();
+}
+
+/// What dividing the draws buys, and where it stops buying anything.
+///
+/// A share repeats every part of a pass that does not depend on the draw count,
+/// so this curve flattens and then reverses. Where it turns is the measure of
+/// how much of a pass is fixed cost.
+fn shares(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("shares");
+    group.sample_size(10);
+    for name in ["checkout", "queued-collapse"] {
+        let design = design(name);
+        for shares in [1_usize, 2, 4, 8] {
+            let config = EvaluationConfig {
+                seed: 0,
+                sample_count: 1_000,
+                horizon: 300,
+                step: 0.05,
+                mode: SolveMode::Transient,
+                shares,
+                ..EvaluationConfig::default()
+            };
+            group.bench_with_input(BenchmarkId::new(name, shares), &shares, |bencher, _| {
+                bencher.iter(|| solve(&design, config));
+            });
+        }
+    }
+    group.finish();
+}
+
 /// Ranking constraints, which every report does on top of a solve.
 fn ranking(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("bottlenecks");
@@ -186,5 +241,14 @@ fn proposals(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, steady, transient, draws, ranking, proposals);
+criterion_group!(
+    benches,
+    steady,
+    transient,
+    walking,
+    shares,
+    draws,
+    ranking,
+    proposals
+);
 criterion_main!(benches);

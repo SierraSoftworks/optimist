@@ -67,9 +67,9 @@ fn channels(state: &ComponentState, width: usize) -> BTreeMap<String, Vec<f64>> 
         .collect()
 }
 
-fn agree(example: &str, config: EvaluationConfig, threads: usize) {
+fn agree(example: &str, config: EvaluationConfig, shares: usize) {
     let whole = solved(example, config);
-    let divided = solved(example, EvaluationConfig { threads, ..config });
+    let divided = solved(example, EvaluationConfig { shares, ..config });
 
     // A design with no steady state has no fixed point for the shares to agree
     // on: each stops where its own worst draw stopped improving, which is a
@@ -78,7 +78,7 @@ fn agree(example: &str, config: EvaluationConfig, threads: usize) {
     if !whole.converged {
         assert!(
             !divided.converged,
-            "{example}: divided into {threads} claimed to settle where the whole did not"
+            "{example}: divided into {shares} claimed to settle where the whole did not"
         );
         return;
     }
@@ -86,7 +86,7 @@ fn agree(example: &str, config: EvaluationConfig, threads: usize) {
     assert_eq!(
         whole.components.keys().collect::<Vec<_>>(),
         divided.components.keys().collect::<Vec<_>>(),
-        "{example}: divided into {threads} solved different components"
+        "{example}: divided into {shares} solved different components"
     );
     for (id, expected) in &whole.components {
         let found = &divided.components[id];
@@ -94,12 +94,12 @@ fn agree(example: &str, config: EvaluationConfig, threads: usize) {
         let found = channels(found, config.sample_count);
         for (name, expected) in &expected {
             let found = found.get(name).unwrap_or_else(|| {
-                panic!("{example}: {id}.{name} missing when divided into {threads}")
+                panic!("{example}: {id}.{name} missing when divided into {shares}")
             });
             assert_eq!(
                 expected.len(),
                 found.len(),
-                "{example}: {id}.{name} carried {} draws whole and {} divided into {threads}",
+                "{example}: {id}.{name} carried {} draws whole and {} divided into {shares}",
                 expected.len(),
                 found.len()
             );
@@ -109,17 +109,19 @@ fn agree(example: &str, config: EvaluationConfig, threads: usize) {
                 assert!(
                     apart <= settling(config) || (expected.is_nan() && found.is_nan()),
                     "{example}: {id}.{name} draw {index} was {expected} whole \
-                     and {found} divided into {threads}, {apart} apart"
+                     and {found} divided into {shares}, {apart} apart"
                 );
             }
         }
     }
 }
 
+/// Solved in one piece, which is what dividing has to reproduce.
 fn steady() -> EvaluationConfig {
     EvaluationConfig {
         seed: 0,
         sample_count: 1_000,
+        shares: 1,
         ..EvaluationConfig::default()
     }
 }
@@ -149,8 +151,8 @@ fn settling(config: EvaluationConfig) -> f64 {
 #[test]
 fn a_divided_solve_matches_an_undivided_one() {
     for example in SETTLING {
-        for threads in [2, 3, 8] {
-            agree(example, steady(), threads);
+        for shares in [2, 3, 8] {
+            agree(example, steady(), shares);
         }
     }
 }
@@ -170,7 +172,7 @@ fn a_divided_solve_of_a_bistable_design_stays_on_a_branch() {
         let divided = solved(
             example,
             EvaluationConfig {
-                threads: 4,
+                shares: 4,
                 ..steady()
             },
         );

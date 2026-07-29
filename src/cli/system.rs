@@ -73,12 +73,17 @@ struct SolveOptions {
     /// Divide the draws this many ways and solve them at once.
     ///
     /// Each draw settles independently, so the shares are one answer computed in
-    /// pieces. Left at one because dividing is not free: every share repeats the
-    /// per-pass work that does not depend on the draw count, and a design with
-    /// more than one resting state can send a draw to a different branch
-    /// depending on which share it was solved in.
+    /// pieces, and this is worth several times on a design of any size. Left at
+    /// one because it is not yet free of the answer: the stride is adapted
+    /// against the worst draw anywhere, so a design with more than one resting
+    /// state can report a different one depending on how the draws were split.
+    ///
+    /// This counts shares rather than threads. The count is part of the question
+    /// for that reason, so taking it from the machine would make the same design
+    /// answer differently on different hardware; the pool underneath uses
+    /// whatever cores it finds.
     #[arg(long, default_value_t = 1)]
-    threads: usize,
+    shares: usize,
 }
 
 impl SolveOptions {
@@ -88,7 +93,7 @@ impl SolveOptions {
             sample_count: self.samples.max(1),
             horizon: self.horizon.max(1),
             step: self.step,
-            threads: self.threads.max(1),
+            shares: self.shares.max(1),
             mode: if self.transient {
                 SolveMode::Transient
             } else {
