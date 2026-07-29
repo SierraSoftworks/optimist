@@ -87,7 +87,10 @@ async fn preview(
         )?;
         Quantity::read(&value, DRAW_BUDGET).ok_or(crate::system::EvaluationError::Evaluation {
             location: "expression".to_owned(),
-            message: format!("a {} is not a quantity that can be drawn", value.type_name()),
+            message: format!(
+                "a {} is not a quantity that can be drawn",
+                value.type_name()
+            ),
         })
     })
     .await
