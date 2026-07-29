@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import NewDesignDialog from './components/NewDesignDialog.vue'
 import { useDesign, useDesigns } from './composables/useDesign'
 import { useWorkbenchStore } from './stores/workbench'
 
@@ -16,6 +17,14 @@ const design = computed(() => (route.params.design as string | undefined) ?? nul
 const { feedStatus } = useDesign(design)
 
 const mode = computed(() => (route.name === 'review' ? 'review' : 'design'))
+
+const creating = ref(false)
+const picker = ref<{ blur: () => void } | null>(null)
+
+function startDesign() {
+  picker.value?.blur()
+  creating.value = true
+}
 
 function go(next: 'design' | 'review') {
   if (!design.value) return
@@ -38,6 +47,7 @@ function open(id: string) {
       <template v-if="design">
         <el-divider direction="vertical" />
         <el-select
+          ref="picker"
           :model-value="design"
           size="small"
           class="picker"
@@ -51,6 +61,18 @@ function open(id: string) {
             :value="entry.id"
             :disabled="!!entry.unreadable"
           />
+
+          <!--
+            Starting a design belongs beside choosing one: both answer "which
+            system am I working on", and putting it here means the welcome
+            screen is not the only way in.
+          -->
+          <template #footer>
+            <button class="add" data-test="picker-new-design" @click="startDesign">
+              <el-icon :size="13"><i-plus /></el-icon>
+              <span>New design</span>
+            </button>
+          </template>
         </el-select>
 
         <!--
@@ -167,6 +189,8 @@ function open(id: string) {
     </header>
 
     <router-view />
+
+    <NewDesignDialog v-model="creating" @created="open" />
   </div>
 </template>
 
@@ -199,6 +223,19 @@ function open(id: string) {
 }
 .brand:hover { background: var(--green-soft); }
 .picker { width: 190px; flex: 0 0 auto; }
+.add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 2px 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--green);
+}
+.add:hover { color: var(--ink); }
 .modes { flex: 0 0 auto; flex-wrap: nowrap; gap: var(--space-3); }
 .modes :deep(.el-radio-button__inner) {
   padding: 4px 0;

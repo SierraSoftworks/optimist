@@ -46,4 +46,16 @@ test.describe('routing', () => {
     await page.goto('/nonsense/path')
     await expect(page.getByRole('heading', { name: 'Designs' })).toBeVisible()
   })
+
+  test('a design can be started from the picker', async ({ page }) => {
+    await page.goto('/d/checkout/design')
+
+    await page.getByTestId('design-picker').click()
+    await page.getByTestId('picker-new-design').click()
+    await page.getByTestId('design-name').fill('Payments Ledger')
+    await page.getByTestId('create-design').click()
+
+    await expect(page).toHaveURL(/\/d\/payments-ledger\/design/)
+    await expect(page.getByTestId('design-picker')).toContainText('Payments Ledger')
+  })
 })

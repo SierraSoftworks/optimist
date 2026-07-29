@@ -2,39 +2,13 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { api } from '../api/client'
+import NewDesignDialog from '../components/NewDesignDialog.vue'
 import { useDesigns } from '../composables/useDesign'
 
 const router = useRouter()
-const { data: designs, refetch } = useDesigns()
+const { data: designs } = useDesigns()
 
 const creating = ref(false)
-const id = ref('')
-const name = ref('')
-const summary = ref('')
-const failure = ref<string | null>(null)
-
-/** A directory name, so the same rule the server enforces is applied here first. */
-function slug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-async function create() {
-  failure.value = null
-  const identifier = slug(id.value || name.value)
-  if (!identifier) return
-  try {
-    await api.create(identifier, name.value || identifier, summary.value)
-    await refetch()
-    creating.value = false
-    void router.push({ name: 'design', params: { design: identifier } })
-  } catch (error) {
-    failure.value = (error as Error).message
-  }
-}
 
 function open(design: string) {
   void router.push({ name: 'design', params: { design } })
@@ -85,38 +59,7 @@ function open(design: string) {
       </ul>
     </div>
 
-    <el-dialog v-model="creating" title="New design" width="460px">
-      <el-form label-position="top" size="small" @submit.prevent="create">
-        <el-form-item label="Name">
-          <el-input v-model="name" placeholder="Checkout" data-test="design-name" autofocus />
-        </el-form-item>
-        <el-form-item label="Identifier">
-          <el-input
-            :model-value="slug(id || name)"
-            placeholder="checkout"
-            data-test="design-id"
-            @update:model-value="(value: string) => (id = value)"
-          />
-          <p class="hint">This becomes the directory the design is stored in.</p>
-        </el-form-item>
-        <el-form-item label="Summary">
-          <el-input v-model="summary" type="textarea" :rows="2" placeholder="What it is for." />
-        </el-form-item>
-        <el-alert v-if="failure" type="error" :closable="false" show-icon :title="failure" />
-      </el-form>
-      <template #footer>
-        <el-button size="small" @click="creating = false">Cancel</el-button>
-        <el-button
-          type="primary"
-          size="small"
-          :disabled="!slug(id || name)"
-          data-test="create-design"
-          @click="create"
-        >
-          Create
-        </el-button>
-      </template>
-    </el-dialog>
+    <NewDesignDialog v-model="creating" @created="open" />
   </div>
 </template>
 
@@ -143,5 +86,4 @@ header p { color: var(--muted); font-size: var(--text-sm); margin: var(--space-1
 .card:disabled { cursor: not-allowed; opacity: 0.8; }
 .name { font-weight: 700; }
 .summary { color: var(--muted); font-size: var(--text-xs); display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.hint { color: var(--muted); font-size: var(--text-2xs); margin: 2px 0 0; }
 </style>
