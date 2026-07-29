@@ -3,7 +3,7 @@
 use rand_chacha::ChaCha20Rng;
 
 use crate::{
-    squiggle::Value,
+    squiggle::{Distribution, Value},
     system::{
         compile::Plan,
         signal::{Aggregation, Signal},
@@ -43,16 +43,17 @@ pub(super) fn combine(
     if let ([only], 1.0) = (values, scale) {
         return only.clone();
     }
-    let ensemble = values
-        .iter()
-        .filter_map(|value| match value {
-            Value::Distribution(distribution) => distribution.samples().map(<[f64]>::len),
+    // Only an authored set shorter than this share's own draws bounds the
+    // reduction. A set exactly as wide as the share is the share, and narrowing
+    // it again would take a share of a share — which halves the draws on every
+    // pass and leaves a divided solve reducing over a handful of them.
+    let ensemble = Distribution::aligned(
+        values.iter().filter_map(|value| match value {
+            Value::Distribution(distribution) => Some(distribution),
             _ => None,
-        })
-        .min()
-        .map_or_else(|| config.ensemble(), |authored| {
-            config.ensemble().resized(authored)
-        });
+        }),
+        config.ensemble(),
+    );
     let count = ensemble.len();
     let columns = values
         .iter()
