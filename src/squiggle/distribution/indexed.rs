@@ -43,10 +43,7 @@
 //! permutations from pseudorandom functions* (1988); John Black and Phillip
 //! Rogaway, *Ciphers with arbitrary finite domains* (2002), for cycle walking.
 
-// Not yet wired into sampling: this establishes that draws can be addressed
-// rather than stored, and what that costs, before the evaluator is rebuilt
-// around it.
-#![allow(dead_code)]
+// Nothing here is adversarial, so four rounds and a cheap mixer are ample.
 
 
 /// Draws of one distribution, addressed by index rather than held in an array.#[derive(Clone, Debug)]

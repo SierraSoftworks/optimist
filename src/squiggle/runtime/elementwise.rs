@@ -31,16 +31,17 @@ use super::{Runtime, builtin::number};
 
 use crate::profile::count;
 
-enum Column<'a> {
+enum Column {
     Constant(f64),
-    Draws(&'a [f64]),
+    /// This value's share, resolved once so the loop below indexes memory.
+    Drawn(std::sync::Arc<[f64]>),
 }
 
-impl Column<'_> {
+impl Column {
     fn at(&self, index: usize) -> f64 {
         match self {
             Self::Constant(value) => *value,
-            Self::Draws(draws) => draws[index],
+            Self::Drawn(draws) => draws.get(index).copied().unwrap_or(f64::NAN),
         }
     }
 }
@@ -89,7 +90,8 @@ pub(super) fn elementwise(
     for argument in arguments {
         columns.push(match argument {
             Value::Distribution(distribution) => {
-                Column::Draws(distribution.draws(ensemble, &mut runtime.rng).map_err(fail)?)
+                let seed = distribution.stream(&mut runtime.rng);
+                Column::Drawn(distribution.drawn(seed, ensemble))
             }
             value => Column::Constant(number(value, span)?),
         });

@@ -26,7 +26,7 @@ mod stats;
 
 use std::sync::Arc;
 
-use draws::DrawCache;
+use draws::Stream;
 
 pub use ensemble::Ensemble;
 
@@ -39,7 +39,7 @@ pub use ensemble::Ensemble;
 #[derive(Clone, Debug)]
 pub struct Distribution {
     kind: Kind,
-    draws: DrawCache,
+    stream: Stream,
 }
 
 impl PartialEq for Distribution {
@@ -72,7 +72,7 @@ impl Distribution {
     fn symbolic(kind: Kind) -> Self {
         Self {
             kind,
-            draws: DrawCache::default(),
+            stream: Stream::default(),
         }
     }
 

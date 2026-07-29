@@ -127,10 +127,10 @@ impl Runtime {
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned([&distribution], self.ensemble);
-        let samples = distribution
-            .draws(count, &mut self.rng)
-            .map_err(|message| Diagnostic::runtime(message, span))?
+        let ensemble = Distribution::aligned([&distribution], self.ensemble);
+        let seed = distribution.stream(&mut self.rng);
+        let drawn = distribution.drawn(seed, ensemble);
+        let samples = drawn
             .iter()
             .map(|draw| scalar(operator, left.unwrap_or(*draw), right.unwrap_or(*draw)))
             .collect::<Result<Vec<_>, _>>()
@@ -153,16 +153,12 @@ impl Runtime {
         operator: &str,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned([&left, &right], self.ensemble);
-        let left = left
-            .draws(count, &mut self.rng)
-            .map_err(|message| Diagnostic::runtime(message, span))?;
-        let right = right
-            .draws(count, &mut self.rng)
-            .map_err(|message| Diagnostic::runtime(message, span))?;
+        let ensemble = Distribution::aligned([&left, &right], self.ensemble);
+        let (left_seed, right_seed) = (left.stream(&mut self.rng), right.stream(&mut self.rng));
+        let (left, right) = (left.drawn(left_seed, ensemble), right.drawn(right_seed, ensemble));
         let samples = left
             .iter()
-            .zip(right)
+            .zip(right.iter())
             .map(|(left, right)| scalar(operator, *left, *right))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|message| Diagnostic::runtime(message, span))?;
@@ -177,10 +173,10 @@ impl Runtime {
         transform: impl Fn(f64) -> f64,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let count = Distribution::aligned([&distribution], self.ensemble);
+        let ensemble = Distribution::aligned([&distribution], self.ensemble);
+        let seed = distribution.stream(&mut self.rng);
         let samples = distribution
-            .draws(count, &mut self.rng)
-            .map_err(|message| Diagnostic::runtime(message, span))?
+            .drawn(seed, ensemble)
             .iter()
             .map(|draw| transform(*draw))
             .collect();

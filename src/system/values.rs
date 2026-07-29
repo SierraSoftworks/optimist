@@ -22,12 +22,10 @@ pub(super) fn draws(value: &Value, count: usize, rng: &mut ChaCha20Rng) -> Optio
     count!(Draws, count);
     match value {
         Value::Number(number) => Some(vec![*number; count]),
-        Value::Distribution(distribution) => Some(
-            distribution
-                .draws(Ensemble::whole(count), rng)
-                .ok()?
-                .to_vec(),
-        ),
+        Value::Distribution(distribution) => {
+            let ensemble = Ensemble::whole(count);
+            Some(distribution.materialise(distribution.stream(rng), ensemble))
+        }
         _ => None,
     }
 }
@@ -51,25 +49,22 @@ pub(super) fn from_draws(draws: Vec<f64>) -> Option<Value> {
 /// a constant channel from writing a thousand identical floats every time it is
 /// compared against itself, which on a model of any size is most of what a pass
 /// would otherwise spend its time doing.
-pub(super) enum Varying<'a> {
+pub(super) enum Varying {
     /// One value, holding for every draw.
     Uniform(f64),
-    /// One value per draw, borrowed from whatever owns them.
-    PerDraw(&'a [f64]),
+    /// This quantity's share, resolved once and indexed thereafter.
+    PerDraw(std::sync::Arc<[f64]>),
 }
 
-impl<'a> Varying<'a> {
-    /// Reads a quantity, sampling the whole ensemble if it has not been drawn from
-    /// yet and keeping this share of the result.
-    pub(super) fn of(
-        value: &'a Value,
-        ensemble: Ensemble,
-        rng: &mut ChaCha20Rng,
-    ) -> Option<Self> {
+impl Varying {
+    /// Reads a quantity, seeding and drawing it if it has not been drawn yet.
+    pub(super) fn of(value: &Value, ensemble: Ensemble, rng: &mut ChaCha20Rng) -> Option<Self> {
         match value {
             Value::Number(number) => Some(Self::Uniform(*number)),
             Value::Distribution(distribution) => {
-                Some(Self::PerDraw(distribution.draws(ensemble, rng).ok()?))
+                let seed = distribution.stream(rng);
+                let ensemble = Distribution::aligned([distribution], ensemble);
+                Some(Self::PerDraw(distribution.drawn(seed, ensemble)))
             }
             _ => None,
         }
@@ -89,11 +84,11 @@ impl<'a> Varying<'a> {
         }
     }
 
-    /// Borrows the draws, where this quantity has any of its own.
-    pub(super) fn spread(&self) -> Option<&'a [f64]> {
+    /// Gathers the draws, where this quantity has any of its own.
+    pub(super) fn spread(&self) -> Option<Vec<f64>> {
         match self {
             Self::Uniform(_) => None,
-            Self::PerDraw(draws) => Some(draws),
+            Self::PerDraw(draws) => Some(draws.to_vec()),
         }
     }
 }
@@ -230,6 +225,15 @@ mod tests {
         ChaCha20Rng::seed_from_u64(3)
     }
 
+    /// An authored sample set, so a test can name the draws it wants.
+    fn sampled(draws: &[f64]) -> Value {
+        Value::Distribution(Distribution::from_samples(draws.to_vec()).expect("samples"))
+    }
+
+    fn varying(value: &Value) -> Varying {
+        Varying::of(value, Ensemble::whole(1_000), &mut rng()).expect("carries draws")
+    }
+
     #[test]
     fn agreeing_draws_collapse_back_to_a_number() {
         assert_eq!(from_draws(vec![4.0, 4.0]), Some(Value::Number(4.0)));
@@ -249,13 +253,8 @@ mod tests {
 
     #[test]
     fn an_uncertain_quantity_is_read_as_its_own_draws() {
-        let distribution = Distribution::from_samples(vec![1.0, 2.0, 3.0]).expect("samples");
-        let value = Value::Distribution(distribution);
-        let Some(Varying::PerDraw(draws)) = Varying::of(&value, Ensemble::whole(3), &mut rng())
-        else {
-            panic!("an uncertain quantity carries draws");
-        };
-        assert_eq!(draws, [1.0, 2.0, 3.0]);
+        let value = sampled(&[1.0, 2.0, 3.0]);
+        assert_eq!(varying(&value).spread(), Some(vec![1.0, 2.0, 3.0]));
     }
 
     fn blend(previous: &Varying, next: &Varying, weight: f64, count: usize) -> Option<Value> {
@@ -272,17 +271,14 @@ mod tests {
             blend(&Varying::Uniform(0.0), &Varying::Uniform(10.0), 0.5, 4),
             Some(Value::Number(5.0))
         );
+        let (before, after) = (sampled(&[0.0, 10.0]), sampled(&[10.0, 0.0]));
         assert_eq!(
-            blend(
-                &Varying::PerDraw(&[0.0, 10.0]),
-                &Varying::PerDraw(&[10.0, 0.0]),
-                0.5,
-                4
-            ),
+            blend(&varying(&before), &varying(&after), 0.5, 4),
             Some(Value::Number(5.0))
         );
+        let (before, after) = (sampled(&[3.0]), sampled(&[9.0]));
         assert_eq!(
-            blend(&Varying::PerDraw(&[3.0]), &Varying::PerDraw(&[9.0]), 1.0, 4),
+            blend(&varying(&before), &varying(&after), 1.0, 4),
             Some(Value::Number(9.0))
         );
     }
@@ -298,12 +294,10 @@ mod tests {
     /// A certain and an uncertain iterate blend draw by draw, not by summary.
     #[test]
     fn blending_a_number_against_draws_holds_the_number_across_them() {
-        let Some(Value::Distribution(blended)) = blend(
-            &Varying::Uniform(0.0),
-            &Varying::PerDraw(&[10.0, 20.0]),
-            0.5,
-            4,
-        ) else {
+        let after = sampled(&[10.0, 20.0]);
+        let Some(Value::Distribution(blended)) =
+            blend(&Varying::Uniform(0.0), &varying(&after), 0.5, 4)
+        else {
             panic!("draws on one side make the result uncertain");
         };
         assert_eq!(blended.samples(), Some([5.0, 10.0].as_slice()));
@@ -312,12 +306,10 @@ mod tests {
     /// A shorter authored sample set bounds how many draws are aligned.
     #[test]
     fn blending_stops_at_the_shorter_sample_set() {
-        let Some(Value::Distribution(blended)) = blend(
-            &Varying::PerDraw(&[0.0, 0.0, 0.0]),
-            &Varying::PerDraw(&[10.0, 20.0]),
-            1.0,
-            3,
-        ) else {
+        let (before, after) = (sampled(&[0.0, 0.0, 0.0]), sampled(&[10.0, 20.0]));
+        let Some(Value::Distribution(blended)) =
+            blend(&varying(&before), &varying(&after), 1.0, 3)
+        else {
             panic!("disagreeing draws stay uncertain");
         };
         assert_eq!(blended.samples(), Some([10.0, 20.0].as_slice()));
@@ -338,25 +330,16 @@ mod tests {
 
     #[test]
     fn distance_reports_the_worst_draw_not_the_average() {
-        assert_eq!(
-            distance(
-                &Varying::PerDraw(&[0.0, 0.0, 0.0]),
-                &Varying::PerDraw(&[0.0, 0.0, 1.0]),
-                3
-            ),
-            1.0
-        );
+        let (before, after) = (sampled(&[0.0, 0.0, 0.0]), sampled(&[0.0, 0.0, 1.0]));
+        assert_eq!(distance(&varying(&before), &varying(&after), 3), 1.0);
     }
 
     /// The certain and uncertain paths have to agree, since which one a quantity
     /// takes is an accident of whether its draws happened to collapse.
     #[test]
     fn a_certain_pair_measures_the_same_as_the_draws_it_stands_for() {
-        let expanded = distance(
-            &Varying::PerDraw(&[3.0, 3.0]),
-            &Varying::PerDraw(&[4.0, 4.0]),
-            2,
-        );
+        let (before, after) = (sampled(&[3.0, 3.0]), sampled(&[4.0, 4.0]));
+        let expanded = distance(&varying(&before), &varying(&after), 2);
         assert_eq!(
             distance(&Varying::Uniform(3.0), &Varying::Uniform(4.0), 2),
             expanded

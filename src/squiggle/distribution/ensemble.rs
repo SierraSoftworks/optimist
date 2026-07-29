@@ -101,6 +101,11 @@ impl Ensemble {
         self.len() == 0
     }
 
+    /// Which draw of the whole ensemble this share's `index` refers to.
+    pub fn at(self, index: usize) -> usize {
+        self.bounds(self.size).start + index
+    }
+
     /// Where this share falls within `length` draws.
     ///
     /// Bounds are derived from the length rather than stored, so one share reads

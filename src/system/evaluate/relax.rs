@@ -242,7 +242,7 @@ fn states(
         .get(component)
         .and_then(|state| state.channels.get(channel))
         .and_then(|value| Varying::of(value, config.ensemble(), rng))
-        .and_then(|varying| varying.spread().map(modes))
+        .and_then(|varying| varying.spread().map(|draws| modes(&draws)))
         .unwrap_or(1)
 }
 

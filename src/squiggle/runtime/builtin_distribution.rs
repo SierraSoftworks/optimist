@@ -284,11 +284,10 @@ fn truncate(
     }
     let count = Distribution::aligned([distribution], runtime.ensemble);
     let samples = distribution
-        .draws(count, &mut runtime.rng)
-        .map_err(fail)?
-        .iter()
+        .materialise(distribution.stream(&mut runtime.rng), count)
+        .into_iter()
         .map(|draw| {
-            let position = distribution.cdf(*draw)?;
+            let position = distribution.cdf(draw)?;
             distribution.quantile(lower + position * retained)
         })
         .collect::<Result<Vec<_>, _>>()
