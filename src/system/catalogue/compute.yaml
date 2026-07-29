@@ -81,6 +81,7 @@ channels:
     expression: cancelled * salvage_share
   offered:
     unit: op/s
+    emphasis: key
     summary: >
       Requests that actually consume a worker. Cancelling late costs exactly as
       much as not cancelling at all, which is why abandoning a request is a poor
@@ -115,16 +116,19 @@ channels:
     expression: parallelism * replicas
   capacity:
     unit: op/s
+    emphasis: key
     summary: >
       Sustainable throughput, by Little's Law: concurrent slots divided by the
       time each request holds one.
     expression: Little.rate(servers, hold_time)
   utilisation:
     unit: share
+    emphasis: key
     summary: Share of capacity consumed by the offered load.
     expression: Queue.utilisation(offered, capacity)
   residence:
     unit: s
+    emphasis: key
     summary: >
       Time from accepting a request to answering it: this pool's own work plus
       whatever it waited on. Queueing to reach the pool is not counted here,
@@ -138,6 +142,7 @@ channels:
     expression: out.dependencies.success
   success_rate:
     unit: share
+    emphasis: key
     summary: >
       Share of arriving requests answered successfully, which is the share whose
       dependencies all held.
@@ -191,6 +196,7 @@ channels:
     expression: Little.occupancy(calls, dependency_wait)
 constraints:
   capacity:
+    emphasis: key
     summary: >
       Offered load against sustainable throughput. This is the constraint that
       turns a latency problem into an outage, because queueing delay rises

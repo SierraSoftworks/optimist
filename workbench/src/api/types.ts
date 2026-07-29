@@ -140,16 +140,26 @@ export interface PropertyDefinition {
   default?: string | null
 }
 
+/**
+ * Whether a quantity leads a component's numbers or sits behind them.
+ *
+ * `key` is a service level somebody depending on the component experiences;
+ * `supporting` is an operational figure it was derived from.
+ */
+export type Emphasis = 'key' | 'supporting'
+
 /** A quantity a component type computes. */
 export interface ChannelDefinition {
   unit: string
   summary: string
+  emphasis: Emphasis
   expression: string
 }
 
 /** A limit a component type can reach. */
 export interface ConstraintDefinition {
   summary: string
+  emphasis: Emphasis
   demand: string
   limit: string
 }

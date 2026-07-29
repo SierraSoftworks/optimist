@@ -62,10 +62,12 @@ channels:
     expression: in.requests.rate
   admitted:
     unit: op/s
+    emphasis: key
     summary: Demand passed on, capped per draw at the refill rate.
     expression: min([offered, refill])
   admitted_ratio:
     unit: share
+    emphasis: key
     summary: Share of callers served rather than refused.
     expression: min([admitted / max([offered, 0.000001]), 1])
 
@@ -99,6 +101,16 @@ whose demand has approached its limit.
 The engine attaches no meaning to any particular name. `throughput` is whatever a
 manifest says it is, and a constraint called `iops` is ranked by exactly the same
 arithmetic as one called `bandwidth`.
+
+**Emphasis** separates the handful of quantities somebody reads first from the
+terms they were computed from. A channel or constraint marked `emphasis: key` is
+a service level a caller of this component experiences — its throughput, its
+latency, its success rate, how close it is to a limit — and is what the workbench
+lists by default. Everything else is `supporting`, the default, and is shown when
+a reader asks to see the workings.
+
+A type with a dozen channels but no `key` among them offers a reader nothing to
+start from, so mark the four or five that answer "is this component healthy".
 
 ## What an expression may refer to
 

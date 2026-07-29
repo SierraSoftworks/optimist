@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
-import type { Intervention, Movement, Mutation } from '../api/types'
+import type { Emphasis, Intervention, Movement, Mutation } from '../api/types'
 import ChartSkeleton from '../components/ChartSkeleton.vue'
 import LimitCards from '../components/LimitCards.vue'
 import MetricTimeline from '../components/MetricTimeline.vue'
@@ -236,6 +236,7 @@ const available = computed(() => {
         family: family(channel),
         unit: definition?.unit ?? '',
         summary: definition?.summary ?? '',
+        emphasis: definition?.emphasis === 'key' ? 'key' : 'supporting',
       })
     }
   }
@@ -326,7 +327,10 @@ const movedSignals = computed(() => {
  * is defined by the signal vocabulary; anything else is one of the component's
  * own channels.
  */
-function definitionOf(component: string, channel: string): { unit: string; summary: string } | null {
+function definitionOf(
+  component: string,
+  channel: string,
+): { unit: string; summary: string; emphasis?: Emphasis } | null {
   if (channel.includes('.')) {
     const signal = channel.slice(channel.lastIndexOf('.') + 1)
     return catalogue.value?.signals?.[signal] ?? null

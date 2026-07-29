@@ -46,16 +46,19 @@ properties:
 channels:
   offered:
     unit: op/s
+    emphasis: key
     summary: Demand entering the system.
     expression: request_rate
   latency:
     unit: s
+    emphasis: key
     summary: >
       Time between making a request and receiving an answer, as experienced here.
       This is the figure an objective is written against.
     expression: out.calls.latency
   success:
     unit: share
+    emphasis: key
     summary: >
       Share of requests answered successfully, as experienced here, including
       every downstream dependency the call relied upon.
@@ -66,6 +69,7 @@ channels:
     expression: offered * max([1 - success, 0])
 constraints:
   latency_objective:
+    emphasis: key
     summary: >
       Observed end-to-end latency against the target. Saturating means the design
       is answering, but not quickly enough to be useful, which is a failure that
@@ -73,6 +77,7 @@ constraints:
     demand: latency
     limit: latency_target
   success_objective:
+    emphasis: key
     summary: >
       Observed failure rate against what the objective allows. Saturating means
       the design is losing more requests than it is permitted to, wherever in the

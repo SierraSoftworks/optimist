@@ -59,6 +59,7 @@ channels:
     expression: salvaged * branches
   fanned_out:
     unit: op/s
+    emphasis: key
     summary: >
       Branch requests issued. One request becomes as many as there are branches,
       which is the amplification a diagram of this component does not show.
@@ -87,6 +88,7 @@ channels:
     expression: out.branches.latency
   latency:
     unit: s
+    emphasis: key
     summary: >
       Time a caller waits: the slowest branch, then combining the results.
     expression: branch_wait + overhead
@@ -98,6 +100,7 @@ channels:
     expression: out.branches.success
   success_rate:
     unit: share
+    emphasis: key
     summary: >
       Share of arriving requests answered successfully, which is the share whose
       branches all held. Cancellation is counted by the behaviour that raised it
@@ -105,6 +108,7 @@ channels:
     expression: branch_success
 constraints:
   fan_out:
+    emphasis: key
     summary: >
       Branch requests issued against those arriving. Always at least one, and
       exactly the factor by which this component multiplies the load on

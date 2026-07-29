@@ -63,12 +63,14 @@ channels:
     expression: max([arriving - propagated_cancellation, 0])
   admitted:
     unit: op/s
+    emphasis: key
     summary: >
       Demand allowed through, capped per draw at the admission limit. Draws
       pinned to the limit are the ones being shed.
     expression: min([offered, admission_limit])
   shed:
     unit: op/s
+    emphasis: key
     summary: Demand rejected at the door.
     expression: offered - admitted
   per_replica:
@@ -81,6 +83,7 @@ channels:
     expression: out.backends.latency
   latency:
     unit: s
+    emphasis: key
     summary: Time a caller waits, the hop itself plus the backend answering it.
     expression: overhead + backend_wait
   backend_success:
@@ -89,6 +92,7 @@ channels:
     expression: out.backends.success
   success_rate:
     unit: share
+    emphasis: key
     summary: >
       Share of arriving requests answered successfully, which is the share the
       backends held.
@@ -102,6 +106,7 @@ channels:
     expression: backend_success
   connections:
     unit: op
+    emphasis: key
     summary: >
       Connections held open, by Little's Law. A connection is held for the whole
       round trip, so backends slowing down consumes this limit without any change
@@ -109,6 +114,7 @@ channels:
     expression: Little.occupancy(admitted, latency)
 constraints:
   admission:
+    emphasis: key
     summary: >
       Offered demand against the admission limit. Saturating means the system is
       protecting itself by refusing work, which is a healthier failure than
@@ -116,6 +122,7 @@ constraints:
     demand: offered
     limit: admission_limit
   connections:
+    emphasis: key
     summary: >
       Connections held against the limit. Rises when backends slow down even if
       demand is unchanged, which is how a latency problem downstream becomes an

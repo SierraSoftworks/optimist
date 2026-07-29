@@ -40,10 +40,12 @@ properties:
 channels:
   arrivals:
     unit: op/s
+    emphasis: key
     summary: Work offered by all producers.
     expression: in.work.rate
   departures:
     unit: op/s
+    emphasis: key
     summary: >
       Work actually drained: everything available to be taken, capped by the rate
       consumers can take it at. What is available is this step's arrivals plus
@@ -64,6 +66,7 @@ channels:
     expression: arrivals / max([service_rate, 0.000001])
   backlog:
     unit: op
+    emphasis: key
     summary: >
       Work resident in the queue.
 
@@ -87,6 +90,7 @@ channels:
         else min([max([prev.backlog + (arrivals * accepted_ratio - departures) * dt, 0]), capacity])
   accepted_ratio:
     unit: share
+    emphasis: key
     summary: >
       Share of offered work the buffer had room to take. One until the queue
       approaches its depth, and falling once it does, because past that point
@@ -108,6 +112,7 @@ channels:
         else min([(max([capacity - prev.backlog, 0]) / dt + departures) / max([arrivals, 0.000001]), 1])
   wait:
     unit: s
+    emphasis: key
     summary: >
       Time a unit of work waits before a consumer reaches it, by Little's Law
       applied to the resident backlog and the rate draining it. Travels onward to
@@ -120,6 +125,7 @@ channels:
     expression: Little.residence(backlog, max([departures, 0.000001]))
 constraints:
   depth:
+    emphasis: key
     summary: >
       Backlog against the queue's depth. Saturating means work is shed or
       producers block, and is the point at which a buffer stops protecting the
@@ -127,6 +133,7 @@ constraints:
     demand: backlog
     limit: capacity
   throughput:
+    emphasis: key
     summary: >
       Arrivals against the rate consumers can drain. Sustained saturation grows
       the backlog without bound, so no buffer depth is sufficient.

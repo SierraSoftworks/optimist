@@ -126,6 +126,22 @@ impl Property {
     }
 }
 
+/// How much a quantity matters to somebody reading a component's numbers.
+///
+/// A component type of any substance declares a dozen quantities, and showing
+/// all of them at once buries the four or five that answer "is this component
+/// healthy" among the intermediate terms they were computed from. Both are worth
+/// having; only one is worth showing first.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Emphasis {
+    /// A service level: what somebody depending on this component experiences.
+    Key,
+    /// An operational figure the service levels were derived from.
+    #[default]
+    Supporting,
+}
+
 /// A quantity derived from properties, inbound flows, and prior state.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -135,6 +151,12 @@ pub struct Channel {
     /// What the channel represents and which law produces it.
     #[serde(default)]
     pub summary: String,
+    /// Whether this is a quantity to lead with or one to keep behind it.
+    ///
+    /// Supporting unless a manifest says otherwise, so a type that has not
+    /// thought about it offers nothing rather than offering everything.
+    #[serde(default)]
+    pub emphasis: Emphasis,
     /// Squiggle source evaluated over sample sets to produce the quantity.
     pub expression: String,
 }
@@ -150,6 +172,9 @@ pub struct Constraint {
     /// What saturating this constraint does to the system.
     #[serde(default)]
     pub summary: String,
+    /// Whether this is a limit to lead with or one to keep behind the others.
+    #[serde(default)]
+    pub emphasis: Emphasis,
     /// Squiggle source for the quantity consuming the resource.
     pub demand: String,
     /// Squiggle source for the quantity available.

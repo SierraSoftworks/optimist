@@ -248,10 +248,12 @@ channels:
     expression: min([offered, refill])
   admitted_ratio:
     unit: '1'
+    emphasis: key
     summary: Share of callers served rather than refused.
     expression: min([admitted / max([offered, 0.000001]), 1])
 constraints:
   throughput:
+    emphasis: key
     summary: Offered load against the sustained allowance.
     demand: offered
     limit: refill
@@ -261,8 +263,13 @@ constraints:
 | --- | --- |
 | `ports.in` / `ports.out` | Named attachment points. Each has `arity` (`one` or `many`, default `many`), `summary`, and `publishes`: a map of signal name to an expression naming a property or channel. |
 | `properties` | Each has `unit`, optional `summary`, and optional `default`. A property without a default must be supplied. |
-| `channels` | Each has `unit`, optional `summary`, and `expression`. |
-| `constraints` | Each has optional `summary`, `demand`, and `limit`. |
+| `channels` | Each has `unit`, optional `summary`, optional `emphasis`, and `expression`. |
+| `constraints` | Each has optional `summary`, optional `emphasis`, `demand`, and `limit`. |
+
+`emphasis` is `key` or `supporting`, and is `supporting` unless stated. A `key`
+channel is a service level somebody depending on the component experiences, and
+is what the workbench lists by default; everything else is one of the workings
+behind it, shown when a reader asks for it.
 
 See [writing component types](../guide/component-types.md) for what an expression
 may refer to and the rules a definition must satisfy.

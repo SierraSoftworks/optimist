@@ -16,6 +16,37 @@ export interface SignalOption {
   unit: string
   /** What the quantity is for, in the words of whoever defined it. */
   summary: string
+  /**
+   * Whether the component's author considers this one of its service levels.
+   *
+   * Only meaningful for the component's own quantities: what crossed a port is
+   * sorted by which way it went rather than by how much it matters.
+   */
+  emphasis: 'key' | 'supporting'
+}
+
+/**
+ * The bands the list can be narrowed to, in the order they are offered.
+ *
+ * A design of any size solves several hundred quantities, and all but a handful
+ * of them are intermediate terms. Opening on the key ones alone makes the list
+ * something a reader scans rather than searches, and the rest are one click
+ * away for whoever is chasing a number through the arithmetic that produced it.
+ */
+const BANDS = [
+  { key: 'key', label: 'Key metrics', hint: 'What a caller of the component experiences' },
+  { key: 'supporting', label: 'Other metrics', hint: 'The workings behind the key metrics' },
+  { key: 'input', label: 'Inputs', hint: 'What arrived on each inbound port' },
+  { key: 'output', label: 'Outputs', hint: 'What came back from each dependency' },
+] as const
+
+type Band = (typeof BANDS)[number]['key']
+
+/** Which band a quantity belongs to, which is the unit the filter works in. */
+function bandOf(option: SignalOption): Band {
+  if (option.family === 'input') return 'input'
+  if (option.family === 'backpressure') return 'output'
+  return option.emphasis === 'key' ? 'key' : 'supporting'
 }
 
 const props = defineProps<{
@@ -36,6 +67,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:pinned': [string[]] }>()
 
 const search = ref('')
+const shown = ref<Band[]>(['key'])
 
 /** The preview's width, kept in step with the card's own stylesheet. */
 const PREVIEW_WIDTH = 268
@@ -97,13 +129,14 @@ function movement(value: string) {
 /**
  * How a quantity reached its component, in the order a reader works through it.
  *
- * The component's own solved quantities first, because that is what somebody
- * came to look at; what crossed a port is context for them.
+ * The component's own service levels first, because that is what somebody came
+ * to look at; the workings behind them and what crossed a port are context.
  */
-const FAMILY_ORDER: Record<SignalOption['family'], number> = {
-  channel: 0,
-  input: 1,
-  backpressure: 2,
+const BAND_ORDER: Record<Band, number> = {
+  key: 0,
+  supporting: 1,
+  input: 2,
+  output: 3,
 }
 
 /** What marks each kind of quantity, so a port reading is spotted by its shape. */
@@ -152,7 +185,7 @@ const chosen = computed(() =>
  */
 function byName(left: SignalOption, right: SignalOption): number {
   return (
-    FAMILY_ORDER[left.family] - FAMILY_ORDER[right.family] ||
+    BAND_ORDER[bandOf(left)] - BAND_ORDER[bandOf(right)] ||
     left.channel.localeCompare(right.channel)
   )
 }
@@ -165,6 +198,32 @@ const matching = computed(() => {
     : available
 })
 
+const visible = computed(() =>
+  matching.value.filter((option) => shown.value.includes(bandOf(option))),
+)
+
+/**
+ * How many quantities the filter is holding back, rather than the search.
+ *
+ * Searching for a name and being told nothing goes by it is a lie when the row
+ * exists and is merely out of band, and it is the kind of lie that has somebody
+ * conclude the quantity was never solved.
+ */
+const withheld = computed(() => matching.value.length - visible.value.length)
+
+/** How many of each band are on offer, so a band nothing falls in reads as empty. */
+const counts = computed(() => {
+  const tally = new Map<Band, number>()
+  for (const option of matching.value) {
+    tally.set(bandOf(option), (tally.get(bandOf(option)) ?? 0) + 1)
+  }
+  return tally
+})
+
+function toggle(band: Band, on: boolean) {
+  shown.value = on ? [...shown.value, band] : shown.value.filter((entry) => entry !== band)
+}
+
 /**
  * One group per component, because that is the unit somebody reasons about.
  *
@@ -173,7 +232,7 @@ const matching = computed(() => {
  */
 const groups = computed(() => {
   const held = new Map<string, SignalOption[]>()
-  for (const option of matching.value) {
+  for (const option of visible.value) {
     const kept = held.get(option.component)
     if (kept) kept.push(option)
     else held.set(option.component, [option])
@@ -243,18 +302,55 @@ function unpin(value: string) {
     </ul>
     <p v-else class="none">Nothing charted yet. Pick a quantity below.</p>
 
-    <el-input
-      v-model="search"
-      size="small"
-      placeholder="Find a quantity"
-      clearable
-      class="find"
-      data-test="signal-search"
-    >
-      <template #prefix>
-        <el-icon><i-search /></el-icon>
-      </template>
-    </el-input>
+    <div class="sift">
+      <el-input
+        v-model="search"
+        size="small"
+        placeholder="Find a quantity"
+        clearable
+        class="find"
+        data-test="signal-search"
+      >
+        <template #prefix>
+          <el-icon><i-search /></el-icon>
+        </template>
+      </el-input>
+
+      <!--
+        Behind a button because the bands are a setting rather than a question:
+        four permanent checkboxes above a list in a rail this narrow cost more
+        room than the list they were filtering.
+      -->
+      <el-popover placement="bottom-end" trigger="click" :width="248" popper-class="bands">
+        <template #reference>
+          <button
+            class="sieve"
+            :class="{ narrowed: shown.length !== BANDS.length }"
+            aria-label="Choose which quantities are listed"
+            data-test="signal-bands"
+          >
+            <el-icon :size="14"><i-filter /></el-icon>
+          </button>
+        </template>
+
+        <p class="band-title">Show</p>
+        <label v-for="band in BANDS" :key="band.key" class="band">
+          <el-checkbox
+            :model-value="shown.includes(band.key)"
+            size="small"
+            :data-test="`band-${band.key}`"
+            @update:model-value="(on: string | number | boolean) => toggle(band.key, on === true)"
+          />
+          <span class="band-label">
+            <span class="band-name">
+              {{ band.label }}
+              <span class="band-count">{{ counts.get(band.key) ?? 0 }}</span>
+            </span>
+            <span class="band-hint">{{ band.hint }}</span>
+          </span>
+        </label>
+      </el-popover>
+    </div>
 
     <div class="list">
       <template v-for="group in groups" :key="group.label">
@@ -263,7 +359,7 @@ function unpin(value: string) {
           v-for="option in group.options"
           :key="option.value"
           class="signal"
-          :class="option.family"
+          :class="[option.family, bandOf(option)]"
           :data-test="`pin-${option.value}`"
           :aria-label="`Watch ${option.value}`"
           @click="pin(option.value)"
@@ -286,8 +382,14 @@ function unpin(value: string) {
           </span>
         </button>
       </template>
-      <p v-if="!groups.length" class="none">
+      <p v-if="!groups.length && !withheld" class="none">
         {{ options.length ? 'Nothing goes by that name.' : 'Solve the design to see its quantities.' }}
+      </p>
+      <p v-if="withheld" class="withheld" data-test="signals-withheld">
+        {{ withheld }} more hidden by the filter.
+        <button class="reveal" data-test="show-all-bands" @click="shown = BANDS.map((b) => b.key)">
+          show everything
+        </button>
       </p>
     </div>
 
@@ -387,6 +489,9 @@ function unpin(value: string) {
 }
 .signal.input .mark { color: #5b8d7c; }
 .signal.backpressure .mark { color: #a08a56; }
+/* A service level, so it reads as the row somebody came here for. */
+.signal.key .channel { font-weight: 600; }
+.signal.supporting .channel { color: var(--muted); }
 /*
  * Which way it went, not whether that is good news. Higher latency and higher
  * throughput are the same arrow, and only the reader knows which they wanted.
@@ -418,6 +523,45 @@ function unpin(value: string) {
 .signal:hover .act { opacity: 1; }
 
 .find { margin: 0 var(--space-2) var(--space-2); width: auto; }
+
+.sift {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 var(--space-2) var(--space-2);
+}
+.sift .find { margin: 0; flex: 1; min-width: 0; }
+.sieve {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+}
+.sieve:hover { color: var(--ink); }
+/* A list that is not showing everything says so, rather than looking complete. */
+.sieve.narrowed { color: var(--green); border-color: #b7d0c3; background: var(--green-soft); }
+
+.withheld {
+  margin: var(--space-1) var(--space-2) var(--space-2);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+.reveal {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  text-decoration: underline;
+}
+.reveal:hover { color: var(--green); }
+
 .list { flex: 1; overflow: auto; min-height: 0; }
 /* A component name, so it is written the way the design writes it. */
 .group {
@@ -435,4 +579,25 @@ function unpin(value: string) {
 }
 /* Above dialogs, because a design can be reviewed with one open. */
 .flyout { position: fixed; z-index: 2100; }
+</style>
+
+<style>
+/* The popover renders at the body, so its contents cannot be scoped. */
+.bands .band-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--display);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+.bands .band { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-1) 0; }
+.bands .band + .band { border-top: 1px solid var(--line); }
+.bands .band-label { min-width: 0; display: flex; flex-direction: column; }
+.bands .band-name { font-size: var(--text-sm); font-weight: 650; }
+.bands .band-count { font-family: var(--mono); font-size: var(--text-2xs); color: var(--muted); margin-left: 4px; }
+.bands .band-hint { margin-top: 2px; font-size: var(--text-2xs); color: var(--muted); line-height: 1.4; }
+.bands .el-checkbox { height: auto; margin-top: 2px; }
+.bands .el-checkbox__label { display: none; }
 </style>

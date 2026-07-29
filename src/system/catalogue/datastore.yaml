@@ -87,6 +87,7 @@ channels:
     expression: cancelled * in.operations.cancellation_effectiveness
   operations:
     unit: op/s
+    emphasis: key
     summary: >
       Operations that consume the store. A cancellation arriving too late to
       prevent the work saves nothing, which is why cancelling saves less than it
@@ -98,6 +99,7 @@ channels:
     expression: operations * record_size
   utilisation:
     unit: share
+    emphasis: key
     summary: >
       Operation rate against the store's ceiling. Reported because it is the
       figure an operator recognises; the delay it causes is computed on the wire
@@ -117,6 +119,7 @@ channels:
     expression: Queue.utilisation(held, concurrency_limit)
   latency:
     unit: s
+    emphasis: key
     summary: >
       Time one operation takes once the store is working on it, stretched by how
       much of its simultaneous capacity is already spoken for. Waiting to get
@@ -132,6 +135,7 @@ channels:
     expression: service_time / max([1 - concurrency, 0.001])
   success_rate:
     unit: share
+    emphasis: key
     summary: >
       Share of arriving operations answered successfully. A store has nothing
       behind it that could fail on its behalf, so every operation that reaches it
@@ -154,10 +158,12 @@ channels:
     expression: Little.occupancy(operations, retention)
   volume:
     unit: B
+    emphasis: key
     summary: Bytes resident in steady state.
     expression: records * record_size
 constraints:
   concurrency:
+    emphasis: key
     summary: >
       Operations in progress against how many the store can hold at once. Rises
       when callers hold on longer even if they call no more often, which is how a
@@ -166,18 +172,21 @@ constraints:
     demand: held
     limit: concurrency_limit
   operations:
+    emphasis: key
     summary: >
       Operation rate against the store's ceiling. Binds first for workloads of
       many small records.
     demand: operations
     limit: operation_limit
   transfer:
+    emphasis: key
     summary: >
       Byte rate against the storage path. Binds first for workloads of few large
       records, which is why record size decides which limit a system meets.
     demand: transfer
     limit: transfer_limit
   volume:
+    emphasis: key
     summary: >
       Resident bytes against usable capacity. Unlike the rate limits this one
       fills gradually and then fails abruptly, so headroom here is measured in
