@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use draws::Stream;
 
-pub use ensemble::Ensemble;
+pub use ensemble::{BLOCKS, Ensemble};
 
 /// A validated symbolic or empirical scalar probability distribution.
 ///

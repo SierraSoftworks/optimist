@@ -1,6 +1,12 @@
 //! Which draws a computation carries, and which of them it is responsible for.
 
-use std::ops::Range;
+use std::{borrow::Cow, ops::Range};
+
+/// How many blocks a share's draws are divided into for retirement.
+///
+/// One bit of a `u64` each, which is what keeps [`Ensemble`] a `Copy` type that
+/// can be threaded through the runtime by value.
+pub const BLOCKS: usize = 64;
 
 /// A share of one sample set's draws.
 ///
@@ -32,7 +38,7 @@ use std::ops::Range;
 /// use optimist::squiggle::distribution::Ensemble;
 ///
 /// let draws: Vec<f64> = (0..10).map(f64::from).collect();
-/// let shares: Vec<&[f64]> = Ensemble::split(10, 3)
+/// let shares: Vec<std::borrow::Cow<[f64]>> = Ensemble::split(10, 3)
 ///     .map(|share| share.window(&draws))
 ///     .collect();
 ///
@@ -43,6 +49,7 @@ pub struct Ensemble {
     size: usize,
     part: usize,
     parts: usize,
+    live: u64,
 }
 
 impl Ensemble {
@@ -52,6 +59,7 @@ impl Ensemble {
             size,
             part: 0,
             parts: 1,
+            live: u64::MAX,
         }
     }
 
@@ -62,7 +70,31 @@ impl Ensemble {
     /// answer the whole ensemble would have given.
     pub fn split(size: usize, parts: usize) -> impl Iterator<Item = Self> {
         let parts = parts.max(1);
-        (0..parts).map(move |part| Self { size, part, parts })
+        (0..parts).map(move |part| Self {
+            size,
+            part,
+            parts,
+            live: u64::MAX,
+        })
+    }
+
+    /// The same share carrying only the draws in the given blocks.
+    ///
+    /// A draw that has reached its own fixed point cannot move again, because
+    /// draws are independent and the model is deterministic, so continuing to
+    /// compute it produces the value it already has. Dropping its block spends
+    /// the remaining passes on the draws that are still moving.
+    ///
+    /// The size is deliberately untouched: it is what every distribution
+    /// stratifies across, so narrowing the mask changes which draws are computed
+    /// without changing what any of them is.
+    pub const fn retaining(self, live: u64) -> Self {
+        Self { live, ..self }
+    }
+
+    /// Which blocks this share is still computing.
+    pub const fn live(self) -> u64 {
+        self.live
     }
 
     /// How many draws the whole ensemble carries.
@@ -75,7 +107,7 @@ impl Ensemble {
 
     /// Whether this share is the whole ensemble.
     pub const fn is_whole(self) -> bool {
-        self.parts == 1
+        self.parts == 1 && self.live == u64::MAX
     }
 
     /// An ensemble of the same shape at a different size.
@@ -103,7 +135,55 @@ impl Ensemble {
 
     /// Which draw of the whole ensemble this share's `index` refers to.
     pub fn at(self, index: usize) -> usize {
+        if self.live == u64::MAX {
+            return self.bounds(self.size).start + index;
+        }
+        let mut seen = 0;
+        for block in self.blocks(self.size) {
+            let width = block.len();
+            if index < seen + width {
+                return block.start + (index - seen);
+            }
+            seen += width;
+        }
         self.bounds(self.size).start + index
+    }
+
+    /// The absolute draw indices this share carries, in order.
+    pub fn indices(self, length: usize) -> impl Iterator<Item = usize> {
+        self.blocks(length).flatten()
+    }
+
+    /// Where this share's live draws sit among the share's own draws.
+    ///
+    /// Share-local rather than absolute, so a narrowed result can be written
+    /// back into the draws the share started with.
+    pub fn positions(self, length: usize) -> impl Iterator<Item = usize> {
+        let start = self.bounds(length).start;
+        self.indices(length).map(move |draw| draw - start)
+    }
+
+    /// Each live block of this share, as its number and how many draws it holds.
+    pub fn live_blocks(self, length: usize) -> impl Iterator<Item = (usize, usize)> {
+        self.spans(length).map(|(block, span)| (block, span.len()))
+    }
+
+    /// Where each live block of this share falls within `length` draws.
+    fn blocks(self, length: usize) -> impl Iterator<Item = Range<usize>> {
+        self.spans(length).map(|(_, span)| span)
+    }
+
+    fn spans(self, length: usize) -> impl Iterator<Item = (usize, Range<usize>)> {
+        let span = self.bounds(length);
+        let (start, width, live) = (span.start, span.len(), self.live);
+        (0..BLOCKS).filter_map(move |block| {
+            if live >> block & 1 == 0 {
+                return None;
+            }
+            let from = start + width * block / BLOCKS;
+            let until = start + width * (block + 1) / BLOCKS;
+            (from < until).then_some((block, from..until))
+        })
     }
 
     /// Where this share falls within `length` draws.
@@ -118,16 +198,29 @@ impl Ensemble {
     }
 
     /// This share's view of a full set of draws.
-    pub fn window(self, draws: &[f64]) -> &[f64] {
+    ///
+    /// Borrowed where the share is contiguous, and gathered where blocks have
+    /// been retired, because a scattered subset is not a slice of anything.
+    pub fn window(self, draws: &[f64]) -> Cow<'_, [f64]> {
         if self.is_whole() {
-            return draws;
+            return Cow::Borrowed(draws);
         }
-        &draws[self.bounds(draws.len())]
+        if self.live == u64::MAX {
+            return Cow::Borrowed(&draws[self.bounds(draws.len())]);
+        }
+        Cow::Owned(
+            self.blocks(draws.len())
+                .flat_map(|block| draws[block].iter().copied())
+                .collect(),
+        )
     }
 
     /// How many draws this share carries out of `length`.
     pub fn width(self, length: usize) -> usize {
-        self.bounds(length).len()
+        if self.live == u64::MAX {
+            return self.bounds(length).len();
+        }
+        self.blocks(length).map(|block| block.len()).sum()
     }
 }
 
@@ -144,7 +237,7 @@ mod tests {
     #[test]
     fn the_whole_ensemble_is_every_draw() {
         let draws = [1.0, 2.0, 3.0];
-        assert_eq!(Ensemble::whole(3).window(&draws), draws);
+        assert_eq!(*Ensemble::whole(3).window(&draws), draws);
         assert!(Ensemble::whole(3).is_whole());
     }
 
@@ -189,6 +282,55 @@ mod tests {
         let draws: Vec<f64> = (0..13).map(f64::from).collect();
         for share in Ensemble::split(13, 4) {
             assert_eq!(share.width(draws.len()), share.window(&draws).len());
+        }
+    }
+
+    /// Retiring blocks drops their draws and keeps every other draw's value.
+    #[test]
+    fn a_retained_mask_gathers_only_its_own_blocks() {
+        let draws: Vec<f64> = (0..64).map(f64::from).collect();
+        let odd = Ensemble::whole(64).retaining(0xAAAA_AAAA_AAAA_AAAA);
+        let kept = odd.window(&draws).into_owned();
+        assert_eq!(kept.len(), 32);
+        assert_eq!(odd.width(64), 32);
+        assert!(kept.iter().all(|draw| draw % 2.0 == 1.0));
+    }
+
+    /// The mask renumbers draws without renaming them: index `i` of the narrowed
+    /// share still identifies the draw it was cut from, which is what keeps a
+    /// distribution sampling the same strata.
+    #[test]
+    fn a_retained_mask_still_points_at_the_original_draws() {
+        let live = 0x0000_0000_0000_0101;
+        let share = Ensemble::whole(64).retaining(live);
+        assert_eq!(share.width(64), 2);
+        assert_eq!(share.at(0), 0);
+        assert_eq!(share.at(1), 8);
+        assert_eq!(share.indices(64).collect::<Vec<_>>(), vec![0, 8]);
+    }
+
+    /// A mask composes with a thread split rather than replacing it.
+    #[test]
+    fn a_mask_narrows_within_a_share_rather_than_across_the_ensemble() {
+        let draws: Vec<f64> = (0..128).map(f64::from).collect();
+        let second = Ensemble::split(128, 2).nth(1).expect("two shares");
+        let first_block = second.retaining(1);
+        assert_eq!(*first_block.window(&draws), [64.0]);
+        assert_eq!(first_block.at(0), 64);
+    }
+
+    /// An all-live mask is the share it started as, so nothing pays for the
+    /// machinery until a draw is actually retired.
+    #[test]
+    fn an_untouched_mask_changes_nothing() {
+        let draws: Vec<f64> = (0..17).map(f64::from).collect();
+        for share in Ensemble::split(17, 3) {
+            let masked = share.retaining(u64::MAX);
+            assert_eq!(masked.window(&draws), share.window(&draws));
+            assert_eq!(masked.width(17), share.width(17));
+            for index in 0..share.width(17) {
+                assert_eq!(masked.at(index), share.at(index));
+            }
         }
     }
 }

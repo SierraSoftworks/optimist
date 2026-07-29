@@ -144,7 +144,7 @@ impl Distribution {
             return if held.len() == samples.len() {
                 Arc::clone(samples)
             } else {
-                held.into()
+                held.into_owned().into()
             };
         }
         if let Some((held, draws)) = self.stream.held.get()
@@ -165,12 +165,12 @@ impl Distribution {
 
     fn compute(&self, seed: u64, ensemble: Ensemble) -> Vec<f64> {
         let drawn = Indexed::new(seed, ensemble.size());
-        (0..ensemble.len())
-            .map(|index| {
+        ensemble
+            .indices(ensemble.size())
+            .map(|draw| {
                 // Parameters are validated at construction and the probability is
                 // clamped inside the open unit interval, so nothing is left to fail.
-                self.quantile(drawn.probability(ensemble.at(index)))
-                    .unwrap_or(f64::NAN)
+                self.quantile(drawn.probability(draw)).unwrap_or(f64::NAN)
             })
             .collect()
     }
@@ -180,11 +180,11 @@ impl Distribution {
     /// A set as long as the whole ensemble is narrowed to the share. One that is
     /// already the share's length was narrowed by whoever produced it, and
     /// narrowing again would take a share of a share.
-    fn held<'a>(&self, samples: &'a [f64], ensemble: Ensemble) -> &'a [f64] {
+    fn held<'a>(&self, samples: &'a [f64], ensemble: Ensemble) -> std::borrow::Cow<'a, [f64]> {
         if samples.len() == ensemble.size() {
             ensemble.window(samples)
         } else {
-            samples
+            std::borrow::Cow::Borrowed(samples)
         }
     }
 
@@ -219,6 +219,10 @@ impl Distribution {
         {
             None => configured,
             Some(authored) if authored == configured.len() => configured,
+            // A set as long as the whole ensemble is this share's own quantity
+            // seen at full width, so it is narrowed to the share rather than
+            // mistaken for authored data that fixes its own draw count.
+            Some(authored) if authored == configured.size() => configured,
             Some(authored) => Ensemble::whole(authored),
         }
     }
@@ -296,6 +300,38 @@ mod tests {
         let samples = vec![1.0, 2.0, 3.0, 4.0];
         let distribution = Distribution::from_samples(samples.clone())?;
         assert_eq!(drawn(&distribution, 4), samples);
+        Ok(())
+    }
+
+    /// The property draw retirement rests on: narrowing a share to some of its
+    /// blocks selects draws without redrawing them, so a value that survives
+    /// retirement is bit-identical to the one it would have had.
+    #[test]
+    fn retiring_blocks_selects_draws_rather_than_resampling_them() -> Result<(), String> {
+        let count = 1_000;
+        let distribution = Distribution::normal(10.0, 3.0)?;
+        let seed = distribution.stream(&mut rng());
+        let every = distribution.materialise(seed, whole(count));
+
+        let live = 0x0F0F_0F0F_0F0F_0F0F;
+        let share = whole(count).retaining(live);
+        let kept = distribution.materialise(seed, share);
+
+        let expected: Vec<f64> = share.indices(count).map(|draw| every[draw]).collect();
+        assert_eq!(kept, expected);
+        assert_eq!(kept.len(), share.width(count));
+        Ok(())
+    }
+
+    /// Authored sample sets are narrowed by the same mask as symbolic ones, so a
+    /// constant and a solved quantity stay aligned once blocks have retired.
+    #[test]
+    fn retiring_blocks_narrows_an_authored_set_the_same_way() -> Result<(), String> {
+        let samples: Vec<f64> = (0..64).map(f64::from).collect();
+        let distribution = Distribution::from_samples(samples.clone())?;
+        let share = whole(64).retaining(0b1011);
+        let seed = distribution.stream(&mut rng());
+        assert_eq!(distribution.materialise(seed, share), vec![0.0, 1.0, 3.0]);
         Ok(())
     }
 
