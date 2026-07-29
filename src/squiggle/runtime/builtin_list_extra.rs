@@ -9,44 +9,41 @@ use super::{
 
 builtins! {
     context(runtime, span);
-    "List.make"(count: NonNegativeInteger, function: Function) => make(runtime, vec![Value::Number(count as f64), Value::Function(function.clone())], span),
-    "List.make"(count: NonNegativeInteger, value: *) => make(runtime, vec![Value::Number(count as f64), value.clone()], span),
-    "List.flatten"(values: Array) => flatten(vec![Value::Array(values.clone())], span),
-    "List.join"(values: Array, separator: String) => join(vec![Value::Array(values.clone()), Value::String(separator.clone())], span),
+    "List.make"(count: NonNegativeInteger, function: Function) => make(runtime, &[Value::Number(count as f64), Value::Function(function.clone())], span),
+    "List.make"(count: NonNegativeInteger, value: *) => make(runtime, &[Value::Number(count as f64), value.clone()], span),
+    "List.flatten"(values: Array) => flatten(&[Value::Array(values.clone())], span),
+    "List.join"(values: Array, separator: String) => join(&[Value::Array(values.clone()), Value::String(separator.clone())], span),
     "List.zip"(first: Array, ...rest: Array) => {
         let mut arrays = Vec::with_capacity(rest.len() + 1);
         arrays.push(Value::Array(first.clone()));
         arrays.extend(rest.into_iter().map(|values| Value::Array(values.clone())));
-        zip(arrays, span)
+        zip(&arrays, span)
     },
-    "List.unzip"(rows: [Array]) => unzip(vec![Value::Array(rows.into_iter().map(|row| Value::Array(row.clone())).collect())], span),
-    "List.uniq"(values: Array) => unique(vec![Value::Array(values.clone())], span),
-    "List.shuffle"(values: Array) => random(runtime, "List.shuffle", vec![Value::Array(values.clone())], span),
-    "List.sample"(values: Array) => random(runtime, "List.sample", vec![Value::Array(values.clone())], span),
-    "List.sampleN"(values: Array, count: NonNegativeInteger) => random(runtime, "List.sampleN", vec![Value::Array(values.clone()), Value::Number(count as f64)], span),
-    "List.reduceReverse"(values: Array, initial: *, function: Function) => reduce(runtime, "List.reduceReverse", vec![Value::Array(values.clone()), initial.clone(), Value::Function(function.clone())], span),
-    "List.reduceWhile"(values: Array, initial: *, step: Function, condition: Function) => reduce(runtime, "List.reduceWhile", vec![Value::Array(values.clone()), initial.clone(), Value::Function(step.clone()), Value::Function(condition.clone())], span),
-    "List.every"(values: Array, function: Function) => predicate_or_order(runtime, "List.every", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.some"(values: Array, function: Function) => predicate_or_order(runtime, "List.some", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.find"(values: Array, function: Function) => predicate_or_order(runtime, "List.find", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.findIndex"(values: Array, function: Function) => predicate_or_order(runtime, "List.findIndex", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.sortBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.sortBy", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.minBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.minBy", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.maxBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.maxBy", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.unzip"(rows: [Array]) => unzip(&[Value::Array(rows.into_iter().map(|row| Value::Array(row.clone())).collect())], span),
+    "List.uniq"(values: Array) => unique(&[Value::Array(values.clone())], span),
+    "List.shuffle"(values: Array) => random(runtime, "List.shuffle", &[Value::Array(values.clone())], span),
+    "List.sample"(values: Array) => random(runtime, "List.sample", &[Value::Array(values.clone())], span),
+    "List.sampleN"(values: Array, count: NonNegativeInteger) => random(runtime, "List.sampleN", &[Value::Array(values.clone()), Value::Number(count as f64)], span),
+    "List.reduceReverse"(values: Array, initial: *, function: Function) => reduce(runtime, "List.reduceReverse", &[Value::Array(values.clone()), initial.clone(), Value::Function(function.clone())], span),
+    "List.reduceWhile"(values: Array, initial: *, step: Function, condition: Function) => reduce(runtime, "List.reduceWhile", &[Value::Array(values.clone()), initial.clone(), Value::Function(step.clone()), Value::Function(condition.clone())], span),
+    "List.every"(values: Array, function: Function) => predicate_or_order(runtime, "List.every", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.some"(values: Array, function: Function) => predicate_or_order(runtime, "List.some", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.find"(values: Array, function: Function) => predicate_or_order(runtime, "List.find", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.findIndex"(values: Array, function: Function) => predicate_or_order(runtime, "List.findIndex", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.sortBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.sortBy", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.minBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.minBy", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.maxBy"(values: Array, function: Function) => predicate_or_order(runtime, "List.maxBy", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
 }
 
-fn make(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+fn make(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 2, span)?;
     let count = integer(&arguments[0], span)?;
     if let Value::Function(function) = &arguments[1] {
         let use_index = function.arity() == Some(1);
         return (0..count)
             .map(|index| {
-                let args = if use_index {
-                    vec![Value::Number(index as f64)]
-                } else {
-                    Vec::new()
-                };
+                let indexed = [Value::Number(index as f64)];
+                let args: &[Value] = if use_index { &indexed } else { &[] };
                 runtime.call(arguments[1].clone(), args, span)
             })
             .collect::<Result<Vec<_>, _>>()
@@ -55,8 +52,8 @@ fn make(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Valu
     Ok(Value::Array(vec![arguments[1].clone(); count]))
 }
 
-fn flatten(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    let values = array(&arguments, 1, span)?;
+fn flatten(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let values = array(arguments, 1, span)?;
     let mut result = Vec::new();
     for value in values {
         if let Value::Array(nested) = value {
@@ -68,8 +65,8 @@ fn flatten(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     Ok(Value::Array(result))
 }
 
-fn join(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+fn join(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 2, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -85,7 +82,7 @@ fn join(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     ))
 }
 
-fn zip(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
+fn zip(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     if arguments.is_empty() {
         return Err(Diagnostic::runtime(
             "List.zip requires at least one array",
@@ -114,8 +111,8 @@ fn zip(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     ))
 }
 
-fn unzip(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    let rows = array(&arguments, 1, span)?;
+fn unzip(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let rows = array(arguments, 1, span)?;
     let width = rows
         .first()
         .and_then(|row| {
@@ -144,8 +141,8 @@ fn unzip(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     Ok(Value::Array(result.into_iter().map(Value::Array).collect()))
 }
 
-fn unique(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    let values = array(&arguments, 1, span)?;
+fn unique(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let values = array(arguments, 1, span)?;
     let mut result = Vec::new();
     for value in values {
         if !result.contains(value) {
@@ -158,11 +155,11 @@ fn unique(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
 fn random(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let expected_arity = if name == "List.sampleN" { 2 } else { 1 };
-    arity(&arguments, expected_arity, span)?;
+    arity(arguments, expected_arity, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -195,11 +192,11 @@ fn random(
 fn reduce(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let expected_arity = if name == "List.reduceWhile" { 4 } else { 3 };
-    arity(&arguments, expected_arity, span)?;
+    arity(arguments, expected_arity, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -212,11 +209,11 @@ fn reduce(
     for value in iterator {
         let next = runtime.call(
             arguments[2].clone(),
-            vec![result.clone(), value.clone()],
+            &[result.clone(), value.clone()],
             span,
         )?;
         if name == "List.reduceWhile" {
-            match runtime.call(arguments[3].clone(), vec![next.clone()], span)? {
+            match runtime.call(arguments[3].clone(), &[next.clone()], span)? {
                 Value::Boolean(true) => {}
                 Value::Boolean(false) => break,
                 value => return Err(expected("Boolean", &value, span)),
@@ -230,10 +227,10 @@ fn reduce(
 fn predicate_or_order(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+    arity(arguments, 2, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -243,7 +240,7 @@ fn predicate_or_order(
             .map(|value| {
                 Ok((
                     number(
-                        &runtime.call(arguments[1].clone(), vec![value.clone()], span)?,
+                        &runtime.call(arguments[1].clone(), &[value.clone()], span)?,
                         span,
                     )?,
                     value.clone(),
@@ -266,7 +263,7 @@ fn predicate_or_order(
         };
     }
     for (index, value) in values.iter().enumerate() {
-        let result = runtime.call(arguments[1].clone(), vec![value.clone()], span)?;
+        let result = runtime.call(arguments[1].clone(), &[value.clone()], span)?;
         let Value::Boolean(matches) = result else {
             return Err(expected("Boolean", &result, span));
         };

@@ -26,7 +26,7 @@ pub(crate) fn signatures() -> Vec<crate::squiggle::lint::BuiltinSignature> {
 pub(super) fn call(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     if builtin_common::handles(name) {

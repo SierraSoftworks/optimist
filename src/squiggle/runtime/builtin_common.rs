@@ -10,11 +10,11 @@ builtins! {
     throw() => Err(Diagnostic::runtime("Common.throw() was called", span)),
     throw(message: *) => Err(Diagnostic::runtime(ToString::to_string(message), span)),
     try(function: Function, fallback: Function) => {
-        match runtime.call(Value::Function(function.clone()), Vec::new(), span) {
+        match runtime.call(Value::Function(function.clone()), &[], span) {
             Ok(value) => tagged("1", value),
             Err(_) => tagged(
                 "2",
-                runtime.call(Value::Function(fallback.clone()), Vec::new(), span)?,
+                runtime.call(Value::Function(fallback.clone()), &[], span)?,
             ),
         }
     },

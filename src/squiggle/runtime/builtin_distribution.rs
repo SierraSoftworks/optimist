@@ -10,12 +10,12 @@ use super::{
 builtins! {
     context(runtime, span);
         "Dist.normal" | "Sym.normal" | normal(mean: Number, stdev: Number) => finish(Distribution::normal(mean, stdev), span),
-        "Dist.normal" | "Sym.normal" | normal(values: Dictionary) => normal(vec![Value::Dictionary(values.clone())], span),
+        "Dist.normal" | "Sym.normal" | normal(values: Dictionary) => normal(&[Value::Dictionary(values.clone())], span),
         "Dist.lognormal" | "Sym.lognormal" | lognormal(mu: Number, sigma: Number) => finish(Distribution::lognormal(mu, sigma), span),
-        "Dist.lognormal" | "Sym.lognormal" | lognormal(values: Dictionary) => lognormal(vec![Value::Dictionary(values.clone())], span),
+        "Dist.lognormal" | "Sym.lognormal" | lognormal(values: Dictionary) => lognormal(&[Value::Dictionary(values.clone())], span),
         "Dist.uniform" | "Sym.uniform" | uniform(low: Number, high: Number) => finish(Distribution::uniform(low, high), span),
         "Dist.beta" | "Sym.beta" | beta(alpha: Number, beta: Number) => finish(Distribution::beta(alpha, beta), span),
-        "Dist.beta" | "Sym.beta" | beta(values: Dictionary) => beta(vec![Value::Dictionary(values.clone())], span),
+        "Dist.beta" | "Sym.beta" | beta(values: Dictionary) => beta(&[Value::Dictionary(values.clone())], span),
         "Dist.cauchy" | "Sym.cauchy" | cauchy(location: Number, scale: Number) => finish(Distribution::cauchy(location, scale), span),
         "Dist.gamma" | "Sym.gamma" | gamma(shape: Number, scale: Number) => finish(Distribution::gamma(shape, scale), span),
         "Dist.logistic" | "Sym.logistic" | logistic(location: Number, scale: Number) => finish(Distribution::logistic(location, scale), span),
@@ -27,42 +27,42 @@ builtins! {
         "Sym.pointMass" | pointMass(value: Number) => finish(Distribution::point(value), span),
         "Dist.make" | make(value: Number) => finish(Distribution::point(value), span),
         "Dist.make" | make(value: Distribution) => Ok(Value::Distribution(value.clone())),
-        "Dist.cdf" | cdf(distribution: Distribution, value: Number) => probability_operation("cdf", vec![Value::Distribution(distribution.clone()), Value::Number(value)], span),
-        "Dist.pdf" | pdf(distribution: Distribution, value: Number) => probability_operation("pdf", vec![Value::Distribution(distribution.clone()), Value::Number(value)], span),
-        "Dist.inv" | inv(distribution: Distribution, probability: Number) => probability_operation("inv", vec![Value::Distribution(distribution.clone()), Value::Number(probability)], span),
-        "Dist.sample" | sample(distribution: Distribution) => sample(runtime, vec![Value::Distribution(distribution.clone())], span),
-        "Dist.sampleN" | sampleN(distribution: Distribution, count: NonNegativeInteger) => sample_n(runtime, vec![Value::Distribution(distribution.clone()), Value::Number(count as f64)], span),
-        "Dist.truncate" | truncate(distribution: Distribution, left: Number, right: Number) => truncate(runtime, "truncate", vec![Value::Distribution(distribution.clone()), Value::Number(left), Value::Number(right)], span),
-        "Dist.truncateLeft" | truncateLeft(distribution: Distribution, left: Number) => truncate(runtime, "truncateLeft", vec![Value::Distribution(distribution.clone()), Value::Number(left)], span),
-        "Dist.truncateRight" | truncateRight(distribution: Distribution, right: Number) => truncate(runtime, "truncateRight", vec![Value::Distribution(distribution.clone()), Value::Number(right)], span),
+        "Dist.cdf" | cdf(distribution: Distribution, value: Number) => probability_operation("cdf", &[Value::Distribution(distribution.clone()), Value::Number(value)], span),
+        "Dist.pdf" | pdf(distribution: Distribution, value: Number) => probability_operation("pdf", &[Value::Distribution(distribution.clone()), Value::Number(value)], span),
+        "Dist.inv" | inv(distribution: Distribution, probability: Number) => probability_operation("inv", &[Value::Distribution(distribution.clone()), Value::Number(probability)], span),
+        "Dist.sample" | sample(distribution: Distribution) => sample(runtime, &[Value::Distribution(distribution.clone())], span),
+        "Dist.sampleN" | sampleN(distribution: Distribution, count: NonNegativeInteger) => sample_n(runtime, &[Value::Distribution(distribution.clone()), Value::Number(count as f64)], span),
+        "Dist.truncate" | truncate(distribution: Distribution, left: Number, right: Number) => truncate(runtime, "truncate", &[Value::Distribution(distribution.clone()), Value::Number(left), Value::Number(right)], span),
+        "Dist.truncateLeft" | truncateLeft(distribution: Distribution, left: Number) => truncate(runtime, "truncateLeft", &[Value::Distribution(distribution.clone()), Value::Number(left)], span),
+        "Dist.truncateRight" | truncateRight(distribution: Distribution, right: Number) => truncate(runtime, "truncateRight", &[Value::Distribution(distribution.clone()), Value::Number(right)], span),
         "Dist.mixture" | mixture | mx(components: Array) => {
-            mixture(runtime, vec![Value::Array(components.clone())], span)
+            mixture(runtime, &[Value::Array(components.clone())], span)
         },
         "Dist.mixture" | mixture | mx(components: Array, weights: Array) => {
-            mixture(runtime, vec![Value::Array(components.clone()), Value::Array(weights.clone())], span)
+            mixture(runtime, &[Value::Array(components.clone()), Value::Array(weights.clone())], span)
         },
     "Dist.mixture" | mixture | mx(first: *, ...rest: *) => {
         let mut components = Vec::with_capacity(rest.len() + 1);
         components.push(first.clone());
         components.extend_from_slice(rest);
-        mixture(runtime, components, span)
+        mixture(runtime, &components, span)
     },
 }
 
 fn two(
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
     constructor: fn(f64, f64) -> Result<Distribution, String>,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+    arity(arguments, 2, span)?;
     finish(
         constructor(number(&arguments[0], span)?, number(&arguments[1], span)?),
         span,
     )
 }
 
-fn normal(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    if let [Value::Dictionary(values)] = arguments.as_slice() {
+fn normal(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    if let [Value::Dictionary(values)] = arguments {
         if let (Some(mean), Some(stdev)) = (field(values, "mean"), field(values, "stdev")) {
             return finish(Distribution::normal(mean, stdev), span);
         }
@@ -78,8 +78,8 @@ fn normal(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     two(arguments, span, Distribution::normal)
 }
 
-fn lognormal(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    if let [Value::Dictionary(values)] = arguments.as_slice() {
+fn lognormal(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    if let [Value::Dictionary(values)] = arguments {
         if let (Some(mean), Some(stdev)) = (field(values, "mean"), field(values, "stdev")) {
             let sigma2 = (1.0 + stdev * stdev / (mean * mean)).ln();
             return finish(
@@ -108,8 +108,8 @@ fn lognormal(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
     two(arguments, span, Distribution::lognormal)
 }
 
-fn beta(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    if let [Value::Dictionary(values)] = arguments.as_slice() {
+fn beta(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    if let [Value::Dictionary(values)] = arguments {
         let (Some(mean), Some(stdev)) = (field(values, "mean"), field(values, "stdev")) else {
             return Err(Diagnostic::runtime(
                 "beta dictionary requires mean and stdev",
@@ -127,10 +127,10 @@ fn beta(arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
 
 fn probability_operation(
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+    arity(arguments, 2, span)?;
     let distribution = distribution(&arguments[0], span)?;
     let value = number(&arguments[1], span)?;
     let result = match name {
@@ -142,16 +142,16 @@ fn probability_operation(
     Ok(Value::Number(result))
 }
 
-fn sample(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn sample(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let value = distribution(&arguments[0], span)?
         .sample(&mut runtime.rng)
         .map_err(|error| Diagnostic::runtime(error, span))?;
     Ok(Value::Number(value))
 }
 
-fn sample_n(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 2, span)?;
+fn sample_n(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 2, span)?;
     let distribution = distribution(&arguments[0], span)?;
     let count = integer(&arguments[1], span)?;
     let samples = distribution
@@ -162,8 +162,8 @@ fn sample_n(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<
     ))
 }
 
-fn mixture(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    let (components, weights) = match arguments.as_slice() {
+fn mixture(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let (components, weights) = match arguments {
         [Value::Array(components)] => (components.clone(), vec![1.0; components.len()]),
         [Value::Array(components), Value::Array(weights)] => (
             components.clone(),
@@ -172,7 +172,7 @@ fn mixture(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<V
                 .map(|value| number(value, span))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
-        _ => (arguments.clone(), vec![1.0; arguments.len()]),
+        _ => (arguments.to_vec(), vec![1.0; arguments.len()]),
     };
     if components.is_empty()
         || components.len() != weights.len()
@@ -247,11 +247,11 @@ fn mixture(runtime: &mut Runtime, arguments: Vec<Value>, span: Span) -> Result<V
 fn truncate(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let expected = if name == "truncate" { 3 } else { 2 };
-    arity(&arguments, expected, span)?;
+    arity(arguments, expected, span)?;
     let distribution = distribution(&arguments[0], span)?;
     let (left, right) = match name {
         "truncate" => (number(&arguments[1], span)?, number(&arguments[2], span)?),

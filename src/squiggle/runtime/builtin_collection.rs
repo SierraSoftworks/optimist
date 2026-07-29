@@ -10,49 +10,49 @@ use super::{
 
 builtins! {
     context(runtime, span);
-    sum(values: Array) => fold(runtime, "sum", vec![Value::Array(values.clone())], span),
-    product(values: Array) => fold(runtime, "product", vec![Value::Array(values.clone())], span),
-    mean(value: Distribution) => statistic("mean", vec![Value::Distribution(value.clone())], span),
+    sum(values: Array) => fold(runtime, "sum", &[Value::Array(values.clone())], span),
+    product(values: Array) => fold(runtime, "product", &[Value::Array(values.clone())], span),
+    mean(value: Distribution) => statistic("mean", &[Value::Distribution(value.clone())], span),
     mean(values: [Number]) => numeric_statistic("mean", values, None, span),
-    median(value: Distribution) => statistic("median", vec![Value::Distribution(value.clone())], span),
+    median(value: Distribution) => statistic("median", &[Value::Distribution(value.clone())], span),
     median(values: [Number]) => numeric_statistic("median", values, None, span),
-    quantile(value: Distribution, probability: Number) => statistic("quantile", vec![Value::Distribution(value.clone()), Value::Number(probability)], span),
+    quantile(value: Distribution, probability: Number) => statistic("quantile", &[Value::Distribution(value.clone()), Value::Number(probability)], span),
     quantile(values: [Number], probability: Number) => numeric_statistic("quantile", values, Some(probability), span),
-    stdev(value: Distribution) => statistic("stdev", vec![Value::Distribution(value.clone())], span),
+    stdev(value: Distribution) => statistic("stdev", &[Value::Distribution(value.clone())], span),
     stdev(values: [Number]) => numeric_statistic("stdev", values, None, span),
-    variance(value: Distribution) => statistic("variance", vec![Value::Distribution(value.clone())], span),
+    variance(value: Distribution) => statistic("variance", &[Value::Distribution(value.clone())], span),
     variance(values: [Number]) => numeric_statistic("variance", values, None, span),
-    min(value: Distribution) => statistic("min", vec![Value::Distribution(value.clone())], span),
+    min(value: Distribution) => statistic("min", &[Value::Distribution(value.clone())], span),
     min(values: [Number]) => numeric_statistic("min", values, None, span),
     min(values: Array) => saturate(runtime, "min", values, span),
-    max(value: Distribution) => statistic("max", vec![Value::Distribution(value.clone())], span),
+    max(value: Distribution) => statistic("max", &[Value::Distribution(value.clone())], span),
     max(values: [Number]) => numeric_statistic("max", values, None, span),
     max(values: Array) => saturate(runtime, "max", values, span),
-    mode(value: Distribution) => statistic("mode", vec![Value::Distribution(value.clone())], span),
-    sort(values: [Number]) => numeric_list("sort", vec![numbers(values)], span),
-    cumsum(values: [Number]) => numeric_list("cumsum", vec![numbers(values)], span),
-    cumprod(values: [Number]) => numeric_list("cumprod", vec![numbers(values)], span),
-    diff(values: [Number]) => numeric_list("diff", vec![numbers(values)], span),
-    "List.length"(values: Array) => list_query("List.length", vec![Value::Array(values.clone())], span),
-    "List.first"(values: Array) => list_query("List.first", vec![Value::Array(values.clone())], span),
-    "List.last"(values: Array) => list_query("List.last", vec![Value::Array(values.clone())], span),
-    "List.reverse"(values: Array) => list_query("List.reverse", vec![Value::Array(values.clone())], span),
-    "List.concat"(left: Array, right: Array) => list_transform("List.concat", vec![Value::Array(left.clone()), Value::Array(right.clone())], span),
-    "List.append"(values: Array, value: *) => list_transform("List.append", vec![Value::Array(values.clone()), value.clone()], span),
-    "List.slice"(values: Array, start: NonNegativeInteger) => list_transform("List.slice", vec![Value::Array(values.clone()), Value::Number(start as f64)], span),
-    "List.slice"(values: Array, start: NonNegativeInteger, end: NonNegativeInteger) => list_transform("List.slice", vec![Value::Array(values.clone()), Value::Number(start as f64), Value::Number(end as f64)], span),
-    "List.upTo"(low: Integer, high: Integer) => list_transform("List.upTo", vec![Value::Number(low as f64), Value::Number(high as f64)], span),
-    "List.map"(values: Array, function: Function) => higher_order(runtime, "List.map", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "List.reduce"(values: Array, initial: *, function: Function) => higher_order(runtime, "List.reduce", vec![Value::Array(values.clone()), initial.clone(), Value::Function(function.clone())], span),
-    "List.filter"(values: Array, function: Function) => higher_order(runtime, "List.filter", vec![Value::Array(values.clone()), Value::Function(function.clone())], span),
-    "Dict.set"(values: Dictionary, key: String, value: *) => dictionary(runtime, "Dict.set", vec![Value::Dictionary(values.clone()), Value::String(key.clone()), value.clone()], span),
-    "Dict.has"(values: Dictionary, key: String) => dictionary(runtime, "Dict.has", vec![Value::Dictionary(values.clone()), Value::String(key.clone())], span),
-    "Dict.size"(values: Dictionary) => dictionary(runtime, "Dict.size", vec![Value::Dictionary(values.clone())], span),
-    "Dict.delete"(values: Dictionary, key: String) => dictionary(runtime, "Dict.delete", vec![Value::Dictionary(values.clone()), Value::String(key.clone())], span),
-    "Dict.merge"(left: Dictionary, right: Dictionary) => dictionary(runtime, "Dict.merge", vec![Value::Dictionary(left.clone()), Value::Dictionary(right.clone())], span),
-    "Dict.keys"(values: Dictionary) => dictionary(runtime, "Dict.keys", vec![Value::Dictionary(values.clone())], span),
-    "Dict.values"(values: Dictionary) => dictionary(runtime, "Dict.values", vec![Value::Dictionary(values.clone())], span),
-    "Dict.map"(values: Dictionary, function: Function) => dictionary(runtime, "Dict.map", vec![Value::Dictionary(values.clone()), Value::Function(function.clone())], span),
+    mode(value: Distribution) => statistic("mode", &[Value::Distribution(value.clone())], span),
+    sort(values: [Number]) => numeric_list("sort", &[numbers(values)], span),
+    cumsum(values: [Number]) => numeric_list("cumsum", &[numbers(values)], span),
+    cumprod(values: [Number]) => numeric_list("cumprod", &[numbers(values)], span),
+    diff(values: [Number]) => numeric_list("diff", &[numbers(values)], span),
+    "List.length"(values: Array) => list_query("List.length", &[Value::Array(values.clone())], span),
+    "List.first"(values: Array) => list_query("List.first", &[Value::Array(values.clone())], span),
+    "List.last"(values: Array) => list_query("List.last", &[Value::Array(values.clone())], span),
+    "List.reverse"(values: Array) => list_query("List.reverse", &[Value::Array(values.clone())], span),
+    "List.concat"(left: Array, right: Array) => list_transform("List.concat", &[Value::Array(left.clone()), Value::Array(right.clone())], span),
+    "List.append"(values: Array, value: *) => list_transform("List.append", &[Value::Array(values.clone()), value.clone()], span),
+    "List.slice"(values: Array, start: NonNegativeInteger) => list_transform("List.slice", &[Value::Array(values.clone()), Value::Number(start as f64)], span),
+    "List.slice"(values: Array, start: NonNegativeInteger, end: NonNegativeInteger) => list_transform("List.slice", &[Value::Array(values.clone()), Value::Number(start as f64), Value::Number(end as f64)], span),
+    "List.upTo"(low: Integer, high: Integer) => list_transform("List.upTo", &[Value::Number(low as f64), Value::Number(high as f64)], span),
+    "List.map"(values: Array, function: Function) => higher_order(runtime, "List.map", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "List.reduce"(values: Array, initial: *, function: Function) => higher_order(runtime, "List.reduce", &[Value::Array(values.clone()), initial.clone(), Value::Function(function.clone())], span),
+    "List.filter"(values: Array, function: Function) => higher_order(runtime, "List.filter", &[Value::Array(values.clone()), Value::Function(function.clone())], span),
+    "Dict.set"(values: Dictionary, key: String, value: *) => dictionary(runtime, "Dict.set", &[Value::Dictionary(values.clone()), Value::String(key.clone()), value.clone()], span),
+    "Dict.has"(values: Dictionary, key: String) => dictionary(runtime, "Dict.has", &[Value::Dictionary(values.clone()), Value::String(key.clone())], span),
+    "Dict.size"(values: Dictionary) => dictionary(runtime, "Dict.size", &[Value::Dictionary(values.clone())], span),
+    "Dict.delete"(values: Dictionary, key: String) => dictionary(runtime, "Dict.delete", &[Value::Dictionary(values.clone()), Value::String(key.clone())], span),
+    "Dict.merge"(left: Dictionary, right: Dictionary) => dictionary(runtime, "Dict.merge", &[Value::Dictionary(left.clone()), Value::Dictionary(right.clone())], span),
+    "Dict.keys"(values: Dictionary) => dictionary(runtime, "Dict.keys", &[Value::Dictionary(values.clone())], span),
+    "Dict.values"(values: Dictionary) => dictionary(runtime, "Dict.values", &[Value::Dictionary(values.clone())], span),
+    "Dict.map"(values: Dictionary, function: Function) => dictionary(runtime, "Dict.map", &[Value::Dictionary(values.clone()), Value::Function(function.clone())], span),
 }
 
 fn numbers(values: Vec<f64>) -> Value {
@@ -156,10 +156,10 @@ fn dispersion(values: &[f64], mean: f64) -> f64 {
 fn fold(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+    arity(arguments, 1, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -171,9 +171,9 @@ fn fold(
     Ok(result)
 }
 
-fn statistic(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
+fn statistic(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     let expected_arity = if name == "quantile" { 2 } else { 1 };
-    arity(&arguments, expected_arity, span)?;
+    arity(arguments, expected_arity, span)?;
     if let Value::Distribution(distribution) = &arguments[0] {
         let result = match name {
             "mean" => distribution.mean(),
@@ -236,8 +236,8 @@ fn statistic(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Dia
     Ok(Value::Number(result))
 }
 
-fn numeric_list(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn numeric_list(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -264,8 +264,8 @@ fn numeric_list(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, 
     ))
 }
 
-fn list_query(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
-    arity(&arguments, 1, span)?;
+fn list_query(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    arity(arguments, 1, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -283,9 +283,9 @@ fn list_query(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Di
     }
 }
 
-fn list_transform(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value, Diagnostic> {
+fn list_transform(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     if name == "List.upTo" {
-        arity(&arguments, 2, span)?;
+        arity(arguments, 2, span)?;
         let low = number(&arguments[0], span)? as i64;
         let high = number(&arguments[1], span)? as i64;
         return Ok(Value::Array(
@@ -299,14 +299,14 @@ fn list_transform(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value
     };
     match name {
         "List.concat" => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             let Value::Array(right) = &arguments[1] else {
                 return Err(expected("Array", &arguments[1], span));
             };
             Ok(Value::Array(values.iter().chain(right).cloned().collect()))
         }
         "List.append" => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             let mut result = values.clone();
             result.push(arguments[1].clone());
             Ok(Value::Array(result))
@@ -332,11 +332,11 @@ fn list_transform(name: &str, arguments: Vec<Value>, span: Span) -> Result<Value
 fn higher_order(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let expected_arity = if name == "List.reduce" { 3 } else { 2 };
-    arity(&arguments, expected_arity, span)?;
+    arity(arguments, expected_arity, span)?;
     let Value::Array(values) = &arguments[0] else {
         return Err(expected("Array", &arguments[0], span));
     };
@@ -347,7 +347,7 @@ fn higher_order(
     if name == "List.reduce" {
         let mut result = arguments[1].clone();
         for value in values {
-            result = runtime.call(arguments[2].clone(), vec![result, value.clone()], span)?;
+            result = runtime.call(arguments[2].clone(), &[result, value.clone()], span)?;
         }
         return Ok(result);
     }
@@ -359,10 +359,11 @@ fn higher_order(
         } else {
             None
         };
-        let args = if arity == Some(2) {
-            vec![value.clone(), Value::Number(index as f64)]
+        let indexed = [value.clone(), Value::Number(index as f64)];
+        let args: &[Value] = if arity == Some(2) {
+            &indexed
         } else {
-            vec![value.clone()]
+            &indexed[..1]
         };
         let mapped = runtime.call(function, args, span)?;
         if name == "List.map" {
@@ -379,7 +380,7 @@ fn higher_order(
 fn dictionary(
     runtime: &mut Runtime,
     name: &str,
-    arguments: Vec<Value>,
+    arguments: &[Value],
     span: Span,
 ) -> Result<Value, Diagnostic> {
     let Value::Dictionary(values) = &arguments[0] else {
@@ -387,39 +388,39 @@ fn dictionary(
     };
     match name {
         "Dict.size" => {
-            arity(&arguments, 1, span)?;
+            arity(arguments, 1, span)?;
             Ok(Value::Number(values.len() as f64))
         }
         "Dict.has" => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             Ok(Value::Boolean(
                 values.contains_key(&string(&arguments[1], span)?),
             ))
         }
         "Dict.keys" => {
-            arity(&arguments, 1, span)?;
+            arity(arguments, 1, span)?;
             Ok(Value::Array(
                 values.keys().cloned().map(Value::String).collect(),
             ))
         }
         "Dict.values" => {
-            arity(&arguments, 1, span)?;
+            arity(arguments, 1, span)?;
             Ok(Value::Array(values.values().cloned().collect()))
         }
         "Dict.set" => {
-            arity(&arguments, 3, span)?;
+            arity(arguments, 3, span)?;
             let mut result = values.as_ref().clone();
             result.insert(string(&arguments[1], span)?, arguments[2].clone());
             Ok(Value::dictionary(result))
         }
         "Dict.delete" => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             let mut result = values.as_ref().clone();
             result.remove(&string(&arguments[1], span)?);
             Ok(Value::dictionary(result))
         }
         "Dict.merge" => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             let Value::Dictionary(right) = &arguments[1] else {
                 return Err(expected("Dictionary", &arguments[1], span));
             };
@@ -428,12 +429,12 @@ fn dictionary(
             Ok(Value::dictionary(result))
         }
         _ => {
-            arity(&arguments, 2, span)?;
+            arity(arguments, 2, span)?;
             let mut result = BTreeMap::new();
             for (key, value) in values.iter() {
                 result.insert(
                     key.clone(),
-                    runtime.call(arguments[1].clone(), vec![value.clone()], span)?,
+                    runtime.call(arguments[1].clone(), &[value.clone()], span)?,
                 );
             }
             Ok(Value::dictionary(result))
