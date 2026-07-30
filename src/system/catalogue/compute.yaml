@@ -45,12 +45,9 @@ properties:
   parallelism:
     unit: op
     summary: >
-      Requests one replica serves concurrently. A thread pool size, a worker
-      count, or a connection limit.
-  replicas:
-    unit: '1'
-    summary: Instances sharing the offered load.
-    default: '1'
+      Requests this replica serves concurrently. A thread pool size, a worker
+      count, or a connection limit. Use a sharded scale unit to deploy several
+      replicas and divide demand between them.
   request_size:
     unit: B/op
     summary: Bytes this pool sends to a dependency per request it serves.
@@ -112,8 +109,8 @@ channels:
     expression: service_time + dependency_wait
   servers:
     unit: op
-    summary: Total concurrent slots across every replica.
-    expression: parallelism * replicas
+    summary: Concurrent slots available on this replica.
+    expression: parallelism
   capacity:
     unit: op/s
     emphasis: key

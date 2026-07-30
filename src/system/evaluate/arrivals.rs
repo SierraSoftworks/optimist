@@ -18,7 +18,7 @@ use super::{
     aggregate::{blank, combine},
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
-    flow::{CAPACITY, Direction, LATENCY, RATE, SUCCESS, sum, survives},
+    flow::{CAPACITY, Direction, LATENCY, PEERS, RATE, SUCCESS, scaled, sum, survives},
     mutate::{apply, returning},
     queue::{carried, queued},
     state::{ComponentState, LinkId, LinkState},
@@ -34,10 +34,10 @@ use super::{
 ///
 /// Arrivals combine as their signal declares: rates add, latency takes the
 /// largest, success multiplies, and per-operation quantities average. Extensive
-/// signals are then divided by the component's share, so a component inside a
-/// sharded scale unit reads the demand reaching one replica rather than the
-/// whole fleet's. That is what makes a constraint answer "does one cell have
-/// enough capacity", which is the question an engineer can act on.
+/// signals are scaled at each relationship boundary, so traffic stays local
+/// inside one scale unit, divides when entering a sharded unit, and gathers when
+/// leaving one. That is what makes a constraint answer "does one cell have
+/// enough capacity" while a caller outside the cell sees the fleet as a whole.
 ///
 /// Only signals that travel this way are present, each defaulting to its resting
 /// value, so a component at the edge of a model reads no demand rather than
@@ -88,6 +88,12 @@ pub(super) fn arrivals(
                 flow.extend(published.clone());
                 (flow, mine.clone())
             });
+            let (flow_scale, counterpart_scale) = match direction {
+                Direction::Request => (link.request_scale, link.response_scale),
+                Direction::Response => (link.response_scale, link.request_scale),
+            };
+            scale_extensive(&mut flow, plan, flow_scale, config);
+            scale_extensive(&mut counterpart, plan, counterpart_scale, config);
 
             // The wire itself is a queue, and its cost lands on the caller: work
             // waits in front of the callee, and once the buffer is full the
@@ -258,7 +264,18 @@ pub(super) fn arrivals(
                     })?;
                 }
             }
+            let receive_scale = match direction {
+                Direction::Request => link.request_receive_scale,
+                Direction::Response => link.response_receive_scale,
+            };
+            scale_extensive(&mut flow, plan, receive_scale, config);
             time!(Gather, {
+                // Topology rather than a published quantity: no component can
+                // see how many replicas of its peer sit on the far end, so the
+                // engine states it here, after the behaviours have had their
+                // say, because a behaviour rewriting the shape of the deployment
+                // is not something a relationship gets to do.
+                flow.insert(PEERS.to_owned(), Value::Number(link.peers));
                 for (signal, value) in flow {
                     collected.entry(signal).or_default().push(value);
                 }
@@ -270,18 +287,33 @@ pub(super) fn arrivals(
         time!(Combine, {
             for (signal, declaration) in &plan.signals {
                 let values = collected.remove(signal).unwrap_or_default();
-                let divisor = if declaration.extensive {
-                    component.share
-                } else {
-                    1.0
-                };
                 combined.insert(
                     signal.clone(),
-                    combine(&values, declaration, divisor, config, &mut rng),
+                    combine(&values, declaration, 1.0, config, &mut rng),
                 );
             }
         });
         gathered.insert(name.clone(), combined);
     }
     Ok(gathered)
+}
+
+fn scale_extensive(
+    flow: &mut BTreeMap<String, Value>,
+    plan: &Plan,
+    factor: f64,
+    config: EvaluationConfig,
+) {
+    if factor == 1.0 {
+        return;
+    }
+    for (signal, value) in flow {
+        if plan
+            .signals
+            .get(signal)
+            .is_some_and(|declaration| declaration.extensive)
+        {
+            *value = scaled(value, factor, config);
+        }
+    }
 }

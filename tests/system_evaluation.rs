@@ -119,25 +119,22 @@ fn a_two_component_model_solves_to_its_capacity() {
             component(
                 "api",
                 "compute",
-                &[
-                    ("service_time", "0.02"),
-                    ("parallelism", "8"),
-                    ("replicas", "4"),
-                ],
+                &[("service_time", "0.02"), ("parallelism", "8")],
             ),
         ],
         relationships: vec![link("users", "api")],
+        scale_units: vec![cell("api-replicas", "4", Distribution::Sharded, &["api"])],
         ..SystemModel::default()
     };
     let solved = solve(&model, config());
     let api = &solved[&ComponentId::new("api")];
 
-    // 32 concurrent slots at 20 ms each sustain 1600 requests per second.
-    assert!((api.mean("capacity") - 1_600.0).abs() < 1e-6);
-    assert!((api.mean("offered") - 100.0).abs() < 1e-9);
+    // Each replica has eight slots and receives a quarter of the fleet's load.
+    assert!((api.mean("capacity") - 400.0).abs() < 1e-6);
+    assert!((api.mean("offered") - 25.0).abs() < 1e-9);
     assert!((api.mean("utilisation") - 0.0625).abs() < 1e-9);
     // Well below saturation the pool serves everything offered.
-    assert!((api.mean("calls") - 100.0).abs() < 1e-9);
+    assert!((api.mean("calls") - 25.0).abs() < 1e-9);
 }
 
 /// Little's Law holds on the solved quantities, not merely inside the manifest.
@@ -942,6 +939,27 @@ fn sharded_fleet(units: Vec<ScaleUnit>) -> SystemModel {
     }
 }
 
+fn replicated_path(distribution: Distribution, members: &[&str]) -> SystemModel {
+    SystemModel {
+        components: vec![
+            component("users", "client", &[("request_rate", "1200")]),
+            component(
+                "api",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "1000")],
+            ),
+            component(
+                "store",
+                "compute",
+                &[("service_time", "0.01"), ("parallelism", "1000")],
+            ),
+        ],
+        relationships: vec![link("users", "api"), link("api", "store")],
+        scale_units: vec![cell("replicas", "4", distribution, members)],
+        ..SystemModel::default()
+    }
+}
+
 /// A sharded unit divides demand, so a model describes one replica.
 ///
 /// This is the question worth asking of a fleet: not whether the total capacity
@@ -971,6 +989,33 @@ fn a_mirrored_scale_unit_does_not_divide_demand() {
         config(),
     );
     assert!((mirrored[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+}
+
+/// Per-replica work gathers when it leaves a sharded boundary.
+#[test]
+fn traffic_leaving_a_sharded_unit_gathers_before_a_shared_dependency() {
+    let solved = solve(&replicated_path(Distribution::Sharded, &["api"]), config());
+    assert!((solved[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("offered") - 1_200.0).abs() < 1e-6);
+}
+
+/// Members of one unit communicate locally rather than sharding twice.
+#[test]
+fn traffic_between_members_of_one_sharded_unit_stays_local() {
+    let solved = solve(
+        &replicated_path(Distribution::Sharded, &["api", "store"]),
+        config(),
+    );
+    assert!((solved[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("offered") - 300.0).abs() < 1e-6);
+}
+
+/// Mirrored replicas repeat their downstream work outside the boundary.
+#[test]
+fn traffic_leaving_a_mirrored_unit_multiplies_cost() {
+    let solved = solve(&replicated_path(Distribution::Mirrored, &["api"]), config());
+    assert!((solved[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("offered") - 4_800.0).abs() < 1e-6);
 }
 
 /// Nested units multiply, and only the sharded levels divide.

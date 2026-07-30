@@ -2,13 +2,15 @@ id: api
 name: Checkout API
 type: compute
 properties:
-  service_time: lognormal(-4.6, 0.35)
   parallelism: pool_size
-  replicas: '1'
+  service_time: lognormal(-4.6, 0.35)
+position:
+  x: 684.0
+  y: 440.0
 outgoing:
-  - to: orders
-    summary: Order lookups and writes.
-    mutators:
-      - type: cache
-        properties:
-          hit_ratio: cache_hits
+- to: orders
+  mutators:
+  - type: cache
+    properties:
+      hit_ratio: cache_hits
+  summary: Order lookups and writes.

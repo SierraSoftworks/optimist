@@ -17,14 +17,12 @@ type: compute
 properties:
   service_time: lognormal(-4.6, 0.35)
   parallelism: pool_size
-  replicas: '1'
 ```
 
 Every property is Squiggle source, not a number. `lognormal(-4.6, 0.35)` is a
-distribution; `pool_size` is a reference to a shared quantity; `'1'` is a
-constant that happens to be certain. A property the type declares without a
-default must be supplied, because no sensible stand-in exists for a quantity
-that varies by orders of magnitude between deployments.
+distribution and `pool_size` is a reference to a shared quantity. A property the
+type declares without a default must be supplied, because no sensible stand-in
+exists for a quantity that varies by orders of magnitude between deployments.
 
 The shipped types are `client`, `load-balancer`, `queue`, `compute`,
 `datastore`, `aggregator`, and `quorum`. Their properties, channels, and
@@ -232,11 +230,17 @@ each replica serves its share. `mirrored` traffic does not: replicating writes t
 every region means every region sees every write, so the count multiplies cost
 without dividing load.
 
-A component type's own `replicas` property is a different statement. It
-replicates *one* component behind a shared entry point, where a scale unit
-replicates a *set* of components together as a deployable whole. A pool of
-servers is the former; a cell containing a pool, its queue, and its store is the
-latter.
+Relationships between members of the same unit stay local: one replica calls
+the corresponding replica without dividing the flow again. Traffic gathers when
+it leaves a replicated boundary and divides when it enters a sharded one, while
+capacity reported by a sharded fleet gathers before reaching callers outside
+that boundary. A mirrored fleet does not pool capacity because every replica
+must sustain the whole flow.
+
+Scale units are the only replica count in a design. Component properties describe
+one replica: for example, a compute component's `parallelism` is the concurrent
+work one replica can serve. Put that component in a sharded scale unit to deploy
+several copies and divide demand between them.
 
 In the workbench, the **Scale unit** button on the design toolbar builds one, and
 the **Scale units** panel beside the diagram maintains it: how many exist, how

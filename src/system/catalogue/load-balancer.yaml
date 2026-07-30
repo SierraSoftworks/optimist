@@ -2,9 +2,10 @@ id: load-balancer
 name: Load balancer
 icon: balancer
 summary: >
-  Spreads demand across replicas and refuses what it cannot admit. The only
+  Admits demand to a backend fleet and refuses what it cannot admit. The only
   component that can pull a saturated system back out of congestion, because it
-  acts on demand rather than on how long a request waits.
+  acts on demand rather than on how long a request waits. A sharded scale unit
+  around the backends divides admitted demand between their replicas.
 
   A connection is held for the whole round trip, so backends slowing down
   consumes this component's connection limit without any change in demand at all.
@@ -20,9 +21,9 @@ ports:
   out:
     backends:
       arity: many
-      summary: Replicas the balancer distributes work across.
+      summary: Backends receiving forwarded work.
       publishes:
-        rate: per_replica
+        rate: forwarded
         cancellation: propagated_cancellation
 properties:
   admission_limit:
@@ -34,10 +35,6 @@ properties:
   connection_limit:
     unit: op
     summary: Concurrent connections the balancer will hold open.
-  replicas:
-    unit: '1'
-    summary: Backends sharing the admitted demand.
-    default: '1'
   overhead:
     unit: s
     summary: Latency added by the hop itself.
@@ -73,10 +70,12 @@ channels:
     emphasis: key
     summary: Demand rejected at the door.
     expression: offered - admitted
-  per_replica:
+  forwarded:
     unit: op/s
-    summary: Share of admitted demand each replica receives.
-    expression: admitted / replicas
+    summary: >
+      Admitted demand sent to the backends. Put replicated backends in a
+      sharded scale unit to divide this demand between them.
+    expression: admitted
   backend_wait:
     unit: s
     summary: Time the slowest backend takes to answer.

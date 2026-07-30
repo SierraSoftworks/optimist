@@ -53,7 +53,6 @@ them:
 properties:
   parallelism: '8'                    # a constant
   service_time: lognormal(-4.6, 0.35) # a distribution
-  replicas: pool_size                 # a shared quantity
 ```
 
 ---

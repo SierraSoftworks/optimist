@@ -4,7 +4,12 @@ use std::collections::BTreeMap;
 
 use crate::{
     squiggle::{Value, ast::Program},
-    system::{evaluate::LinkId, manifest::ComponentType, model::ComponentId, signal::Signal},
+    system::{
+        evaluate::LinkId,
+        manifest::{ComponentType, PortArity},
+        model::ComponentId,
+        signal::Signal,
+    },
 };
 
 /// One relationship seen from a component, with its behaviours resolved.
@@ -22,12 +27,24 @@ pub(crate) struct PreparedLink {
     pub(crate) capacity: Value,
     /// Bytes per second this wire carries.
     pub(crate) bandwidth: Value,
+    /// Extensive request quantities crossing from caller to callee.
+    pub(crate) request_scale: f64,
+    /// Extensive response quantities crossing from callee to caller.
+    pub(crate) response_scale: f64,
+    /// Extensive request quantities entering one callee replica.
+    pub(crate) request_receive_scale: f64,
+    /// Extensive response quantities entering one caller replica.
+    pub(crate) response_receive_scale: f64,
+    /// Replicas of the peer that one replica of this component talks to.
+    pub(crate) peers: f64,
     pub(crate) mutators: Vec<PreparedMutator>,
 }
 
 /// One named attachment point, with its links and published expressions.
 pub(crate) struct PreparedPort {
     pub(crate) links: Vec<PreparedLink>,
+    /// How many relationships this port's type allows to attach here.
+    pub(crate) arity: PortArity,
     /// Signals this port publishes, as signal name, source text, and program.
     ///
     /// The source is kept so that a publication naming a channel outright can
@@ -57,8 +74,6 @@ pub(crate) struct PreparedComponent {
     pub(crate) outbound: BTreeMap<String, PreparedPort>,
     /// Replicas of this component across every enclosing scale unit.
     pub(crate) replicas: f64,
-    /// Share of the model's demand one replica serves.
-    pub(crate) share: f64,
 }
 
 /// A whole model resolved and ready to solve.

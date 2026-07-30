@@ -6,7 +6,7 @@ use crate::{
     squiggle::Value,
     system::{
         evaluate::EvaluationError,
-        manifest::ComponentType,
+        manifest::{ComponentType, PortArity},
         model::{Component, ComponentId, SystemModel},
         mutator::Mutator,
     },
@@ -20,6 +20,7 @@ use super::{
     ports::{endpoints, link, prepare_ports},
     prepared::{PreparedComponent, PreparedLink, PreparedPort},
     properties::evaluate_properties,
+    scaling::{Scaling, link_peers, link_scales},
 };
 
 /// Everything a component is resolved against, gathered so the wiring below
@@ -29,7 +30,7 @@ pub(super) struct Context<'a> {
     pub(super) catalogue: &'a BTreeMap<String, ComponentType>,
     pub(super) mutators: &'a BTreeMap<String, Mutator>,
     pub(super) globals: &'a BTreeMap<String, Value>,
-    pub(super) scaling: &'a BTreeMap<ComponentId, (f64, f64)>,
+    pub(super) scaling: &'a BTreeMap<ComponentId, Scaling>,
     pub(super) config: Timing,
 }
 
@@ -69,6 +70,8 @@ pub(super) fn prepare_component(
             context.globals,
             context.config,
         )?;
+        let (request_scale, response_scale, request_receive_scale, response_receive_scale) =
+            link_scales(context.scaling, &relationship.from, &relationship.to);
         attach(
             &mut inbound,
             &component.id,
@@ -79,6 +82,11 @@ pub(super) fn prepare_component(
                 id,
                 capacity,
                 bandwidth,
+                request_scale,
+                response_scale,
+                request_receive_scale,
+                response_receive_scale,
+                peers: link_peers(context.scaling, &component.id, &relationship.from),
                 mutators: prepare_mutators(
                     relationship,
                     context.mutators,
@@ -97,6 +105,8 @@ pub(super) fn prepare_component(
             context.globals,
             context.config,
         )?;
+        let (request_scale, response_scale, request_receive_scale, response_receive_scale) =
+            link_scales(context.scaling, &relationship.from, &relationship.to);
         attach(
             &mut outbound,
             &component.id,
@@ -107,6 +117,11 @@ pub(super) fn prepare_component(
                 id,
                 capacity,
                 bandwidth,
+                request_scale,
+                response_scale,
+                request_receive_scale,
+                response_receive_scale,
+                peers: link_peers(context.scaling, &component.id, &relationship.to),
                 mutators: prepare_mutators(
                     relationship,
                     context.mutators,
@@ -116,11 +131,11 @@ pub(super) fn prepare_component(
             },
         )?;
     }
-    let (replicas, share) = context
+    let scaling = context
         .scaling
         .get(&component.id)
-        .copied()
-        .unwrap_or((1.0, 1.0));
+        .cloned()
+        .unwrap_or_default();
     Ok(PreparedComponent {
         id: component.id.clone(),
         component_type,
@@ -129,8 +144,7 @@ pub(super) fn prepare_component(
         constraints,
         inbound,
         outbound,
-        replicas,
-        share,
+        replicas: scaling.replicas,
     })
 }
 
@@ -140,13 +154,21 @@ fn attach(
     port: &str,
     link: PreparedLink,
 ) -> Result<(), EvaluationError> {
-    ports
+    let attached = ports
         .get_mut(port)
         .ok_or_else(|| EvaluationError::UnknownPort {
             component: component.to_string(),
             port: port.to_owned(),
-        })?
-        .links
-        .push(link);
+        })?;
+    // A type declaring a single-relationship port is saying its channels read
+    // one peer's figures rather than a reduction over several, and a reduction
+    // is what a second relationship would silently hand them.
+    if attached.arity == PortArity::One && !attached.links.is_empty() {
+        return Err(EvaluationError::CrowdedPort {
+            component: component.to_string(),
+            port: port.to_owned(),
+        });
+    }
+    attached.links.push(link);
     Ok(())
 }

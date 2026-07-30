@@ -45,8 +45,10 @@ one store inside its own shard rather than to every shard's. That is what lets a
 restated as a property that can drift out of step with the scale unit beside it.
 
 **Extensive** means the quantity is shared out across the replicas of a scale
-unit. A rate divides across a sharded fleet; a payload does not shrink because
-there are more shards to send it to.
+unit. A rate divides when it enters a sharded fleet and gathers when it leaves;
+capacity reported by the fleet gathers on the way back. Relationships within
+one unit stay local, and a payload does not shrink because there are more shards
+to send it to.
 
 A signal reads its aggregation's identity where nothing arrives carrying it —
 nought for a rate, one for a success, no ceiling for a capacity. A signal may
@@ -90,9 +92,10 @@ constraint the engine can rank.
 
 ### `load-balancer`
 
-Spreads demand across replicas and refuses what it cannot admit. The only
+Admits demand to a backend fleet and refuses what it cannot admit. The only
 component that can pull a saturated system back out of congestion, because it
-acts on demand rather than on how long a request waits.
+acts on demand rather than on how long a request waits. A sharded scale unit
+around the backends divides admitted demand between their replicas.
 
 A connection is held for the whole round trip, so backends slowing down consumes
 its connection limit without any change in demand at all.
@@ -104,11 +107,10 @@ its connection limit without any change in demand at all.
 | --- | --- | --- |
 | `admission_limit` | `op/s` | *required* |
 | `connection_limit` | `op` | *required* |
-| `replicas` | `1` | `1` |
 | `overhead` | `s` | `0` |
 
 **Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `offered`,
-`admitted`, `shed`, `per_replica`, `backend_wait`, `backend_success`, `latency`,
+`admitted`, `shed`, `forwarded`, `backend_wait`, `backend_success`, `latency`,
 `connections`, `success_rate`.
 
 **Constraints** — `admission` (offered against the admission limit),
@@ -117,6 +119,8 @@ its connection limit without any change in demand at all.
 Shed demand is charged to callers once, by the queue on the wire in front of the
 balancer, which drains at the admission limit this type publishes. `success_rate`
 therefore reports what the backends managed rather than restating the refusal.
+`forwarded` is aggregate admitted demand; put replicated backends in a sharded
+scale unit to divide it between them.
 
 ### `queue`
 
@@ -172,7 +176,6 @@ itself doing very little work.
 | --- | --- | --- |
 | `service_time` | `s` | *required* |
 | `parallelism` | `op` | *required* |
-| `replicas` | `1` | `1` |
 | `request_size` | `B/op` | `0` |
 
 **Key channels**
@@ -180,7 +183,7 @@ itself doing very little work.
 | Channel | Expression |
 | --- | --- |
 | `hold_time` | `service_time + dependency_wait` |
-| `servers` | `parallelism * replicas` |
+| `servers` | `parallelism` |
 | `capacity` | `Little.rate(servers, hold_time)` |
 | `utilisation` | `Queue.utilisation(offered, capacity)` |
 | `held_downstream` | `Little.occupancy(calls, dependency_wait)` |
@@ -190,6 +193,9 @@ Also `arriving`, `cancelled`, `salvage_share`, `salvaged`, `offered`,
 `concurrency`, `calls`, `success_rate`.
 
 **Constraints** — `capacity` (offered load against sustainable throughput).
+
+These figures describe one replica. Put the component in a sharded scale unit
+to deploy several replicas and divide the arriving demand between them.
 
 `success_rate` reports what this pool's dependencies managed, and nothing else.
 Neither the work refused by the queue in front of it nor the work its caller

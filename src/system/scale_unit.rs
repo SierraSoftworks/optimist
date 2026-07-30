@@ -28,13 +28,18 @@
 //! every write, so the count multiplies cost without dividing load. Confusing
 //! the two is how a design ends up sized for a fraction of its real demand.
 //!
-//! # Against a component's own replica count
+//! # Relationships crossing a boundary
 //!
-//! A component type may declare its own replica property, and that is a
-//! different statement. It replicates *one* component behind a shared entry
-//! point, where a scale unit replicates a *set* of components together as a
-//! deployable whole. A pool of servers is the former; a cell containing a pool,
-//! its queue, and its store is the latter.
+//! Relationships between members of the same unit stay local: one replica calls
+//! the corresponding replica without dividing the flow again. Extensive request
+//! signals gather when they leave a replicated boundary and divide when they
+//! enter a sharded one. Extensive response signals, such as capacity, gather
+//! across a sharded fleet before reaching a caller outside it. Mirrored capacity
+//! does not gather, because every replica must sustain the whole flow.
+//!
+//! Scale units are the model's sole deployment replica count. Component
+//! properties describe one replica, while a scale unit states how many copies
+//! are deployed and whether demand is divided between them.
 
 use std::collections::BTreeMap;
 

@@ -25,10 +25,25 @@ pub(super) const LATENCY: &str = "latency";
 pub(super) const SUCCESS: &str = "success";
 pub(super) const CAPACITY: &str = "capacity";
 pub(super) const PAYLOAD: &str = "payload";
+/// Nodes on the far end of a relationship, supplied by the engine.
+pub(super) const PEERS: &str = "peers";
 
 /// Adds one quantity to another, draw by draw.
 pub(super) fn sum(left: &Value, right: &Value, config: EvaluationConfig) -> Value {
     elementwise(left, right, config, |a, b| a + b)
+}
+
+/// Multiplies one quantity by a scale-unit boundary factor.
+pub(super) fn scaled(value: &Value, factor: f64, config: EvaluationConfig) -> Value {
+    if factor == 1.0 {
+        return value.clone();
+    }
+    match value {
+        Value::Number(number) => Value::Number(number * factor),
+        _ => elementwise(value, &Value::Number(factor), config, |value, factor| {
+            value * factor
+        }),
+    }
 }
 
 /// Reduces a success rate by the share that never got through.

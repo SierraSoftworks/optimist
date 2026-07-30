@@ -697,18 +697,14 @@ fn a_queue_does_not_make_its_producer_wait() {
 // ---------------------------------------------------------------------------
 
 fn balanced(rate: &str, admission_limit: &str, replicas: &str, service_time: &str) -> String {
+    let edge = format!(
+        "  - id: edge\n    name: Edge\n    type: load-balancer\n    properties:\n      admission_limit: '{admission_limit}'\n      connection_limit: '1000'\n      overhead: '0.001'\n"
+    );
     format!(
         "
 components:
 {}
-  - id: edge
-    name: Edge
-    type: load-balancer
-    properties:
-      admission_limit: '{admission_limit}'
-      connection_limit: '1000'
-      replicas: '{replicas}'
-      overhead: '0.001'
+{}
   - id: api
     name: API
     type: compute
@@ -720,19 +716,34 @@ relationships:
     to: edge
   - from: edge
     to: api
+scale_units:
+    [{{ id: backends, name: Backend replicas, replicas: '{replicas}', distribution: sharded, members: [api] }}]
 ",
-        CLIENT.replace("%RATE%", rate)
+    CLIENT.replace("%RATE%", rate),
+    edge
     )
 }
 
-/// Below the limit the balancer is a hop, and admitted demand splits by replica.
+/// Below the limit the balancer forwards demand and the backend unit shards it.
 #[test]
-fn a_balancer_below_its_limit_only_spreads_demand() {
+fn a_balancer_forwards_demand_to_sharded_backends() {
     let solved = solve(&balanced("100", "500", "4", "0.02"));
     close(solved.get("edge", "admitted"), 100.0, "admitted");
     close(solved.get("edge", "shed"), 0.0, "shed");
-    close(solved.get("edge", "per_replica"), 25.0, "per replica");
+    close(solved.get("edge", "forwarded"), 100.0, "forwarded");
+    close(solved.get("api", "offered"), 25.0, "per replica");
     close(solved.get("edge", "success_rate"), 1.0, "success");
+}
+
+/// A sharded fleet publishes its aggregate capacity onto the shared wire.
+///
+/// Component channels remain per replica, while the wire has to know how fast
+/// every replica behind it drains in total.
+#[test]
+fn sharded_backends_publish_fleet_capacity_to_their_shared_wire() {
+    let solved = solve(&balanced("100", "1e9", "4", "0.02"));
+    // Each of four replicas sustains 20,000 requests per second.
+    close(solved.wire("edge", "api", "drain"), 80_000.0, "fleet capacity");
 }
 
 /// Refusal at the door is charged once, and it is charged.
@@ -787,14 +798,14 @@ fn backends_slowing_down_consume_the_connection_limit() {
     );
 }
 
-/// A balancer with no backends is a modelling mistake, not a balancer of none.
+/// A scale unit with no replicas is a modelling mistake, not a fleet of none.
 #[test]
 fn a_balancer_with_no_replicas_is_rejected() {
     let error = try_solve(&balanced("100", "500", "0", "0.02"))
         .expect_err("demand cannot be spread across no replicas");
     assert!(
-        error.contains("per_replica"),
-        "expected the undefined channel to be named, got {error}"
+        error.contains("scale unit must hold at least one replica"),
+        "expected the invalid scale unit to be named, got {error}"
     );
 }
 
