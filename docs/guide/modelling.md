@@ -24,7 +24,7 @@ distribution and `pool_size` is a reference to a shared quantity. A property the
 type declares without a default must be supplied, because no sensible stand-in
 exists for a quantity that varies by orders of magnitude between deployments.
 
-The shipped types are `client`, `load-balancer`, `queue`, `compute`,
+The shipped types are `client`, `load-balancer`, `failover`, `queue`, `compute`,
 `datastore`, `aggregator`, and `quorum`. Their properties, channels, and
 constraints are listed in [the catalogue reference](../reference/catalogue.md),
 and a design may [define its own](./component-types.md).

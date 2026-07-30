@@ -136,6 +136,8 @@ pub(super) fn prepare_component(
         .get(&component.id)
         .cloned()
         .unwrap_or_default();
+    require_attachments(&component.id, &inbound)?;
+    require_attachments(&component.id, &outbound)?;
     Ok(PreparedComponent {
         id: component.id.clone(),
         component_type,
@@ -170,5 +172,20 @@ fn attach(
         });
     }
     attached.links.push(link);
+    Ok(())
+}
+
+fn require_attachments(
+    component: &ComponentId,
+    ports: &BTreeMap<String, PreparedPort>,
+) -> Result<(), EvaluationError> {
+    for (name, port) in ports {
+        if port.required && port.links.is_empty() {
+            return Err(EvaluationError::UnconnectedPort {
+                component: component.to_string(),
+                port: name.clone(),
+            });
+        }
+    }
     Ok(())
 }

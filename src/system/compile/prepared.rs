@@ -45,6 +45,8 @@ pub(crate) struct PreparedPort {
     pub(crate) links: Vec<PreparedLink>,
     /// How many relationships this port's type allows to attach here.
     pub(crate) arity: PortArity,
+    /// Whether this port's type refuses a design that leaves it unattached.
+    pub(crate) required: bool,
     /// Signals this port publishes, as signal name, source text, and program.
     ///
     /// The source is kept so that a publication naming a channel outright can

@@ -25,6 +25,7 @@ const MANIFESTS: &[&str] = &[
     include_str!("catalogue/datastore.yaml"),
     include_str!("catalogue/aggregator.yaml"),
     include_str!("catalogue/quorum.yaml"),
+    include_str!("catalogue/failover.yaml"),
 ];
 
 const MUTATORS: &[&str] = &[
@@ -157,6 +158,7 @@ mod tests {
         for id in [
             "client",
             "load-balancer",
+            "failover",
             "queue",
             "compute",
             "datastore",

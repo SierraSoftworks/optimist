@@ -105,6 +105,19 @@ fn solve_stepping(source: &str, step: f64) -> Solved {
     }
 }
 
+/// Solves a model at the end of a horizon, which is where the clock has moved to.
+fn solve_at(source: &str, time: f64) -> Solved {
+    let config = EvaluationConfig {
+        horizon: (time as usize) + 1,
+        step: 1.0,
+        ..config()
+    };
+    match solved(source, config) {
+        Ok(solved) => solved,
+        Err(error) => panic!("expected the model to solve: {error}"),
+    }
+}
+
 /// Solves a model, surfacing the diagnostic rather than the result.
 fn try_solve(source: &str) -> Result<Solved, String> {
     solved(source, config())
@@ -696,9 +709,12 @@ fn a_queue_does_not_make_its_producer_wait() {
 // load balancer
 // ---------------------------------------------------------------------------
 
-fn balanced(rate: &str, admission_limit: &str, replicas: &str, service_time: &str) -> String {
+fn balanced(rate: &str, shed: &str, replicas: &str, service_time: &str) -> String {
     let edge = format!(
-        "  - id: edge\n    name: Edge\n    type: load-balancer\n    properties:\n      admission_limit: '{admission_limit}'\n      connection_limit: '1000'\n      overhead: '0.001'\n"
+        "  - id: edge\n    name: Edge\n    type: load-balancer\n    properties:\n      connection_limit: '1000'\n      overhead: '0.001'\n"
+    );
+    let inbound = format!(
+        "  - from: users\n    to: edge\n    mutators:\n      - type: load-shed\n        properties:\n          limit: '{shed}'\n"
     );
     format!(
         "
@@ -712,38 +728,42 @@ components:
       service_time: '{service_time}'
       parallelism: '400'
 relationships:
-  - from: users
-    to: edge
+{}
   - from: edge
     to: api
 scale_units:
     [{{ id: backends, name: Backend replicas, replicas: '{replicas}', distribution: sharded, members: [api] }}]
 ",
-    CLIENT.replace("%RATE%", rate),
-    edge
+        CLIENT.replace("%RATE%", rate),
+        edge,
+        inbound
     )
 }
 
-/// Below the limit the balancer forwards demand and the backend unit shards it.
+/// Below the shedding limit the balancer forwards demand and the unit shards it.
 #[test]
 fn a_balancer_forwards_demand_to_sharded_backends() {
     let solved = solve(&balanced("100", "500", "4", "0.02"));
-    close(solved.get("edge", "admitted"), 100.0, "admitted");
-    close(solved.get("edge", "shed"), 0.0, "shed");
+    close(solved.get("edge", "offered"), 100.0, "offered");
     close(solved.get("edge", "forwarded"), 100.0, "forwarded");
     close(solved.get("api", "offered"), 25.0, "per replica");
     close(solved.get("edge", "success_rate"), 1.0, "success");
 }
 
-/// A sharded fleet publishes its aggregate capacity onto the shared wire.
+/// The balancer drains at what its fleet can serve, and says so to its callers.
 ///
-/// Component channels remain per replica, while the wire has to know how fast
-/// every replica behind it drains in total.
+/// It holds no work of its own, so anything else would let the queue on the wire
+/// in front believe it was emptying faster or slower than the backends take the
+/// work.
 #[test]
-fn sharded_backends_publish_fleet_capacity_to_their_shared_wire() {
+fn a_balancer_publishes_the_capacity_of_the_fleet_behind_it() {
     let solved = solve(&balanced("100", "1e9", "4", "0.02"));
     // Each of four replicas sustains 20,000 requests per second.
-    close(solved.wire("edge", "api", "drain"), 80_000.0, "fleet capacity");
+    close(
+        solved.get("edge", "backend_capacity"),
+        80_000.0,
+        "fleet capacity",
+    );
 }
 
 /// Refusal at the door is charged once, and it is charged.
@@ -755,8 +775,7 @@ fn sharded_backends_publish_fleet_capacity_to_their_shared_wire() {
 #[test]
 fn shedding_is_charged_once_and_charged_fully() {
     let solved = solve(&balanced("2000", "500", "1", "0.02"));
-    close(solved.get("edge", "admitted"), 500.0, "admitted");
-    close(solved.get("edge", "shed"), 1500.0, "shed");
+    close(solved.get("edge", "forwarded"), 500.0, "forwarded");
     near(
         solved.get("users", "success"),
         0.25,
@@ -770,7 +789,6 @@ fn shedding_is_charged_once_and_charged_fully() {
         1.0,
         "served rate against the caller's reading",
     );
-    close(solved.constraint("edge", "admission"), 4.0, "admission");
 }
 
 /// Connections are Little's Law, so a slow backend exhausts them at fixed demand.
@@ -782,14 +800,14 @@ fn backends_slowing_down_consume_the_connection_limit() {
     let quick = solve(&balanced("400", "5000", "1", "0.02"));
     close(
         quick.get("edge", "connections"),
-        quick.get("edge", "admitted") * quick.get("edge", "latency"),
+        quick.get("edge", "forwarded") * quick.get("edge", "latency"),
         "connections against Little's Law",
     );
 
     let slow = solve(&balanced("400", "5000", "1", "0.2"));
     close(
-        slow.get("edge", "admitted"),
-        quick.get("edge", "admitted"),
+        slow.get("edge", "forwarded"),
+        quick.get("edge", "forwarded"),
         "demand is unchanged",
     );
     assert!(
@@ -806,6 +824,178 @@ fn a_balancer_with_no_replicas_is_rejected() {
     assert!(
         error.contains("scale unit must hold at least one replica"),
         "expected the invalid scale unit to be named, got {error}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// failover
+// ---------------------------------------------------------------------------
+
+/// A pair of independent backends behind one router, each reached by its own port.
+///
+/// The standby is deliberately slower and smaller than the primary, because a
+/// standby that matches the primary in every respect is the case where leaning
+/// on it costs nothing, and that is the case worth not assuming.
+fn paired(rate: &str, properties: &str, primary_service: &str) -> String {
+    format!(
+        "
+components:
+{}
+  - id: edge
+    name: Edge
+    type: failover
+{properties}
+  - id: blue
+    name: Blue
+    type: compute
+    properties:
+      service_time: '{primary_service}'
+      parallelism: '200'
+  - id: green
+    name: Green
+    type: compute
+    properties:
+      service_time: '0.05'
+      parallelism: '100'
+relationships:
+  - from: users
+    to: edge
+  - from: edge
+    from_port: primary
+    to: blue
+  - from: edge
+    from_port: standby
+    to: green
+",
+        CLIENT.replace("%RATE%", rate)
+    )
+}
+
+/// The weighting alone decides the split while the primary is healthy.
+///
+/// This is the lever a blue/green rollout moves, and at rest it has to mean
+/// exactly what it says rather than being perturbed by a health term that is
+/// not yet doing anything.
+#[test]
+fn a_weighting_splits_demand_between_two_independent_backends() {
+    let solved = solve(&paired("100", "    properties:\n      primary_weight: '0.75'\n", "0.01"));
+    close(solved.get("edge", "to_primary"), 75.0, "to the primary");
+    close(solved.get("edge", "to_standby"), 25.0, "to the standby");
+    // Work is moved, not created: the two legs account for the whole demand.
+    close(
+        solved.get("blue", "offered") + solved.get("green", "offered"),
+        100.0,
+        "demand conserved across the pair",
+    );
+}
+
+/// Demand the primary stops taking is demand the standby starts taking.
+///
+/// The point of the type is that this is a redistribution rather than a loss.
+/// A router that simply withdrew traffic from a failing backend would report a
+/// design serving less than it was asked for while both backends sat idle.
+#[test]
+fn demand_moves_to_the_standby_as_the_primary_degrades() {
+    let healthy = solve(&paired(
+        "100",
+        "    properties:\n      primary_weight: '1'\n      latency_threshold: '0.02'\n",
+        "0.01",
+    ));
+    close(healthy.get("edge", "primary_health"), 1.0, "health at rest");
+    close(healthy.get("edge", "to_standby"), 0.0, "standby idle");
+
+    // Four times the threshold leaves a quarter of the traffic on the primary.
+    let degraded = solve(&paired(
+        "100",
+        "    properties:\n      primary_weight: '1'\n      latency_threshold: '0.02'\n",
+        "0.08",
+    ));
+    near(degraded.get("edge", "primary_health"), 0.25, 1e-3, "health");
+    near(degraded.get("edge", "to_primary"), 25.0, 0.01, "to primary");
+    near(degraded.get("edge", "to_standby"), 75.0, 0.01, "to standby");
+    near(
+        degraded.get("blue", "offered") + degraded.get("green", "offered"),
+        100.0,
+        0.01,
+        "demand conserved while failing over",
+    );
+}
+
+/// Failing over is only as good as what it fails over to.
+///
+/// Latency and success are blended at the share each leg carries rather than
+/// taken as the worse of them, because a request goes to one backend or the
+/// other. A standby half the size of the primary is a real cost, and the whole
+/// reason to model the pair rather than assume the switch is free.
+#[test]
+fn the_standby_is_charged_for_what_it_actually_does() {
+    let split = solve(&paired(
+        "100",
+        "    properties:\n      primary_weight: '0.5'\n",
+        "0.01",
+    ));
+    near(
+        split.get("edge", "latency"),
+        0.5 * split.get("blue", "residence") + 0.5 * split.get("green", "residence"),
+        1e-4,
+        "latency blended across the legs",
+    );
+    assert!(
+        split.get("edge", "latency") > split.get("blue", "residence"),
+        "leaning on a slower standby has to cost the caller something"
+    );
+}
+
+/// The weighting may be a schedule, which is what a progressive rollout is.
+///
+/// Reading the clock costs a design nothing that does not use it: a property
+/// whose source never names `t` leaves the plan cached across the horizon.
+#[test]
+fn a_weighting_can_move_with_time() {
+    let schedule = "    properties:\n      primary_weight: 'if t < 10 then 1 else 0.5'\n";
+    let before = solve_at(&paired("100", schedule, "0.01"), 0.0);
+    close(before.get("edge", "to_primary"), 100.0, "before the change");
+
+    let after = solve_at(&paired("100", schedule, "0.01"), 20.0);
+    close(after.get("edge", "to_primary"), 50.0, "after the change");
+}
+
+/// A standby that does not exist would make failing over look free.
+///
+/// An unattached port rests where an absent dependency is harmless — success at
+/// one, latency at zero — which is the right reading for a dependency a design
+/// does not have and exactly the wrong one for the half of a pair. Refusing the
+/// design is the only answer that does not quietly reward forgetting to wire it.
+#[test]
+fn a_pair_missing_one_of_its_backends_is_rejected() {
+    let error = try_solve(
+        &format!(
+            "
+components:
+{}
+  - id: edge
+    name: Edge
+    type: failover
+  - id: blue
+    name: Blue
+    type: compute
+    properties:
+      service_time: '0.01'
+      parallelism: '200'
+relationships:
+  - from: users
+    to: edge
+  - from: edge
+    from_port: primary
+    to: blue
+",
+            CLIENT.replace("%RATE%", "100")
+        ),
+    )
+    .expect_err("a pair with one leg is not a pair");
+    assert!(
+        error.contains("'standby'") && error.contains("nothing attached"),
+        "expected the unattached port to be named, got {error}"
     );
 }
 
@@ -943,7 +1133,6 @@ components:
     name: Edge
     type: load-balancer
     properties:
-      admission_limit: '5000'
       connection_limit: '10000'
       overhead: '0.005'
   - id: api

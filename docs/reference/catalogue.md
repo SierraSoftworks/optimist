@@ -92,35 +92,82 @@ constraint the engine can rank.
 
 ### `load-balancer`
 
-Admits demand to a backend fleet and refuses what it cannot admit. The only
-component that can pull a saturated system back out of congestion, because it
-acts on demand rather than on how long a request waits. A sharded scale unit
-around the backends divides admitted demand between their replicas.
+Fronts a backend fleet, forwarding demand to it and holding a connection open
+for every request in flight. A sharded scale unit around the backends divides
+forwarded demand between their replicas.
 
 A connection is held for the whole round trip, so backends slowing down consumes
 its connection limit without any change in demand at all.
+
+Refusing work is not a property of this component. Put an explicit `load-shed`
+behaviour on the relationship in front when the design deliberately refuses
+demand.
 
 **Ports** — `in.requests` publishes `latency`, `success`, `capacity`;
 `out.backends` publishes `rate`, `cancellation`.
 
 | Property | Unit | Default |
 | --- | --- | --- |
-| `admission_limit` | `op/s` | *required* |
 | `connection_limit` | `op` | *required* |
 | `overhead` | `s` | `0` |
 
 **Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `offered`,
-`admitted`, `shed`, `forwarded`, `backend_wait`, `backend_success`, `latency`,
+`backend_capacity`, `forwarded`, `backend_wait`, `backend_success`, `latency`,
 `connections`, `success_rate`.
 
-**Constraints** — `admission` (offered against the admission limit),
-`connections` (connections held against the limit).
+**Constraints** — `connections` (connections held against the limit).
 
-Shed demand is charged to callers once, by the queue on the wire in front of the
-balancer, which drains at the admission limit this type publishes. `success_rate`
-therefore reports what the backends managed rather than restating the refusal.
-`forwarded` is aggregate admitted demand; put replicated backends in a sharded
-scale unit to divide it between them.
+`backend_capacity` is the rate the fleet sustains and the balancer publishes to
+callers, because the balancer holds no work of its own. `forwarded` is everything
+it was offered; put replicated backends in a sharded scale unit to divide it
+between them. Overload is charged once, by the queue on the wire between the
+balancer and its backends, so `success_rate` reports what the backends managed
+rather than restating that shortfall.
+
+### `failover`
+
+Splits demand between two independent backends and shifts it away from the
+primary as the primary's health falls. The two legs are separate designs with
+their own capacity, so moving work between them is a real redistribution: what
+the primary stops taking, the standby starts.
+
+Distinct from replication inside a scale unit. A scale unit's replicas are copies
+of one design, and losing some of them is a loss of capacity in that unit, which
+is what a smaller replica count says. This type is for the other case, where the
+alternative is somewhere else entirely: another region, an older version, a
+different provider.
+
+**Ports** — `in.requests` publishes `latency`, `success`; `out.primary` and
+`out.standby` each publish `rate`, `cancellation`. Both outbound ports are
+required, because an empty port answers instantly and without fail and a standby
+that does not exist would make failing over look free.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `primary_weight` | `share` | `1` |
+| `latency_threshold` | `s` | `1e9` |
+| `success_threshold` | `share` | `0` |
+| `overhead` | `s` | `0` |
+
+**Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `offered`,
+`primary_latency`, `primary_success`, `latency_health`, `success_health`,
+`primary_health`, `primary_share`, `standby_share`, `to_primary`, `to_standby`,
+`primary_cancellation`, `standby_cancellation`, `standby_latency`,
+`standby_success`, `latency`, `success_rate`.
+
+**Constraints** — none. The router has no limit of its own; the legs report
+theirs.
+
+`primary_weight` is the split while the primary is healthy: one is a true
+active/standby pair, a half splits evenly. It may be written against `t`, which
+is how a progressive rollout is expressed — the weight becomes a schedule and the
+solve reports what each stage of it costs. `primary_health` is the worse of the
+two thresholds and is continuous rather than a step, because a health check
+ejects endpoints one at a time as a backend degrades and because a step would
+leave the relaxation oscillating between two answers. `latency` and
+`success_rate` are blended at the share each leg carries rather than taken as the
+worse of them, because a request goes to one backend or the other; failing over
+is therefore only as good as what it fails over to.
 
 ### `queue`
 

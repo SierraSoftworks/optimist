@@ -55,6 +55,17 @@ pub struct Port {
     /// How many relationships may attach here.
     #[serde(default)]
     pub arity: PortArity,
+    /// Whether a design leaving this port unattached is refused.
+    ///
+    /// An unattached port reads its signals' resting values, and those rest
+    /// where an absent dependency is harmless: success at one, latency at zero,
+    /// capacity unbounded. That is the right reading for a dependency a design
+    /// genuinely does not have, and the wrong one for a port the type's own
+    /// arithmetic divides work across, where nothing attached becomes a peer
+    /// that answers everything instantly. Marking such a port required turns
+    /// that silent miracle into a diagnostic.
+    #[serde(default)]
+    pub required: bool,
     /// What attaching to this port means, in the author's terms.
     #[serde(default)]
     pub summary: String,

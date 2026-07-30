@@ -97,7 +97,8 @@ pub(super) fn evaluate_properties(
                 &program,
                 globals
                     .iter()
-                    .map(|(name, value)| (name.as_str(), value.clone())),
+                    .map(|(name, value)| (name.as_str(), value.clone()))
+                    .chain(config.clock()),
             )
             .map_err(|diagnostic| EvaluationError::Evaluation {
                 location,

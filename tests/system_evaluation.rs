@@ -624,16 +624,19 @@ fn a_constraint_can_bind_while_its_mean_looks_healthy() {
 fn every_constraint_is_accounted_for() {
     let model = SystemModel {
         components: vec![
-            component("users", "client", &[("request_rate", "10")]),
+            component(
+                "users",
+                "client",
+                &[
+                    ("request_rate", "10"),
+                    ("latency_target", "1"),
+                    ("success_target", "0.9"),
+                ],
+            ),
             component(
                 "gateway",
                 "load-balancer",
-                &[
-                    ("replicas", "3"),
-                    ("admission_limit", "1000"),
-                    ("connection_limit", "500"),
-                    ("overhead", "0.001"),
-                ],
+                &[("connection_limit", "500"), ("overhead", "0.001")],
             ),
         ],
         relationships: vec![link("users", "gateway")],
@@ -644,7 +647,8 @@ fn every_constraint_is_accounted_for() {
         .iter()
         .map(|entry| entry.constraint.as_str())
         .collect::<Vec<_>>();
-    assert!(names.contains(&"admission"), "{names:?}");
+    assert!(names.contains(&"latency_objective"), "{names:?}");
+    assert!(names.contains(&"success_objective"), "{names:?}");
     assert!(names.contains(&"connections"), "{names:?}");
     assert!(ranked.iter().all(|entry| !entry.binds()));
 }

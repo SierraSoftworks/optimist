@@ -260,7 +260,7 @@ constraints:
 
 | Section | Notes |
 | --- | --- |
-| `ports.in` / `ports.out` | Named attachment points. Each has `arity` (`one` or `many`, default `many`), `summary`, and `publishes`: a map of signal name to an expression naming a property or channel. |
+| `ports.in` / `ports.out` | Named attachment points. Each has `arity` (`one` or `many`, default `many`), `required` (default `false`), `summary`, and `publishes`: a map of signal name to an expression naming a property or channel. |
 | `properties` | Each has `unit`, optional `summary`, and optional `default`. A property without a default must be supplied. |
 | `channels` | Each has `unit`, optional `summary`, optional `emphasis`, and `expression`. |
 | `constraints` | Each has optional `summary`, optional `emphasis`, `demand`, and `limit`. |
@@ -269,6 +269,13 @@ constraints:
 channel is a service level somebody depending on the component experiences, and
 is what the workbench lists by default; everything else is one of the workings
 behind it, shown when a reader asks for it.
+
+`required` refuses a design that leaves the port unattached. An unattached port
+reads its signals' resting values, which rest where an absent dependency is
+harmless — success at one, latency at zero, capacity unbounded. That is the
+right reading for a dependency a design genuinely does not have, and the wrong
+one for a port the type's own arithmetic divides work across, where nothing
+attached becomes a peer that answers everything instantly.
 
 See [writing component types](../guide/component-types.md) for what an expression
 may refer to and the rules a definition must satisfy.

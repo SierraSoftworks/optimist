@@ -2,13 +2,17 @@ id: load-balancer
 name: Load balancer
 icon: balancer
 summary: >
-  Admits demand to a backend fleet and refuses what it cannot admit. The only
-  component that can pull a saturated system back out of congestion, because it
-  acts on demand rather than on how long a request waits. A sharded scale unit
-  around the backends divides admitted demand between their replicas.
+  Fronts a backend fleet, forwarding demand to it and holding a connection open
+  for every request in flight. A sharded scale unit around the backends divides
+  forwarded demand between their replicas.
 
   A connection is held for the whole round trip, so backends slowing down
   consumes this component's connection limit without any change in demand at all.
+
+  Refusing work is not a property of this component. A balancer that sheds load
+  is making a decision about who to disappoint, and that decision belongs on the
+  relationship in front of it as an explicit load-shedding behaviour, where it
+  can be stated, moved, and compared against the alternatives.
 ports:
   in:
     requests:
@@ -17,7 +21,7 @@ ports:
       publishes:
         latency: latency
         success: success_rate
-        capacity: admission_limit
+        capacity: backend_capacity
   out:
     backends:
       arity: many
@@ -26,12 +30,6 @@ ports:
         rate: forwarded
         cancellation: propagated_cancellation
 properties:
-  admission_limit:
-    unit: op/s
-    summary: >
-      Rate above which the balancer sheds load. Shedding acts on demand rather
-      than on how long a request waits, which is what makes it the only lever
-      that can pull a saturated system back out of congestion.
   connection_limit:
     unit: op
     summary: Concurrent connections the balancer will hold open.
@@ -58,24 +56,29 @@ channels:
     unit: op/s
     summary: Demand still wanted by the time it reaches the balancer.
     expression: max(arriving - propagated_cancellation, 0)
-  admitted:
+  backend_capacity:
     unit: op/s
     emphasis: key
     summary: >
-      Demand allowed through, capped per draw at the admission limit. Draws
-      pinned to the limit are the ones being shed.
-    expression: min(offered, admission_limit)
-  shed:
-    unit: op/s
-    emphasis: key
-    summary: Demand rejected at the door.
-    expression: offered - admitted
+      Rate the fleet behind this balancer sustains, which is the rate the
+      balancer drains at: it holds no work of its own. Published to callers so
+      the queue on the wire in front knows what it is emptying into, and taken as
+      the slowest backend because a request reaching several can go no faster
+      than the least of them.
+    expression: out.backends.capacity
   forwarded:
     unit: op/s
+    emphasis: key
     summary: >
-      Admitted demand sent to the backends. Put replicated backends in a
-      sharded scale unit to divide this demand between them.
-    expression: admitted
+      Demand sent to the backends, which is everything the balancer was offered:
+      it holds no work of its own and refuses none by itself. Put replicated
+      backends in a sharded scale unit to divide this demand between them.
+
+      Not capped at the fleet's capacity. Work the backends have no room for is
+      refused by the queue on the wire between them and this balancer, and
+      trimming it here as well would charge the same shortfall twice and leave
+      an undersized fleet reporting itself comfortably at its limit.
+    expression: offered
   backend_wait:
     unit: s
     summary: Time the slowest backend takes to answer.
@@ -96,12 +99,14 @@ channels:
       Share of arriving requests answered successfully, which is the share the
       backends held.
 
-      Shedding does not appear here, for the same reason overload does not appear
-      in a pool's success rate. What this balancer refuses is refused by the
-      queue on the wire in front of it, which drains at the admission limit this
-      component publishes; counting it here as well would charge the same refusal
-      twice and report a design admitting a quarter of its traffic as serving a
-      sixteenth of it. Cancellation is counted by the behaviour that raised it.
+      Overload does not appear here, for the same reason it does not appear in a
+      pool's success rate. Work the fleet has no room for is refused by the queue
+      on the wire in front of this balancer, which drains at the capacity this
+      component publishes; counting it here as well would charge the same
+      shortfall twice and report a design serving a quarter of its traffic as
+      serving a sixteenth of it. Cancellation is counted by the behaviour that
+      raised it, and deliberate refusal by the load-shedding behaviour that chose
+      it.
     expression: backend_success
   connections:
     unit: op
@@ -110,16 +115,8 @@ channels:
       Connections held open, by Little's Law. A connection is held for the whole
       round trip, so backends slowing down consumes this limit without any change
       in demand.
-    expression: Little.occupancy(admitted, latency)
+    expression: Little.occupancy(forwarded, latency)
 constraints:
-  admission:
-    emphasis: key
-    summary: >
-      Offered demand against the admission limit. Saturating means the system is
-      protecting itself by refusing work, which is a healthier failure than
-      collapsing, but it is still a failure to the callers being refused.
-    demand: offered
-    limit: admission_limit
   connections:
     emphasis: key
     summary: >

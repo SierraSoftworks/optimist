@@ -31,6 +31,20 @@ pub enum EvaluationError {
         /// Which side of the component was ambiguous.
         side: String,
     },
+    /// Several relationships attach to a port that admits only one.
+    CrowdedPort {
+        /// The component.
+        component: String,
+        /// The port that was oversubscribed.
+        port: String,
+    },
+    /// Nothing attaches to a port whose type declares it required.
+    UnconnectedPort {
+        /// The component.
+        component: String,
+        /// The port left unattached.
+        port: String,
+    },
     /// A scale unit refers to a component or unit the model does not declare.
     UnknownScaleUnit {
         /// The scale unit.
@@ -118,6 +132,14 @@ impl std::fmt::Display for EvaluationError {
             Self::AmbiguousPort { component, side } => write!(
                 formatter,
                 "component '{component}' declares several {side} ports, so a relationship must name which one it uses"
+            ),
+            Self::CrowdedPort { component, port } => write!(
+                formatter,
+                "port '{port}' of component '{component}' admits one relationship, and its channels read that one peer's figures rather than a reduction over several"
+            ),
+            Self::UnconnectedPort { component, port } => write!(
+                formatter,
+                "port '{port}' of component '{component}' has nothing attached, and its type divides work across it: an empty port answers everything instantly and without fail, so the design would report a peer it does not have as carrying its share perfectly"
             ),
             Self::UnknownScaleUnit {
                 scale_unit,

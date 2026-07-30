@@ -38,6 +38,8 @@ pub(super) fn prepare_ports(
             name.clone(),
             PreparedPort {
                 links: Vec::new(),
+                arity: port.arity,
+                required: port.required,
                 publishes,
             },
         );

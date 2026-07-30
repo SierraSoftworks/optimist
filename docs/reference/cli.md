@@ -175,7 +175,8 @@ optimist catalogue examples/checkout
 │ client         Client                   4         9       2       1          │
 │ compute        Compute pool             4        14       1       1          │
 │ datastore      Datastore                8        12       4       1          │
-│ load-balancer  Load balancer            4         8       2       0          │
+│ failover       Failover                 4        19       0       0          │
+│ load-balancer  Load balancer            2        11       1       0          │
 │ queue          Queue                    2         5       2       0          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
