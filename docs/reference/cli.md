@@ -19,6 +19,7 @@ The questions come in an order, and it is worth following:
 | What does it run out of first? | `optimist bottlenecks` |
 | Does this proposal help? | `optimist compare` |
 | What can I build it from? | `optimist catalogue` |
+| How do I send this to somebody? | `optimist export`, `optimist import` |
 
 Every design command takes the design directory as its first argument and
 defaults to the working directory, so somebody standing in a design can ask
@@ -391,6 +392,58 @@ a short quiet period; anything outstanding is written on shutdown.
 Release builds embed a frontend. Debug builds look for `workbench/dist` beside
 the repository. Without a valid web root the server remains API-only. See the
 [HTTP API reference](./http-api.md).
+
+---
+
+## `export`
+
+```text
+optimist export [DIRECTORY] [ARCHIVE]
+```
+
+Packs a design into a zip file that can be attached to a review, committed
+beside a proposal, or sent to somebody who has never run this tool. `ARCHIVE`
+defaults to `<directory-name>.zip` in the working directory; `-` writes the
+archive to standard output.
+
+Only the documents a design is made of are packed — `_system.yaml`,
+`components/`, `component-types/`, and `mutators/` — so editor backups and
+version control metadata in the same directory stay where they are. Timestamps
+are fixed, so packing an unchanged design twice produces identical bytes and a
+checksum means something.
+
+```console
+$ optimist export ./checkout
+$ optimist export ./checkout - | sha256sum
+```
+
+---
+
+## `import`
+
+```text
+optimist import <ARCHIVE> [DIRECTORY] [--force]
+```
+
+Unpacks a shared archive into a design directory. `DIRECTORY` defaults to the
+archive's own name. Importing over an existing design is refused unless
+`--force` says otherwise.
+
+The archive is treated as hostile, because by the time it arrives it has been
+through at least one system nobody controls. It is unpacked and loaded in full
+into a scratch directory before the destination is touched, so a file that turns
+out not to be a design leaves whatever was there alone.
+
+| Refused because | What is reported |
+| --- | --- |
+| It is not a readable zip | `this file is not a readable archive` |
+| It holds no `_system.yaml` | `this archive contains no _system.yaml, so it is not a design` |
+| A document sits outside the design layout | `'<entry>' is not part of a design` |
+| It expands far beyond any design | `this archive unpacks to more than <N> bytes` |
+| It was written by another schema | `this design uses schema version <N>, and this build reads version 2` |
+
+Every refusal is printed with advice on what to do about it, and names whether
+the sender or the recipient is the one who can fix it.
 
 ---
 

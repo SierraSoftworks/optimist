@@ -25,12 +25,16 @@ Every failure is the same envelope:
 }
 ```
 
+`advice` is a string where there is one thing worth suggesting, and an array
+where there is more than one.
+
 | Status | Cause |
 | --- | --- |
 | `400 Bad Request` | An identifier could name something outside the workspace. |
 | `404 Not Found` | No such design, or no such endpoint. |
 | `409 Conflict` | A design already exists, or a mutation refers to something that is not there. |
-| `422 Unprocessable Entity` | The design is incomplete or inconsistent and could not be solved. |
+| `413 Payload Too Large` | An uploaded archive is larger, or expands further, than any design does. |
+| `422 Unprocessable Entity` | The design is incomplete or inconsistent and could not be solved, or an uploaded archive does not hold a design. |
 | `500 Internal Server Error` | The workspace directory, or a design in it, could not be read or written. |
 
 An unknown `/api/*` path is always a JSON 404 and never falls back to the
@@ -121,6 +125,47 @@ out of the listing without going to find its directory by hand.
 The session is abandoned before the files go, so a write that was already waiting
 for the design to settle cannot put the directory back. Anyone still watching the
 feed keeps the design they had until they reconnect.
+
+---
+
+## `GET /api/v1/designs/{design}/archive`
+
+Sends the design as a zip, ready for a browser to save:
+
+```text
+Content-Type: application/zip
+Content-Disposition: attachment; filename="checkout.zip"
+```
+
+The archive holds `_system.yaml`, `components/`, `component-types/`, and
+`mutators/`, under a folder named after the design. Unsaved edits are written
+first, so what a colleague receives is the design as it is on screen rather than
+as it was when the last quiet period ended.
+
+---
+
+## `PUT /api/v1/designs/{design}/archive`
+
+Stores an uploaded archive as `{design}`. The body is the zip itself, with
+`Content-Type: application/zip`. Responds `201 Created` with the same snapshot
+`GET /api/v1/designs/{design}` returns.
+
+| Query | Default | Effect |
+| --- | --- | --- |
+| `replace` | `false` | Replace an existing design of the same name, answering `200 OK` rather than `409 Conflict`. |
+
+The archive is treated as hostile. Only the four paths a design is made of are
+extracted, each entry is read through a ceiling rather than to its declared
+size, and the result is loaded with the ordinary reader in a scratch directory
+before anything in the workspace changes. An archive that fails any of those
+checks leaves the design it would have replaced exactly as it was, and is
+refused with advice naming what to do about it.
+
+| Status | Cause |
+| --- | --- |
+| `409 Conflict` | A design already goes by that name and `replace` was not set. |
+| `413 Payload Too Large` | The upload is over 16 MiB, or unpacks to more than a design plausibly holds. |
+| `422 Unprocessable Entity` | Not a readable zip, no `_system.yaml`, a document outside the design layout, or a schema this build does not read. |
 
 ---
 
