@@ -9,6 +9,9 @@
 //! runs out of first; `compare` says whether a proposal helps. Each answers in
 //! the boxed, coloured layout this crate already uses for its errors, so a
 //! report and a failure look like output from the same program rather than two.
+//!
+//! `export` and `import` sit beside those because a design that cannot leave the
+//! machine it was written on is a design nobody else can review.
 
 mod diagnose;
 mod output;
@@ -18,6 +21,7 @@ mod render;
 mod report;
 mod server;
 mod system;
+mod transfer;
 
 use clap::{Parser, Subcommand};
 

@@ -10,8 +10,10 @@ mod catalogue;
 mod check;
 mod limits;
 mod solved;
+mod transfer;
 
 pub(super) use catalogue::{catalogue, component_type};
 pub(super) use check::check;
 pub(super) use limits::{bottlenecks, comparison};
 pub(super) use solved::{channel_values, channels};
+pub(super) use transfer::transfer;
