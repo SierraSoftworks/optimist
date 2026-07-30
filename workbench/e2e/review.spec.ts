@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import { chooseRadio } from './support/controls'
+
 /**
  * Reviewing a design against its proposals.
  *
@@ -178,6 +180,43 @@ test.describe('review', () => {
 
     await picker.getByTestId('clear-signals').click()
     await expect(picker.locator('[data-test^="unpin-"]')).toHaveCount(0)
+  })
+
+  /**
+   * The order of the watched list is the order of the charts.
+   *
+   * Which makes it the reader's statement of what this design is about, and a
+   * list that can only be appended to forces them to clear it and start again to
+   * put the number they care about at the top.
+   */
+  test('watched quantities are reordered by dragging, and survive a trip to the design', async ({
+    page,
+  }) => {
+    await page.goto('/d/metastable/review')
+    await expect(page.locator('figure svg.plot').first()).toBeVisible()
+
+    const watched = () =>
+      page
+        .getByTestId('watch-picker')
+        .locator('.pinned li')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-test') ?? ''))
+
+    const before = await watched()
+    expect(before.length).toBeGreaterThan(1)
+
+    // Below the halfway line of the last row, which is what puts it after.
+    await page
+      .getByTestId(before[0])
+      .dragTo(page.getByTestId(before[before.length - 1]), { targetPosition: { x: 60, y: 30 } })
+
+    const after = [...before.slice(1), before[0]]
+    await expect.poll(watched).toEqual(after)
+
+    await chooseRadio(page, 'Design')
+    await expect(page).toHaveURL(/\/d\/metastable\/design/)
+    await chooseRadio(page, 'Simulation')
+
+    await expect.poll(watched).toEqual(after)
   })
 
   test('the counterfactual and the design differ', async ({ page }) => {

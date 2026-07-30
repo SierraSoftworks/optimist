@@ -218,7 +218,11 @@ const callers = computed(() => {
 
 const strained = computed(() => analysis.value?.bottlenecks[0]?.component ?? null)
 
-const watching = ref<string[]>([])
+/** Kept in the store so it survives a trip to the design view and back. */
+const watching = computed({
+  get: () => store.watched(design.value),
+  set: (next: string[]) => store.watch(design.value, next),
+})
 
 /** How a quantity reached the component, for grouping the picker. */
 function family(channel: string): 'input' | 'backpressure' | 'channel' {

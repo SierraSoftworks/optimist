@@ -50,5 +50,28 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     horizon.value = wanted ? 120 : 20
   }
 
-  return { samples, horizon, seed, transient, step, walkThroughTime }
+  /**
+   * Which quantities each design is being watched through, in reading order.
+   *
+   * Held here rather than in the view that draws them because a reader assembles
+   * this list a click at a time and then goes off to change the design that
+   * produced it. Rebuilding it on the way back would make the two views feel
+   * like two applications. Kept per design, since a selection names quantities
+   * that only exist in the design it was made against.
+   *
+   * Left out of the URL deliberately: it is a working set rather than something
+   * somebody sends to a colleague, and it is long enough to make a link
+   * unreadable.
+   */
+  const watching = ref<Record<string, string[]>>({})
+
+  function watched(design: string): string[] {
+    return watching.value[design] ?? []
+  }
+
+  function watch(design: string, signals: string[]) {
+    watching.value[design] = signals
+  }
+
+  return { samples, horizon, seed, transient, step, walkThroughTime, watched, watch }
 })

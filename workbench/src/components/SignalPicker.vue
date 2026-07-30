@@ -256,6 +256,54 @@ function unpin(value: string) {
     props.pinned.filter((entry) => entry !== value),
   )
 }
+
+/**
+ * Reordering the watched list.
+ *
+ * The charts are drawn in this order, so the order is the reader's answer to
+ * what matters most about this design rather than a record of what they happened
+ * to click first. Dragging is how that is said without a second control: the
+ * list is short, visible, and already the thing being pointed at.
+ */
+const dragging = ref<string | null>(null)
+const destination = ref<{ value: string; after: boolean } | null>(null)
+
+function beginMove(event: DragEvent, value: string) {
+  // The preview is anchored to a row that is about to move out from under it.
+  dismiss()
+  dragging.value = value
+  destination.value = null
+  event.dataTransfer?.setData('text/plain', value)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function considerMove(event: DragEvent, value: string) {
+  if (!dragging.value || dragging.value === value) {
+    destination.value = null
+    return
+  }
+  const row = event.currentTarget as HTMLElement
+  const bounds = row.getBoundingClientRect()
+  destination.value = { value, after: event.clientY > bounds.top + bounds.height / 2 }
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function finishMove() {
+  dragging.value = null
+  destination.value = null
+}
+
+function move(event: DragEvent, target: string) {
+  const value = dragging.value ?? event.dataTransfer?.getData('text/plain') ?? ''
+  const after = destination.value?.value === target && destination.value.after
+  finishMove()
+  if (!value || value === target || !props.pinned.includes(value)) return
+  const order = props.pinned.filter((entry) => entry !== value)
+  const index = order.indexOf(target)
+  if (index < 0) return
+  order.splice(after ? index + 1 : index, 0, value)
+  emit('update:pinned', order)
+}
 </script>
 
 <template>
@@ -273,7 +321,22 @@ function unpin(value: string) {
     </div>
 
     <ul v-if="chosen.length" class="pinned">
-      <li v-for="option in chosen" :key="option.value">
+      <li
+        v-for="option in chosen"
+        :key="option.value"
+        class="watched"
+        :class="{
+          dragging: dragging === option.value,
+          'drop-before': destination?.value === option.value && !destination.after,
+          'drop-after': destination?.value === option.value && destination.after,
+        }"
+        draggable="true"
+        :data-test="`watched-${option.value}`"
+        @dragstart="beginMove($event, option.value)"
+        @dragend="finishMove"
+        @dragover.prevent="considerMove($event, option.value)"
+        @drop.prevent="move($event, option.value)"
+      >
         <button
           class="signal chosen"
           :data-test="`unpin-${option.value}`"
@@ -284,7 +347,11 @@ function unpin(value: string) {
           @focus="preview(option, $event)"
           @blur="dismiss"
         >
-          <el-icon class="mark"><i-view /></el-icon>
+          <!-- The eye gives way to a grip on hover, which is where the row is dragged from. -->
+          <span class="lead" aria-hidden="true">
+            <el-icon class="mark"><i-view /></el-icon>
+            <span class="grip" />
+          </span>
           <span class="name">
             <span class="channel">{{ reading(option).name }}</span>
             <span class="component">{{ origin(option) }}</span>
@@ -449,6 +516,44 @@ function unpin(value: string) {
 .clear:hover { color: var(--green); }
 
 .pinned { list-style: none; margin: 0 0 var(--space-2); padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.watched { position: relative; border-radius: var(--radius-sm); }
+.watched.dragging { opacity: 0.5; }
+/* Where the row would land, drawn in the gap on the edge it would land against. */
+.watched.drop-before::after,
+.watched.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--green);
+  pointer-events: none;
+}
+.watched.drop-before::after { top: -1px; }
+.watched.drop-after::after { bottom: -1px; }
+.lead { position: relative; flex: 0 0 auto; width: 12px; height: 14px; display: flex; align-items: center; }
+.grip {
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--muted);
+  opacity: 0;
+  cursor: grab;
+  box-shadow:
+    4px 0 currentColor,
+    0 4px currentColor,
+    4px 4px currentColor,
+    0 8px currentColor,
+    4px 8px currentColor;
+}
+.watched:hover .mark { opacity: 0; }
+.watched:hover .grip { opacity: 1; }
+.watched:active .grip { cursor: grabbing; }
 .none { margin: 0 var(--space-2) var(--space-2); font-size: var(--text-2xs); color: var(--muted); }
 
 .signal {
