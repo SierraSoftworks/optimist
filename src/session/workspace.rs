@@ -32,7 +32,7 @@ use std::{
 
 use serde::Serialize;
 
-use crate::system::{SchemaError, SystemDocument, safe_identifier};
+use crate::system::{ArchiveError, SchemaError, SystemDocument, safe_identifier};
 
 use super::Session;
 
@@ -125,6 +125,11 @@ pub enum WorkspaceError {
         /// Why it could not be read.
         source: SchemaError,
     },
+    /// A design could not be packed or unpacked.
+    Archive {
+        /// What went wrong with the archive.
+        source: ArchiveError,
+    },
 }
 
 impl std::fmt::Display for WorkspaceError {
@@ -145,6 +150,7 @@ impl std::fmt::Display for WorkspaceError {
             Self::Malformed { id, message } => {
                 write!(formatter, "design '{id}' could not be written: {message}")
             }
+            Self::Archive { source } => source.fmt(formatter),
         }
     }
 }
@@ -154,6 +160,7 @@ impl std::error::Error for WorkspaceError {
         match self {
             Self::Root { source, .. } => Some(source),
             Self::Unreadable { source, .. } => Some(source),
+            Self::Archive { source } => Some(source),
             _ => None,
         }
     }
