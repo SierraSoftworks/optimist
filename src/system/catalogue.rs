@@ -239,7 +239,7 @@ mod tests {
             "cache",
             "load-shed",
             "feature-flag",
-            "link",
+            "fallible",
         ] {
             assert!(mutators.contains_key(id), "missing '{id}'");
         }

@@ -395,6 +395,21 @@ A flag at zero starves everything behind it, which makes it useful for asking
 whether a component is needed at all: the rest of the design is solved exactly as
 it stands, with that path carrying nothing.
 
+### `fallible`
+
+Carries calls across a link that can independently lose requests and replies.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `transmit_failure` | `share` | `0` |
+| `receive_failure` | `share` | `0` |
+
+The two losses are not interchangeable. A request lost while transmitting never
+reaches the dependency, so it fails the caller *and* relieves downstream demand.
+A reply lost on the way back leaves the dependency's work done and paid for, so
+it fails the caller alone. Both shares are clamped into zero and one, because a
+probability outside that range has no physical meaning.
+
 ### `ignores-cancellation`
 
 Drops cancellation on its way downstream, so work the caller has abandoned

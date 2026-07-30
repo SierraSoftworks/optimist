@@ -1043,7 +1043,7 @@ fn each_behaviour_has_a_setting_at_which_it_does_nothing() {
         attached("load-shed", &[("limit", "1e9")]),
         attached("feature-flag", &[("exposure", "1")]),
         attached(
-            "link",
+            "fallible",
             &[("transmit_failure", "0"), ("receive_failure", "0")],
         ),
     ];
@@ -1684,7 +1684,7 @@ fn a_fallible_link_loses_requests_and_replies_independently() {
         "100",
         "8",
         &attached(
-            "link",
+            "fallible",
             &[("transmit_failure", "0.25"), ("receive_failure", "0.2")],
         ),
     ));
