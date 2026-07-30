@@ -140,13 +140,16 @@ impl Runtime {
         right: Option<f64>,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let numeric = Numeric::parse(operator)
-            .ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
+        let numeric =
+            Numeric::parse(operator).ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
         let ensemble = Distribution::aligned([&distribution], self.ensemble);
         let seed = distribution.stream(&mut self.rng);
         let drawn = distribution.drawn(seed, ensemble);
         let samples: Arc<[f64]> = match (left, right) {
-            (Some(left), _) => drawn.iter().map(|draw| numeric.apply(left, *draw)).collect(),
+            (Some(left), _) => drawn
+                .iter()
+                .map(|draw| numeric.apply(left, *draw))
+                .collect(),
             (None, Some(right)) => drawn
                 .iter()
                 .map(|draw| numeric.apply(*draw, right))
@@ -172,11 +175,14 @@ impl Runtime {
         operator: BinaryOperator,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let numeric = Numeric::parse(operator)
-            .ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
+        let numeric =
+            Numeric::parse(operator).ok_or_else(|| Diagnostic::runtime(unknown(operator), span))?;
         let ensemble = Distribution::aligned([&left, &right], self.ensemble);
         let (left_seed, right_seed) = (left.stream(&mut self.rng), right.stream(&mut self.rng));
-        let (left, right) = (left.drawn(left_seed, ensemble), right.drawn(right_seed, ensemble));
+        let (left, right) = (
+            left.drawn(left_seed, ensemble),
+            right.drawn(right_seed, ensemble),
+        );
         let width = left.len().min(right.len());
         let samples: Arc<[f64]> = left[..width]
             .iter()
@@ -207,7 +213,11 @@ impl Runtime {
 /// applying one arithmetic operation across a thousand draws and then asking
 /// whether a thousand results are finite are both loops the compiler can run
 /// several draws at a time.
-fn finished(samples: Arc<[f64]>, operator: BinaryOperator, span: Span) -> Result<Value, Diagnostic> {
+fn finished(
+    samples: Arc<[f64]>,
+    operator: BinaryOperator,
+    span: Span,
+) -> Result<Value, Diagnostic> {
     if !samples.iter().all(|sample| sample.is_finite()) {
         return Err(Diagnostic::runtime(non_finite(operator), span));
     }
@@ -286,7 +296,10 @@ fn boolean(
 ) -> Result<Value, Diagnostic> {
     let (Value::Boolean(left), Value::Boolean(right)) = (&left, &right) else {
         return Err(Diagnostic::runtime(
-            format!("operator '{}' requires Boolean operands", operator.spelling()),
+            format!(
+                "operator '{}' requires Boolean operands",
+                operator.spelling()
+            ),
             span,
         ));
     };
@@ -305,7 +318,10 @@ fn compare(
 ) -> Result<Value, Diagnostic> {
     let (Value::Number(left), Value::Number(right)) = (left, right) else {
         return Err(Diagnostic::runtime(
-            format!("operator '{}' requires Number operands", operator.spelling()),
+            format!(
+                "operator '{}' requires Number operands",
+                operator.spelling()
+            ),
             span,
         ));
     };
@@ -318,7 +334,9 @@ fn temporal(
     right: Value,
     span: Span,
 ) -> Result<Value, Diagnostic> {
-    use BinaryOperator::{Add, Divide, Greater, GreaterOrEqual, Less, LessOrEqual, Multiply, Subtract};
+    use BinaryOperator::{
+        Add, Divide, Greater, GreaterOrEqual, Less, LessOrEqual, Multiply, Subtract,
+    };
     match (operator, left, right) {
         (Add, Value::Date(date), Value::Duration(duration))
         | (Add, Value::Duration(duration), Value::Date(date)) => {

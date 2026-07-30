@@ -288,7 +288,11 @@ mod tests {
         // A movement that rises again is exactly what adaptive damping produces.
         for (pass, movement) in [1e-1, 1e-2, 1e-3, 5e-2, 1e-4, 1e-5].into_iter().enumerate() {
             let standing = tally.observe(&report(0, pass + 1, movement));
-            assert!(standing.fraction >= highest, "fell to {}", standing.fraction);
+            assert!(
+                standing.fraction >= highest,
+                "fell to {}",
+                standing.fraction
+            );
             highest = standing.fraction;
         }
     }
@@ -297,8 +301,16 @@ mod tests {
     fn a_fraction_stays_within_its_timestep() {
         let mut tally = Tally::default();
         let standing = tally.observe(&report(1, 1_400, 1e-9));
-        assert!(standing.fraction > 0.25, "{} is below step one", standing.fraction);
-        assert!(standing.fraction <= 0.5, "{} is past step one", standing.fraction);
+        assert!(
+            standing.fraction > 0.25,
+            "{} is below step one",
+            standing.fraction
+        );
+        assert!(
+            standing.fraction <= 0.5,
+            "{} is past step one",
+            standing.fraction
+        );
     }
 
     #[test]
@@ -309,7 +321,11 @@ mod tests {
         // Ten passes of a hundredth of the cap, but seven decades of the twelve
         // between the opening movement and the tolerance.
         let standing = tally.observe(&report(0, 12, 1e-7));
-        assert!(standing.fraction > 0.1, "{} ignores the contraction", standing.fraction);
+        assert!(
+            standing.fraction > 0.1,
+            "{} ignores the contraction",
+            standing.fraction
+        );
     }
 
     #[test]
@@ -326,7 +342,11 @@ mod tests {
         };
         tally.observe(&ahead);
         let standing = tally.observe(&behind);
-        assert!(standing.fraction < 0.25, "{} followed the fast share", standing.fraction);
+        assert!(
+            standing.fraction < 0.25,
+            "{} followed the fast share",
+            standing.fraction
+        );
     }
 
     #[test]

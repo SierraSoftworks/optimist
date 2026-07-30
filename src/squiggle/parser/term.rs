@@ -69,17 +69,24 @@ where
             },
         )
         .boxed();
-    let unary =
-        recursive(|unary| {
-            select! {
-        Token::Operator(operator) if UnaryOperator::parse(&operator).is_some() => operator
-    }.then_ignore(separators.clone()).then(unary).map_with(|(operator, value), emitter| expression(
-        ExpressionKind::Unary {
-            operator: UnaryOperator::parse(&operator).expect("a parsed prefix operator"),
-            expression: Box::new(value),
-        }, emitter.span(),
-    )).or(post.clone()).boxed()
-        });
+    let unary = recursive(|unary| {
+        select! {
+            Token::Operator(operator) if UnaryOperator::parse(&operator).is_some() => operator
+        }
+        .then_ignore(separators.clone())
+        .then(unary)
+        .map_with(|(operator, value), emitter| {
+            expression(
+                ExpressionKind::Unary {
+                    operator: UnaryOperator::parse(&operator).expect("a parsed prefix operator"),
+                    expression: Box::new(value),
+                },
+                emitter.span(),
+            )
+        })
+        .or(post.clone())
+        .boxed()
+    });
     unary
         .clone()
         .foldl_with(

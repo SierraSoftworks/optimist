@@ -242,13 +242,6 @@ fn proposals(criterion: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
-    steady,
-    transient,
-    walking,
-    shares,
-    draws,
-    ranking,
-    proposals
+    benches, steady, transient, walking, shares, draws, ranking, proposals
 );
 criterion_main!(benches);

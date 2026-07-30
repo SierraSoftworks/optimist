@@ -73,9 +73,7 @@ impl Bars {
     pub(super) fn new(choice: ProgressChoice) -> Self {
         let bars = MultiProgress::with_draw_target(match choice {
             ProgressChoice::Auto => ProgressDrawTarget::stderr(),
-            ProgressChoice::Always => {
-                ProgressDrawTarget::term_like(Box::new(stderr::Stderr))
-            }
+            ProgressChoice::Always => ProgressDrawTarget::term_like(Box::new(stderr::Stderr)),
             ProgressChoice::Never => ProgressDrawTarget::hidden(),
         });
         let hidden = bars.is_hidden();
@@ -97,7 +95,10 @@ impl Progress for Bars {
             return;
         }
         let elapsed = self.started.elapsed();
-        let mut drawing = self.drawing.lock().expect("no reporter panics while holding this");
+        let mut drawing = self
+            .drawing
+            .lock()
+            .expect("no reporter panics while holding this");
         let standing = drawing.tally.observe(report);
         if elapsed < PATIENCE {
             return;

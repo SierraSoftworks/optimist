@@ -337,14 +337,8 @@ fn ranked(
     config: EvaluationConfig,
     reporting: Reporting<'_>,
 ) -> Result<Vec<Bottleneck>, EvaluationError> {
-    let settled = super::evaluate::solved(
-        model,
-        catalogue,
-        mutators,
-        overrides,
-        config,
-        reporting,
-    )?;
+    let settled =
+        super::evaluate::solved(model, catalogue, mutators, overrides, config, reporting)?;
     rank(
         model,
         catalogue,

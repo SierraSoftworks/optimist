@@ -114,14 +114,18 @@ fn shared_quantities_can_be_moved_idempotently() {
     let session = Session::open(&design("move-shared")).expect("opens");
     session.apply(shared("rate", "100")).expect("applies");
     session.apply(shared("factor", "2")).expect("applies");
-    session.apply(shared("load", "rate * factor")).expect("applies");
+    session
+        .apply(shared("load", "rate * factor"))
+        .expect("applies");
     let movement = Mutation::MoveScratchpadEntry {
         name: "factor".to_owned(),
         before: Some("rate".to_owned()),
     };
 
     session.apply(movement.clone()).expect("moves");
-    session.apply(movement).expect("replaying the move is harmless");
+    session
+        .apply(movement)
+        .expect("replaying the move is harmless");
 
     let names = session
         .snapshot()

@@ -91,10 +91,7 @@ enum Scenario<'a> {
 
 impl<'a> Solve<'a> {
     /// Prepares to solve a model against a catalogue of component types.
-    pub fn new(
-        model: &'a SystemModel,
-        catalogue: &'a BTreeMap<String, ComponentType>,
-    ) -> Self {
+    pub fn new(model: &'a SystemModel, catalogue: &'a BTreeMap<String, ComponentType>) -> Self {
         Self {
             model,
             catalogue,
@@ -270,7 +267,13 @@ impl<'a> Solve<'a> {
 
     /// Ranks what a solved step is closest to exhausting, worst first.
     pub fn bottlenecks(&self, step: &super::Step) -> Result<Vec<Bottleneck>, EvaluationError> {
-        super::bottlenecks_with_mutators(self.model, self.catalogue, &self.behaviours(), step, self.config)
+        super::bottlenecks_with_mutators(
+            self.model,
+            self.catalogue,
+            &self.behaviours(),
+            step,
+            self.config,
+        )
     }
 
     fn behaviours(&self) -> Cow<'a, BTreeMap<String, Mutator>> {

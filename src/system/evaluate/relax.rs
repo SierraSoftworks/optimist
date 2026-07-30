@@ -147,9 +147,9 @@ pub(super) fn relax(
             config.max_iterations,
             movement,
             config.tolerance,
-            unsettled.as_ref().and_then(|(component, moved)| {
-                Some((component, moved.channel.as_deref()?))
-            }),
+            unsettled
+                .as_ref()
+                .and_then(|(component, moved)| Some((component, moved.channel.as_deref()?))),
         );
         if moved.iter().all(|draw| *draw <= config.tolerance) {
             outcome = Outcome::Settled;
@@ -199,7 +199,9 @@ pub(super) fn relax(
         config.share = config.share.retaining(u64::MAX);
     }
     let moving = unsettled.and_then(|(component, moved)| {
-        moved.channel.map(|channel| (component, channel, moved.distance))
+        moved
+            .channel
+            .map(|channel| (component, channel, moved.distance))
     });
     Ok(match outcome {
         Outcome::Settled => Step {

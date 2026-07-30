@@ -20,11 +20,7 @@
 use std::collections::BTreeMap;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use optimist::squiggle::{
-    Distribution, Runtime, RuntimeConfig, Value,
-    ast::Program,
-    parse,
-};
+use optimist::squiggle::{Distribution, Runtime, RuntimeConfig, Value, ast::Program, parse};
 
 /// Catalogue expressions, chosen to separate the costs they exercise.
 const PROGRAMS: [(&str, &str); 9] = [
@@ -32,10 +28,7 @@ const PROGRAMS: [(&str, &str); 9] = [
     ("scalar", "service_time + dependency_wait"),
     ("guarded", "max([arriving - salvaged, 0])"),
     ("listed", "min([offered, capacity])"),
-    (
-        "queue",
-        "min([arrivals + prev.backlog / dt, service_rate])",
-    ),
+    ("queue", "min([arrivals + prev.backlog / dt, service_rate])"),
     ("namespaced", "Little.occupancy(offered, residence)"),
     ("stationary", "Queue.utilisation(offered, capacity)"),
     (

@@ -31,7 +31,12 @@ impl<V: Send + Sync + 'static> InFlight<V> {
     /// The solve is owned by a task of its own rather than by whichever caller
     /// happened to start it, so a client that navigates away does not abandon
     /// the answer everybody else is waiting on.
-    pub(in crate::api) async fn answer<F>(&self, design: &str, question: &str, solve: F) -> Answer<V>
+    pub(in crate::api) async fn answer<F>(
+        &self,
+        design: &str,
+        question: &str,
+        solve: F,
+    ) -> Answer<V>
     where
         F: FnOnce() -> Result<V, EvaluationError> + Send + 'static,
     {

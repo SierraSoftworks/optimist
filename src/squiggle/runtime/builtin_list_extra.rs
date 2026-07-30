@@ -207,11 +207,7 @@ fn reduce(
         Box::new(values.iter())
     };
     for value in iterator {
-        let next = runtime.call(
-            arguments[2].clone(),
-            &[result.clone(), value.clone()],
-            span,
-        )?;
+        let next = runtime.call(arguments[2].clone(), &[result.clone(), value.clone()], span)?;
         if name == "List.reduceWhile" {
             match runtime.call(arguments[3].clone(), std::slice::from_ref(&next), span)? {
                 Value::Boolean(true) => {}

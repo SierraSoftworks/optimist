@@ -125,11 +125,7 @@ fn beta(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     two(arguments, span, Distribution::beta)
 }
 
-fn probability_operation(
-    name: &str,
-    arguments: &[Value],
-    span: Span,
-) -> Result<Value, Diagnostic> {
+fn probability_operation(name: &str, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     arity(arguments, 2, span)?;
     let distribution = distribution(&arguments[0], span)?;
     let value = number(&arguments[1], span)?;

@@ -293,7 +293,16 @@ mod tests {
     }
 
     fn blend(previous: &Varying, next: &Varying, weight: f64, count: usize) -> Option<Value> {
-        Some(converge(previous, next, &Stride::Shared(weight), count, &mut [0.0; 8]).0)
+        Some(
+            converge(
+                previous,
+                next,
+                &Stride::Shared(weight),
+                count,
+                &mut [0.0; 8],
+            )
+            .0,
+        )
     }
 
     fn distance(previous: &Varying, next: &Varying, count: usize) -> f64 {
@@ -342,8 +351,7 @@ mod tests {
     #[test]
     fn blending_stops_at_the_shorter_sample_set() {
         let (before, after) = (sampled(&[0.0, 0.0, 0.0]), sampled(&[10.0, 20.0]));
-        let Some(Value::Distribution(blended)) =
-            blend(&varying(&before), &varying(&after), 1.0, 3)
+        let Some(Value::Distribution(blended)) = blend(&varying(&before), &varying(&after), 1.0, 3)
         else {
             panic!("disagreeing draws stay uncertain");
         };

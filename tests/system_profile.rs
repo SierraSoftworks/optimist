@@ -157,7 +157,9 @@ fn what_the_damping_ceiling_costs() {
     for (damping, tolerance) in [(0.2, 1e-6), (1.0, 1e-6), (1.0, 1e-9), (1.0, 1e-12)] {
         for example in ["queued-collapse", "metastable", "checkout"] {
             report(
-                &format!("{example}, transient, 300 steps, damping {damping}, tolerance {tolerance:e}"),
+                &format!(
+                    "{example}, transient, 300 steps, damping {damping}, tolerance {tolerance:e}"
+                ),
                 EvaluationConfig {
                     damping,
                     tolerance,

@@ -28,11 +28,7 @@ builtins! {
     "PointSet.support"(distribution: Distribution) => support(&[Value::Distribution(distribution.clone())], span),
 }
 
-fn from_dist(
-    runtime: &mut Runtime,
-    arguments: &[Value],
-    span: Span,
-) -> Result<Value, Diagnostic> {
+fn from_dist(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     arity(arguments, 1, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));
@@ -160,11 +156,7 @@ fn point_set(arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     }
 }
 
-fn downsample(
-    runtime: &mut Runtime,
-    arguments: &[Value],
-    span: Span,
-) -> Result<Value, Diagnostic> {
+fn downsample(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Value, Diagnostic> {
     arity(arguments, 2, span)?;
     let Value::Distribution(distribution) = &arguments[0] else {
         return Err(expected("Distribution", &arguments[0], span));

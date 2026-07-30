@@ -93,8 +93,14 @@ pub(super) fn evaluate_component(
         }
         Ok::<(), EvaluationError>(())
     })?;
-    let responses = time!(Channels, publish(&component.inbound, &component.id, runtime))?;
-    let requests = time!(Channels, publish(&component.outbound, &component.id, runtime))?;
+    let responses = time!(
+        Channels,
+        publish(&component.inbound, &component.id, runtime)
+    )?;
+    let requests = time!(
+        Channels,
+        publish(&component.outbound, &component.id, runtime)
+    )?;
     Ok(ComponentState {
         channels,
         requests,

@@ -81,7 +81,11 @@ const MIN_MODE_HEIGHT: f64 = 0.05;
 /// estimate a density from, because a single state is the claim that asserts
 /// least.
 pub(super) fn modes(draws: &[f64]) -> usize {
-    let mut sample: Vec<f64> = draws.iter().copied().filter(|draw| draw.is_finite()).collect();
+    let mut sample: Vec<f64> = draws
+        .iter()
+        .copied()
+        .filter(|draw| draw.is_finite())
+        .collect();
     if sample.len() < 2 {
         return 1;
     }
@@ -192,7 +196,8 @@ mod tests {
         (0..count)
             .map(|_| {
                 let (first, second) = (next(), next());
-                mean + deviation * (-2.0 * first.ln()).sqrt()
+                mean + deviation
+                    * (-2.0 * first.ln()).sqrt()
                     * (std::f64::consts::TAU * second).cos()
             })
             .collect()

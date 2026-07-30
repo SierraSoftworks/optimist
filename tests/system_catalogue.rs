@@ -878,7 +878,11 @@ relationships:
 /// not yet doing anything.
 #[test]
 fn a_weighting_splits_demand_between_two_independent_backends() {
-    let solved = solve(&paired("100", "    properties:\n      primary_weight: '0.75'\n", "0.01"));
+    let solved = solve(&paired(
+        "100",
+        "    properties:\n      primary_weight: '0.75'\n",
+        "0.01",
+    ));
     close(solved.get("edge", "to_primary"), 75.0, "to the primary");
     close(solved.get("edge", "to_standby"), 25.0, "to the standby");
     // Work is moved, not created: the two legs account for the whole demand.
@@ -968,9 +972,8 @@ fn a_weighting_can_move_with_time() {
 /// design is the only answer that does not quietly reward forgetting to wire it.
 #[test]
 fn a_pair_missing_one_of_its_backends_is_rejected() {
-    let error = try_solve(
-        &format!(
-            "
+    let error = try_solve(&format!(
+        "
 components:
 {}
   - id: edge
@@ -989,9 +992,8 @@ relationships:
     from_port: primary
     to: blue
 ",
-            CLIENT.replace("%RATE%", "100")
-        ),
-    )
+        CLIENT.replace("%RATE%", "100")
+    ))
     .expect_err("a pair with one leg is not a pair");
     assert!(
         error.contains("'standby'") && error.contains("nothing attached"),

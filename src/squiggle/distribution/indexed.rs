@@ -45,7 +45,6 @@
 
 // Nothing here is adversarial, so four rounds and a cheap mixer are ample.
 
-
 /// Draws of one distribution, addressed by index rather than held in an array.#[derive(Clone, Debug)]
 pub(super) struct Indexed {
     seed: u64,

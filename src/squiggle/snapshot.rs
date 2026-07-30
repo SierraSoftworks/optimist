@@ -276,9 +276,7 @@ mod tests {
         let function = runtime.evaluate("{|x| x + 1}").expect("evaluates");
         assert_eq!(
             function.snapshot().err(),
-            Some(SnapshotError::NotTransferable {
-                found: "Function"
-            })
+            Some(SnapshotError::NotTransferable { found: "Function" })
         );
     }
 

@@ -181,7 +181,11 @@ impl<'a> Reporting<'a> {
     }
 
     pub(in crate::system) fn at(self, step: usize, steps: usize) -> Self {
-        Self { step, steps, ..self }
+        Self {
+            step,
+            steps,
+            ..self
+        }
     }
 
     pub(in crate::system) fn pass(

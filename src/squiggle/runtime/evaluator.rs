@@ -160,7 +160,13 @@ impl Runtime {
             } => {
                 let function = self.eval_expr(function, environment)?;
                 let piped = self.eval_expr(value, environment)?;
-                self.applied(function, arguments, Some(piped), environment, expression.span)
+                self.applied(
+                    function,
+                    arguments,
+                    Some(piped),
+                    environment,
+                    expression.span,
+                )
             }
         }
     }
@@ -262,7 +268,11 @@ impl Runtime {
                     let valid = match validation {
                         Value::Domain(domain) => domain.contains(argument),
                         Value::Function(_) => {
-                            match self.call(validation, std::slice::from_ref(argument), parameter.span)? {
+                            match self.call(
+                                validation,
+                                std::slice::from_ref(argument),
+                                parameter.span,
+                            )? {
                                 Value::Boolean(valid) => valid,
                                 value => {
                                     return Err(type_error(

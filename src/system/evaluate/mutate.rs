@@ -64,12 +64,13 @@ pub(super) fn apply(
 
     let mut rewritten = flow;
     for (signal, program) in programs {
-        let value = runtime.evaluate_bound(program).map_err(|diagnostic| {
-            EvaluationError::Evaluation {
-                location: format!("transform '{signal}' of behaviour '{}'", mutator.id),
-                message: diagnostic.message,
-            }
-        })?;
+        let value =
+            runtime
+                .evaluate_bound(program)
+                .map_err(|diagnostic| EvaluationError::Evaluation {
+                    location: format!("transform '{signal}' of behaviour '{}'", mutator.id),
+                    message: diagnostic.message,
+                })?;
         rewritten.insert(signal.clone(), value);
     }
     Ok(rewritten)

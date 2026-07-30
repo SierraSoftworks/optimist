@@ -22,9 +22,7 @@ use crate::{
     system::model::ComponentId,
 };
 
-use super::state::{
-    ComponentState, Evaluation, LinkId, LinkState, Mixture, Step, Unsettled,
-};
+use super::state::{ComponentState, Evaluation, LinkId, LinkState, Mixture, Step, Unsettled};
 
 /// Per-port, per-signal quantities, in the form that crosses.
 type SentPorts = BTreeMap<String, BTreeMap<String, Transferred>>;
@@ -175,7 +173,9 @@ fn sent_quantities(
         .collect()
 }
 
-fn sent_ports(values: &BTreeMap<String, BTreeMap<String, Value>>) -> Result<SentPorts, SnapshotError> {
+fn sent_ports(
+    values: &BTreeMap<String, BTreeMap<String, Value>>,
+) -> Result<SentPorts, SnapshotError> {
     values
         .iter()
         .map(|(port, signals)| Ok((port.clone(), sent_quantities(signals)?)))

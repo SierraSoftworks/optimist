@@ -74,7 +74,6 @@
 //! chapter 8 on stratification; Luc Devroye, *Non-Uniform Random Variate
 //! Generation* (1986), chapter 2 on inverse transform sampling.
 
-
 use std::sync::{Arc, OnceLock};
 
 use rand::RngCore;

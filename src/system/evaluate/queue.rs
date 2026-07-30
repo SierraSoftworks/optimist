@@ -224,7 +224,10 @@ fn bounded(utilisation: f64, capacity: f64) -> [f64; 2] {
     let held = capacity.max(0.0);
     let rho = utilisation.max(0.0);
     if (rho - 1.0).abs() < 1e-9 {
-        return [capacity_or_zero(capacity, capacity / 2.0), 1.0 / (capacity + 1.0)];
+        return [
+            capacity_or_zero(capacity, capacity / 2.0),
+            1.0 / (capacity + 1.0),
+        ];
     }
     let power = rho.powf(capacity + 1.0);
     if !power.is_finite() {

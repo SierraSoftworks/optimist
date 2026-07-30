@@ -51,7 +51,7 @@ macro_rules! time {
 pub(crate) use {count, time};
 
 #[cfg(feature = "profiling")]
-pub use enabled::{Counter, Counts, Phase, Spans, bump, reset, snapshot, spend, spans};
+pub use enabled::{Counter, Counts, Phase, Spans, bump, reset, snapshot, spans, spend};
 
 #[cfg(feature = "profiling")]
 mod enabled {
@@ -196,12 +196,13 @@ mod enabled {
         /// Pairs each phase with its total, for reporting.
         pub fn entries(&self) -> impl Iterator<Item = (Phase, std::time::Duration)> {
             let spans = *self;
-            Phase::ALL.into_iter().map(move |phase| (phase, spans.get(phase)))
+            Phase::ALL
+                .into_iter()
+                .map(move |phase| (phase, spans.get(phase)))
         }
     }
 
-    static NANOS: [AtomicU64; Phase::ALL.len()] =
-        [const { AtomicU64::new(0) }; Phase::ALL.len()];
+    static NANOS: [AtomicU64; Phase::ALL.len()] = [const { AtomicU64::new(0) }; Phase::ALL.len()];
 
     /// Charges a duration against a phase.
     pub fn spend(phase: Phase, elapsed: std::time::Duration) {

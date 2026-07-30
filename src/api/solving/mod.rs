@@ -220,13 +220,10 @@ impl Reporter {
                 step: standing.step + 1,
                 steps: self.steps,
                 pass: standing.pass,
-                moving: standing
-                    .moving
-                    .as_ref()
-                    .map(|(component, channel)| Moving {
-                        component: component.clone(),
-                        channel: channel.clone(),
-                    }),
+                moving: standing.moving.as_ref().map(|(component, channel)| Moving {
+                    component: component.clone(),
+                    channel: channel.clone(),
+                }),
             },
         );
     }

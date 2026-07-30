@@ -65,12 +65,7 @@ pub(super) fn drift(
 }
 
 /// How far one channel's distribution moved between two iterates.
-fn apart(
-    before: &Value,
-    after: &Value,
-    config: EvaluationConfig,
-    rng: &mut ChaCha20Rng,
-) -> f64 {
+fn apart(before: &Value, after: &Value, config: EvaluationConfig, rng: &mut ChaCha20Rng) -> f64 {
     let (Some(before), Some(after)) = (
         Varying::of(before, config.ensemble(), rng),
         Varying::of(after, config.ensemble(), rng),

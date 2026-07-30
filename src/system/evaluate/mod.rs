@@ -131,7 +131,10 @@ pub fn evaluate_intervention(
 /// A design may define behaviours the shipped catalogue never anticipated, and
 /// solving without them would quietly drop the rewrites they apply to the flows
 /// travelling along a relationship.
-#[deprecated(since = "0.1.0", note = "use `Solve::intervention` and `Solve::evaluate`")]
+#[deprecated(
+    since = "0.1.0",
+    note = "use `Solve::intervention` and `Solve::evaluate`"
+)]
 pub fn evaluate_intervention_with_mutators(
     model: &SystemModel,
     catalogue: &BTreeMap<String, ComponentType>,
