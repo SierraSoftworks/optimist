@@ -5,6 +5,7 @@ import ElementPlus from 'element-plus'
 import {
   Document,
   MagicStick,
+  Bottom,
   Box,
   Check,
   Close,
@@ -21,6 +22,7 @@ import {
   Search,
   Select,
   Setting,
+  Top,
   TrendCharts,
   Upload,
   View,
@@ -42,6 +44,7 @@ const app = createApp(App)
 // up as a resolution warning and a blank space, so the list is worth keeping in
 // step with the templates.
 const icons = {
+  Bottom,
   Box,
   Check,
   Close,
@@ -60,6 +63,7 @@ const icons = {
   Search,
   Select,
   Setting,
+  Top,
   TrendCharts,
   Upload,
   View,

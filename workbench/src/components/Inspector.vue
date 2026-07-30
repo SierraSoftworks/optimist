@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type { Catalogue, Component, Mutation, Relationship, SystemModel } from '../api/types'
 import { useDraft, type Draft } from '../composables/useDraft'
@@ -34,6 +34,14 @@ const relationship = computed<Relationship | null>(() => {
 const definition = computed(() =>
   component.value ? props.catalogue?.component_types[component.value.type] : undefined,
 )
+
+/** What a component is called, falling back to its id while it has no name. */
+function nameOf(id: string): string {
+  return props.model.components.find((entry) => entry.id === id)?.name || id
+}
+
+const sender = computed(() => (relationship.value ? nameOf(relationship.value.from) : ''))
+const receiver = computed(() => (relationship.value ? nameOf(relationship.value.to) : ''))
 
 /** Whether the solver's complaint is about the thing on screen. */
 const blamed = computed(
@@ -195,6 +203,54 @@ const available = computed(() =>
     (mutator) => !relationship.value?.mutators.some((attached) => attached.type === mutator.id),
   ),
 )
+
+/**
+ * Reordering the stack.
+ *
+ * A request meets the behaviours from the top down and the answer comes back up
+ * through them in reverse, so the order is part of what the design says rather
+ * than a presentation detail: a retry above a timeout retries a call that timed
+ * out, while one below it never learns the call timed out at all.
+ */
+const dragging = ref<string | null>(null)
+const destination = ref<{ type: string; after: boolean } | null>(null)
+
+function beginMove(event: DragEvent, type: string) {
+  dragging.value = type
+  destination.value = null
+  event.dataTransfer?.setData('text/plain', type)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+
+function considerMove(event: DragEvent, type: string) {
+  if (!dragging.value || dragging.value === type) {
+    destination.value = null
+    return
+  }
+  const card = event.currentTarget as HTMLElement
+  const bounds = card.getBoundingClientRect()
+  destination.value = { type, after: event.clientY > bounds.top + bounds.height / 2 }
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function finishMove() {
+  dragging.value = null
+  destination.value = null
+}
+
+function move(event: DragEvent, target: string) {
+  const type = dragging.value ?? event.dataTransfer?.getData('text/plain') ?? ''
+  const after = destination.value?.type === target && destination.value.after
+  finishMove()
+  const edge = relationship.value
+  if (!edge || !type || type === target) return
+  const moved = edge.mutators.find((mutator) => mutator.type === type)
+  const mutators = edge.mutators.filter((mutator) => mutator.type !== type)
+  const index = mutators.findIndex((mutator) => mutator.type === target)
+  if (!moved || index < 0) return
+  mutators.splice(after ? index + 1 : index, 0, moved)
+  void props.apply([{ kind: 'set_relationship', relationship: { ...edge, mutators } }])
+}
 </script>
 
 <template>
@@ -314,9 +370,9 @@ const available = computed(() =>
 
     <div v-else-if="relationship" class="body">
       <p class="flow">
-        <code>{{ relationship.from }}</code>
+        <span>{{ sender }}</span>
         <el-icon><i-right /></el-icon>
-        <code>{{ relationship.to }}</code>
+        <span>{{ receiver }}</span>
       </p>
       <p v-if="relationship.summary" class="summary">{{ relationship.summary }}</p>
 
@@ -350,51 +406,107 @@ const available = computed(() =>
 
       <section>
         <h4>Behaviours</h4>
-        <p v-if="!relationship.mutators.length" class="hint">
-          Nothing changes the flow along this relationship.
+        <p class="hint">
+          A request leaves <strong>{{ sender }}</strong> at the top and passes down through each
+          behaviour before <strong>{{ receiver }}</strong> sees it. The answer comes back up the
+          same stack in reverse, so order decides what each behaviour is told.
         </p>
-        <el-card
-          v-for="mutator in relationship.mutators"
-          :key="mutator.type"
-          shadow="never"
-          class="mutator"
-        >
-          <template #header>
-            <div class="mutator-head">
-              <strong>{{ catalogue?.mutators[mutator.type]?.name ?? mutator.type }}</strong>
-              <el-button text size="small" @click="removeMutator(mutator.type)">Remove</el-button>
-            </div>
-          </template>
-          <p class="hint">{{ catalogue?.mutators[mutator.type]?.summary }}</p>
-          <div
-            v-for="(property, name) in catalogue?.mutators[mutator.type]?.properties ?? {}"
-            :key="name"
-            class="field"
-          >
-            <label class="label">
-              <span class="name">{{ name }}</span>
-              <span class="spacer" />
-              <span class="unit">{{ property.unit }}</span>
-            </label>
-            <div class="row">
-              <SquiggleField
-                v-model="mutatorDraft(mutator.type, String(name)).value.value"
-                :design="design"
-                :scope="scope"
-                :unit="property.unit"
-                :summary="property.summary"
-                @focus="mutatorDraft(mutator.type, String(name)).focus()"
-                @blur="mutatorDraft(mutator.type, String(name)).blur()"
-              />
-              <FieldStatus
-                :state="mutatorDraft(mutator.type, String(name)).state.value"
-                :error="mutatorDraft(mutator.type, String(name)).error.value"
-                :advice="mutatorDraft(mutator.type, String(name)).advice.value"
-                @revert="mutatorDraft(mutator.type, String(name)).revert()"
-              />
-            </div>
+
+        <div class="stack" data-test="behaviour-stack">
+          <div class="endpoint">
+            <el-icon><i-bottom /></el-icon>
+            <span><strong>{{ sender }}</strong> sends</span>
           </div>
-        </el-card>
+
+          <p v-if="!relationship.mutators.length" class="hint empty">
+            Nothing changes the flow along this relationship.
+          </p>
+
+          <div
+            v-for="mutator in relationship.mutators"
+            :key="mutator.type"
+            class="mutator"
+            :class="{
+              dragging: dragging === mutator.type,
+              'drop-before': destination?.type === mutator.type && !destination.after,
+              'drop-after': destination?.type === mutator.type && destination.after,
+            }"
+            :data-test="`behaviour-${mutator.type}`"
+            @dragover.prevent="considerMove($event, mutator.type)"
+            @drop.prevent="move($event, mutator.type)"
+          >
+            <el-card shadow="never">
+              <template #header>
+                <div class="mutator-head">
+                  <el-tooltip content="Drag to reorder" placement="bottom">
+                    <span
+                      class="move"
+                      draggable="true"
+                      role="button"
+                      tabindex="0"
+                      :aria-label="`Move ${catalogue?.mutators[mutator.type]?.name ?? mutator.type}`"
+                      :data-test="`move-behaviour-${mutator.type}`"
+                      @dragstart="beginMove($event, mutator.type)"
+                      @dragend="finishMove"
+                    />
+                  </el-tooltip>
+                  <strong>{{ catalogue?.mutators[mutator.type]?.name ?? mutator.type }}</strong>
+                  <el-button text size="small" @click="removeMutator(mutator.type)">
+                    Remove
+                  </el-button>
+                </div>
+              </template>
+              <!--
+                Clamped rather than shown whole: a behaviour's summary runs to a
+                paragraph, and two of them at full height leave no room to drag
+                one past the other in a panel this narrow.
+              -->
+              <el-popover
+                trigger="hover"
+                placement="left"
+                :width="300"
+                :content="catalogue?.mutators[mutator.type]?.summary"
+              >
+                <template #reference>
+                  <p class="hint clamped">{{ catalogue?.mutators[mutator.type]?.summary }}</p>
+                </template>
+              </el-popover>
+              <div
+                v-for="(property, name) in catalogue?.mutators[mutator.type]?.properties ?? {}"
+                :key="name"
+                class="field"
+              >
+                <label class="label">
+                  <span class="name">{{ name }}</span>
+                  <span class="spacer" />
+                  <span class="unit">{{ property.unit }}</span>
+                </label>
+                <div class="row">
+                  <SquiggleField
+                    v-model="mutatorDraft(mutator.type, String(name)).value.value"
+                    :design="design"
+                    :scope="scope"
+                    :unit="property.unit"
+                    :summary="property.summary"
+                    @focus="mutatorDraft(mutator.type, String(name)).focus()"
+                    @blur="mutatorDraft(mutator.type, String(name)).blur()"
+                  />
+                  <FieldStatus
+                    :state="mutatorDraft(mutator.type, String(name)).state.value"
+                    :error="mutatorDraft(mutator.type, String(name)).error.value"
+                    :advice="mutatorDraft(mutator.type, String(name)).advice.value"
+                    @revert="mutatorDraft(mutator.type, String(name)).revert()"
+                  />
+                </div>
+              </div>
+            </el-card>
+          </div>
+
+          <div class="endpoint">
+            <el-icon><i-top /></el-icon>
+            <span><strong>{{ receiver }}</strong> answers back up the stack</span>
+          </div>
+        </div>
 
         <el-select
           v-if="available.length"
@@ -447,6 +559,14 @@ header {
 .body > :deep(.el-alert) { margin-bottom: var(--space-3); }
 h4 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: var(--space-4) 0 var(--space-2); }
 .summary, .hint { color: var(--muted); font-size: var(--text-xs); margin: 0 0 var(--space-2); }
+.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: help;
+}
 .field { margin-bottom: var(--space-3); }
 .label { display: flex; align-items: center; gap: var(--space-1); margin-bottom: 3px; }
 .label .name { font-family: var(--mono); font-size: var(--text-xs); }
@@ -458,9 +578,43 @@ h4 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04e
 .row > :first-child { flex: 1; min-width: 0; }
 .channels { list-style: none; margin: 0; padding: 0; }
 .channels li { display: flex; justify-content: space-between; font-family: var(--mono); font-size: var(--text-xs); padding: 2px 0; color: var(--muted); }
-.flow { display: flex; align-items: center; gap: var(--space-2); font-family: var(--mono); font-size: var(--text-sm); margin: 0 0 var(--space-2); }
-.mutator { margin-bottom: var(--space-2); }
-.mutator-head { display: flex; justify-content: space-between; align-items: center; }
+.flow { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); font-weight: 650; margin: 0 0 var(--space-2); }
+.stack { border-left: 2px dashed var(--line); padding-left: var(--space-3); margin-bottom: var(--space-2); }
+.endpoint { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-xs); padding: var(--space-1) 0; }
+.endpoint strong { color: var(--ink); font-weight: 650; }
+.empty { margin: var(--space-2) 0; }
+.mutator { margin: var(--space-2) 0; }
+.mutator.drop-before { box-shadow: inset 0 2px var(--green); }
+.mutator.drop-after { box-shadow: inset 0 -2px var(--green); }
+.mutator.dragging { opacity: 0.5; }
+.mutator-head { display: flex; align-items: center; gap: var(--space-2); }
+.mutator-head strong { flex: 1; min-width: 0; }
+.move {
+  position: relative;
+  width: 14px;
+  height: 16px;
+  flex: none;
+  color: var(--muted);
+  cursor: grab;
+}
+.move::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow:
+    6px 0 currentColor,
+    0 5px currentColor,
+    6px 5px currentColor,
+    0 10px currentColor,
+    6px 10px currentColor;
+}
+.move:active { cursor: grabbing; }
+.move:hover { color: var(--ink); }
 .attach { width: 100%; }
 footer { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); }
 </style>

@@ -119,6 +119,60 @@ test('shared quantities can be reordered by dragging them', async ({ page }) => 
 })
 
 /**
+ * Reordering the behaviours on a relationship.
+ *
+ * The order is not decoration: a request meets them from the top down and the
+ * answer comes back up in reverse, so a retry above a timeout retries a call
+ * that timed out while one below it never hears about the timeout at all.
+ */
+test('behaviours on a relationship can be reordered by dragging them', async ({ page }) => {
+  const id = `behaviour-order-${Date.now()}`
+
+  await page.goto('/')
+  await page.getByTestId('new-design').click()
+  await page.getByTestId('design-name').fill('Behaviour order')
+  await page.getByTestId('design-id').fill(id)
+  await page.getByTestId('create-design').click()
+  await expect(page).toHaveURL(new RegExp(`/d/${id}/design`))
+
+  await page.getByRole('button', { name: 'Add a component' }).click()
+  await page.getByTestId('component-type-client').click()
+  await page.getByTestId('component-id').fill('users')
+  await page.getByTestId('save-component').click()
+
+  await page.getByTestId('add-component').click()
+  await page.getByTestId('component-type-compute').click()
+  await page.getByTestId('component-id').fill('api')
+  await page.getByTestId('save-component').click()
+
+  await page.getByTestId('add-relationship').click()
+  await page.getByTestId('connect-from').click()
+  await chooseOption(page, 'pick-from', 'users')
+  await page.getByTestId('connect-to-select').click()
+  await chooseOption(page, 'pick-to', 'api')
+  await page.getByTestId('mutator-timeout').click()
+  await page.getByTestId('mutator-retry').click()
+  await page.getByTestId('save-relationship').click()
+
+  // Both ends are named so the stack reads as a journey rather than a list.
+  await expect(page.getByTestId('behaviour-stack')).toContainText('users')
+  await expect(page.getByTestId('behaviour-stack')).toContainText('api')
+
+  await page
+    .getByTestId('move-behaviour-retry')
+    .dragTo(page.getByTestId('behaviour-timeout'), { targetPosition: { x: 60, y: 2 } })
+
+  await expect
+    .poll(async () => {
+      const snapshot = (await (await page.request.get(`/api/v1/designs/${id}`)).json()) as {
+        model: { relationships: { mutators: { type: string }[] }[] }
+      }
+      return snapshot.model.relationships[0]?.mutators.map((mutator) => mutator.type)
+    })
+    .toEqual(['retry', 'timeout'])
+})
+
+/**
  * Grouping components into a replicated boundary, and nesting one boundary in
  * another.
  *
