@@ -105,6 +105,27 @@ export const api = {
     request<Catalogue>(`/designs/${encodeURIComponent(design)}/catalogue`),
 
   /**
+   * Where a design's archive can be fetched from.
+   *
+   * Given to the browser to download rather than read here, so a large design
+   * streams to disk instead of being assembled in memory first, and the file
+   * name the server chose is the one that lands.
+   */
+  archiveUrl: (design: string) => `/api/v1/designs/${encodeURIComponent(design)}/archive`,
+
+  /**
+   * Stores an archive as a design.
+   *
+   * Refuses to overwrite unless `replace` says otherwise, so an archive named
+   * after a design somebody else is working on cannot quietly take its place.
+   */
+  importArchive: (design: string, archive: Blob, replace = false) =>
+    request<Snapshot>(
+      `/designs/${encodeURIComponent(design)}/archive${replace ? '?replace=true' : ''}`,
+      { method: 'PUT', body: archive, headers: { 'Content-Type': 'application/zip' } },
+    ),
+
+  /**
    * Applies edits in order, stopping at the first that will not apply.
    *
    * Earlier edits in a rejected batch stand, because each names one entity and
