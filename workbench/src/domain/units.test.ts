@@ -29,14 +29,37 @@ describe('scaleFor', () => {
 describe('showScaled', () => {
   it('writes a proportion as a percentage', () => {
     const scale = scaleFor('share')
-    expect(showScaled(0.8365, scale)).toBe('83.7%')
+    expect(showScaled(0.8365, scale)).toBe('84%')
     expect(showScaled(1, scale)).toBe('100%')
     expect(showScaled(0, scale)).toBe('0%')
+  })
+
+  /** Nines are the whole point of a success rate; rounding them off says nothing. */
+  it('keeps the nines a success rate is read for', () => {
+    const scale = scaleFor('share')
+    expect(showScaled(0.9999982, scale)).toBe('99.9998%')
+    expect(showScaled(0.99981, scale)).toBe('99.98%')
+    expect(showScaled(0.995123, scale)).toBe('99.5%')
+    expect(showScaled(0.9023, scale)).toBe('90%')
+  })
+
+  /** A failure share of a millionth is not the same event as one of a hundredth. */
+  it('keeps the magnitude of a share that is almost nothing', () => {
+    const scale = scaleFor('share')
+    expect(showScaled(0.0001, scale)).toBe('0.01%')
+    expect(showScaled(0.0000023, scale)).toBe('0.0002%')
   })
 
   /** A share above all of it is a real reading, not one to hide. */
   it('writes a share beyond the whole as it stands', () => {
     expect(showScaled(1.4, scaleFor('share'))).toBe('140%')
+  })
+
+  /** Past a millionth a solved share is reporting the sampler, not the design. */
+  it('writes a share a hair from an end as that end', () => {
+    const scale = scaleFor('share')
+    expect(showScaled(0.99999999997, scale)).toBe('100%')
+    expect(showScaled(2.5e-11, scale)).toBe('0%')
   })
 
   it('leaves other quantities to the magnitude prefix', () => {

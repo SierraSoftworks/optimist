@@ -182,7 +182,7 @@ pub(super) fn run(
                 let bars = Bars::new(progress);
                 solve(&loaded, args.intervention.as_deref(), &args.options, &bars)?
             };
-            print(output.solved(&evaluation, args.component.as_deref())?)
+            print(output.solved(&loaded, &evaluation, args.component.as_deref())?)
         }
         SystemCommand::Bottlenecks(args) => {
             let loaded = load(&args.design.directory)?;

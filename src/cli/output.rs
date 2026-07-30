@@ -91,11 +91,12 @@ impl OutputFormat {
 
     pub(super) fn solved(
         self,
+        loaded: &LoadedSystem,
         evaluation: &Evaluation,
         component: Option<&str>,
     ) -> Result<String, human_errors::Error> {
         match self {
-            Self::Table => Ok(report::channels(evaluation, component).to_string()),
+            Self::Table => Ok(report::channels(loaded, evaluation, component).to_string()),
             Self::Json | Self::Jsonl => {
                 output_json::serialize(&report::channel_values(evaluation, component))
             }

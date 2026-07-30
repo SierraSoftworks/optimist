@@ -11,11 +11,16 @@ use std::collections::BTreeMap;
 use crate::{
     cli::render::{Cell, Column, Report, Table, Tone, number, quantity},
     squiggle::Value,
-    system::{ComponentId, Evaluation},
+    system::{ComponentId, Evaluation, LoadedSystem, Signal},
 };
 
 /// Reports every solved quantity, a section per component.
-pub(crate) fn channels(evaluation: &Evaluation, only: Option<&str>) -> Report {
+pub(crate) fn channels(
+    loaded: &LoadedSystem,
+    evaluation: &Evaluation,
+    only: Option<&str>,
+) -> Report {
+    let units = Units::new();
     let mut report = Report::default();
     for (component, quantities) in solved(evaluation, only) {
         let mut table = Table::new([
@@ -24,7 +29,7 @@ pub(crate) fn channels(evaluation: &Evaluation, only: Option<&str>) -> Report {
             Column::right("80% interval"),
         ]);
         for (name, value) in quantities {
-            let (mean, interval) = quantity(&value);
+            let (mean, interval) = quantity(&value, units.of(loaded, &component, &name));
             let tone = if name.starts_with("in.") || name.starts_with("out.") {
                 Tone::Muted
             } else {
@@ -88,6 +93,41 @@ pub(crate) fn channels(evaluation: &Evaluation, only: Option<&str>) -> Report {
         );
     }
     report
+}
+
+/// The unit each solved quantity was declared with.
+///
+/// A port signal is named for the signal it carries rather than for a channel,
+/// so it takes its unit from the signal vocabulary; anything else is one of the
+/// component's own channels. A quantity neither of them knows about is left
+/// unannotated, which is the reading that changes nothing about how it is shown.
+struct Units {
+    signals: BTreeMap<String, Signal>,
+}
+
+impl Units {
+    fn new() -> Self {
+        Self {
+            signals: crate::system::signals(),
+        }
+    }
+
+    fn of<'a>(&'a self, loaded: &'a LoadedSystem, component: &ComponentId, name: &str) -> &'a str {
+        if let Some((_, signal)) = name.rsplit_once('.') {
+            return self
+                .signals
+                .get(signal)
+                .map_or("", |signal| signal.unit.as_str());
+        }
+        loaded
+            .model
+            .components
+            .iter()
+            .find(|entry| &entry.id == component)
+            .and_then(|entry| loaded.component_types.get(entry.component_type.as_str()))
+            .and_then(|definition| definition.channels.get(name))
+            .map_or("", |channel| channel.unit.as_str())
+    }
 }
 
 /// A quantity reduced to the summary a machine-readable report can carry.
