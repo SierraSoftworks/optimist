@@ -56,7 +56,31 @@ impl std::error::Error for ApiError {
 #[derive(Debug, Serialize)]
 pub(super) struct Failure {
     message: String,
-    advice: &'static str,
+    advice: Advice,
+}
+
+/// Guidance offered with a refusal.
+///
+/// Most refusals have one thing to suggest and say it; an archive that was
+/// rejected usually has two, because what to do about it depends on whether the
+/// sender or the recipient is the one who can fix it.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum Advice {
+    One(&'static str),
+    Several(&'static [&'static str]),
+}
+
+impl From<&'static str> for Advice {
+    fn from(line: &'static str) -> Self {
+        Self::One(line)
+    }
+}
+
+impl From<&'static [&'static str]> for Advice {
+    fn from(lines: &'static [&'static str]) -> Self {
+        Self::Several(lines)
+    }
 }
 
 impl IntoResponse for Failure {
@@ -80,27 +104,31 @@ impl From<WorkspaceError> for Rejected {
             WorkspaceError::NotFound { .. } => StatusCode::NOT_FOUND,
             WorkspaceError::UnsafeIdentifier { .. } => StatusCode::BAD_REQUEST,
             WorkspaceError::AlreadyExists { .. } => StatusCode::CONFLICT,
+            WorkspaceError::Archive { ref source } => archive_status(source),
             WorkspaceError::Root { .. }
             | WorkspaceError::Unreadable { .. }
             | WorkspaceError::Malformed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let advice = match error {
-            WorkspaceError::NotFound { .. } => "List the workspace to see which designs exist.",
+        let advice: Advice = match error {
+            WorkspaceError::NotFound { .. } => {
+                "List the workspace to see which designs exist.".into()
+            }
             WorkspaceError::UnsafeIdentifier { .. } => {
-                "Use the directory name of a design, in lower case."
+                "Use the directory name of a design, in lower case.".into()
             }
             WorkspaceError::AlreadyExists { .. } => {
-                "Open the existing design, or choose another identifier."
+                "Open the existing design, or choose another identifier.".into()
             }
             WorkspaceError::Root { .. } => {
-                "Check that the server can read the directory it was given."
+                "Check that the server can read the directory it was given.".into()
             }
             WorkspaceError::Unreadable { .. } => {
-                "Fix the file named in the message, then reload the design."
+                "Fix the file named in the message, then reload the design.".into()
             }
             WorkspaceError::Malformed { .. } => {
-                "This is a defect in the server rather than in the design."
+                "This is a defect in the server rather than in the design.".into()
             }
+            WorkspaceError::Archive { ref source } => source.advice().into(),
         };
         Self(
             status,
@@ -112,13 +140,30 @@ impl From<WorkspaceError> for Rejected {
     }
 }
 
+/// Separates an archive this server could not accept from one it could not store.
+///
+/// Everything about an untrusted file is the sender's problem to fix and is
+/// reported as such; only a filesystem that would not cooperate belongs to the
+/// server, and telling a client to repack the file in that case would send them
+/// after a fault they cannot reach.
+fn archive_status(error: &crate::system::ArchiveError) -> StatusCode {
+    match error {
+        crate::system::ArchiveError::Io { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        crate::system::ArchiveError::TooLarge { .. }
+        | crate::system::ArchiveError::TooManyEntries { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    }
+}
+
 impl From<MutationError> for Rejected {
     fn from(error: MutationError) -> Self {
         Self(
             StatusCode::CONFLICT,
             Failure {
                 message: error.to_string(),
-                advice: "Reload the design; another editor may have removed what this change refers to.",
+                advice:
+                    "Reload the design; another editor may have removed what this change refers to."
+                        .into(),
             },
         )
     }
@@ -130,7 +175,8 @@ impl From<EvaluationError> for Rejected {
             StatusCode::UNPROCESSABLE_ENTITY,
             Failure {
                 message: error.to_string(),
-                advice: "The design is incomplete or inconsistent; the message names what to fix.",
+                advice: "The design is incomplete or inconsistent; the message names what to fix."
+                    .into(),
             },
         )
     }
