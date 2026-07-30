@@ -260,13 +260,13 @@ function ribbons(columns: Run[][]): string {
     for (let index = 0; index < columns[column].length; index += 1) {
       if (threaded[column][index]) continue
       const chain: Link[] = []
-      let at = column
+      let step = column
       let which = index
-      while (at < columns.length && which >= 0 && !threaded[at][which]) {
-        threaded[at][which] = true
-        chain.push({ column: at, run: columns[at][which] })
-        which = at + 1 < columns.length ? overlapping(columns[at][which], columns[at + 1]) : -1
-        at += 1
+      while (step < columns.length && which >= 0 && !threaded[step][which]) {
+        threaded[step][which] = true
+        chain.push({ column: step, run: columns[step][which] })
+        which = step + 1 < columns.length ? overlapping(columns[step][which], columns[step + 1]) : -1
+        step += 1
       }
       paths.push(outline(chain, columns))
     }
@@ -288,6 +288,11 @@ function overlapping(run: Run, candidates: Run[]): number {
   return best
 }
 
+/** The height of a row boundary, counting upward from the baseline. */
+function at(row: number): number {
+  return PADDING.top + plot.height - (row * plot.height) / ROWS
+}
+
 /**
  * Where a ribbon that opens or closes at `run` meets the step beside it.
  *
@@ -298,45 +303,50 @@ function overlapping(run: Run, candidates: Run[]): number {
  * point at its own mid-height instead drew the failed branch as having arrived
  * from a value the design was never at.
  *
- * Null where that step has no shading at this depth at all, which is the only
- * case in which a branch really does begin from nothing.
+ * A step with no shading of its own is a step the model is certain about, and it
+ * carries no draws to estimate a density from. Its whole mass sits at its mean,
+ * so that is where the ribbon is anchored — a design holding at a hundred per
+ * cent and then dividing should open from a hundred per cent, not from wherever
+ * the branch beside it happens to be centred.
+ *
+ * Null only where that step is absent altogether.
  */
-function joins(run: Run, neighbours: Run[]): number | null {
+function joins(run: Run, neighbour: number, columns: Run[][]): number | null {
   const centre = (run.from + run.to) / 2
-  const apart = (candidate: Run) =>
-    Math.max(candidate.from - centre, centre - candidate.to, 0)
-  const nearest = neighbours.reduce<Run | null>(
-    (best, candidate) => (best === null || apart(candidate) < apart(best) ? candidate : best),
-    null,
+  const candidates = columns[neighbour]
+  if (candidates.length === 0) {
+    const quantity = points.value[neighbour]?.quantity
+    return quantity === undefined ? null : y(quantity.mean)
+  }
+  const apart = (candidate: Run) => Math.max(candidate.from - centre, centre - candidate.to, 0)
+  const nearest = candidates.reduce((best, candidate) =>
+    apart(candidate) < apart(best) ? candidate : best,
   )
-  return nearest === null ? null : Math.min(Math.max(centre, nearest.from), nearest.to)
+  return at(Math.min(Math.max(centre, nearest.from), nearest.to))
 }
 
 /** One ribbon: out along its upper edge and back along its lower one. */
 function outline(chain: Link[], columns: Run[][]): string {
-  const cell = plot.height / ROWS
-  // Row zero is the bottom of the axis, so rows count upward from the baseline.
-  const at = (row: number) => PADDING.top + plot.height - row * cell
   const middle = (run: Run) => at((run.from + run.to) / 2)
 
   const first = chain[0]
   const last = chain[chain.length - 1]
   const corners: string[] = []
   if (first.column > 0) {
-    const joined = joins(first.run, columns[first.column - 1])
+    const joined = joins(first.run, first.column - 1, columns)
     corners.push(
       joined === null
         ? `${(x(first.column - 1) + x(first.column)) / 2},${middle(first.run)}`
-        : `${x(first.column - 1)},${at(joined)}`,
+        : `${x(first.column - 1)},${joined}`,
     )
   }
   for (const link of chain) corners.push(`${x(link.column)},${at(link.run.to)}`)
   if (last.column < columns.length - 1) {
-    const joined = joins(last.run, columns[last.column + 1])
+    const joined = joins(last.run, last.column + 1, columns)
     corners.push(
       joined === null
         ? `${(x(last.column) + x(last.column + 1)) / 2},${middle(last.run)}`
-        : `${x(last.column + 1)},${at(joined)}`,
+        : `${x(last.column + 1)},${joined}`,
     )
   }
   for (const link of [...chain].reverse()) corners.push(`${x(link.column)},${at(link.run.from)}`)

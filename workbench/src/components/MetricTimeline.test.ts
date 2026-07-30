@@ -47,3 +47,37 @@ it.each([
   expect(vertical).toBeGreaterThanOrEqual(10)
   expect(vertical).toBeLessThanOrEqual(100)
 })
+
+it('opens a density band from the value the certain step beside it held', () => {
+  const draws = Array.from({ length: 200 }, (_, index) => 0.2 + (0.4 * index) / 199)
+  const frames: Frame[] = [
+    {
+      time: 0,
+      converged: true,
+      components: { api: { success: { mean: 1, p10: 1, p50: 1, p90: 1, draws: [] } } },
+    },
+    {
+      time: 1,
+      converged: true,
+      components: { api: { success: { mean: 0.4, p10: 0.22, p50: 0.4, p90: 0.58, draws } } },
+    },
+  ]
+  const wrapper = mount(MetricTimeline, {
+    props: { series: frames, component: 'api', channel: 'success', unit: '%' },
+  })
+
+  const bands = wrapper.findAll('path.density')
+  expect(bands.length).toBeGreaterThan(0)
+  for (const band of bands) {
+    const [horizontal, vertical] = band
+      .attributes('d')!
+      .slice(1)
+      .split(' ')[0]
+      .split(',')
+      .map(Number)
+    // The certain step's own column, at 100%, rather than halfway to it at
+    // whatever height the spread beside it happens to be centred on.
+    expect(horizontal).toBeCloseTo(52)
+    expect(vertical).toBeCloseTo(10)
+  }
+})
