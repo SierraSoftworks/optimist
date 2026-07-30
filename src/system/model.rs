@@ -142,10 +142,10 @@ pub struct Relationship {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bandwidth: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mutators: Vec<super::mutator::AttachedMutator>,
     /// What this connection represents.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub summary: String,
 }
 
@@ -176,19 +176,19 @@ impl Relationship {
 #[serde(deny_unknown_fields)]
 pub struct SystemModel {
     /// Shared quantities available to every component, in evaluation order.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scratchpad: Vec<ScratchpadEntry>,
     /// The parts of the system.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub components: Vec<Component>,
     /// How those parts are wired together.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relationships: Vec<Relationship>,
     /// Boundaries within which components are replicated together.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scale_units: Vec<super::scale_unit::ScaleUnit>,
     /// Proposed changes, expressed as rebindings of shared quantities.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub interventions: Vec<super::intervention::Intervention>,
 }
 

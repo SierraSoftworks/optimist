@@ -370,13 +370,7 @@ async fn a_design_can_be_created_and_then_edited() {
     .await;
     assert_eq!(status, 201);
     assert_eq!(created["name"], "Ledger");
-    assert_eq!(
-        created["model"]["components"]
-            .as_array()
-            .expect("array")
-            .len(),
-        0
-    );
+    assert!(created["model"]["components"].is_null());
 
     let (status, listing) = get(address, "/api/v1/designs").await;
     assert_eq!(status, 200);
