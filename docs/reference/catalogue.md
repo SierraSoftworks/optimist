@@ -34,6 +34,15 @@ own: which way it travels is settled by the port publishing it.
 | `latency` | `s` | max | no | Time from receiving a request to answering it, including every downstream call. Travels back to the caller. |
 | `success` | `share` | product | no | Probability a request is answered successfully. Travels back to the caller. |
 | `capacity` | `op/s` | min | yes | Rate the callee can sustain, reported back so the wire in front of it knows how fast it drains. |
+| `peers` | `1` | sum | no | Nodes on the far end: how many replicas of the peer one replica of this component talks to. Supplied by the engine, not published by a component. |
+
+`peers` is the one signal no component writes. A component cannot see its own
+surroundings, so the engine states how many replicas of the peer sit on the far
+end of each relationship, with any scale unit enclosing *both* ends divided out —
+units deployed together are deployed together, and a shard's writer talks to the
+one store inside its own shard rather than to every shard's. That is what lets a
+[`quorum`](#quorum) read its group size from the deployment instead of having it
+restated as a property that can drift out of step with the scale unit beside it.
 
 **Extensive** means the quantity is shared out across the replicas of a scale
 unit. A rate divides across a sharded fleet; a payload does not shrink because
@@ -259,6 +268,53 @@ each request makes of it. A branch reporting no ceiling, and a fan-out with
 nothing wired to it yet, both arrive as an unbounded figure; it is capped at a
 rate no real service reaches before being divided, so a design part-way through
 being drawn still solves.
+
+### `quorum`
+
+Sends every request to each node of a replicated group and answers as soon as a
+strict majority has replied. Consensus stores, replicated logs, and leader
+elections are all built this way, and the reason is that a majority is the
+smallest set that cannot be assembled twice at once.
+
+This is the arrangement that inverts the arithmetic of a fan-out. Waiting for all
+of several nodes makes a group slower and less reliable than any one of them;
+waiting for most of them makes it faster and more reliable than any one of them,
+because the slowest and the failed are exactly the ones a majority leaves behind.
+It is the only entry in the catalogue where adding a dependency improves a
+design.
+
+What it does not do is reduce load. Every node still receives every request, so a
+quorum costs what a fan-out costs and buys latency and availability with it
+rather than throughput.
+
+**Ports** — `in.requests` publishes `latency`, `success`, `capacity`;
+`out.members` publishes `rate`, `cancellation`.
+
+| Property | Unit | Default |
+| --- | --- | --- |
+| `overhead` | `s` | `0` |
+
+**Channels** — `arriving`, `cancelled`, `salvaged`, `nodes`, `quorum`,
+`replicated`, `propagated_cancellation`, `issued`, `node_capacity`, `node_wait`,
+`quorum_wait`, `node_success`, `latency`, `success_rate`.
+
+**Constraints** — `replication` (node requests issued against those arriving).
+
+The group's size is not authored. Attach **one** member and put it in a mirrored
+scale unit whose replica count is the number of nodes; `nodes` reads that count
+through the [`peers`](#signals) signal and `quorum` is `floor(n / 2) + 1`. A
+member with no scale unit around it is a group of one, which is what a single
+node is.
+
+`out.members` takes exactly one relationship, and a second is refused rather than
+combined. The figures the type reads are one node's; `success` multiplies across
+arrivals, so a second relationship would hand it the chance that *every* node
+succeeded where it wanted the chance that one did, and report a healthy group as
+a failing one.
+
+An even group is worth noticing: four nodes await three replies, exactly as five
+do, so the fourth costs a node to run and a node's availability to lose while
+buying nothing.
 
 ---
 

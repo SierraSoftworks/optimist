@@ -1,0 +1,162 @@
+id: quorum
+name: Quorum
+icon: aggregator
+summary: >
+  Sends every request to each node of a replicated group and answers as soon as a
+  strict majority has replied. Consensus stores, replicated logs, and leader
+  elections are all built this way, and the reason is that a majority is the
+  smallest set that cannot be assembled twice at once.
+
+  This is the arrangement that inverts the arithmetic of a fan-out. Waiting for
+  all of several nodes makes a group slower and less reliable than any one of
+  them; waiting for most of them makes it faster and more reliable than any one
+  of them, because the slowest and the failed are exactly the ones the majority
+  leaves behind. Three nodes at ninety-nine percent reach four nines together,
+  and answer in less than half the time waiting for all three would take.
+
+  What it does not do is reduce load. Every node still receives every request,
+  so the group costs as much as the fan-out does and buys latency and
+  availability with it rather than throughput. A design reaching for a quorum to
+  go faster under load has reached for the wrong component.
+
+  The group's size is read from the deployment: attach one member and put it in a
+  mirrored scale unit whose replica count is the number of nodes. Stating it
+  twice — once as a replica count and once as a property here — is how the two
+  come to disagree.
+ports:
+  in:
+    requests:
+      arity: many
+      summary: Callers making requests of the group.
+      publishes:
+        latency: latency
+        success: success_rate
+        capacity: node_capacity
+  out:
+    members:
+      arity: one
+      summary: >
+        The group's nodes, as one component replicated by a mirrored scale unit.
+
+        One relationship, because the figures below are one node's rather than a
+        reduction over several: success multiplies across arrivals, so a second
+        relationship would quietly hand this component the chance that every node
+        succeeded where it wanted the chance that one did, and report a healthy
+        group as a failing one.
+      publishes:
+        rate: replicated
+        cancellation: propagated_cancellation
+properties:
+  overhead:
+    unit: s
+    summary: Time spent agreeing on the replies once a majority has arrived.
+    default: '0'
+channels:
+  arriving:
+    unit: op/s
+    summary: Requests arriving from callers.
+    expression: in.requests.rate
+  cancelled:
+    unit: op/s
+    summary: Requests abandoned before a majority had answered.
+    expression: in.requests.cancellation
+  salvaged:
+    unit: op/s
+    summary: >
+      Cancellations arriving early enough that the group is never asked, at the
+      share the relationship they arrived on reports.
+    expression: cancelled * in.requests.cancellation_effectiveness
+  nodes:
+    unit: '1'
+    emphasis: key
+    summary: >
+      Nodes in the group, read from how many replicas of the attached member the
+      deployment holds. A member with no scale unit around it is a group of one,
+      which is what a single node is; a design part-way through being drawn, with
+      nothing attached yet, reads the same rather than failing to solve.
+    expression: max(out.members.peers, 1)
+  quorum:
+    unit: '1'
+    emphasis: key
+    summary: >
+      Replies awaited before answering: a strict majority, floor(n/2) + 1. Two of
+      three, three of five, and — the case worth noticing — two of two, because
+      an even group buys nothing over the odd group below it while costing a node
+      to run and a node's availability to lose.
+    expression: floor(nodes / 2) + 1
+  replicated:
+    unit: op/s
+    summary: >
+      Requests sent to each node. Every node sees every request, so this is the
+      arriving rate rather than a share of it, and it is why a quorum costs what
+      a fan-out costs.
+    expression: max(arriving - salvaged, 0)
+  propagated_cancellation:
+    unit: op/s
+    summary: >
+      Cancellations passed on to each node. A cancelled request is cancelled
+      everywhere it was sent, so every node hears about it.
+    expression: salvaged
+  issued:
+    unit: op/s
+    emphasis: key
+    summary: >
+      Node requests issued across the whole group, which is the load the group
+      places on the infrastructure behind it. This is the multiplication a
+      diagram of a quorum does not show: it is the same as a fan-out's, and it is
+      the price of the latency and availability below.
+    expression: replicated * nodes
+  node_capacity:
+    unit: op/s
+    summary: >
+      Requests the group can accept, which is what one node can take. Every node
+      receives every request, so replicating the group buys no throughput at all
+      — the ceiling is one node's and stays there however many are added.
+    expression: out.members.capacity
+  node_wait:
+    unit: s
+    summary: Time one node takes to reply.
+    expression: out.members.latency
+  quorum_wait:
+    unit: s
+    summary: >
+      Time until a majority has replied: the expected quorum-th order statistic
+      of the nodes' response times, taken as exponential with the mean above.
+      Less than one node's wait for any group larger than two, because the reply
+      that would have decided it is the one no longer waited for.
+    expression: Reliability.quorumLatency(node_wait, nodes, quorum)
+  latency:
+    unit: s
+    emphasis: key
+    summary: >
+      Time a caller waits: a majority replying, then agreeing on them.
+    expression: quorum_wait + overhead
+  node_success:
+    unit: share
+    summary: Share of requests one node answers successfully.
+    expression: out.members.success
+  success_rate:
+    unit: share
+    emphasis: key
+    summary: >
+      Share of arriving requests answered successfully, which is the chance that
+      a majority of the nodes held. Rises with the group size rather than falling
+      with it, which is the whole reason to build one, and is the one place in
+      the catalogue where adding a dependency makes a design more reliable.
+
+      Nodes are assumed to fail independently. That is optimistic in the way it
+      always is: a group whose nodes share a rack, a release, or a poisoned
+      request fails together, and correlated failure has to be expressed as
+      shared upstream uncertainty rather than left to this arithmetic.
+    expression: Reliability.quorumSuccess(node_success, nodes, quorum)
+constraints:
+  replication:
+    emphasis: key
+    summary: >
+      Node requests issued against those arriving, which is the group's size.
+      Exactly the factor by which a quorum multiplies the load on the
+      infrastructure behind it, and worth reading beside the availability it
+      bought: the fifth node of a five-node group adds a fifth of the cost for a
+      change in the fourth decimal place.
+    demand: issued
+    limit: arriving

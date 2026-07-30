@@ -116,3 +116,28 @@ payload:
     sizes is better modelled as separate flows.
   aggregate: mean
   extensive: false
+
+peers:
+  unit: '1'
+  summary: >
+    Nodes on the far end of the relationship: how many replicas of the peer one
+    replica of this component is actually talking to.
+
+    Supplied by the engine rather than published by a component, because it is a
+    fact about the shape of the deployment and no component can see its own
+    surroundings. It reads the peer's replica count with any scale unit enclosing
+    both ends divided out, since units deployed together are deployed together: a
+    shard's writer talks to the one store inside its own shard, not to every
+    shard's.
+
+    This is what lets a component whose behaviour depends on how many nodes it is
+    speaking to — a quorum, above all — read that from the deployment instead of
+    having it restated as a property that can drift out of step with the scale
+    unit beside it.
+
+    Adds across arrivals, so a port reaching several replicated peers reports the
+    whole group, and reads nought where nothing is attached. Not extensive: it
+    counts the far end rather than describing a flow, so replicating this
+    component does not divide it.
+  aggregate: sum
+  extensive: false

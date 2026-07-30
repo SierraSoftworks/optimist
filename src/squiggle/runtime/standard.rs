@@ -269,6 +269,8 @@ const NAMESPACES: &[(&str, &[(&str, &str)])] = &[
             ("retryAttempts", "Reliability.retryAttempts"),
             ("serialSuccess", "Reliability.serialSuccess"),
             ("deadlineSuccess", "Reliability.deadlineSuccess"),
+            ("quorumSuccess", "Reliability.quorumSuccess"),
+            ("quorumLatency", "Reliability.quorumLatency"),
         ],
     ),
     (

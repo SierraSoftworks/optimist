@@ -24,6 +24,7 @@ const MANIFESTS: &[&str] = &[
     include_str!("catalogue/compute.yaml"),
     include_str!("catalogue/datastore.yaml"),
     include_str!("catalogue/aggregator.yaml"),
+    include_str!("catalogue/quorum.yaml"),
 ];
 
 const MUTATORS: &[&str] = &[

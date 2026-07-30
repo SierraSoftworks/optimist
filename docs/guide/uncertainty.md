@@ -143,6 +143,8 @@ overflow.
 | `Reliability.retryAttempts(attempt, attempts)` | $\frac{1 - (1-p)^n}{p}$, the expected attempts made, and therefore the amplification applied downstream. |
 | `Reliability.serialSuccess(step, steps)` | $p^k$, for a call that must complete $k$ independent steps. |
 | `Reliability.deadlineSuccess(steps, service, deadline)` | $P(k, D/S) = \gamma(k, D/S)/\Gamma(k)$, the chance an Erlang-distributed request finishes in time. |
+| `Reliability.quorumSuccess(node, nodes, required)` | $I_p(r,\, n-r+1)$, the chance at least $r$ of $n$ independent nodes succeed. |
+| `Reliability.quorumLatency(node, nodes, required)` | $L\,(H_n - H_{n-r})$, the mean time until the $r$th of $n$ exponential replies arrives. |
 
 `retryAttempts` is the term that turns a partial outage into a retry storm: as
 $p$ falls it grows toward the full budget, so every caller multiplies its load on
@@ -156,6 +158,15 @@ quantity that several components read — rather than by relying on these formul
 
 `deadlineSuccess` assumes exponential steps, which is the maximum-variability
 choice for a given mean, so it is a conservative estimate of meeting a deadline.
+
+The two quorum laws are the only place in the vocabulary where adding a
+dependency makes a design *better*. Needing a majority rather than all of them
+inverts both readings at once: reliability rises with the group instead of
+falling, and the wait shrinks, because the slowest and the failed are exactly the
+nodes a majority leaves behind. Three nodes at $p = 0.99$ reach $0.9997$ together
+where needing all three gives $0.970$, and answer in $0.83L$ where waiting for
+all three takes $1.83L$. Neither buys throughput: every node still receives every
+request.
 
 ### `Slo`
 

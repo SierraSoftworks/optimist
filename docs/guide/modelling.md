@@ -27,9 +27,9 @@ default must be supplied, because no sensible stand-in exists for a quantity
 that varies by orders of magnitude between deployments.
 
 The shipped types are `client`, `load-balancer`, `queue`, `compute`,
-`datastore`, and `aggregator`. Their properties, channels, and constraints are
-listed in [the catalogue reference](../reference/catalogue.md), and a design may
-[define its own](./component-types.md).
+`datastore`, `aggregator`, and `quorum`. Their properties, channels, and
+constraints are listed in [the catalogue reference](../reference/catalogue.md),
+and a design may [define its own](./component-types.md).
 
 ## Relationships
 

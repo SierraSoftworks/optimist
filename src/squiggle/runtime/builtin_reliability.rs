@@ -30,6 +30,38 @@
 //! $p^k$. Reliability falls geometrically in depth, which is why deep synchronous
 //! call chains fail far more often than any single hop suggests.
 //!
+//! # Quorums
+//!
+//! A request answered once $r$ of $n$ independent nodes have replied succeeds
+//! when at least $r$ of them do, which is the upper tail of a binomial count:
+//!
+//! $$P(\text{success}) = \sum_{i=r}^{n} \binom{n}{i} p^i (1-p)^{n-i} = I_p(r,\, n-r+1)$$
+//!
+//! The right-hand identity is the regularised incomplete beta function, and it
+//! is what is evaluated: the sum forms binomial coefficients that overflow well
+//! before the terms themselves become negligible, while the beta form is stable
+//! over the whole domain and extends to a node count that is not a whole number.
+//!
+//! Requiring a strict majority rather than all of them is the point of the
+//! arrangement. Reliability now *rises* with the group size instead of falling:
+//! three nodes at $p = 0.99$ needing two of them succeed together with
+//! probability $0.9997$, where needing all three gives $0.970$.
+//!
+//! The waiting time moves the same way. With $n$ nodes whose response times are
+//! exponential with mean $L$, the time until the $r$th reply is the $r$th order
+//! statistic, a sum of independent exponentials with rates $n, n-1, \ldots,
+//! n-r+1$ (Rényi's representation), and therefore has mean
+//!
+//! $$\mathbb{E}[X_{(r)}] = L \sum_{i=n-r+1}^{n} \frac{1}{i} = L\,(H_n - H_{n-r})$$
+//!
+//! Waiting for a majority costs a fraction of what waiting for the last reply
+//! does — $0.83L$ against $1.83L$ for three nodes — which is the tail latency a
+//! quorum buys and a fan-out cannot.
+//!
+//! Both results assume nodes fail and respond independently, which is the same
+//! optimistic assumption the retry laws make, and exponential response times,
+//! which is the maximum-variability choice for a given mean.
+//!
 //! # Deadline races
 //!
 //! A request that performs $k$ sequential steps, each taking an exponential time
@@ -63,9 +95,15 @@
 //! References: Google, *Site Reliability Engineering* (2016), chapters 3 and 4 on
 //! error budgets, and *The Site Reliability Workbook* (2018), chapter 5 on burn
 //! rate alerting; Milton Abramowitz and Irene Stegun, *Handbook of Mathematical
-//! Functions* (1964), section 6.5 for the incomplete gamma function.
+//! Functions* (1964), section 6.5 for the incomplete gamma function and section
+//! 26.5.24 for the binomial–beta identity; Alfréd Rényi, "On the theory of order
+//! statistics", *Acta Mathematica Hungarica* 4 (1953), for the exponential order
+//! statistic representation.
 
-use statrs::distribution::{ContinuousCDF, Gamma};
+use statrs::{
+    distribution::{ContinuousCDF, Gamma},
+    function::{beta::beta_reg, gamma::digamma},
+};
 
 use crate::squiggle::{Diagnostic, Value, ast::Span};
 
@@ -100,6 +138,22 @@ builtins! {
         "Reliability.deadlineSuccess"(steps: (Number | Distribution), service: (Number | Distribution), deadline: (Number | Distribution)) =>
             elementwise(runtime, &[steps.clone(), service.clone(), deadline.clone()], span, |row| {
                 erlang_cdf(depth(row[0])?, positive(row[1], "service time")?, row[2])
+            }),
+        "Reliability.quorumSuccess"(node: (Number | Distribution), nodes: (Number | Distribution), required: (Number | Distribution)) =>
+            elementwise(runtime, &[node.clone(), nodes.clone(), required.clone()], span, |row| {
+                let success = probability(row[0], "node success")?;
+                let group = group(row[1])?;
+                finite(binomial_tail(success, group, awaited(row[2], group)?), "quorum success probability")
+            }),
+        "Reliability.quorumLatency"(node: (Number | Distribution), nodes: (Number | Distribution), required: (Number | Distribution)) =>
+            elementwise(runtime, &[node.clone(), nodes.clone(), required.clone()], span, |row| {
+                let wait = row[0];
+                if !wait.is_finite() || wait < 0.0 {
+                    return Err("a node's response time must not be negative".to_owned());
+                }
+                let group = group(row[1])?;
+                let awaited = awaited(row[2], group)?;
+                finite(wait * (harmonic(group) - harmonic(group - awaited)), "quorum wait")
             }),
         "Slo.errorBudget"(rate: (Number | Distribution), objective: (Number | Distribution), window: (Number | Distribution)) =>
             elementwise(runtime, &[rate.clone(), objective.clone(), window.clone()], span, |row| {
@@ -142,6 +196,61 @@ fn depth(value: f64) -> Result<f64, String> {
         return Err("a call depth must be greater than zero".to_owned());
     }
     Ok(value)
+}
+
+fn group(value: f64) -> Result<f64, String> {
+    if !value.is_finite() || value < 1.0 {
+        return Err("a quorum must be drawn from at least one node".to_owned());
+    }
+    Ok(value)
+}
+
+/// Reads how many replies are awaited, which is never more than there are.
+///
+/// A group cannot wait for more nodes than it has, and a design that asks it to
+/// is describing something unachievable rather than something certain to fail,
+/// so this is clamped rather than refused: the reading stays continuous as a
+/// group is resized underneath a fixed requirement.
+fn awaited(value: f64, nodes: f64) -> Result<f64, String> {
+    if !value.is_finite() || value < 1.0 {
+        return Err("a quorum must await at least one reply".to_owned());
+    }
+    Ok(value.min(nodes))
+}
+
+/// Probability that at least `required` of `nodes` independent nodes succeed.
+///
+/// The binomial upper tail, evaluated through the identity that relates it to
+/// the regularised incomplete beta function (Abramowitz and Stegun, *Handbook of
+/// Mathematical Functions* (1964), equation 26.5.24):
+///
+/// $$\sum_{i=r}^{n} \binom{n}{i} p^i (1-p)^{n-i} = I_p(r,\, n-r+1)$$
+///
+/// Summing the series directly forms binomial coefficients, which overflow for a
+/// group of a few hundred while the terms they multiply have not yet become
+/// negligible. The beta form holds across the whole domain, is accurate to a
+/// relative epsilon or so throughout, and accepts a group size that is not a
+/// whole number — which a replica count averaged over an uncertain fleet is not.
+///
+/// Waiting for every node is the serial case $p^n$ and waiting for one is
+/// $1 - (1-p)^n$; both fall out of the same expression rather than needing to be
+/// special-cased.
+fn binomial_tail(node: f64, nodes: f64, required: f64) -> f64 {
+    beta_reg(required, nodes - required + 1.0, node).clamp(0.0, 1.0)
+}
+
+/// The `x`th harmonic number, $H_x = \psi(x + 1) + \gamma$.
+///
+/// Written through the digamma function rather than as a sum so that a group
+/// size which is not a whole number — an averaged replica count — is answered on
+/// the same smooth curve as one that is, instead of stepping between the
+/// integers either side of it.
+fn harmonic(count: f64) -> f64 {
+    const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
+    if count <= 0.0 {
+        return 0.0;
+    }
+    digamma(count + 1.0) + EULER_MASCHERONI
 }
 
 /// Raises a base to an exponent that is nearly always a whole number.

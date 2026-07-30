@@ -26,6 +26,8 @@ fn smoke_source(name: &str) -> Option<String> {
         "Reliability.retryAttempts" => "Reliability.retryAttempts(0.9,3)",
         "Reliability.serialSuccess" => "Reliability.serialSuccess(0.99,8)",
         "Reliability.deadlineSuccess" => "Reliability.deadlineSuccess(4,0.05,1)",
+        "Reliability.quorumSuccess" => "Reliability.quorumSuccess(0.99,3,2)",
+        "Reliability.quorumLatency" => "Reliability.quorumLatency(0.05,3,2)",
         "Slo.errorBudget" => "Slo.errorBudget(1000,0.999,3600)",
         "Slo.burnRate" => "Slo.burnRate(0.002,0.999)",
         "Number.rangeDomain" => "Number.rangeDomain(0,1)",
