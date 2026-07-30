@@ -75,8 +75,9 @@ pub use mutator::{AttachedMutator, Mutator, MutatorId, Transform};
 pub use preview::preview;
 pub use scale_unit::{Distribution, ScaleUnit, ScaleUnitId};
 pub use schema::{
-    ComponentDocument, LoadedSystem, OutgoingRelationship, SCHEMA_VERSION, SchemaError,
-    SystemDocument, read_system, safe_identifier, write_system,
+    ArchiveError, ComponentDocument, LoadedSystem, MAX_ARCHIVE_BYTES, OutgoingRelationship,
+    SCHEMA_VERSION, SchemaError, StagedDesign, SystemDocument, pack_system, read_system,
+    safe_identifier, write_system,
 };
 pub use signal::{Aggregation, Signal};
 pub use solve::Solve;

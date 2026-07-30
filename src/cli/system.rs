@@ -37,6 +37,10 @@ pub(super) enum SystemCommand {
     Bottlenecks(BottlenecksArgs),
     /// Weighs proposed changes against the design they would replace.
     Compare(CompareArgs),
+    /// Packs a design into a zip file that can be shared.
+    Export(super::transfer::ExportArgs),
+    /// Unpacks a shared zip file into a design directory.
+    Import(super::transfer::ImportArgs),
 }
 
 /// The design a command works against.
@@ -207,6 +211,8 @@ pub(super) fn run(
             };
             print(output.comparison(&compared)?)
         }
+        SystemCommand::Export(args) => super::transfer::export(args, output),
+        SystemCommand::Import(args) => super::transfer::import(args, output),
     }
 }
 
@@ -241,7 +247,7 @@ fn check(args: CheckArgs, output: OutputFormat) -> Result<(), human_errors::Erro
 /// A closed pipe is not a failure. `optimist bottlenecks | head` is a
 /// reasonable thing to type, and a report that panics when the reader stops
 /// reading is worse than one that stops writing.
-fn print(rendered: String) -> Result<(), human_errors::Error> {
+pub(super) fn print(rendered: String) -> Result<(), human_errors::Error> {
     use std::io::Write;
 
     let mut stdout = std::io::stdout().lock();

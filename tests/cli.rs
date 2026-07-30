@@ -33,6 +33,18 @@ fn example(name: &str) -> String {
         .to_string()
 }
 
+/// Strips the box a report is drawn in, so a phrase can be looked for whatever
+/// width the terminal that captured it happened to wrap at.
+fn flatten(rendered: &str) -> String {
+    rendered
+        .chars()
+        .map(|character| if character.is_ascii() { character } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Writes a design that parses and is still wrong in several ways.
 fn broken_design() -> tempdir::TempDir {
     let directory = tempdir::TempDir::new();
@@ -242,6 +254,120 @@ fn drawing_progress_leaves_the_answer_untouched() {
     assert!(
         stderr.contains("pass "),
         "the bar does not say what it is waiting on: {stderr:?}"
+    );
+}
+
+/// A design packs into a file and comes back out of it.
+#[test]
+fn a_design_can_be_exported_and_imported() {
+    let scratch = tempdir::TempDir::new();
+    let zipped = scratch.path.join("checkout.zip");
+    let unpacked = scratch.path.join("copy");
+
+    let (ok, stdout, stderr) = optimist(&[
+        "export",
+        &example("checkout"),
+        &zipped.display().to_string(),
+    ]);
+    assert!(ok, "{stdout}{stderr}");
+    assert!(zipped.is_file(), "no archive was written");
+
+    let (ok, stdout, stderr) = optimist(&[
+        "import",
+        &zipped.display().to_string(),
+        &unpacked.display().to_string(),
+    ]);
+    assert!(ok, "{stdout}{stderr}");
+
+    let (ok, stdout, _) = optimist(&["check", &unpacked.display().to_string()]);
+    assert!(ok, "the imported design does not check out:\n{stdout}");
+    assert!(stdout.contains("Checkout"), "{stdout}");
+}
+
+/// A script is told where the design landed rather than the sentence a person reads.
+#[test]
+fn importing_reports_where_the_design_landed_to_a_machine() {
+    let scratch = tempdir::TempDir::new();
+    let zipped = scratch.path.join("checkout.zip");
+    let unpacked = scratch.path.join("copy");
+    optimist(&[
+        "export",
+        &example("checkout"),
+        &zipped.display().to_string(),
+    ]);
+
+    let (ok, stdout, stderr) = optimist(&[
+        "--output",
+        "json",
+        "import",
+        &zipped.display().to_string(),
+        &unpacked.display().to_string(),
+    ]);
+    assert!(ok, "{stdout}{stderr}");
+
+    let report: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(report["action"], serde_json::json!("imported"));
+    assert_eq!(
+        report["path"],
+        serde_json::json!(unpacked.display().to_string())
+    );
+}
+
+/// Importing over a design is refused until somebody asks for it.
+#[test]
+fn importing_will_not_quietly_replace_a_design() {
+    let scratch = tempdir::TempDir::new();
+    let zipped = scratch.path.join("checkout.zip");
+    let unpacked = scratch.path.join("copy");
+    optimist(&[
+        "export",
+        &example("checkout"),
+        &zipped.display().to_string(),
+    ]);
+    optimist(&[
+        "import",
+        &zipped.display().to_string(),
+        &unpacked.display().to_string(),
+    ]);
+
+    let (ok, _, stderr) = optimist(&[
+        "import",
+        &zipped.display().to_string(),
+        &unpacked.display().to_string(),
+    ]);
+    assert!(!ok, "an overwrite must not succeed by default");
+    let refusal = flatten(&stderr);
+    assert!(refusal.contains("already a design"), "{stderr}");
+    assert!(refusal.contains("--force"), "{stderr}");
+
+    let (ok, _, stderr) = optimist(&[
+        "import",
+        &zipped.display().to_string(),
+        &unpacked.display().to_string(),
+        "--force",
+    ]);
+    assert!(ok, "{stderr}");
+}
+
+/// A file that is not a design is refused with something to do about it.
+#[test]
+fn importing_a_file_that_is_not_a_design_explains_what_to_do() {
+    let scratch = tempdir::TempDir::new();
+    let bogus = scratch.path.join("not-a-design.zip");
+    std::fs::write(&bogus, b"this is not a zip file").expect("writes");
+
+    let (ok, _, stderr) = optimist(&[
+        "import",
+        &bogus.display().to_string(),
+        &scratch.path.join("copy").display().to_string(),
+    ]);
+    assert!(!ok, "a file that is not an archive must not import");
+    let refusal = flatten(&stderr);
+    assert!(refusal.contains("not a readable archive"), "{stderr}");
+    assert!(refusal.contains("Advice"), "{stderr}");
+    assert!(
+        !scratch.path.join("copy").exists(),
+        "a refused import left a directory behind"
     );
 }
 

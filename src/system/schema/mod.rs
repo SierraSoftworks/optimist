@@ -47,6 +47,7 @@
 //! plausible numbers that are wrong wherever the section would have carried a
 //! flow.
 
+mod archive;
 mod document;
 mod error;
 mod read;
@@ -54,6 +55,7 @@ mod write;
 
 use std::collections::BTreeMap;
 
+pub use archive::{ArchiveError, MAX_ARCHIVE_BYTES, StagedDesign, pack_system};
 pub use document::{ComponentDocument, OutgoingRelationship, SystemDocument};
 pub use error::SchemaError;
 pub use read::{LoadedSystem, read_system};

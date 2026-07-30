@@ -97,6 +97,37 @@ fn component(id: &str) -> Value {
     })
 }
 
+/// Fetches an archive, returning the status, the disposition header, and the bytes.
+async fn download(address: SocketAddr, path: &str) -> (u16, String, Vec<u8>) {
+    let response = reqwest::get(format!("http://{address}{path}"))
+        .await
+        .expect("request");
+    let status = response.status().as_u16();
+    let disposition = response
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    (
+        status,
+        disposition,
+        response.bytes().await.expect("body").to_vec(),
+    )
+}
+
+async fn upload(address: SocketAddr, path: &str, archive: Vec<u8>) -> (u16, Value) {
+    let response = reqwest::Client::new()
+        .put(format!("http://{address}{path}"))
+        .header(reqwest::header::CONTENT_TYPE, "application/zip")
+        .body(archive)
+        .send()
+        .await
+        .expect("request");
+    let status = response.status().as_u16();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
 /// The workspace lists what it serves, and a design can be read from it.
 #[tokio::test]
 async fn designs_can_be_listed_and_read() {
@@ -808,4 +839,114 @@ async fn health_reports_loaded_designs() {
     get(address, "/api/v1/designs/checkout").await;
     let (_, health) = get(address, "/api/v1/health").await;
     assert_eq!(health["designs"], 1);
+}
+
+/// A design can be taken out of one workspace and put into another.
+#[tokio::test]
+async fn a_design_can_be_exported_and_imported_again() {
+    let root = workspace("transfer");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, disposition, archive) =
+        download(address, "/api/v1/designs/checkout/archive").await;
+    assert_eq!(status, 200);
+    assert!(
+        disposition.contains("checkout.zip"),
+        "the download is not named after the design: {disposition}"
+    );
+
+    let (status, snapshot) = upload(address, "/api/v1/designs/billing/archive", archive).await;
+    assert_eq!(status, 201, "{snapshot}");
+    assert_eq!(snapshot["name"], "Checkout");
+
+    let (_, listing) = get(address, "/api/v1/designs").await;
+    let ids = listing
+        .as_array()
+        .expect("array")
+        .iter()
+        .map(|design| design["id"].as_str().expect("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["billing", "checkout"]);
+}
+
+/// An export carries edits that have not yet been written to disk.
+#[tokio::test]
+async fn an_export_includes_unsaved_edits() {
+    let root = workspace("transfer-unsaved");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, _) = post(
+        address,
+        "/api/v1/designs/checkout/mutations",
+        json!({ "mutations": [component("mobile")] }),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    let (_, _, archive) = download(address, "/api/v1/designs/checkout/archive").await;
+    let (_, snapshot) = upload(address, "/api/v1/designs/copy/archive", archive).await;
+    let ids = snapshot["model"]["components"]
+        .as_array()
+        .expect("components")
+        .iter()
+        .map(|component| component["id"].as_str().expect("id"))
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&"mobile"), "the unsaved edit did not travel");
+}
+
+/// Importing over a design is refused until somebody says to replace it.
+#[tokio::test]
+async fn an_import_will_not_quietly_replace_a_design() {
+    let root = workspace("transfer-conflict");
+    design(&root, "checkout", "Checkout");
+    design(&root, "billing", "Billing");
+    let address = serve(&root).await;
+
+    let (_, _, archive) = download(address, "/api/v1/designs/checkout/archive").await;
+
+    let (status, failure) =
+        upload(address, "/api/v1/designs/billing/archive", archive.clone()).await;
+    assert_eq!(status, 409);
+    assert!(failure["advice"].is_string() || failure["advice"].is_array());
+    // Refusing left the design it would have replaced alone.
+    let (_, billing) = get(address, "/api/v1/designs/billing").await;
+    assert_eq!(billing["name"], "Billing");
+
+    let (status, snapshot) = upload(
+        address,
+        "/api/v1/designs/billing/archive?replace=true",
+        archive,
+    )
+    .await;
+    assert_eq!(status, 200, "{snapshot}");
+    assert_eq!(snapshot["name"], "Checkout");
+}
+
+/// An upload that is not a design is refused with something to do about it.
+#[tokio::test]
+async fn an_upload_that_is_not_a_design_is_refused_with_advice() {
+    let root = workspace("transfer-hostile");
+    design(&root, "checkout", "Checkout");
+    let address = serve(&root).await;
+
+    let (status, failure) = upload(
+        address,
+        "/api/v1/designs/hostile/archive",
+        b"this is not a zip file".to_vec(),
+    )
+    .await;
+    assert_eq!(status, 422);
+    assert!(
+        failure["message"].as_str().is_some_and(|m| !m.is_empty()),
+        "{failure}"
+    );
+    let advice = failure["advice"].as_array().expect("advice lines");
+    assert!(!advice.is_empty(), "a refusal offers nothing to do");
+
+    // Nothing was created for it.
+    assert!(!root.join("hostile").exists());
+    let (status, _) = get(address, "/api/v1/designs/hostile").await;
+    assert_eq!(status, 404);
 }

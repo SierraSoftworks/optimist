@@ -121,6 +121,27 @@ impl OutputFormat {
             Self::Jsonl => output_json::lines(&movements(compared)),
         }
     }
+
+    /// Confirms that a design was packed into a file, or unpacked out of one.
+    ///
+    /// A script that has just run an import needs the directory it landed in far
+    /// more than it needs the sentence a person reads, so the machine-readable
+    /// answer leads with the path.
+    pub(super) fn transfer(
+        self,
+        action: &str,
+        path: &std::path::Path,
+        message: &str,
+    ) -> Result<String, human_errors::Error> {
+        match self {
+            Self::Table => Ok(report::transfer(action, message).to_string()),
+            Self::Json | Self::Jsonl => output_json::serialize(&serde_json::json!({
+                "action": action.to_lowercase(),
+                "path": path.display().to_string(),
+                "message": message,
+            })),
+        }
+    }
 }
 
 /// Flattens every comparison into one list naming the proposal each row is from.

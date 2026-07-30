@@ -28,6 +28,7 @@
 //! round trip rather than two.
 
 mod analysis;
+mod archive;
 mod cache;
 mod designs;
 mod error;
@@ -134,6 +135,7 @@ pub fn routes(workspace: Arc<Workspace>, web_root: Option<PathBuf>) -> Router {
     let api = Router::new()
         .route("/api/v1/health", get(health))
         .merge(designs::router())
+        .merge(archive::router())
         .merge(analysis::router())
         .merge(feed::router())
         // Claims every remaining API path so that the workbench fallback below

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NewDesignDialog from './components/NewDesignDialog.vue'
+import DesignTransfer from './components/DesignTransfer.vue'
 import { useDesign, useDesigns } from './composables/useDesign'
 import { useWorkbenchStore } from './stores/workbench'
 
@@ -97,6 +98,8 @@ function open(id: string) {
       </template>
 
       <span class="spacer" />
+
+      <DesignTransfer :design="design" @imported="open" />
 
       <template v-if="design">
         <!--
