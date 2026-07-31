@@ -139,8 +139,27 @@ pub struct Relationship {
     /// The bytes are the request and the reply together, at the sizes the
     /// behaviours on the wire declare, so batching several calls into one leaves
     /// this unchanged while dividing the operation rate.
+    ///
+    /// A stated speed also delays the traffic it carries. Bytes take time to put
+    /// on a wire, and a link approaching its speed queues behind itself, so a
+    /// saturating link is felt as latency before it is felt as loss.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bandwidth: Option<String>,
+    /// Squiggle source for how long a round trip over this wire takes.
+    ///
+    /// Instant by default, which is right for two processes on a machine and
+    /// wrong for anything with distance in it. State it wherever the endpoints
+    /// are apart: a cross-region call pays tens of milliseconds before anybody
+    /// has done any work, and no amount of capacity at either end removes it.
+    ///
+    /// A round trip, because that is how a link is measured and how anybody
+    /// asked about one would answer. Half of it is spent carrying the request
+    /// and half carrying the reply, so a caller sees all of it. This is the cost
+    /// of distance alone, independent of load: what the wire holds work for
+    /// while it is busy is the queue, and what it costs to send the bytes is the
+    /// bandwidth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latency: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<super::mutator::AttachedMutator>,
@@ -159,6 +178,12 @@ pub const DEFAULT_LINK_CAPACITY: &str = "100";
 /// never wrote down.
 pub const DEFAULT_LINK_BANDWIDTH: &str = "infinity";
 
+/// Seconds a round trip over a relationship takes when its author says nothing.
+///
+/// Instant, for the same reason the speed is unlimited: distance nobody stated
+/// is distance nobody meant to charge for.
+pub const DEFAULT_LINK_LATENCY: &str = "0";
+
 impl Relationship {
     /// Borrows the authored queue depth, or the default network link.
     pub fn capacity_source(&self) -> &str {
@@ -168,6 +193,11 @@ impl Relationship {
     /// Borrows the authored link speed, or an unlimited one.
     pub fn bandwidth_source(&self) -> &str {
         self.bandwidth.as_deref().unwrap_or(DEFAULT_LINK_BANDWIDTH)
+    }
+
+    /// Borrows the authored round-trip time, or an instant crossing.
+    pub fn latency_source(&self) -> &str {
+        self.latency.as_deref().unwrap_or(DEFAULT_LINK_LATENCY)
     }
 }
 

@@ -587,6 +587,7 @@ end.
 | --- | --- | --- |
 | `capacity` | `op` | `100` |
 | `bandwidth` | `B/s` | unlimited |
+| `latency` | `s` | `0` |
 
 `capacity` is how many operations may wait on the wire: socket buffers and a
 listen backlog for a network hop, nearer one for an in-process call, far larger
@@ -598,3 +599,19 @@ only where a speed was stated — a link nobody gave a speed to is not a link th
 is full. This is the limit an operation-rate model cannot report at all: a design
 whose rates all fit comfortably can still be bound by the bytes those operations
 move, and reading it sends somebody to the network rather than to the service.
+
+A stated speed also delays the traffic it carries, in two ways. Putting one
+operation's bytes on the wire takes `(request + reply) / bandwidth` seconds
+whatever else is happening, and a link offered more bytes than it can move backs
+up behind itself, so the queue on the wire drains at the slower of the far end's
+capacity and the operation rate the link allows. A saturating link is therefore
+felt as latency first and as refusals second, which is the order it happens in.
+
+`latency` is how long a round trip takes, before anybody does any work. Zero by
+default, which is right for two processes on a machine and wrong for anything
+with distance in it. It is a round trip because that is how a link is measured
+and how anybody asked about one would answer: half of it carries the request and
+half carries the reply, so a relationship written `latency: '0.06'` adds 60 ms to
+what the caller sees. This is the cost no amount of capacity at either end
+removes, and on a design drawn across regions it is usually met before any of the
+design's own limits.

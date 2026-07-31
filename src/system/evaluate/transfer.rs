@@ -54,6 +54,7 @@ struct SentComponent {
 struct SentLink {
     backlog: Transferred,
     wait: Transferred,
+    transit: Transferred,
     blocked: Transferred,
     offered: Transferred,
     drain: Transferred,
@@ -123,6 +124,7 @@ pub(super) fn restored(sent: Sent) -> Evaluation {
                     let state = LinkState {
                         backlog: Value::restore(state.backlog),
                         wait: Value::restore(state.wait),
+                        transit: Value::restore(state.transit),
                         blocked: Value::restore(state.blocked),
                         offered: Value::restore(state.offered),
                         drain: Value::restore(state.drain),
@@ -156,6 +158,7 @@ fn link(state: &LinkState) -> Result<SentLink, SnapshotError> {
     Ok(SentLink {
         backlog: state.backlog.snapshot()?,
         wait: state.wait.snapshot()?,
+        transit: state.transit.snapshot()?,
         blocked: state.blocked.snapshot()?,
         offered: state.offered.snapshot()?,
         drain: state.drain.snapshot()?,

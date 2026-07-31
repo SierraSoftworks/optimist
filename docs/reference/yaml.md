@@ -187,6 +187,8 @@ pinned to whatever an algorithm produced the first time it was opened.
 | `from_port` | no | Outbound port on the owning component. Omit when its type declares exactly one. |
 | `to_port` | no | Inbound port on the receiving component. Omit when its type declares exactly one. |
 | `capacity` | no | Squiggle source for how many operations may wait on the wire. Defaults to `100`. |
+| `bandwidth` | no | Squiggle source for how fast the wire carries bytes, in `B/s`. Unlimited when omitted. |
+| `latency` | no | Squiggle source for how long a round trip over the wire takes, in `s`. Half of it carries the request and half the reply. Defaults to `0`. |
 | `mutators` | no | Behaviours applied to the flow, **in the order they take effect**. |
 | `summary` | no | What this connection represents. |
 

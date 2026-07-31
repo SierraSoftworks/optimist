@@ -96,7 +96,7 @@ pub(super) fn endpoints(
     Ok((to, from))
 }
 
-/// Resolves a relationship's identity, how much it can hold, and how fast it is.
+/// Resolves a relationship's identity and every limit it imposes of its own.
 ///
 /// Both ends of a relationship prepare it independently, so the identity has to
 /// be derived from the endpoints rather than allocated, or the two ends would
@@ -107,7 +107,7 @@ pub(super) fn link(
     outbound_port: &str,
     globals: &BTreeMap<String, Value>,
     config: Timing,
-) -> Result<(LinkId, Value, Value), EvaluationError> {
+) -> Result<Wire, EvaluationError> {
     let id = LinkId {
         from: relationship.from.clone(),
         from_port: outbound_port.to_owned(),
@@ -128,7 +128,27 @@ pub(super) fn link(
         globals,
         config,
     )?;
-    Ok((id, capacity, bandwidth))
+    let latency = quantity(
+        relationship.latency_source(),
+        "latency",
+        &id,
+        globals,
+        config,
+    )?;
+    Ok(Wire {
+        id,
+        capacity,
+        bandwidth,
+        latency,
+    })
+}
+
+/// One relationship's identity and its own limits, resolved together.
+pub(super) struct Wire {
+    pub(super) id: LinkId,
+    pub(super) capacity: Value,
+    pub(super) bandwidth: Value,
+    pub(super) latency: Value,
 }
 
 /// Evaluates one of a relationship's own quantities against the shared scope.

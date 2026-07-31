@@ -66,6 +66,7 @@ pub fn write_system(
                     to_port: relationship.to_port.clone(),
                     capacity: relationship.capacity.clone(),
                     bandwidth: relationship.bandwidth.clone(),
+                    latency: relationship.latency.clone(),
                     mutators: relationship.mutators.clone(),
                     summary: relationship.summary.clone(),
                 })

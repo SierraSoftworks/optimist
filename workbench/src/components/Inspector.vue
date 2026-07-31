@@ -112,19 +112,19 @@ function nameDraft(componentId: string): Draft<string> {
   )
 }
 
-/** Queue depth on the wire. Cleared back to absent so the server default returns. */
-function capacityDraft(): Draft<string> {
-  return remembered(`${props.selection?.id}#capacity`, () =>
+/** One of the wire's own limits. Cleared back to absent so the server default returns. */
+function wireDraft(field: 'capacity' | 'bandwidth' | 'latency'): Draft<string> {
+  return remembered(`${props.selection?.id}#${field}`, () =>
     useDraft<string>(
-      () => relationship.value?.capacity ?? '',
+      () => relationship.value?.[field] ?? '',
       async (expression) => {
         const edge = relationship.value
         if (!edge) return
-        const capacity = expression.trim()
+        const stated = expression.trim()
         await props.apply([
           {
             kind: 'set_relationship',
-            relationship: { ...edge, capacity: capacity === '' ? undefined : capacity },
+            relationship: { ...edge, [field]: stated === '' ? undefined : stated },
           },
         ])
       },
@@ -385,20 +385,79 @@ function move(event: DragEvent, target: string) {
         <div class="field">
           <div class="row">
             <SquiggleField
-              v-model="capacityDraft().value.value"
+              v-model="wireDraft('capacity').value.value"
               :design="design"
               :scope="scope"
               unit="operations"
               placeholder="100"
               data-test="relationship-capacity"
-              @focus="capacityDraft().focus()"
-              @blur="capacityDraft().blur()"
+              @focus="wireDraft('capacity').focus()"
+              @blur="wireDraft('capacity').blur()"
             />
             <FieldStatus
-              :state="capacityDraft().state.value"
-              :error="capacityDraft().error.value"
-              :advice="capacityDraft().advice.value"
-              @revert="capacityDraft().revert()"
+              :state="wireDraft('capacity').state.value"
+              :error="wireDraft('capacity').error.value"
+              :advice="wireDraft('capacity').advice.value"
+              @revert="wireDraft('capacity').revert()"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h4>Link speed</h4>
+        <p class="hint">
+          How fast this wire carries bytes, measured against the request and reply payloads
+          together. A stated speed both delays the traffic and caps it, so a link too slow for
+          its messages backs up in front of a dependency with room to spare. Leave it empty to
+          leave the link unlimited.
+        </p>
+        <div class="field">
+          <div class="row">
+            <SquiggleField
+              v-model="wireDraft('bandwidth').value.value"
+              :design="design"
+              :scope="scope"
+              unit="bytes per second"
+              placeholder="unlimited"
+              data-test="relationship-bandwidth"
+              @focus="wireDraft('bandwidth').focus()"
+              @blur="wireDraft('bandwidth').blur()"
+            />
+            <FieldStatus
+              :state="wireDraft('bandwidth').state.value"
+              :error="wireDraft('bandwidth').error.value"
+              :advice="wireDraft('bandwidth').advice.value"
+              @revert="wireDraft('bandwidth').revert()"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h4>Distance</h4>
+        <p class="hint">
+          How long a round trip over this wire takes before anybody does any work. Half of it
+          carries the request and half carries the reply. Leave it empty for two things close
+          enough that the distance between them does not matter.
+        </p>
+        <div class="field">
+          <div class="row">
+            <SquiggleField
+              v-model="wireDraft('latency').value.value"
+              :design="design"
+              :scope="scope"
+              unit="seconds, round trip"
+              placeholder="0"
+              data-test="relationship-latency"
+              @focus="wireDraft('latency').focus()"
+              @blur="wireDraft('latency').blur()"
+            />
+            <FieldStatus
+              :state="wireDraft('latency').state.value"
+              :error="wireDraft('latency').error.value"
+              :advice="wireDraft('latency').advice.value"
+              @revert="wireDraft('latency').revert()"
             />
           </div>
         </div>

@@ -108,6 +108,7 @@ fn link(shares: &[(usize, &LinkState)]) -> LinkState {
     LinkState {
         backlog: quantity(&picked(shares, |state| &state.backlog)),
         wait: quantity(&picked(shares, |state| &state.wait)),
+        transit: quantity(&picked(shares, |state| &state.transit)),
         blocked: quantity(&picked(shares, |state| &state.blocked)),
         offered: quantity(&picked(shares, |state| &state.offered)),
         drain: quantity(&picked(shares, |state| &state.drain)),

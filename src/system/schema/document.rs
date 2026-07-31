@@ -70,6 +70,12 @@ pub struct OutgoingRelationship {
     /// what the link actually is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bandwidth: Option<String>,
+    /// Squiggle source for how long a round trip over this wire takes.
+    ///
+    /// Omitted to leave the crossing instant, which is right until the two ends
+    /// are far enough apart for the distance to be worth writing down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latency: Option<String>,
     /// Behaviours applied to the flow, in the order they take effect.
     #[serde(default)]
     pub mutators: Vec<AttachedMutator>,

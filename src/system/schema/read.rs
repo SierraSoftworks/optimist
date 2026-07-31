@@ -57,6 +57,7 @@ pub fn read_system(directory: &Path) -> Result<LoadedSystem, SchemaError> {
                 to_port: outgoing.to_port,
                 capacity: outgoing.capacity,
                 bandwidth: outgoing.bandwidth,
+                latency: outgoing.latency,
                 mutators: outgoing.mutators,
                 summary: outgoing.summary,
             });

@@ -18,9 +18,11 @@ use super::{
     aggregate::{blank, combine},
     config::{EvaluationConfig, SolveMode},
     error::EvaluationError,
-    flow::{CAPACITY, Direction, LATENCY, PEERS, RATE, SUCCESS, scaled, sum, survives},
+    flow::{
+        CAPACITY, Direction, LATENCY, PEERS, RATE, SUCCESS, delayed, scaled, survives, throttled,
+    },
     mutate::{apply, returning},
-    queue::{carried, queued},
+    queue::{carriage, queued},
     state::{ComponentState, LinkId, LinkState},
 };
 
@@ -133,7 +135,7 @@ pub(super) fn arrivals(
             let mut observed = time!(Gather, response.clone());
             if let Some(before) = links.get(&link.id) {
                 if let Some(latency) = observed.get_mut(LATENCY) {
-                    *latency = sum(latency, &before.wait, config);
+                    *latency = delayed(latency, before, config);
                 }
                 if let Some(success) = observed.get_mut(SUCCESS) {
                     *success = survives(success, &before.blocked, config);
@@ -169,37 +171,55 @@ pub(super) fn arrivals(
                 }
                 Ok::<(), EvaluationError>(())
             })?;
+            // Both ends compute this and agree, so it is taken from the request
+            // as it crosses and the answer as it arrives back rather than from
+            // whichever end happened to be evaluated last.
+            let carried = time!(
+                Queue,
+                carriage(
+                    &crossing,
+                    &returned.settled,
+                    &link.bandwidth,
+                    &link.latency,
+                    config,
+                )
+            );
             let mut state = time!(
                 Queue,
                 match config.mode {
                     // Balance: the backlog is whatever the current load implies, so
                     // it is recomputed as the load settles.
-                    SolveMode::Steady => queued(&crossing, response, &link.capacity, config),
+                    SolveMode::Steady => queued(
+                        &crossing,
+                        response,
+                        &link.capacity,
+                        &carried.throughput,
+                        config
+                    ),
                     // Time: the backlog was fixed when the step began. Only the
                     // flows are recorded, so the next step has something to advance
                     // from once everything else has settled.
                     SolveMode::Transient => {
                         let mut held = links.get(&link.id).cloned().unwrap_or_default();
                         held.offered = crossing.get(RATE).cloned().unwrap_or(Value::Number(0.0));
-                        held.drain = response
-                            .get(CAPACITY)
-                            .cloned()
-                            .unwrap_or(Value::Number(0.0));
+                        held.drain = throttled(
+                            response.get(CAPACITY).unwrap_or(&Value::Number(0.0)),
+                            &carried.throughput,
+                            config,
+                        );
                         held
                     }
                 }
             );
-            // Both ends compute this and agree, so it is taken from the request
-            // as it crosses and the answer as it arrives back rather than from
-            // whichever end happened to be evaluated last.
-            state.transfer = time!(Queue, carried(&crossing, &returned.settled, config));
+            state.transfer = carried.transfer;
+            state.transit = carried.transit;
             state.bandwidth = link.bandwidth.clone();
             let queueing = match direction {
                 Direction::Request => &mut counterpart,
                 Direction::Response => &mut flow,
             };
             if let Some(latency) = queueing.get_mut(LATENCY) {
-                *latency = sum(latency, &state.wait, config);
+                *latency = delayed(latency, &state, config);
             }
             if let Some(success) = queueing.get_mut(SUCCESS) {
                 *success = survives(success, &state.blocked, config);

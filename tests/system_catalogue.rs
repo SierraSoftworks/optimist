@@ -62,6 +62,7 @@ impl Solved {
         match quantity {
             "backlog" => mean(&link.backlog),
             "wait" => mean(&link.wait),
+            "transit" => mean(&link.transit),
             "blocked" => mean(&link.blocked),
             "offered" => mean(&link.offered),
             "drain" => mean(&link.drain),
@@ -1614,6 +1615,110 @@ fn an_unstated_link_speed_reports_no_constraint() {
         solved.wire("users", "api", "transfer"),
         20_000_000.0,
         "bytes crossing the wire",
+    );
+}
+
+/// Distance costs the same whether the design is busy or idle, and a caller sees
+/// the whole round trip because half of it is charged in each direction.
+///
+/// This is the limit no amount of capacity removes, and the one a design drawn
+/// across regions meets before it meets any of its own.
+#[test]
+fn a_link_charges_its_round_trip_once_end_to_end() {
+    let apart = |latency: &str| {
+        format!(
+            "
+components:
+  - id: users
+    name: Users
+    type: client
+    properties:
+      request_rate: '10'
+  - id: api
+    name: API
+    type: compute
+    properties:
+      service_time: '0.001'
+      parallelism: '1000'
+relationships:
+  - from: users
+    to: api
+    latency: '{latency}'
+"
+        )
+    };
+    // Service time alone, with an idle pool and an instant wire.
+    let near = solve(&apart("0"));
+    close(near.get("users", "latency"), 0.001, "latency across a room");
+    // Sixty milliseconds there and back on top of the same millisecond of work.
+    let far = solve(&apart("0.06"));
+    close(
+        far.get("users", "latency"),
+        0.061,
+        "latency across a continent",
+    );
+}
+
+/// A link too slow for its traffic is felt as delay before it is felt as loss.
+///
+/// The bytes take time to put on the wire whatever else is happening, and once
+/// the offered rate passes what the wire can carry the queue in front of it
+/// fills and the excess is turned away — the same two readings an overloaded
+/// dependency gives, from a limit neither end of the wire can see.
+#[test]
+fn a_slow_link_delays_before_it_refuses() {
+    let wire = |bandwidth: &str| {
+        format!(
+            "
+components:
+  - id: users
+    name: Users
+    type: client
+    properties:
+      request_rate: '100'
+  - id: api
+    name: API
+    type: compute
+    properties:
+      service_time: '0.001'
+      parallelism: '1000'
+relationships:
+  - from: users
+    to: api
+    bandwidth: '{bandwidth}'
+    mutators:
+      - type: message-size
+        properties:
+          request_size: '0'
+          response_size: '1e6'
+"
+        )
+    };
+    // A megabyte a hundred times a second needs 100 MB/s. At a gigabyte a second
+    // the wire is a tenth loaded, and all it costs is the millisecond it takes to
+    // put one message on it.
+    let roomy = solve(&wire("1e9"));
+    close(roomy.wire("users", "api", "transit"), 0.001, "time on the wire");
+    close(roomy.wire("users", "api", "blocked"), 0.0, "refusals");
+    assert!(
+        roomy.get("users", "latency") > 0.001,
+        "the bytes have to cost something even on a quiet link"
+    );
+
+    // At 50 MB/s the wire carries half what is offered, so it backs up and sheds.
+    let saturated = solve(&wire("50e6"));
+    close(
+        saturated.wire("users", "api", "drain"),
+        50.0,
+        "operations the wire can pass",
+    );
+    assert!(
+        saturated.wire("users", "api", "blocked") > 0.4,
+        "a wire carrying half of what it is offered has to refuse the rest"
+    );
+    assert!(
+        saturated.get("api", "utilisation") < 0.1,
+        "and it has to do so while the far end is idle"
     );
 }
 

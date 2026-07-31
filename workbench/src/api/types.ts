@@ -60,6 +60,13 @@ export interface Relationship {
    * than one nobody stated.
    */
   bandwidth?: string
+  /**
+   * Squiggle source for how long a round trip over the wire takes.
+   *
+   * Absent leaves the crossing instant, so a design nobody has placed on a map
+   * is not charged for distance it may not have.
+   */
+  latency?: string
   summary: string
   mutators: AttachedMutator[]
 }

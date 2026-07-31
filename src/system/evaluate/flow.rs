@@ -9,6 +9,7 @@ use crate::{
 };
 
 use super::config::EvaluationConfig;
+use super::state::LinkState;
 
 /// Which way along a relationship a set of flows is travelling.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -31,6 +32,30 @@ pub(super) const PEERS: &str = "peers";
 /// Adds one quantity to another, draw by draw.
 pub(super) fn sum(left: &Value, right: &Value, config: EvaluationConfig) -> Value {
     elementwise(left, right, config, |a, b| a + b)
+}
+
+/// Adds every second a wire imposes to a latency arriving back across it.
+///
+/// Two costs with different causes: what the wire held the work for while it was
+/// busy, and what it costs to cross at all. Only the first goes away when the
+/// design is given more capacity.
+pub(super) fn delayed(latency: &Value, link: &LinkState, config: EvaluationConfig) -> Value {
+    let waited = sum(latency, &link.wait, config);
+    // A wire nobody gave a distance or a speed is free to cross, and in most
+    // designs that is every wire.
+    if matches!(link.transit, Value::Number(seconds) if seconds == 0.0) {
+        return waited;
+    }
+    sum(&waited, &link.transit, config)
+}
+
+/// Holds a drain rate to the lesser of what the far end takes and what the
+/// wire's own speed allows.
+pub(super) fn throttled(drain: &Value, throughput: &Value, config: EvaluationConfig) -> Value {
+    if matches!(throughput, Value::Number(rate) if rate.is_infinite()) {
+        return drain.clone();
+    }
+    elementwise(drain, throughput, config, f64::min)
 }
 
 /// Multiplies one quantity by a scale-unit boundary factor.

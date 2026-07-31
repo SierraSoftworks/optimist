@@ -27,6 +27,8 @@ pub(crate) struct PreparedLink {
     pub(crate) capacity: Value,
     /// Bytes per second this wire carries.
     pub(crate) bandwidth: Value,
+    /// Seconds a round trip over this wire takes.
+    pub(crate) latency: Value,
     /// Extensive request quantities crossing from caller to callee.
     pub(crate) request_scale: f64,
     /// Extensive response quantities crossing from callee to caller.

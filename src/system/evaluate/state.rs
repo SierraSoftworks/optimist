@@ -41,11 +41,18 @@ pub struct LinkState {
     pub backlog: Value,
     /// Seconds an operation spends waiting, from Little's Law on the backlog.
     pub wait: Value,
+    /// Seconds a round trip costs on an idle wire.
+    ///
+    /// The distance there and back plus the time to put one operation's bytes on
+    /// the wire. Kept apart from `wait` because it is what the link costs when
+    /// nothing is queued, and no amount of headroom at either end removes it.
+    pub transit: Value,
     /// Share of offered operations refused because the wire was full.
     pub blocked: Value,
     /// Operations per second offered onto the wire, after the behaviours on it.
     pub offered: Value,
-    /// Operations per second the far end can take.
+    /// Operations per second that can get through: the lesser of what the far
+    /// end can take and what the wire's speed allows at this payload.
     pub drain: Value,
     /// Bytes per second crossing the wire, request and reply together.
     pub transfer: Value,
@@ -59,6 +66,7 @@ impl Default for LinkState {
         Self {
             backlog: Value::Number(0.0),
             wait: Value::Number(0.0),
+            transit: Value::Number(0.0),
             blocked: Value::Number(0.0),
             offered: Value::Number(0.0),
             drain: Value::Number(0.0),

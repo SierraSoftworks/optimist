@@ -146,6 +146,7 @@ pub(super) fn widen_links(
         let state = LinkState {
             backlog: restore(&after.backlog, &before.backlog),
             wait: restore(&after.wait, &before.wait),
+            transit: restore(&after.transit, &before.transit),
             blocked: restore(&after.blocked, &before.blocked),
             offered: restore(&after.offered, &before.offered),
             drain: restore(&after.drain, &before.drain),

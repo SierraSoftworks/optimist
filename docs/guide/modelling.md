@@ -64,6 +64,26 @@ absorbs a burst by making the caller wait for it, so a generous buffer converts 
 capacity problem into a latency one, and a caller with a deadline turns that
 latency back into failure.
 
+It is also a link, once somebody says what kind. Both of these are absent by
+default, because a speed nobody stated is a speed nobody meant to constrain and
+a distance nobody stated is a distance nobody meant to charge for.
+
+```yaml
+outgoing:
+  - to: api
+    bandwidth: '1e9'   # a gigabyte a second
+    latency: '0.06'    # sixty milliseconds there and back
+```
+
+`bandwidth` is measured against the request and reply payloads together, so it
+catches the design whose operation rates all fit but whose bytes do not. It costs
+time as well: the bytes take time to put on the wire, and a link offered more
+than it can carry backs up in front of a dependency that has room to spare.
+
+`latency` is the round trip, before anybody does any work: half of it carries the
+request and half carries the reply. It is the cost that no amount of capacity at
+either end removes, and on a design drawn across regions it is usually met first.
+
 ### Ports
 
 A component type may declare several named places relationships attach. A
