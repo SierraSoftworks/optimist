@@ -40,12 +40,28 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2
 # Counts the work a solve does. Off by default so the counters compile away.
 profiling = []
 
+# End-to-end sweeps that solve a shipped design over a long horizon. They cover
+# behaviour no unit test can reach, and they cost more than the rest of the suite
+# put together, so they are opt-in: run them when the solver, the statistics, or
+# the language changed, and before signing work off.
+comprehensive_tests = []
+
 # A solve is thousands of passes through the same short expressions, so whether
 # the small functions making up a pass get inlined across module boundaries
 # matters more here than build time does.
 [profile.release]
 codegen-units = 1
 lto = "thin"
+
+# The suite spends nearly all of its time inside the solver, so an unoptimised
+# build dominates it: measured across the whole suite, `opt-level = 2` turns 408
+# CPU-seconds of test execution into 48, and the slowest test from 35s into 3s.
+# That buys far more than it costs to compile, and debug assertions stay on.
+[profile.test]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [[bench]]
 name = "solve"

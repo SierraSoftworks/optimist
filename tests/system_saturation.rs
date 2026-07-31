@@ -5,6 +5,10 @@
 //! conclusions rather than the exact numbers: the example is documentation, and
 //! a change that stops it teaching what it claims is a defect in the example or
 //! in the engine.
+//!
+//! Watching a retry policy amplify a surge means solving over the whole surge,
+//! so this is a `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 

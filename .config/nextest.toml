@@ -5,6 +5,10 @@
 # rather than by how many tests there are. Nextest runs each test in its own
 # process, which is what makes that overlap possible at all.
 #
+# Those sweeps live behind the `comprehensive_tests` feature and are off by
+# default, so an ordinary run covers the mechanisms and a run with
+# `--features comprehensive_tests` covers the shipped designs end to end.
+#
 # Which tests to run is a command-line question, not a profile one. Use a filter
 # expression to run the narrowest set that covers a change:
 #

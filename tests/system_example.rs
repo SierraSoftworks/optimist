@@ -4,6 +4,10 @@
 //! it is supposed to demonstrate rather than its exact numbers. If a change to
 //! the engine makes the example stop teaching what it claims to teach, the
 //! example is wrong and so is the documentation built on it.
+//!
+//! Ranking the example's constraints solves it once per reading, so this is a
+//! `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::path::PathBuf;
 

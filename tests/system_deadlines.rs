@@ -6,6 +6,10 @@
 //! These tests guard that conclusion, and with it the machinery the example
 //! needs: a design defining its own behaviour, and that behaviour actually
 //! reaching the solver.
+//!
+//! Every reading here advances a design through tens of seconds of simulated
+//! time, so this is a `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 

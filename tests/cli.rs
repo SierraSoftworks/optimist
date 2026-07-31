@@ -6,6 +6,11 @@
 //! parses. A report that reads well but exits zero on a broken design is worse
 //! than useless in continuous integration, and only this level of test can tell
 //! the difference.
+//!
+//! Every case here spawns the built binary and solves a shipped design, which
+//! also means building the binary at all, so this is a `comprehensive_tests`
+//! binary. What the reports are made of is unit tested under `cli::render`.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{path::PathBuf, process::Command};
 
@@ -33,14 +38,14 @@ fn example(name: &str) -> String {
         .to_string()
 }
 
-/// Strips the box a report is drawn in, so a phrase can be looked for whatever
-/// width the terminal that captured it happened to wrap at.
-fn flatten(rendered: &str) -> String {
-    rendered
-        .chars()
-        .map(|character| if character.is_ascii() { character } else { ' ' })
-        .collect::<String>()
-        .split_whitespace()
+/// Reads a rendered message as the words it is made of.
+///
+/// A phrase in a wrapped report is broken by a newline and whatever framing the
+/// renderer draws down the margin, so looking for it literally asserts where the
+/// renderer chose to wrap rather than what it said.
+fn unwrapped(text: &str) -> String {
+    text.split(|character: char| character.is_whitespace() || character == '│')
+        .filter(|word| !word.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -92,7 +97,10 @@ fn checking_a_broken_design_names_every_fault_and_fails() {
     assert!(stdout.contains("service_time"), "{stdout}");
     assert!(stdout.contains("not wired to anything"), "{stdout}");
     assert!(stdout.contains("no_such_quantity"), "{stdout}");
-    assert!(stderr.contains("stop it being solved"), "{stderr}");
+    assert!(
+        unwrapped(&stderr).contains("stop it being solved"),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -237,9 +245,24 @@ fn progress_is_drawn_for_a_terminal_and_nothing_else() {
 /// Anything drawn into standard output would end up inside whatever the answer
 /// was piped into, so the two are checked against each other rather than merely
 /// asserting that the bar appeared somewhere.
+///
+/// Nothing is drawn until a solve has run for a quarter of a second, so this
+/// asks for a transient sweep rather than a single steady solve: a design that
+/// settles in one step is over before the bar is due, and the test would then be
+/// measuring the build profile rather than the tool.
 #[test]
 fn drawing_progress_leaves_the_answer_untouched() {
-    let arguments = ["solve", &example("checkout"), "--samples", "4000"];
+    let arguments = [
+        "solve",
+        &example("checkout"),
+        "--samples",
+        "8000",
+        "--transient",
+        "--horizon",
+        "20",
+        "--step",
+        "0.5",
+    ];
     let (ok, quiet, _) = optimist(&arguments);
     assert!(ok);
 
@@ -336,7 +359,7 @@ fn importing_will_not_quietly_replace_a_design() {
         &unpacked.display().to_string(),
     ]);
     assert!(!ok, "an overwrite must not succeed by default");
-    let refusal = flatten(&stderr);
+    let refusal = unwrap(&stderr);
     assert!(refusal.contains("already a design"), "{stderr}");
     assert!(refusal.contains("--force"), "{stderr}");
 
@@ -362,7 +385,7 @@ fn importing_a_file_that_is_not_a_design_explains_what_to_do() {
         &scratch.path.join("copy").display().to_string(),
     ]);
     assert!(!ok, "a file that is not an archive must not import");
-    let refusal = flatten(&stderr);
+    let refusal = unwrap(&stderr);
     assert!(refusal.contains("not a readable archive"), "{stderr}");
     assert!(refusal.contains("Advice"), "{stderr}");
     assert!(

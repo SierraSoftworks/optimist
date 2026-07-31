@@ -13,6 +13,10 @@
 //! asserted below, so that anyone who later sharpens the saturation law finds a
 //! failing test telling them the example's claims have changed rather than
 //! discovering it by reading.
+//!
+//! Each claim costs a transient solve of the whole design, so this is a
+//! `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 

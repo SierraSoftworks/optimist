@@ -14,6 +14,11 @@
 //! significant figures, and to `1e-12` they agree to eleven. They are converging
 //! on one fixed point, and how near they were asked to get decides how near they
 //! land to each other.
+//!
+//! Establishing that costs every shipped design solved twice over, so this is a
+//! `comprehensive_tests` binary. Reassembly itself — the part that lays shares
+//! end to end — is unit tested in `system::evaluate::merge`.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 

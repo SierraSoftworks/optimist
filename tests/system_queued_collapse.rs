@@ -4,6 +4,10 @@
 //! queue holds what a socket buffer cannot, and what it holds it keeps, so the
 //! episode outlasts its cause and the design has two ways to be at one level of
 //! demand. These tests guard those conclusions rather than the exact numbers.
+//!
+//! Showing that an episode outlasts its cause means solving well past the cause,
+//! so this is a `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 

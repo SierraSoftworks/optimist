@@ -11,6 +11,10 @@
 //! question is whether the design still says the same thing, and quantiles say
 //! that while being robust to the last bit of a floating-point sum. Run with
 //! `UPDATE_GOLDEN=1` to re-record after a change that is meant to move them.
+//!
+//! Every example is solved to record its summary, so this is a
+//! `comprehensive_tests` binary.
+#![cfg(feature = "comprehensive_tests")]
 
 use std::{collections::BTreeMap, path::PathBuf};
 
