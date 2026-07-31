@@ -359,7 +359,7 @@ fn importing_will_not_quietly_replace_a_design() {
         &unpacked.display().to_string(),
     ]);
     assert!(!ok, "an overwrite must not succeed by default");
-    let refusal = unwrap(&stderr);
+    let refusal = unwrapped(&stderr);
     assert!(refusal.contains("already a design"), "{stderr}");
     assert!(refusal.contains("--force"), "{stderr}");
 
@@ -385,7 +385,7 @@ fn importing_a_file_that_is_not_a_design_explains_what_to_do() {
         &scratch.path.join("copy").display().to_string(),
     ]);
     assert!(!ok, "a file that is not an archive must not import");
-    let refusal = unwrap(&stderr);
+    let refusal = unwrapped(&stderr);
     assert!(refusal.contains("not a readable archive"), "{stderr}");
     assert!(refusal.contains("Advice"), "{stderr}");
     assert!(
