@@ -146,7 +146,7 @@ fn at_rest_the_design_is_healthy() {
 #[test]
 fn retries_amplify_the_surge_beyond_the_demand_that_caused_it() {
     let during = settled(None, config_to(12));
-    let offered = scalar(&during["shoppers"], "offered");
+    let offered = scalar(&during["shoppers"], "rate");
     let arriving = scalar(&during["checkout"], "arriving");
     assert!(
         arriving > offered * 2.0,
@@ -277,7 +277,7 @@ fn the_surge_leaves_a_collapse_that_outlasts_it() {
         scalar(shoppers, "success")
     );
     // Demand is back to resting, so the collapse is not being sustained by load.
-    assert!((scalar(shoppers, "offered") - 600.0).abs() < 1.0);
+    assert!((scalar(shoppers, "rate") - 600.0).abs() < 1.0);
 }
 
 /// The same design never surged is perfectly healthy at the same demand.

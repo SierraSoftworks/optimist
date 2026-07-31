@@ -177,7 +177,7 @@ Everything a design may draw on.
 {
   "component_types": { "compute": { "id": "compute", "name": "Compute", "ports": {}, "properties": {}, "channels": {}, "constraints": {} } },
   "mutators": { "retry": { "id": "retry", "name": "Retry", "properties": {}, "requests": {}, "responses": {} } },
-  "signals": { "rate": { "unit": "op/s", "summary": "", "aggregate": "sum", "extensive": true } },
+  "signals": { "rate": { "unit": "op/s", "summary": "", "aggregate": "sum", "publish": { "in": "forbidden", "out": "required" }, "extensive": true } },
   "builtins": ["Little.rate", "Queue.mmcWait", "Reliability.retryAttempts"]
 }
 ```

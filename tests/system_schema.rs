@@ -209,7 +209,7 @@ fn a_round_tripped_design_solves_identically() {
     let offered = |evaluation: &optimist::system::Evaluation| {
         format!(
             "{:?}",
-            evaluation.settled().components[&api].channels["offered"]
+            evaluation.settled().components[&api].channels["rate"]
         )
     };
     assert_eq!(offered(&before), offered(&after));
@@ -295,11 +295,17 @@ fn project_local_definitions_are_loaded() {
          \x20   unit: op/s\n\
          \x20   summary: Calls allowed through.\n\
          \x20   expression: min([in.requests.rate, ceiling])\n\
+         \x20 admitted_ratio:\n\
+         \x20   unit: share\n\
+         \x20   summary: Share of calls the cap let through.\n\
+         \x20   expression: min([admitted / max([in.requests.rate, 0.000001]), 1])\n\
          ports:\n\
          \x20 in:\n\
          \x20   requests:\n\
          \x20     publishes:\n\
          \x20       capacity: ceiling\n\
+         \x20       latency: '0'\n\
+         \x20       success: admitted_ratio\n\
          \x20 out:\n\
          \x20   onward:\n\
          \x20     publishes:\n\

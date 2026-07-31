@@ -313,7 +313,7 @@ async fn solving_returns_the_draws_behind_each_quantity() {
     let (status, analysis) = get(address, "/api/v1/designs/uncertain/analysis?samples=2000").await;
     assert_eq!(status, 200);
 
-    let offered = &analysis["components"]["api"]["offered"];
+    let offered = &analysis["components"]["api"]["rate"];
     let draws = offered["draws"].as_array().expect("draws");
     assert!(
         !draws.is_empty() && draws.len() <= 256,
@@ -360,7 +360,7 @@ async fn a_solved_answer_is_reused_only_for_the_same_question() {
 
     let (_, quieter) = get(address, &format!("{path}&intervention=quieter")).await;
     assert_ne!(
-        first["components"]["api"]["offered"], quieter["components"]["api"]["offered"],
+        first["components"]["api"]["rate"], quieter["components"]["api"]["rate"],
         "a variant rebinds the demand, so it cannot share the baseline's answer"
     );
 
@@ -378,7 +378,7 @@ async fn a_solved_answer_is_reused_only_for_the_same_question() {
     let (_, edited) = get(address, path).await;
     assert_eq!(edited["sequence"], 1);
     assert_ne!(
-        first["components"]["api"]["offered"], edited["components"]["api"]["offered"],
+        first["components"]["api"]["rate"], edited["components"]["api"]["rate"],
         "an edit moves the design on, so the answer before it must not be reused"
     );
 }
@@ -518,7 +518,7 @@ async fn a_series_is_returned_only_when_it_is_asked_for() {
     let steps = full["series"].as_array().expect("series");
     assert_eq!(steps.len(), 4, "one frame per step");
     assert_eq!(steps[0]["time"], 0.0);
-    assert!(steps[0]["components"]["api"]["offered"]["mean"].is_number());
+    assert!(steps[0]["components"]["api"]["rate"]["mean"].is_number());
 }
 
 /// The catalogue carries the language's vocabulary for the editor to complete.

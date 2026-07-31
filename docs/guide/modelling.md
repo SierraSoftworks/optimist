@@ -140,6 +140,12 @@ port publishing it: an inbound port publishes toward callers, an outbound port
 toward dependencies. That is how `payload` names a request body in one place and
 a reply body in the other without needing two names.
 
+What a signal does declare is which side may publish it, and which must. A `rate`
+is refused on an inbound port, because a component feeding demand back into its
+own caller makes a loop with no fixed point; a `latency` and a `success` are
+required on every inbound port, because a component that never states either
+reads as one that answers instantly and cannot fail.
+
 ## Behaviours
 
 A retry policy, a timeout, or a batching window is not a place work goes; it is a

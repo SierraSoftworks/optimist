@@ -71,9 +71,10 @@ pub struct Port {
     pub summary: String,
     /// Squiggle source for each signal this port publishes, keyed by signal name.
     ///
-    /// On an inbound port these are the responses sent back to callers, and only
-    /// signals that travel backward may appear. On an outbound port they are the
-    /// requests sent to dependencies, and only signals that travel forward may.
+    /// On an inbound port these are the responses sent back to callers, and on
+    /// an outbound port the requests sent to dependencies. Each signal declares
+    /// which sides may state it and which must, and a port breaking that rule is
+    /// refused when the type loads rather than left to read as a resting value.
     ///
     /// Expressions may read the component's properties and channels, so a port
     /// publishes quantities the component has already worked out rather than

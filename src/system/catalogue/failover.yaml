@@ -84,7 +84,7 @@ channels:
       Cancellations arriving early enough to save the work, at the share the
       relationship they arrived on reports.
     expression: cancelled * in.requests.cancellation_effectiveness
-  offered:
+  rate:
     unit: op/s
     summary: Demand still wanted by the time it reaches the pair.
     expression: max(arriving - propagated_cancellation, 0)
@@ -140,12 +140,12 @@ channels:
     unit: op/s
     emphasis: key
     summary: Demand sent to the primary.
-    expression: offered * primary_share
+    expression: rate * primary_share
   to_standby:
     unit: op/s
     emphasis: key
     summary: Demand sent to the standby.
-    expression: offered * standby_share
+    expression: rate * standby_share
   primary_cancellation:
     unit: op/s
     summary: Cancellations passed on to the primary, at its share of the demand.

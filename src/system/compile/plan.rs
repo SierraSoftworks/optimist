@@ -67,7 +67,7 @@ fn vocabulary(
     catalogue: &BTreeMap<String, ComponentType>,
     mutators: &BTreeMap<String, Mutator>,
 ) -> BTreeMap<String, Signal> {
-    let mut signals = builtin_signals();
+    let mut signals = builtin_signals().clone();
     for component_type in catalogue.values() {
         let ports = component_type
             .ports

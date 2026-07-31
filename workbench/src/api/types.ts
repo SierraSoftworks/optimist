@@ -188,11 +188,16 @@ export interface Ports {
   out: Record<string, Port>
 }
 
+/** Whether a port on one side may publish a signal, and whether it must. */
+export type Publication = 'required' | 'allowed' | 'forbidden'
+
 /** One quantity that may travel along a relationship. */
 export interface SignalDefinition {
   unit: string
   summary: string
   aggregate: string
+  /** Which of a component's sides may publish the quantity, and which must. */
+  publish: { in: Publication; out: Publication }
   extensive: boolean
 }
 

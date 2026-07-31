@@ -3,8 +3,16 @@ rate:
   summary: >
     Operations per second travelling along the relationship. The demand a
     component places on whatever is downstream of it.
+
+    Every outbound port states one, because a relationship with no demand on it
+    is a relationship the design did not need to draw. Never published back to a
+    caller: a response leg carrying demand feeds a component's load into its own
+    caller, and the loop that makes has no bound.
   aggregate: sum
   extensive: true
+  publish:
+    in: forbidden
+    out: required
 
 cancellation:
   unit: op/s
@@ -20,6 +28,8 @@ cancellation:
     result, which is why cancelling reduces load by less than it reduces success.
   aggregate: sum
   extensive: true
+  publish:
+    in: forbidden
 
 cancellation_effectiveness:
   unit: share
@@ -39,6 +49,8 @@ cancellation_effectiveness:
   aggregate: mean
   extensive: false
   rest: 0.5
+  publish:
+    in: forbidden
 
 occupancy:
   unit: op
@@ -53,6 +65,8 @@ occupancy:
     calls held at once; a service is exhausted by calls arriving per second.
   aggregate: sum
   extensive: true
+  publish:
+    in: forbidden
 
 latency:
   unit: s
@@ -65,8 +79,17 @@ latency:
     out to several dependencies waits for the slowest, not for all of them end to
     end. Accumulating down the chain is what makes the figure a client reads the
     latency a user would actually experience.
+
+    Every inbound port states one, even where it is nought, because a component
+    that answers without saying how long it took is indistinguishable from one
+    that answers instantly. Also publishable forward, where the delay is not the
+    caller's to wait out: work handed to a buffer is answered at once and reaches
+    the consumer already stale, and that age is the same quantity read at the
+    other end.
   aggregate: max
   extensive: false
+  publish:
+    in: required
 
 success:
   unit: share
@@ -83,8 +106,15 @@ success:
     This is what makes saturation visible without a component silently refusing
     work. A pool asked for more than it can serve reports that it served less,
     and the caller decides what to do about it.
+
+    Every inbound port states one, because a component that never reports failing
+    reads as one that cannot fail, and a design assembled from such components
+    would answer every availability question with certainty.
   aggregate: product
   extensive: false
+  publish:
+    in: required
+    out: forbidden
 
 capacity:
   unit: op/s
@@ -100,8 +130,14 @@ capacity:
 
     Takes the smallest across arrivals, because a caller reaching several
     dependencies can go no faster than the slowest of them.
+
+    Optional rather than required, because a component that holds no work of its
+    own has no rate to report and would have to invent one; unpublished it rests
+    unbounded, which is the right reading for something that is not the limit.
   aggregate: min
   extensive: true
+  publish:
+    out: forbidden
 
 payload:
   unit: B/op
@@ -114,6 +150,9 @@ payload:
     Averaged across arrivals, which is exact when callers send similar payloads
     and understates the spread when they do not; a mix of very different payload
     sizes is better modelled as separate flows.
+
+    Optional on both sides, since a design that never sizes a wire has no need of
+    it, and unpublished it rests at nought so no bandwidth is charged for it.
   aggregate: mean
   extensive: false
 
@@ -141,3 +180,6 @@ peers:
     component does not divide it.
   aggregate: sum
   extensive: false
+  publish:
+    in: forbidden
+    out: forbidden

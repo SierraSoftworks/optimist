@@ -72,14 +72,6 @@
       "upper": 0.015543452457022718,
       "maximum": 0.02141798507452209
     },
-    "offered": {
-      "mean": 600.0,
-      "minimum": 600.0,
-      "lower": 600.0,
-      "median": 600.0,
-      "upper": 600.0,
-      "maximum": 600.0
-    },
     "propagated_cancellation": {
       "mean": 0.0,
       "minimum": 0.0,
@@ -87,6 +79,14 @@
       "median": 0.0,
       "upper": 0.0,
       "maximum": 0.0
+    },
+    "rate": {
+      "mean": 600.0,
+      "minimum": 600.0,
+      "lower": 600.0,
+      "median": 600.0,
+      "upper": 600.0,
+      "maximum": 600.0
     },
     "residence": {
       "mean": 0.013002370427780071,
@@ -154,7 +154,7 @@
       "upper": 0.015550322213681543,
       "maximum": 0.021431364082338374
     },
-    "offered": {
+    "rate": {
       "mean": 600.0,
       "minimum": 600.0,
       "lower": 600.0,

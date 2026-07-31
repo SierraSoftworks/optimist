@@ -411,7 +411,7 @@ fn offered(model: &SystemModel, intervention: Option<&str>) -> f64 {
         None => evaluate(model, &catalogue, config()),
     }
     .expect("solves");
-    match &evaluation.settled().components[&ComponentId::new("recommender")].channels["offered"] {
+    match &evaluation.settled().components[&ComponentId::new("recommender")].channels["rate"] {
         optimist::squiggle::Value::Number(value) => *value,
         value => panic!("expected a certain rate, got {value:?}"),
     }
@@ -530,7 +530,7 @@ fn complementary_flags_split_traffic_between_paths() {
     let split = |share: &str, component: &str| {
         let model = route(share);
         let evaluation = evaluate(&model, &catalogue, config()).expect("solves");
-        match &evaluation.settled().components[&ComponentId::new(component)].channels["offered"] {
+        match &evaluation.settled().components[&ComponentId::new(component)].channels["rate"] {
             optimist::squiggle::Value::Number(value) => *value,
             value => panic!("expected a certain rate, got {value:?}"),
         }
@@ -570,7 +570,7 @@ fn a_flag_may_open_over_time() {
 
     let rate = |step: &optimist::system::Step| match &step.components
         [&ComponentId::new("recommender")]
-        .channels["offered"]
+        .channels["rate"]
     {
         optimist::squiggle::Value::Number(value) => *value,
         value => panic!("expected a certain rate, got {value:?}"),

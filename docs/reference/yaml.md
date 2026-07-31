@@ -239,30 +239,30 @@ properties:
     summary: Tokens the bucket holds.
     default: '0'
 channels:
-  offered:
+  arriving:
     unit: op/s
     summary: Demand arriving from every caller.
     expression: in.requests.rate
   admitted:
     unit: op/s
     summary: Demand passed on, capped per draw at the refill rate.
-    expression: min(offered, refill)
+    expression: min(arriving, refill)
   admitted_ratio:
     unit: '1'
     emphasis: key
     summary: Share of callers served rather than refused.
-    expression: min(admitted / max(offered, 0.000001), 1)
+    expression: min(admitted / max(arriving, 0.000001), 1)
 constraints:
   throughput:
     emphasis: key
     summary: Offered load against the sustained allowance.
-    demand: offered
+    demand: arriving
     limit: refill
 ```
 
 | Section | Notes |
 | --- | --- |
-| `ports.in` / `ports.out` | Named attachment points. Each has `arity` (`one` or `many`, default `many`), `required` (default `false`), `summary`, and `publishes`: a map of signal name to an expression naming a property or channel. |
+| `ports.in` / `ports.out` | Named attachment points. Each has `arity` (`one` or `many`, default `many`), `required` (default `false`), `summary`, and `publishes`: a map of signal name to an expression naming a property or channel. Which signals a side may publish, and which it must, is declared by the [signal vocabulary](catalogue.md#signals) and checked when the type loads. |
 | `properties` | Each has `unit`, optional `summary`, and optional `default`. A property without a default must be supplied. |
 | `channels` | Each has `unit`, optional `summary`, optional `emphasis`, and `expression`. |
 | `constraints` | Each has optional `summary`, optional `emphasis`, `demand`, and `limit`. |

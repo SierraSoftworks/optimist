@@ -52,7 +52,7 @@ channels:
       Cancellations passed on to backends, at the share the relationship they
       arrived on reports arriving early enough to matter.
     expression: cancelled * in.requests.cancellation_effectiveness
-  offered:
+  rate:
     unit: op/s
     summary: Demand still wanted by the time it reaches the balancer.
     expression: max(arriving - propagated_cancellation, 0)
@@ -78,7 +78,7 @@ channels:
       refused by the queue on the wire between them and this balancer, and
       trimming it here as well would charge the same shortfall twice and leave
       an undersized fleet reporting itself comfortably at its limit.
-    expression: offered
+    expression: rate
   backend_wait:
     unit: s
     summary: Time the slowest backend takes to answer.

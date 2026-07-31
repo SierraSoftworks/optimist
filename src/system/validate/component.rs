@@ -7,8 +7,8 @@ use crate::system::{expression::RESERVED, manifest::ComponentType};
 use super::{
     ComponentTypeError,
     checks::{
-        validate_name, validate_references, validate_shaped_identifier, validate_syntax,
-        validate_unit,
+        validate_name, validate_publication, validate_references, validate_shaped_identifier,
+        validate_syntax, validate_unit,
     },
 };
 
@@ -27,6 +27,7 @@ impl ComponentType {
     ///       arity: many
     ///       publishes:
     ///         success: admitted_ratio
+    ///         latency: '0'
     ///   out:
     ///     downstream:
     ///       arity: one
@@ -39,18 +40,18 @@ impl ComponentType {
     ///     unit: op
     ///     default: '0'
     /// channels:
-    ///   offered:
+    ///   arriving:
     ///     unit: op/s
     ///     expression: in.requests.rate
     ///   admitted:
     ///     unit: op/s
-    ///     expression: min([offered, refill])
+    ///     expression: min([arriving, refill])
     ///   admitted_ratio:
     ///     unit: '1'
-    ///     expression: min([admitted / max([offered, 0.000001]), 1])
+    ///     expression: min([admitted / max([arriving, 0.000001]), 1])
     /// constraints:
     ///   throughput:
-    ///     demand: offered
+    ///     demand: arriving
     ///     limit: refill
     /// ";
     /// let component = ComponentType::parse(manifest)?;
@@ -129,18 +130,24 @@ impl ComponentType {
             .ports
             .inbound
             .iter()
-            .map(|(name, port)| (format!("inbound port '{name}'"), port))
+            .map(|(name, port)| (format!("inbound port '{name}'"), port, true))
             .chain(
                 self.ports
                     .outbound
                     .iter()
-                    .map(|(name, port)| (format!("outbound port '{name}'"), port)),
-            );
-        for (location, port) in ports {
+                    .map(|(name, port)| (format!("outbound port '{name}'"), port, false)),
+            )
+            .collect::<Vec<_>>();
+        for (location, port, _) in &ports {
             for (signal, source) in &port.publishes {
                 validate_name("published signal", signal)?;
                 validate_references(&format!("{location} signal '{signal}'"), source, surface)?;
             }
+        }
+        // Checked after every expression, so a type with a typo in it is told
+        // about the typo rather than about the signal the typo left unpublished.
+        for (location, port, inbound) in &ports {
+            validate_publication(location, port, *inbound)?;
         }
         Ok(())
     }
@@ -211,20 +218,63 @@ mod tests {
     }
 
     #[test]
-    fn a_published_signal_must_name_something_the_component_knows() {
+    fn a_port_may_publish_a_property_or_a_channel() {
+        ComponentType::parse(&manifest(
+            "properties:\n  payload:\n    unit: B/op\nchannels:\n  served:\n    unit: op/s\n    expression: in.requests.rate\nports:\n  in:\n    requests:\n      publishes:\n        payload: payload\n        latency: '0'\n        success: '1'\n  out:\n    calls:\n      publishes:\n        rate: served\n",
+        ))
+        .expect("valid");
+    }
+
+    #[test]
+    fn a_signal_travelling_one_way_cannot_be_published_the_other() {
+        // A response leg carrying demand feeds a component's own load back into
+        // its caller, and the loop that makes has no bound.
+        let error = ComponentType::parse(&manifest(
+            "channels:\n  served:\n    unit: op/s\n    expression: in.requests.rate\nports:\n  in:\n    requests:\n      publishes:\n        rate: served\n        latency: '0'\n        success: '1'\n",
+        ))
+        .expect_err("wrong way");
+        assert!(error.to_string().contains("an outbound port"), "{error}");
+    }
+
+    #[test]
+    fn the_engine_supplied_signals_cannot_be_published_at_all() {
+        let error = ComponentType::parse(&manifest(
+            "channels:\n  served:\n    unit: op/s\n    expression: in.requests.rate\nports:\n  out:\n    calls:\n      publishes:\n        rate: served\n        peers: served\n",
+        ))
+        .expect_err("engine supplied");
+        assert!(error.to_string().contains("no port may state"), "{error}");
+    }
+
+    #[test]
+    fn an_inbound_port_must_answer_with_a_latency_and_a_success() {
+        // Omitting either is silent and flattering: the component reads as one
+        // that answers instantly, or as one that cannot fail.
+        let error = ComponentType::parse(&manifest(
+            "ports:\n  in:\n    requests:\n      publishes:\n        success: '1'\n",
+        ))
+        .expect_err("no latency");
+        assert!(error.to_string().contains("'latency'"), "{error}");
+    }
+
+    #[test]
+    fn an_outbound_port_must_state_the_demand_it_places() {
+        let error = ComponentType::parse(&manifest(
+            "properties:\n  payload:\n    unit: B/op\nports:\n  out:\n    calls:\n      publishes:\n        payload: payload\n",
+        ))
+        .expect_err("no rate");
+        assert!(error.to_string().contains("'rate'"), "{error}");
+    }
+
+    #[test]
+    fn a_mistyped_reference_is_reported_before_a_missing_signal() {
+        // Both are wrong with the port, and the typo is the one the author can
+        // act on; reporting the omission first would send them after the wrong
+        // line.
         let error = ComponentType::parse(&manifest(
             "ports:\n  in:\n    requests:\n      publishes:\n        success: missing\n",
         ))
         .expect_err("unresolved");
         assert!(error.to_string().contains("missing"), "{error}");
-    }
-
-    #[test]
-    fn a_port_may_publish_a_property_or_a_channel() {
-        ComponentType::parse(&manifest(
-            "properties:\n  payload:\n    unit: B/op\nchannels:\n  served:\n    unit: op/s\n    expression: in.requests.rate\nports:\n  in:\n    requests:\n      publishes:\n        payload: payload\n  out:\n    calls:\n      publishes:\n        rate: served\n",
-        ))
-        .expect("valid");
     }
 
     #[test]
@@ -260,9 +310,9 @@ mod tests {
     #[test]
     fn constraints_are_checked_like_channels() {
         let error = ComponentType::parse(&manifest(
-            "properties:\n  limit:\n    unit: op/s\nconstraints:\n  throughput:\n    demand: offered\n    limit: limit\n",
+            "properties:\n  limit:\n    unit: op/s\nconstraints:\n  throughput:\n    demand: arriving\n    limit: limit\n",
         ))
         .expect_err("unresolved");
-        assert!(error.to_string().contains("offered"), "{error}");
+        assert!(error.to_string().contains("arriving"), "{error}");
     }
 }

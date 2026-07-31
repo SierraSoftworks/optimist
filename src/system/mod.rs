@@ -79,7 +79,7 @@ pub use schema::{
     SCHEMA_VERSION, SchemaError, StagedDesign, SystemDocument, pack_system, read_system,
     safe_identifier, write_system,
 };
-pub use signal::{Aggregation, Signal};
+pub use signal::{Aggregation, Publication, Publishing, Signal};
 pub use solve::Solve;
 pub use validate::ComponentTypeError;
 
@@ -89,5 +89,5 @@ pub use validate::ComponentTypeError;
 /// arrived at a component or came back to it has no component type to read a
 /// unit from. This is the vocabulary those names are drawn from.
 pub fn signals() -> std::collections::BTreeMap<String, Signal> {
-    signal::builtin_signals()
+    signal::builtin_signals().clone()
 }

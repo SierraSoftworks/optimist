@@ -22,19 +22,31 @@ writing a component rather than after it fails to solve.
 ## Signals
 
 The quantities that travel along a relationship. A signal has no direction of its
-own: which way it travels is settled by the port publishing it.
+own: which way it travels is settled by the port publishing it. Each declares
+which of a component's sides may publish it, and which must, so a type that would
+be subtly incompatible with the rest of the catalogue is refused when it loads
+rather than discovered in a result.
 
-| Signal | Unit | Combines by | Extensive | Meaning |
-| --- | --- | --- | --- | --- |
-| `rate` | `op/s` | sum | yes | Operations per second travelling along the relationship. |
-| `cancellation` | `op/s` | sum | yes | Operations the caller has abandoned. Travels forward, because only the caller knows it has given up. |
-| `cancellation_effectiveness` | `share` | mean | no | Share of those cancellations arriving in time to save the work. Rests at a half rather than at an aggregation identity. |
-| `occupancy` | `op` | sum | yes | Operations in flight: work a caller is holding open against a dependency. |
-| `payload` | `B/op` | mean | no | Bytes carried by one operation. Read on an inbound port it is the request; on an outbound port it is the reply. |
-| `latency` | `s` | max | no | Time from receiving a request to answering it, including every downstream call. Travels back to the caller. |
-| `success` | `share` | product | no | Probability a request is answered successfully. Travels back to the caller. |
-| `capacity` | `op/s` | min | yes | Rate the callee can sustain, reported back so the wire in front of it knows how fast it drains. |
-| `peers` | `1` | sum | no | Nodes on the far end: how many replicas of the peer one replica of this component talks to. Supplied by the engine, not published by a component. |
+| Signal | Unit | Combines by | Extensive | `in` | `out` | Meaning |
+| --- | --- | --- | --- | --- | --- | --- |
+| `rate` | `op/s` | sum | yes | — | required | Operations per second travelling along the relationship. |
+| `cancellation` | `op/s` | sum | yes | — | allowed | Operations the caller has abandoned. Travels forward, because only the caller knows it has given up. |
+| `cancellation_effectiveness` | `share` | mean | no | — | allowed | Share of those cancellations arriving in time to save the work. Rests at a half rather than at an aggregation identity. |
+| `occupancy` | `op` | sum | yes | — | allowed | Operations in flight: work a caller is holding open against a dependency. |
+| `payload` | `B/op` | mean | no | allowed | allowed | Bytes carried by one operation. Read on an inbound port it is the request; on an outbound port it is the reply. |
+| `latency` | `s` | max | no | required | allowed | Time from receiving a request to answering it, including every downstream call. Travels back to the caller, or forward as the age of buffered work. |
+| `success` | `share` | product | no | required | — | Probability a request is answered successfully. Travels back to the caller. |
+| `capacity` | `op/s` | min | yes | allowed | — | Rate the callee can sustain, reported back so the wire in front of it knows how fast it drains. |
+| `peers` | `1` | sum | no | — | — | Nodes on the far end: how many replicas of the peer one replica of this component talks to. Supplied by the engine, not published by a component. |
+
+A dash means a port on that side may not publish the signal at all. `required`
+means every port on that side must: a component that never states a latency reads
+as one that answers instantly, and a component that never states a success as one
+that cannot fail, and both flatter a design silently. Requiring them is what
+makes any two types substitutable for one another.
+
+A signal a project invents is publishable from either side and required by
+neither, because nothing else knows what it means.
 
 `peers` is the one signal no component writes. A component cannot see its own
 surroundings, so the engine states how many replicas of the peer sit on the far
@@ -85,7 +97,7 @@ constraint the engine can rank.
 | `latency_target` | `s` | `infinity` |
 | `success_target` | `share` | `0` |
 
-**Channels** — `offered`, `latency`, `success`, `failure`.
+**Channels** — `rate`, `latency`, `success`, `failure`.
 
 **Constraints** — `latency_objective` (observed latency against the target),
 `success_objective` (observed failure rate against what the objective allows).
@@ -111,7 +123,7 @@ demand.
 | `connection_limit` | `op` | *required* |
 | `overhead` | `s` | `0` |
 
-**Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `offered`,
+**Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `rate`,
 `backend_capacity`, `forwarded`, `backend_wait`, `backend_success`, `latency`,
 `connections`, `success_rate`.
 
@@ -149,7 +161,7 @@ that does not exist would make failing over look free.
 | `success_threshold` | `share` | `0` |
 | `overhead` | `s` | `0` |
 
-**Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `offered`,
+**Channels** — `arriving`, `cancelled`, `propagated_cancellation`, `rate`,
 `primary_latency`, `primary_success`, `latency_health`, `success_health`,
 `primary_health`, `primary_share`, `standby_share`, `to_primary`, `to_standby`,
 `primary_cancellation`, `standby_cancellation`, `standby_latency`,
@@ -232,10 +244,10 @@ itself doing very little work.
 | `hold_time` | `service_time + dependency_wait` |
 | `servers` | `parallelism` |
 | `capacity` | `Little.rate(servers, hold_time)` |
-| `utilisation` | `Queue.utilisation(offered, capacity)` |
+| `utilisation` | `Queue.utilisation(rate, capacity)` |
 | `held_downstream` | `Little.occupancy(calls, dependency_wait)` |
 
-Also `arriving`, `cancelled`, `salvage_share`, `salvaged`, `offered`,
+Also `arriving`, `cancelled`, `salvage_share`, `salvaged`, `rate`,
 `propagated_cancellation`, `dependency_wait`, `dependency_success`, `residence`,
 `concurrency`, `calls`, `success_rate`.
 

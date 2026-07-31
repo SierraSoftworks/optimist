@@ -38,8 +38,9 @@ per draw, the share of draws still moving distinguishes a wholly unstable design
 from one unstable only in its tail.
 
 The commonest cause is unbounded amplification: a retry policy against a
-dependency that cannot serve the amplified demand, or a component type on a
-response leg that publishes `rate` and so feeds demand back into its own caller.
+dependency that cannot serve the amplified demand. The other way to build one — a
+component type feeding demand back into its own caller — is refused when the type
+loads, because `rate` may not be published from an inbound port.
 
 ## Settling on several states is also a result
 

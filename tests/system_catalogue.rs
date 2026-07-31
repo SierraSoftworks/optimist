@@ -745,9 +745,9 @@ scale_units:
 #[test]
 fn a_balancer_forwards_demand_to_sharded_backends() {
     let solved = solve(&balanced("100", "500", "4", "0.02"));
-    close(solved.get("edge", "offered"), 100.0, "offered");
+    close(solved.get("edge", "rate"), 100.0, "rate");
     close(solved.get("edge", "forwarded"), 100.0, "forwarded");
-    close(solved.get("api", "offered"), 25.0, "per replica");
+    close(solved.get("api", "rate"), 25.0, "per replica");
     close(solved.get("edge", "success_rate"), 1.0, "success");
 }
 
@@ -786,7 +786,7 @@ fn shedding_is_charged_once_and_charged_fully() {
     // What the backends answer and what the caller believes succeeded agree.
     near(
         solved.get("api", "calls"),
-        solved.get("users", "offered") * solved.get("users", "success"),
+        solved.get("users", "rate") * solved.get("users", "success"),
         1.0,
         "served rate against the caller's reading",
     );
@@ -888,7 +888,7 @@ fn a_weighting_splits_demand_between_two_independent_backends() {
     close(solved.get("edge", "to_standby"), 25.0, "to the standby");
     // Work is moved, not created: the two legs account for the whole demand.
     close(
-        solved.get("blue", "offered") + solved.get("green", "offered"),
+        solved.get("blue", "rate") + solved.get("green", "rate"),
         100.0,
         "demand conserved across the pair",
     );
@@ -919,7 +919,7 @@ fn demand_moves_to_the_standby_as_the_primary_degrades() {
     near(degraded.get("edge", "to_primary"), 25.0, 0.01, "to primary");
     near(degraded.get("edge", "to_standby"), 75.0, 0.01, "to standby");
     near(
-        degraded.get("blue", "offered") + degraded.get("green", "offered"),
+        degraded.get("blue", "rate") + degraded.get("green", "rate"),
         100.0,
         0.01,
         "demand conserved while failing over",
@@ -1253,8 +1253,8 @@ fn each_behaviour_has_a_setting_at_which_it_does_nothing() {
     for identity in identities {
         let solved = solve(&behaved("100", "8", &identity));
         close(
-            solved.get("api", "offered"),
-            plain.get("api", "offered"),
+            solved.get("api", "rate"),
+            plain.get("api", "rate"),
             &format!("demand under {identity}"),
         );
         close(
@@ -1314,8 +1314,8 @@ fn retrying_a_healthy_dependency_is_free() {
         &attached("retry", &[("attempts", "5")]),
     ));
     close(
-        retried.get("api", "offered"),
-        plain.get("api", "offered"),
+        retried.get("api", "rate"),
+        plain.get("api", "rate"),
         "demand against a dependency that is not failing",
     );
 }
@@ -1422,7 +1422,7 @@ fn cancelling_saves_half_of_what_it_withdraws() {
     );
     close(solved.get("api", "salvaged"), cancelled / 2.0, "salvaged");
     close(
-        solved.get("api", "offered"),
+        solved.get("api", "rate"),
         solved.get("api", "arriving") - cancelled / 2.0,
         "load relieved against load withdrawn",
     );
@@ -1459,15 +1459,15 @@ fn dropping_cancellation_leaves_the_load_behind() {
     // is asked for the whole of the offered demand rather than what is still
     // wanted.
     close(
-        stranded.get("api", "offered"),
+        stranded.get("api", "rate"),
         800.0,
         "load with nothing withdrawn",
     );
     assert!(
-        honoured.get("api", "offered") < stranded.get("api", "offered"),
+        honoured.get("api", "rate") < stranded.get("api", "rate"),
         "honouring cancellation has to relieve the dependency, got {} against {}",
-        honoured.get("api", "offered"),
-        stranded.get("api", "offered")
+        honoured.get("api", "rate"),
+        stranded.get("api", "rate")
     );
     assert!(
         stranded.constraint("api", "capacity") > honoured.constraint("api", "capacity"),
@@ -1499,8 +1499,8 @@ fn how_much_a_cancellation_saves_can_be_stated_per_hop() {
     let assumed = solved(None);
     let stated = solved(Some("0.5"));
     close(
-        stated.get("api", "offered"),
-        assumed.get("api", "offered"),
+        stated.get("api", "rate"),
+        assumed.get("api", "rate"),
         "load with the assumption written down",
     );
     close(
@@ -1519,15 +1519,15 @@ fn how_much_a_cancellation_saves_can_be_stated_per_hop() {
     // is the most a deadline can buy back.
     let none = solved(Some("0"));
     close(none.get("api", "salvaged"), 0.0, "nothing salvaged");
-    close(none.get("api", "offered"), 800.0, "load with nothing saved");
+    close(none.get("api", "rate"), 800.0, "load with nothing saved");
     let all = solved(Some("1"));
     close(
-        all.get("api", "offered"),
+        all.get("api", "rate"),
         all.get("api", "arriving") - all.get("api", "cancelled"),
         "load with everything saved",
     );
     assert!(
-        all.get("api", "offered") < assumed.get("api", "offered"),
+        all.get("api", "rate") < assumed.get("api", "rate"),
         "saving all of a cancellation has to relieve more than saving half of it"
     );
 }
@@ -1786,12 +1786,12 @@ fn a_cache_passes_on_only_its_misses() {
         &attached("cache", &[("hit_ratio", "0.9")]),
     ));
     close(
-        solved.get("api", "offered"),
+        solved.get("api", "rate"),
         100.0,
         "demand reaching the dependency",
     );
     close(
-        solved.get("users", "offered"),
+        solved.get("users", "rate"),
         1000.0,
         "demand the caller still makes",
     );
@@ -1802,7 +1802,7 @@ fn a_cache_passes_on_only_its_misses() {
         &attached("cache", &[("hit_ratio", "1")]),
     ));
     close(
-        complete.get("api", "offered"),
+        complete.get("api", "rate"),
         0.0,
         "a dependency nothing misses to",
     );
@@ -1905,7 +1905,7 @@ fn batching_trades_operations_for_waiting() {
         &attached("batch", &[("size", "10"), ("max_delay", "0.05")]),
     ));
     close(
-        solved.get("api", "offered"),
+        solved.get("api", "rate"),
         100.0,
         "operations after batching",
     );
@@ -1929,7 +1929,7 @@ fn shedding_caps_demand_and_is_charged_for() {
         &attached("load-shed", &[("limit", "100")]),
     ));
     close(
-        solved.get("api", "offered"),
+        solved.get("api", "rate"),
         100.0,
         "demand after the limit",
     );
@@ -1954,7 +1954,7 @@ fn a_flag_admits_the_share_it_is_set_to() {
         &attached("feature-flag", &[("exposure", "0.25")]),
     ));
     close(
-        quarter.get("api", "offered"),
+        quarter.get("api", "rate"),
         100.0,
         "demand at a quarter exposure",
     );
@@ -1965,7 +1965,7 @@ fn a_flag_admits_the_share_it_is_set_to() {
         &attached("feature-flag", &[("exposure", "0")]),
     ));
     close(
-        off.get("api", "offered"),
+        off.get("api", "rate"),
         0.0,
         "a flag turned off starves what is behind it",
     );
@@ -1976,7 +1976,7 @@ fn a_flag_admits_the_share_it_is_set_to() {
             "8",
             &attached("feature-flag", &[("exposure", exposure)]),
         ));
-        let admitted = clamped.get("api", "offered");
+        let admitted = clamped.get("api", "rate");
         assert!(
             (0.0..=400.0).contains(&admitted),
             "an exposure of {exposure} must clamp rather than amplify, got {admitted}"
@@ -1996,7 +1996,7 @@ fn a_fallible_link_loses_requests_and_replies_independently() {
         ),
     ));
     close(
-        solved.get("api", "offered"),
+        solved.get("api", "rate"),
         75.0,
         "demand surviving transmit loss",
     );
@@ -2024,13 +2024,13 @@ fn the_order_behaviours_are_declared_in_changes_the_answer() {
         "    mutators:\n      - type: retry\n        properties:\n          attempts: '3'\n      - type: load-shed\n        properties:\n          limit: '300'\n",
     ));
     assert!(
-        shed_first.get("api", "offered") > retry_first.get("api", "offered"),
+        shed_first.get("api", "rate") > retry_first.get("api", "rate"),
         "amplifying after a cap must place more load than capping after amplifying, got {} then {}",
-        shed_first.get("api", "offered"),
-        retry_first.get("api", "offered")
+        shed_first.get("api", "rate"),
+        retry_first.get("api", "rate")
     );
     close(
-        retry_first.get("api", "offered"),
+        retry_first.get("api", "rate"),
         300.0,
         "a cap applied last is a cap",
     );

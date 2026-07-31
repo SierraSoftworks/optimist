@@ -133,7 +133,7 @@ fn a_two_component_model_solves_to_its_capacity() {
 
     // Each replica has eight slots and receives a quarter of the fleet's load.
     assert!((api.mean("capacity") - 400.0).abs() < 1e-6);
-    assert!((api.mean("offered") - 25.0).abs() < 1e-9);
+    assert!((api.mean("rate") - 25.0).abs() < 1e-9);
     assert!((api.mean("utilisation") - 0.0625).abs() < 1e-9);
     // Well below saturation the pool serves everything offered.
     assert!((api.mean("calls") - 25.0).abs() < 1e-9);
@@ -191,7 +191,7 @@ fn demand_beyond_capacity_is_refused() {
     let users = &solved[&ComponentId::new("users")];
     // Eight slots at 20 ms sustain 400 of the 5000 offered. The refusal happens
     // on the wire, so it is the caller that finds out.
-    let served = users.mean("offered") * users.mean("success");
+    let served = users.mean("rate") * users.mean("success");
     assert!(
         (served - 400.0).abs() < 40.0,
         "what is served should be about the capacity, got {served}"
@@ -220,7 +220,7 @@ fn uncertainty_propagates_through_the_model() {
     };
     let solved = solve(&model, config());
     let api = &solved[&ComponentId::new("api")];
-    assert!(api.spread("offered") > 0.0, "demand must stay uncertain");
+    assert!(api.spread("rate") > 0.0, "demand must stay uncertain");
     assert!(
         api.spread("utilisation") > 0.0,
         "uncertainty must reach utilisation"
@@ -256,7 +256,7 @@ fn scratchpad_quantities_are_shared() {
         ..SystemModel::default()
     };
     let solved = solve(&model, config());
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 250.0).abs() < 1e-9);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 250.0).abs() < 1e-9);
 }
 
 /// Demand from several sources arrives summed.
@@ -276,7 +276,7 @@ fn inbound_demand_is_summed_across_relationships() {
         ..SystemModel::default()
     };
     let solved = solve(&model, config());
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 200.0).abs() < 1e-9);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 200.0).abs() < 1e-9);
 }
 
 /// A datastore's resident volume follows the ingest rate and retention window.
@@ -974,13 +974,13 @@ fn replicated_path(distribution: Distribution, members: &[&str]) -> SystemModel 
 #[test]
 fn a_sharded_scale_unit_divides_demand() {
     let whole = solve(&sharded_fleet(Vec::new()), config());
-    assert!((whole[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+    assert!((whole[&ComponentId::new("api")].mean("rate") - 1_200.0).abs() < 1e-6);
 
     let sharded = solve(
         &sharded_fleet(vec![cell("cell", "4", Distribution::Sharded, &["api"])]),
         config(),
     );
-    assert!((sharded[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
+    assert!((sharded[&ComponentId::new("api")].mean("rate") - 300.0).abs() < 1e-6);
 }
 
 /// A mirrored unit replicates cost without dividing load.
@@ -994,15 +994,15 @@ fn a_mirrored_scale_unit_does_not_divide_demand() {
         &sharded_fleet(vec![cell("region", "4", Distribution::Mirrored, &["api"])]),
         config(),
     );
-    assert!((mirrored[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
+    assert!((mirrored[&ComponentId::new("api")].mean("rate") - 1_200.0).abs() < 1e-6);
 }
 
 /// Per-replica work gathers when it leaves a sharded boundary.
 #[test]
 fn traffic_leaving_a_sharded_unit_gathers_before_a_shared_dependency() {
     let solved = solve(&replicated_path(Distribution::Sharded, &["api"]), config());
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
-    assert!((solved[&ComponentId::new("store")].mean("offered") - 1_200.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 300.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("rate") - 1_200.0).abs() < 1e-6);
 }
 
 /// Members of one unit communicate locally rather than sharding twice.
@@ -1012,16 +1012,16 @@ fn traffic_between_members_of_one_sharded_unit_stays_local() {
         &replicated_path(Distribution::Sharded, &["api", "store"]),
         config(),
     );
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 300.0).abs() < 1e-6);
-    assert!((solved[&ComponentId::new("store")].mean("offered") - 300.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 300.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("rate") - 300.0).abs() < 1e-6);
 }
 
 /// Mirrored replicas repeat their downstream work outside the boundary.
 #[test]
 fn traffic_leaving_a_mirrored_unit_multiplies_cost() {
     let solved = solve(&replicated_path(Distribution::Mirrored, &["api"]), config());
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 1_200.0).abs() < 1e-6);
-    assert!((solved[&ComponentId::new("store")].mean("offered") - 4_800.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 1_200.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("store")].mean("rate") - 4_800.0).abs() < 1e-6);
 }
 
 /// Nested units multiply, and only the sharded levels divide.
@@ -1035,7 +1035,7 @@ fn nesting_multiplies_replicas_and_shards_divide() {
     let model = sharded_fleet(vec![region, shard]);
     let solved = solve(&model, config());
     // Thirty copies exist, but only the ten shards divide the load.
-    assert!((solved[&ComponentId::new("api")].mean("offered") - 120.0).abs() < 1e-6);
+    assert!((solved[&ComponentId::new("api")].mean("rate") - 120.0).abs() < 1e-6);
 
     let catalogue = builtin_catalogue().expect("catalogue");
     let evaluation = evaluate(&model, &catalogue, config()).expect("solves");

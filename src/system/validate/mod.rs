@@ -58,6 +58,22 @@ pub enum ComponentTypeError {
         /// The quantity it names.
         channel: String,
     },
+    /// A port publishes a signal that cannot travel the way it faces.
+    Undeliverable {
+        /// The port that published it.
+        location: String,
+        /// The signal that cannot travel that way.
+        signal: String,
+        /// The side that could publish it, where any side can.
+        instead: Option<String>,
+    },
+    /// A port omits a signal every port on its side must publish.
+    Unpublished {
+        /// The port that omitted it.
+        location: String,
+        /// The signal it has to state.
+        signal: String,
+    },
 }
 
 impl fmt::Display for ComponentTypeError {
@@ -88,6 +104,24 @@ impl fmt::Display for ComponentTypeError {
             Self::Output { signal, channel } => write!(
                 formatter,
                 "output '{signal}' publishes '{channel}', which is not a property or a channel"
+            ),
+            Self::Undeliverable {
+                location,
+                signal,
+                instead: Some(side),
+            } => write!(
+                formatter,
+                "{location} publishes '{signal}', which does not travel that way; publish it from {side} instead"
+            ),
+            Self::Undeliverable {
+                location, signal, ..
+            } => write!(
+                formatter,
+                "{location} publishes '{signal}', which the engine supplies and no port may state"
+            ),
+            Self::Unpublished { location, signal } => write!(
+                formatter,
+                "{location} does not publish '{signal}', which every port on that side must state"
             ),
         }
     }

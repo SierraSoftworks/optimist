@@ -17,7 +17,7 @@ ports:
       arity: many
       summary: Entry points this population calls.
       publishes:
-        rate: offered
+        rate: rate
         payload: payload
 properties:
   request_rate:
@@ -44,7 +44,7 @@ properties:
       the objective the design exists to meet.
     default: '0'
 channels:
-  offered:
+  rate:
     unit: op/s
     emphasis: key
     summary: Demand entering the system.
@@ -66,7 +66,7 @@ channels:
   failure:
     unit: op/s
     summary: Requests per second that did not receive a successful answer.
-    expression: offered * max(1 - success, 0)
+    expression: rate * max(1 - success, 0)
 constraints:
   latency_objective:
     emphasis: key

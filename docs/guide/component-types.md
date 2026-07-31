@@ -56,7 +56,7 @@ properties:
     default: '0'
 
 channels:
-  offered:
+  arriving:
     unit: op/s
     summary: Demand arriving from every caller.
     expression: in.requests.rate
@@ -64,19 +64,19 @@ channels:
     unit: op/s
     emphasis: key
     summary: Demand passed on, capped per draw at the refill rate.
-    expression: min(offered, refill)
+    expression: min(arriving, refill)
   admitted_ratio:
     unit: share
     emphasis: key
     summary: Share of callers served rather than refused.
-    expression: min(admitted / max(offered, 0.000001), 1)
+    expression: min(admitted / max(arriving, 0.000001), 1)
 
 constraints:
   throughput:
     summary: >
       Offered load against the sustained allowance. Saturating means callers are
       being refused, which is a cost paid deliberately.
-    demand: offered
+    demand: arriving
     limit: refill
 ```
 
@@ -90,9 +90,16 @@ through untouched. Channels are ordered automatically by what they refer to; a
 cycle *within* one component is rejected.
 
 **Ports** are the named places relationships attach, and what each publishes onto
-them. An inbound port publishes the response sent back to callers, so only
-signals that travel backward may appear there. An outbound port publishes the
-request sent to dependencies, so only signals that travel forward may.
+them. An inbound port publishes the response sent back to callers, and an
+outbound port the request sent to dependencies. Which side may publish a signal
+is declared by the signal itself and checked when the type loads, so a rate
+cannot be sent back to a caller and a `peers` count cannot be published at all.
+
+The same declaration says which signals a port *must* publish: every inbound port
+states a `latency` and a `success`, and every outbound port a `rate`. Omitting
+one is not an error the engine could otherwise report — the missing figure simply
+rests, and a component with no latency reads as one that answers instantly. The
+requirement is what makes two types substitutable for one another.
 
 **Constraints** pair a demand channel with the limit it consumes, and are the
 whole point of the exercise. Every bottleneck the engine reports is a constraint
@@ -235,7 +242,9 @@ Load-time validation rejects a definition when:
 - an expression does not parse,
 - an expression refers to a name the evaluator will not supply,
 - a unit annotation does not parse,
-- a port publishes a quantity that is neither a property nor a channel.
+- a port publishes a quantity that is neither a property nor a channel,
+- a port publishes a signal that cannot travel the way it faces,
+- a port omits a signal every port on its side must publish.
 
 Unknown fields are refused, in a manifest exactly as in a design document. A
 file that nearly parses is more dangerous than one that does not: a manifest
@@ -248,9 +257,10 @@ it would have carried a flow.
 **Response ports and `rate`.** Signals flow along a relationship in one
 direction only, and an outbound port's `publishes` applies to every relationship
 leaving it. A component sitting on the response leg of a feedback loop that
-publishes `rate` feeds demand back into its own caller, which gives the loop a
-gain above one and no fixed point to find. If a type exists to model a delay on
-the way back, publish `latency` and leave `rate` alone.
+published `rate` would feed demand back into its own caller, which gives the loop
+a gain above one and no fixed point to find. That is why `rate` is refused on an
+inbound port outright: if a type exists to model a delay on the way back, publish
+`latency` and leave `rate` alone.
 
 **Choose the state variable carefully.** A component whose utilisation is derived
 from an arrival *rate* cannot produce an occupancy-driven fold, because there is

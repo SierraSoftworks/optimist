@@ -275,9 +275,9 @@ fn smoke_test(loaded: &LoadedSystem, findings: &mut Vec<Finding>) {
                     .map(|moving| format!(" on `{}` of `{}`", moving.channel, moving.component))
                     .unwrap_or_default(),
             ),
-            "A loop whose gain exceeds one has no steady state. Look for a component on a \
-             response edge that publishes `rate`, or solve with `--transient` to watch it \
-             diverge.",
+            "A loop whose gain exceeds one has no steady state. Look for a retry policy \
+             against a dependency that cannot serve the demand it multiplies, or solve with \
+             `--transient` to watch it diverge.",
         )),
         Ok(_) => {}
     }

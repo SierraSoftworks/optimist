@@ -72,14 +72,6 @@
       "upper": 0.015666305798698103,
       "maximum": 0.021102591580080488
     },
-    "offered": {
-      "mean": 400.0,
-      "minimum": 400.0,
-      "lower": 400.0,
-      "median": 400.0,
-      "upper": 400.0,
-      "maximum": 400.0
-    },
     "propagated_cancellation": {
       "mean": 0.0,
       "minimum": 0.0,
@@ -87,6 +79,14 @@
       "median": 0.0,
       "upper": 0.0,
       "maximum": 0.0
+    },
+    "rate": {
+      "mean": 400.0,
+      "minimum": 400.0,
+      "lower": 400.0,
+      "median": 400.0,
+      "upper": 400.0,
+      "maximum": 400.0
     },
     "residence": {
       "mean": 0.013153201545242863,
@@ -210,14 +210,6 @@
       "upper": 0.015019043125596385,
       "maximum": 0.021383758779358785
     },
-    "offered": {
-      "mean": 400.0,
-      "minimum": 400.0,
-      "lower": 400.0,
-      "median": 400.0,
-      "upper": 400.0,
-      "maximum": 400.0
-    },
     "propagated_cancellation": {
       "mean": 0.0,
       "minimum": 0.0,
@@ -225,6 +217,14 @@
       "median": 0.0,
       "upper": 0.0,
       "maximum": 0.0
+    },
+    "rate": {
+      "mean": 400.0,
+      "minimum": 400.0,
+      "lower": 400.0,
+      "median": 400.0,
+      "upper": 400.0,
+      "maximum": 400.0
     },
     "residence": {
       "mean": 0.012313910304859496,
@@ -448,7 +448,7 @@
       "upper": 0.01567085928487736,
       "maximum": 0.021110980440068358
     },
-    "offered": {
+    "rate": {
       "mean": 400.0,
       "minimum": 400.0,
       "lower": 400.0,

@@ -2,7 +2,14 @@
 
 use std::collections::BTreeSet;
 
-use crate::{squiggle::parse, system::expression::free_names};
+use crate::{
+    squiggle::parse,
+    system::{
+        expression::free_names,
+        manifest::Port,
+        signal::{Publication, builtin_signals},
+    },
+};
 
 use super::ComponentTypeError;
 
@@ -68,6 +75,49 @@ pub(super) fn validate_references(
                 location: location.to_owned(),
                 value: name,
             });
+        }
+    }
+    Ok(())
+}
+
+/// Checks a port's published signals against the sides each may travel from.
+///
+/// Two component types are interchangeable only because they publish the same
+/// signals from the same side, and nothing about a design says so: a missing
+/// latency reads as an instant answer and a missing success as one that cannot
+/// fail. Both are silent, and both flatter the design.
+pub(super) fn validate_publication(
+    location: &str,
+    port: &Port,
+    inbound: bool,
+) -> Result<(), ComponentTypeError> {
+    for (name, signal) in builtin_signals() {
+        let (rule, other) = if inbound {
+            (signal.publish.inbound, signal.publish.outbound)
+        } else {
+            (signal.publish.outbound, signal.publish.inbound)
+        };
+        match (rule, port.publishes.contains_key(name)) {
+            (Publication::Forbidden, true) => {
+                return Err(ComponentTypeError::Undeliverable {
+                    location: location.to_owned(),
+                    signal: name.clone(),
+                    instead: (other != Publication::Forbidden).then(|| {
+                        if inbound {
+                            "an outbound port".to_owned()
+                        } else {
+                            "an inbound port".to_owned()
+                        }
+                    }),
+                });
+            }
+            (Publication::Required, false) => {
+                return Err(ComponentTypeError::Unpublished {
+                    location: location.to_owned(),
+                    signal: name.clone(),
+                });
+            }
+            _ => {}
         }
     }
     Ok(())
