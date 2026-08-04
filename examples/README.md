@@ -26,18 +26,18 @@ puts λL in flight, and a pool at fraction ρ of its limit answers in S/(1−ρ)
 Together those give L = S / (1 − λL/C), which has real solutions only while
 4λS ≤ C. The design folds at C/4S — a number built from an idle latency and a
 pool size, neither of which is a throughput figure and neither of which appears
-on a capacity plan. Measured: the store answers in 11 ms at rest and 4.96 s at
+on a capacity plan. Measured: the store answers in 11 ms at rest and 3.5 s at
 3.5× demand, with its own service time unchanged.
 
 **Retrying past the fold lowers success rather than protecting it**, because the
 failures it answers are congestion it caused. At the surge, three attempts give
-57% success where one gives 82%. The deadline decides how much this costs: at a
-30 ms budget the same comparison is 72% against 19%, and beyond about six times
+71% success where one gives 85%. The deadline decides how much this costs: at a
+30 ms budget the same comparison is 43% against 84%, and beyond about six times
 the dependency's idle latency the timeout never fires before the fold and the
 retry policy is inert.
 
 **It recovers the moment demand does.** A socket buffer holds a few hundred
-requests and drains against a surplus of thousands per second, so a tenfold
+requests and drains against a surplus of thousands per second, so a fivefold
 change in wire depth makes no difference to recovery at all. That is the
 property the next example does not have.
 

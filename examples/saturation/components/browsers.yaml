@@ -13,9 +13,6 @@ outgoing:
 - to: api
   capacity: link_capacity
   mutators:
-  - type: retry
-    properties:
-      attempts: '2'
   - type: timeout
     properties:
       budget: '5'
@@ -26,4 +23,4 @@ outgoing:
     properties:
       limit: rate_limit
   summary: |
-    Checkout requests. No policy here: the browser waits, and whatever the API reports is what the user experiences.
+    Checkout requests. The browser gives up after five seconds and only a fifth of the work it abandons is ever reclaimed, but it does not retry: whatever the API reports is what the user experiences. The amplification this example is about belongs to the API's call to the store and to nothing else, so there is deliberately no second retry layer here to share the blame with.
