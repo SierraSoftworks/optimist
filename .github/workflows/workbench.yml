@@ -1,0 +1,88 @@
+name: Workbench
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: workbench/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: workbench
+
+      # `npm run build` type-checks with vue-tsc before bundling, so this covers
+      # the type contract as well as the bundle.
+      - name: Build
+        run: npm run build
+        working-directory: workbench
+
+      - name: Run Tests
+        run: npm test
+        working-directory: workbench
+
+  e2e:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: workbench/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: workbench
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: workbench
+
+      # Playwright starts both servers itself, and the API server is a debug
+      # build of the CLI, so building it up front keeps the run inside the
+      # web server start-up timeout.
+      - name: Build Server
+        run: cargo build
+
+      - name: Run End-to-End Tests
+        run: npm run test:e2e
+        working-directory: workbench
+
+      - name: Upload Playwright Traces
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results
+          path: workbench/test-results
+          retention-days: 7

@@ -1,0 +1,265 @@
+name: Rust
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+
+env:
+  VERSION: "0.0.0-dev"
+  APP_NAME: optimist
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Start Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Generate Package Version (Release Tag)
+        shell: pwsh
+        if: github.event_name == 'release'
+        run: Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$('${{ github.event.release.tag_name }}'.substring(1))"
+
+      - name: Set Package Version
+        run: sed -i "s/^version\s*=\s*\".*\"/version = \"$VERSION\"/g" Cargo.toml
+
+      - name: Stash Versioned Cargo.toml
+        uses: actions/upload-artifact@v7
+        with:
+          name: cargofile
+          path: Cargo.toml
+
+  build-workbench:
+    name: Build Workbench
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+          cache: npm
+          cache-dependency-path: workbench/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+        working-directory: workbench
+
+      - name: Build Workbench
+        run: npm run build
+        working-directory: workbench
+
+      # Release builds embed this directory into the binary, and the test suite
+      # exercises the handlers which serve it, so every downstream job needs it.
+      - name: Upload build artifacts for use in other build stages
+        uses: actions/upload-artifact@v7
+        with:
+          name: workbench-dist
+          path: ./workbench/dist
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    needs:
+      - build-workbench
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: cargo install grcov
+        uses: SierraSoftworks/setup-grcov@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Fetch workbench build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: workbench-dist
+          path: ./workbench/dist
+
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Tests
+        run: cargo nextest run --profile ci
+        env:
+          RUSTFLAGS: -Cinstrument-coverage
+          LLVM_PROFILE_FILE: optimist-%p-%m.profraw
+
+      # nextest does not run doctests, and the public API documentation carries
+      # runnable examples which are part of the contract.
+      - name: Run Doctests
+        run: cargo test --doc
+        env:
+          RUSTFLAGS: -Cinstrument-coverage
+          LLVM_PROFILE_FILE: optimist-doc-%p-%m.profraw
+
+      - name: grcov
+        run: grcov . --binary-path target/debug/deps/ -s . -t lcov --ignore-not-existing --ignore '../**' --ignore '/*' --ignore 'C:/' -o ./lcov.info
+
+      - name: codecov upload
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          files: ./lcov.info
+
+  comprehensive:
+    name: Comprehensive Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    needs:
+      - build-workbench
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: Fetch workbench build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: workbench-dist
+          path: ./workbench/dist
+
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: comprehensive
+
+      # The end-to-end sweeps solve the shipped designs over a long horizon and
+      # cost more than the rest of the suite put together, so they run without
+      # coverage instrumentation to keep the wall-clock cost bearable.
+      - name: Run Comprehensive Tests
+        run: cargo nextest run --profile ci --features comprehensive_tests
+
+  build-app:
+    name: ${{ matrix.os }}-${{ matrix.arch }}-release
+    runs-on: ${{ matrix.run_on }}
+
+    needs:
+      - version
+      - build-workbench
+
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          # Windows builds
+          - arch: amd64
+            os: windows
+            run_on: windows-latest
+            target: x86_64-pc-windows-msvc
+            extension: .exe
+
+          # Linux builds
+          - arch: amd64
+            run_on: ubuntu-latest
+            os: linux
+            target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            os: linux
+            run_on: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+
+          # Apple macOS builds
+          - arch: amd64
+            run_on: macos-latest
+            os: darwin
+            target: x86_64-apple-darwin
+          - arch: arm64
+            run_on: macos-latest
+            os: darwin
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Get Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # Set up the cache before fetching the versioned Cargo.toml.
+      # Swatinem/rust-cache derives its cache key from the contents of
+      # Cargo.toml/Cargo.lock, so restoring the version-bumped Cargo.toml first
+      # would change the key on release builds and prevent any cache from being
+      # restored, forcing a full rebuild every time.
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Give each matrix entry its own cache scope. Without this, every
+          # entry in the matrix shares the same automatic cache key (derived
+          # from the job name + Cargo.lock), so the jobs clobber one another's
+          # caches and targets like aarch64 (built via cross) never get a
+          # usable cache restored, forcing a full rebuild on every run.
+          key: ${{ matrix.target }}
+
+      - name: Fetch Versioned Cargo.toml
+        uses: actions/download-artifact@v8
+        with:
+          name: cargofile
+
+      - name: Fetch workbench build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: workbench-dist
+          path: ./workbench/dist
+
+      - name: Install cross
+        if: ${{ matrix.cross }}
+        run: cargo install cross --locked
+
+      - name: cargo build
+        run: ${{ matrix.cross && 'cross' || 'cargo' }} build --release --target ${{ matrix.target }}
+
+      # cross runs the compiler inside a Docker container as root, so the
+      # registry downloads and build artifacts it writes into the cached
+      # directories end up owned by root. Swatinem/rust-cache's save step runs
+      # as the unprivileged runner user and cannot prune root-owned files,
+      # which causes the cache save to fail and the cross build to never be
+      # cached. Reclaim ownership so the cache can be persisted.
+      - name: Reclaim cache ownership from cross
+        if: ${{ matrix.cross }}
+        run: sudo chown -R "$(id -u):$(id -g)" "$HOME/.cargo" target
+
+      - name: Upload GitHub Release Artifacts
+        uses: SierraSoftworks/gh-releases@v1.0.10
+        if: github.event_name == 'release'
+        with:
+          files: "target/${{ matrix.target }}/release/${{ env.APP_NAME }}${{ matrix.extension }} | ${{ env.APP_NAME }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.extension }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          overwrite: "true"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request' || github.event_name == 'release'
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.extension }}
+          path: target/${{ matrix.target }}/release/${{ env.APP_NAME }}${{ matrix.extension }}

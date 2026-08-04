@@ -1,0 +1,21 @@
+name: Changelog
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v7.5.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
