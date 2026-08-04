@@ -25,7 +25,7 @@
     "@lucide/vue": "^1.24.0",
     "@tanstack/vue-query": "^5.101.2",
     "@types/cytoscape": "^3.21.9",
-    "@vue/devtools-api": "^8.1.5",
+    "@vue/devtools-api": "^8.2.1",
     "codemirror": "^6.0.2",
     "cytoscape": "^3.34.0",
     "element-plus": "^2.14.3",
@@ -43,6 +43,6 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.5"
+    "vue-tsc": "^3.3.9"
   }
 }
