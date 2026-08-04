@@ -33,7 +33,7 @@ futures-util = "0.3.31"
 proptest = "1.7.0"
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
 rstest = "0.26.1"
-tokio-tungstenite = "0.29.0"
+tokio-tungstenite = "0.30.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [features]
