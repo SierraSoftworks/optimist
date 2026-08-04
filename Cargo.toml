@@ -13,13 +13,13 @@ colored = "3.1.1"
 include_dir = "0.7.4"
 human-errors = { version = "0.2.4", features = ["pretty"] }
 mime_guess = "2.0.5"
-rand = "=0.8.7"
-rand_chacha = "=0.3.1"
+rand = "=0.10.2"
+rand_chacha = "=0.9.0"
 rust-embed = "8.7.2"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = "1.0.141"
 serde_yaml_ng = "0.10.0"
-statrs = "=0.18.0"
+statrs = "=0.19.0"
 textwrap = { version = "0.16.2", features = ["terminal_size"] }
 tokio = { version = "1.46.1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
 indicatif = "0.18.6"
