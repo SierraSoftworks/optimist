@@ -6,6 +6,11 @@ optimist [--output <FORMAT>] [--colour <WHEN>] <COMMAND>
 
 > Design large systems and find what constrains them.
 
+Most of this is also in the workbench, and the workbench is the better place to
+explore a design. The CLI is for the cases where a script is the right client:
+validating a design in continuous integration, producing a machine-readable
+answer, and serving the workbench in the first place.
+
 There are two things to do with a design: read one from disk and ask it
 questions, or serve a directory of them so the workbench and other editors can
 work together. Every command is one of those.

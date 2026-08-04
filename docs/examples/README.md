@@ -8,6 +8,14 @@ All five are covered by tests that assert the conclusions they claim to teach,
 so an engine change that quietly stops one from demonstrating its point fails
 the build rather than the reader.
 
+The quickest way through them is to serve the directory and open each one in the
+workbench, where the commands quoted below become a variant in the left-hand list
+and the settings panel:
+
+```sh
+optimist serve --designs ./examples
+```
+
 The first three build on each other and are best read in order.
 
 ## saturation

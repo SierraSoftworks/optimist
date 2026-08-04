@@ -4,6 +4,12 @@ A design is a graph of typed components wired together. This page covers the
 seven things a design is made of and how they fit together; the file layout they
 are stored in is in the [YAML reference](../reference/yaml.md).
 
+![The design view with a component selected, showing the diagram, the component's properties, and the quantities its type derives.](/screenshots/design.png)
+
+Everything below is a field on that screen. The workbench writes it back to the
+directory in canonical form, so a design assembled by hand and one assembled in
+the browser are the same design.
+
 ## Components
 
 A component is one part of the system. It adopts a **component type**, which

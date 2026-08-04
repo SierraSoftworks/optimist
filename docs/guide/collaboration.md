@@ -1,11 +1,13 @@
 # The workbench and shared editing
 
-The CLI reads files. To edit a design with other people, serve a directory of
-them and let the workbench, or any other client, talk to it.
+The workbench is how most people use Optimist. Serve a directory of designs and
+it, or any other client, talks to the same server.
 
 ```sh
 optimist serve --designs ./designs
 ```
+
+![The workbench's design picker, listing the designs the server is holding as cards with their summaries.](/screenshots/designs.png)
 
 ## What a workspace is
 

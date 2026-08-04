@@ -5,6 +5,12 @@ precisely stays a distribution the whole way through the solve, and the spread o
 the answer reports exactly how much of that uncertainty has crossed into
 congestion.
 
+Every field that takes an expression previews what it evaluates to while you are
+typing into it, so the spread being authored is visible before the design is
+solved.
+
+![A shared quantity being edited, with a flyout showing the density of the lognormal it evaluates to and its p10, median, and p90.](/screenshots/quantities.png)
+
 ## Squiggle in one page
 
 Optimist embeds its own Squiggle-compatible runtime. It owns its syntax tree,
@@ -194,7 +200,12 @@ is a distribution on `cache_hits`, not a second design.
 
 ## Reading the result
 
-The CLI reports a mean and a central eighty percent interval:
+A solved quantity is charted across the horizon with its distribution shaded
+around it, and stopping on a step draws the spread behind that point.
+
+![The simulation view charting success rate and response time, with the distribution across draws shaded around each line.](/screenshots/simulation.png)
+
+The CLI reports the same figures as a mean and a central eighty percent interval:
 
 ```text
 api  capacity  685.1550 [450.9287 .. 947.7374]

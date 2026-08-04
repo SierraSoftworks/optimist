@@ -1,173 +1,181 @@
 # Getting started
 
-This guide takes a shipped example, asks it the four questions the tool can
-answer, and then opens it in the workbench.
+This guide opens a shipped example in the workbench and asks it the four
+questions the tool can answer: what is in this design, what does it do, what
+constrains it, and would the proposed change help.
 
 ## Prerequisites
 
 - Rust 1.96 or newer
+- Node 20 or newer
 - A local checkout of Optimist
-- Node 20 or newer, if you want the workbench
 
 ```sh
-cargo build
+npm --prefix workbench install
+npm --prefix workbench run build
+cargo build --release
 ```
 
-The examples below use `cargo run --` in place of the built binary. If you have
-installed `optimist` onto your path, drop that prefix.
+## Open a workspace
 
-## A design is a directory
+A workspace is a directory whose subdirectories are designs. Point the server at
+one and it serves both the API and the workbench from the same process.
 
-There is no database and no server to start. A design is a directory of YAML:
+```sh
+cargo run --release -- serve --designs ./examples
+```
+
+Open `http://127.0.0.1:3000` and every design in the directory is listed.
+
+![The workbench's design picker, listing the shipped examples as cards with their summaries.](/screenshots/designs.png)
+
+The rest of this guide uses **Metastable saturation**: a checkout service whose
+workers are held for the whole of a downstream call, behind a retry policy. It is
+chosen because a summary hides what matters about it.
+
+::: tip Working on the front end
+Run Vite's dev server instead. It proxies `/api`, including the WebSocket upgrade
+the change feed needs.
+
+```sh
+npm --prefix workbench run dev     # http://127.0.0.1:5173
+```
+:::
+
+## Check what it contains
+
+The **Design** view is the whole model on one screen: the components, what calls
+what, the behaviours on each relationship, and the shared quantities everything
+is sized against.
+
+![The design view with the checkout service selected, showing its properties, the quantities it derives, and a badge reading "solves".](/screenshots/design.png)
+
+Three things are worth noticing.
+
+- The badge above the diagram says whether the design **solves**. It turns into
+  the reason it does not, naming the component the solver blamed, which is the
+  fastest way to find a misspelt property or a relationship pointing at a
+  component that does not exist.
+- The inspector's **properties** are Squiggle source rather than numbers.
+  `worker_pool` is a reference to a shared quantity; so is `service_time`, and
+  that one is a distribution.
+- **Computes** lists the quantities the component's type derives. Nothing there
+  was authored; it comes from the shipped catalogue, described in
+  [the catalogue reference](../reference/catalogue.md).
+
+Nothing in this design defines a component type of its own. Six types and eight
+behaviours are available regardless, and a design may
+[define its own](./component-types.md).
+
+## See what it is sized against
+
+Shared quantities sit down the right-hand side. They are what the design is
+measured against, and they are the only things a variant can rebind, so anything
+you intend to vary belongs here.
+
+![A shared quantity being edited, with a flyout showing the density of the lognormal it evaluates to and its p10, median, and p90.](/screenshots/quantities.png)
+
+The preview appears while a field has focus and shows what the expression being
+typed actually evaluates to. `0.05 * lognormal(0, 0.1)` is an inventory lookup
+that is usually 50 ms and occasionally 57 ms, and that spread is carried through
+the solve rather than averaged away at the start. See
+[uncertainty](./uncertainty.md) for the vocabulary.
+
+## Find what constrains it
+
+Components on the diagram are coloured by what they are closest to exhausting.
+Stop on one and it says which limit, and by how much.
+
+![A component in the diagram with a flyout listing its constraints, each with a load bar and an explanation of what saturating it means.](/screenshots/limits.png)
+
+A constraint pairs a demand with the limit it consumes. The list is ranked by the
+share of draws in which demand met or exceeded that limit, so the top of it is
+the resource the design is most exposed to rather than the component somebody
+happens to be worried about.
+
+Note what the ranking says here. The objectives the shoppers declared are missed
+by two orders of magnitude, and the pool everybody watches is not what the flyout
+names first.
+
+## Watch it over time
+
+The **Simulation** view solves the design across a horizon and charts whatever
+you choose to watch. The cards along the top are the constraints under the most
+pressure, so the limit a chart is about is on the same screen as the chart.
+
+![The simulation view showing success rate and response time collapsing partway through the run, with the four most pressured constraints carded above.](/screenshots/simulation.png)
+
+This is the point of the example. Demand surges between t = 5 and t = 15 and then
+returns to a level the design served comfortably before — and the design does not
+return with it. Success falls to nothing and stays there. A steady-state answer
+would have reported the healthy branch and shown none of this; see
+[solving and bottlenecks](./analysis.md) for why.
+
+The shading around each line is the distribution across draws rather than a band
+drawn after the fact. Stop on a step and the spread behind that point is drawn
+beside it.
+
+## Weigh a proposed change
+
+A change is not an edit. A **variant** rebinds named quantities in the shared
+list and the design is solved again exactly as it stands, so whatever moves in
+the result moved because of the rebinding.
+
+```yaml
+# _system.yaml
+interventions:
+  - id: shed
+    name: Refuse what cannot be served
+    summary: Cap admitted demand below the load at which the service saturates.
+    overrides:
+      - name: admission_limit
+        expression: safe_admission
+```
+
+Pick one from the left and the design as it stands is drawn on the same axes,
+dashed, along with how far every quantity moved.
+
+![The simulation view comparing the load-shedding variant against the design it would replace, with the baseline drawn dashed and each quantity's movement beside it.](/screenshots/comparison.png)
+
+Shedding load is the only one of these variants that keeps the service healthy
+through the surge rather than merely surviving it, and it is not free: the
+callers it refuses are failures too. The badge on each quantity says how far it
+moved, and the card in the header says whether the constraint it was aimed at
+still binds.
+
+Relieving one limit routinely promotes another. Comparing rather than re-solving
+is what makes that visible.
+
+## Keep it in the repository
+
+Edits are held in memory and written back to the design directory after a short
+quiet period. The whole directory is rewritten in canonical form, so a session in
+the workbench produces a clean diff that reads as the change that was actually
+made.
 
 ```text
-examples/checkout/
-  _system.yaml            name, shared quantities, scale units, interventions
-  components/browsers.yaml
-  components/api.yaml
-  components/orders.yaml
+examples/metastable/
+  _system.yaml            name, shared quantities, scale units, variants
+  components/shoppers.yaml
+  components/checkout.yaml
+  components/inventory.yaml
 ```
 
 Each component file declares one component and the relationships leaving it, so
 adding a dependency touches one file rather than a shared list that everybody
 would have to agree on the ordering of.
 
-## Check what it contains
+That is what makes a design reviewable: it lives beside the system it describes,
+and the same engine that answered the questions above can be run over it in
+continuous integration.
 
 ```sh
-cargo run -- check examples/checkout
+optimist check examples/metastable
 ```
 
-```text
-PROPERTY        VALUE
-name            Checkout
-components      3
-relationships   2
-shared quantities       3
-scale units     0
-interventions   2
-component types 6
-behaviours      8
-```
-
-`check` reads and validates the directory without solving it. It is the fastest
-way to find a misspelt property or a relationship pointing at a component that
-does not exist, and it is what to put in continuous integration.
-
-Six component types and eight behaviours are available even though this design
-defines none of its own: they are the shipped catalogue. See
-[the catalogue reference](../reference/catalogue.md) for what is in it.
-
-## Solve it
-
-```sh
-cargo run -- solve examples/checkout
-```
-
-```text
-COMPONENT  CHANNEL          VALUE
-api        capacity         685.1550 [450.9287 .. 947.7374]
-api        hold_time        0.0127 [0.0084 .. 0.0177]
-api        utilisation      2.9597 [0.9499 .. 4.9170]
-browsers   latency          0.3447 [0.0279 .. 0.5949]
-browsers   success          0.7219 [0.4506 .. 1.0000]
-orders     volume           3504303674979.1333 [2303453606495.4536 .. 4777574410209.3037]
-```
-
-Every quantity is shown as its mean with a central eighty percent interval
-beside it. The interval is the point: `service_time` was authored as a
-lognormal, so `capacity` is a distribution and the design is congested in some
-draws and comfortable in others.
-
-Narrow the report to one component with `--component api`, and raise the draw
-count with `--samples 10000` when the tails matter.
-
-## Find what constrains it
-
-```sh
-cargo run -- bottlenecks examples/checkout
-```
-
-```text
-COMPONENT  CONSTRAINT          UTILISATION  P90     BINDS  REPLICAS  HEADROOM
-orders     volume              7.009        9.555   100%   1         -3004303674979.1333
-api        capacity            2.960        4.916   87%    1         -1063.2349
-browsers   success_objective   55.626       109.865 86%    1         -0.2731
-browsers   latency_objective   0.460        0.793   3%     1         0.4053
-orders     operations          0.066        0.090   0%     1         4669.9294
-```
-
-A constraint pairs a demand with the limit it consumes. `UTILISATION` is the mean
-of that ratio, `BINDS` is the share of draws in which demand met or exceeded the
-limit, and the list is ranked by `BINDS` first. Ranking by probability rather
-than by mean puts the constraint most exposed to a bad draw at the top, which is
-the one worth spending on.
-
-Add `--binding` to hide everything with headroom in every draw.
-
-Note what the ranking says here. Thirty days of retention overruns the store
-several times over, and the objective the client declared is missed in most
-draws — but the pool everybody watches is only third on the list.
-
-## Weigh a proposed change
-
-A change is not an edit. An intervention rebinds named quantities in the
-scratchpad and the design is solved again exactly as it stands, so whatever moves
-in the result moved because of the rebinding.
-
-```yaml
-# _system.yaml
-interventions:
-  - id: warm-cache
-    name: Warm the cache
-    summary: Raise the hit ratio by holding a larger working set.
-    overrides:
-      - name: cache_hits
-        expression: '0.95'
-```
-
-```sh
-cargo run -- compare examples/checkout warm-cache
-```
-
-```text
-COMPONENT  CONSTRAINT          BEFORE  AFTER    BOUND BEFORE  BOUND AFTER  EFFECT
-orders     volume              7.009   0.643    100%          0%           relieved
-orders     operations          0.066   0.006    0%            0%           eased
-browsers   latency_objective   0.460   0.495    3%            8%           loaded
-api        capacity            2.960   3.186    87%           87%          loaded
-```
-
-Caching relieves the store outright and loads the pool slightly, because the
-requests that used to fail at the store now reach it. Relieving one limit
-routinely promotes another, and `compare` says so rather than reporting the
-improvement alone.
-
-## Open it in the workbench
-
-The commands above read files. To edit a design with other people, serve a
-directory of them:
-
-```sh
-cargo run -- serve --designs ./designs
-```
-
-`designs` is a scratch directory; seed it from `examples/` to start with
-something to look at. The server exposes the API on `http://127.0.0.1:3000` and
-serves the workbench from the same process when a build is available.
-
-```sh
-npm --prefix workbench install
-npm --prefix workbench run build
-cargo run -- serve --designs ./designs
-```
-
-For front-end development, run Vite's dev server instead; it proxies `/api`,
-including the WebSocket upgrade the change feed needs.
-
-```sh
-npm --prefix workbench run dev     # http://127.0.0.1:5173
-```
+The [command-line interface](../reference/cli.md) covers everything the workbench
+does — `check`, `solve`, `bottlenecks`, `compare` — for the cases where a script
+is the right client.
 
 ## Next steps
 

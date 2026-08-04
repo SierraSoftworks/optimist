@@ -13,7 +13,7 @@ the same continuous integration that builds the thing being designed.
 
 > [!IMPORTANT]
 > Optimist is under active development. The modelling, solving, and ranking core
-> is usable today, and the CLI, HTTP API, and Vue workbench all run against it.
+> is usable today, and the Vue workbench, HTTP API, and CLI all run against it.
 > Authentication is not implemented.
 
 ## What it provides
@@ -42,10 +42,61 @@ the same continuous integration that builds the thing being designed.
 - **Agent-friendly interfaces:** table, JSON, and JSONL CLI output plus a typed
   HTTP API.
 
-## Quick example
+## Quick look
+
+Serve a directory of designs and open it in a browser. The diagram, what each
+component is sized against, and whether the design solves are all on one screen.
 
 ```sh
-cargo run -- bottlenecks examples/checkout
+cargo run --release -- serve --designs ./examples
+```
+
+![The design view with a component selected, showing the diagram, the component's properties, and the quantities its type derives.](docs/.vuepress/public/screenshots/design.png)
+
+Components are coloured by what they are closest to exhausting. Stopping on one
+names that constraint, draws how loaded it is, and says what saturating it means.
+
+![A component in the diagram with a flyout listing its constraints, each with a load bar and an explanation of what saturating it means.](docs/.vuepress/public/screenshots/limits.png)
+
+A proposal rebinds named quantities and the design is solved again exactly as it
+stands, with the baseline drawn on the same axes so the distance between the two
+lines is the answer.
+
+![The simulation view comparing a variant against the design it would replace, with the baseline drawn dashed and each quantity's movement beside it.](docs/.vuepress/public/screenshots/comparison.png)
+
+Constraints are ranked by `BINDS`, the share of draws in which demand met or
+exceeded the limit:
+
+$$P(\text{bind}) = \frac{1}{n}\sum_{i=1}^{n} \mathbb{1}\{d_i \geq l_i\}$$
+
+Ranking by that rather than by mean utilisation puts the constraint most exposed
+to a bad draw at the top, which is the one worth spending on.
+
+## Run it
+
+Optimist currently runs from source with Rust 1.96 or newer and Node 20 or newer:
+
+```sh
+npm --prefix workbench install
+npm --prefix workbench run build
+cargo run --release -- serve --designs ./examples
+```
+
+Release builds embed the frontend; debug builds look for `workbench/dist` beside
+the repository. Point elsewhere with `--web-root` or `OPTIMIST_WEB_ROOT`. Rust
+builds do not invoke Node; without a valid web root the server remains API-only.
+
+## Ask it from a script
+
+The same engine is a command-line tool, for continuous integration and
+automation:
+
+```sh
+cargo run -- check       examples/checkout   # load and validate, without solving
+cargo run -- catalogue   examples/checkout   # what component types are available
+cargo run -- solve       examples/checkout   # the quantities flowing through it
+cargo run -- bottlenecks examples/checkout   # what it is closest to exhausting
+cargo run -- compare     examples/checkout warm-cache
 ```
 
 ```text
@@ -54,33 +105,6 @@ orders     volume              7.009        9.555    100%   1         -300430367
 api        capacity            2.960        4.916    87%    1         -1063.2349
 browsers   success_objective   55.626       109.865  86%    1         -0.2731
 browsers   latency_objective   0.460        0.793    3%     1         0.4053
-```
-
-`BINDS` is the share of draws in which demand met or exceeded the limit:
-
-$$P(\text{bind}) = \frac{1}{n}\sum_{i=1}^{n} \mathbb{1}\{d_i \geq l_i\}$$
-
-Ranking by that rather than by mean utilisation puts the constraint most exposed
-to a bad draw at the top, which is the one worth spending on. Here, thirty days
-of retention overruns the store several times over while the pool everybody
-watches is only third on the list.
-
-## Run it
-
-Optimist currently runs from source with Rust 1.96 or newer:
-
-```sh
-cargo build
-```
-
-There are four things to ask of a design on disk:
-
-```sh
-cargo run -- check       examples/checkout   # load and validate, without solving
-cargo run -- catalogue   examples/checkout   # what component types are available
-cargo run -- solve       examples/checkout   # the quantities flowing through it
-cargo run -- bottlenecks examples/checkout   # what it is closest to exhausting
-cargo run -- compare     examples/checkout warm-cache
 ```
 
 Use `--output json` or `--output jsonl` for automation, and `--seed`,
@@ -101,22 +125,9 @@ Edits are held in memory and written back to the design directory after a short
 quiet period and again on shutdown, in canonical form, so a session produces a
 clean `git diff`.
 
-### Serve the workbench
-
-Release builds embed a frontend. Debug builds look for `workbench/dist` beside
-the repository:
-
-```sh
-npm --prefix workbench install
-npm --prefix workbench run build
-cargo run -- serve
-```
-
 Browser routes fall back to `index.html`; generated files under `/assets` use a
 one-year immutable cache while HTML revalidates on every load. `/api` and every
-`/api/*` path remain JSON-only and never fall back to the application. Point
-elsewhere with `--web-root` or `OPTIMIST_WEB_ROOT`. Rust builds do not invoke
-Node; without a valid web root the server remains API-only.
+`/api/*` path remain JSON-only and never fall back to the application.
 
 For front-end work, run Vite's dev server, which proxies `/api` including the
 WebSocket upgrade:

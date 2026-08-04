@@ -26,7 +26,7 @@ features:
     details: Every constraint pairs a demand with the limit it consumes. The engine ranks them by how likely they are to bind, so the answer names the resource worth spending on.
 ---
 
-Optimist is a Rust toolkit, server, and workbench for designing large systems and
+Optimist is a workbench, server, and Rust toolkit for designing large systems and
 finding what constrains them. A design is a directory of YAML that belongs in the
 same repository as the system it describes, so answering a capacity question is a
 local operation and can run in the same continuous integration that builds the
@@ -42,37 +42,22 @@ It exists for the questions a diagram cannot answer:
 
 ## What a design looks like
 
-A shop front — browsers calling an API pool that reads from an order store — is
-a directory of small files.
+Open a design and you get the graph, what each component is sized against, and
+whether the whole thing solves — all at once.
 
-```yaml
-# _system.yaml
-schema_version: 2
-name: Checkout
-scratchpad:
-  - name: peak_rate
-    expression: '900'
-    unit: op/s
-    summary: Requests per second at the daily peak.
-```
+![The workbench editing a design: a diagram of three components, the inspector for the selected one, and a green badge saying the design solves.](/screenshots/design.png)
 
-```yaml
-# components/browsers.yaml
-id: browsers
-name: Browsers
-type: client
-properties:
-  request_rate: peak_rate
-  latency_target: '0.75'
-  success_target: '0.995'
-outgoing:
-  - to: api
-    summary: Checkout requests arriving at the API.
-    mutators:
-      - type: retry
-        properties:
-          attempts: '3'
-```
+Every field is a Squiggle expression rather than a number. A service time
+measured with spread stays a distribution the whole way through the solve, and
+the preview beside the field you are typing into shows the spread you just
+authored.
+
+![A shared quantity being edited, with a flyout showing the density of the lognormal it evaluates to and its p10, median, and p90.](/screenshots/quantities.png)
+
+Underneath, that design is a directory of small YAML files that belongs in the
+same repository as the system it describes — so a capacity question is answered
+locally, reviewed in a pull request, and checked by the same continuous
+integration that builds the thing being designed.
 
 ```yaml
 # components/api.yaml
@@ -84,37 +69,42 @@ properties:
   parallelism: pool_size
 ```
 
-Every value is a Squiggle expression. A service time measured with spread stays a
-distribution the whole way through the solve, and the result says how much of
-that distribution has crossed into congestion.
+## Ask it what constrains it
 
-## Ask it something
+Stop on a component and it says which limit it is closest to exhausting, and by
+how much. The colour on the diagram is the same measurement, so a strained
+component is visible without opening anything.
 
-```sh
-optimist check       examples/checkout
-optimist solve       examples/checkout
-optimist bottlenecks examples/checkout
-optimist compare     examples/checkout warm-cache
-```
+![A component in the diagram with a flyout listing its constraints, each with a load bar and an explanation of what saturating it means.](/screenshots/limits.png)
 
-`bottlenecks` is the one worth reading first. It ranks every constraint in the
-design by the share of draws in which demand meets or exceeds its limit, so the
-top of the list is the resource the design is closest to exhausting rather than
-the component somebody happens to be worried about.
+A constraint pairs a demand with the limit it consumes, and the ranking is by the
+share of draws in which demand meets or exceeds that limit. Ranking by
+probability rather than by mean puts the constraint most exposed to a bad draw at
+the top, which is the one worth spending on.
 
-## Edit it together
+## Weigh a proposed change
+
+A proposal is not an edit. It rebinds named quantities and the design is solved
+again exactly as it stands, so the baseline is drawn on the same axes as the
+variant and the distance between the two lines is the whole answer.
+
+![The simulation view comparing a variant against the design it would replace, with the baseline drawn dashed and each constraint's movement beside it.](/screenshots/comparison.png)
+
+## Run it
 
 ```sh
 optimist serve --designs ./designs
 ```
 
 The server opens a directory of designs, streams every edit over a WebSocket, and
-serves the Vue workbench from the same process. Continue with the
+serves the workbench from the same process. There is a
+[command-line interface](./reference/cli.md) over the same engine for continuous
+integration and scripting. Continue with the
 [getting-started guide](./guide/README.md).
 
 ::: warning Development status
-The modelling, solving, and ranking core is usable today, and the CLI, HTTP API,
-and workbench all run against it. Authentication is not implemented. The
+The modelling, solving, and ranking core is usable today, and the workbench,
+HTTP API, and CLI all run against it. Authentication is not implemented. The
 on-disk schema is at version two, and version one directories are refused rather
 than converted.
 :::

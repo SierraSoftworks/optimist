@@ -75,7 +75,8 @@ It has no memory. Where a design has more than one resting state, this reports
 the one reachable from nothing, so a surge that would have tipped it over and
 left it there appears to be survived.
 
-**Transient** advances the backlog through time, one step at a time.
+**Transient** advances the backlog through time, one step at a time. It is the
+settings panel's *transient* toggle in the workbench, and a flag from a script:
 
 ```sh
 optimist solve examples/metastable --transient --horizon 250 --step 0.1
@@ -140,7 +141,23 @@ The `metastable` example is built to demonstrate exactly this. See
 ## Ranking constraints
 
 Every constraint pairs a demand with the limit it consumes. Utilisation is their
-ratio, taken per draw, so the answer is a distribution rather than a figure:
+ratio, taken per draw, so the answer is a distribution rather than a figure.
+
+In the workbench this is on the diagram itself. A component is coloured by its
+worst constraint, and stopping on it names that constraint, draws how loaded it
+is, and says what saturating it would mean.
+
+![A component in the diagram with a flyout listing its constraints, each with a load bar and an explanation of what saturating it means.](/screenshots/limits.png)
+
+Only the worst constraint decides the colour. A component with one constraint at
+30% and another at 200% is in trouble, and averaging would hide it.
+
+The **Simulation** view cards the same ranking across the whole design, so the
+limit a chart is about sits above the chart.
+
+![The simulation view with the four most pressured constraints carded above the charts.](/screenshots/simulation.png)
+
+The same ranking is available from a script:
 
 ```sh
 optimist bottlenecks examples/checkout
@@ -201,6 +218,18 @@ rather than a figure an engineer has to assemble by hand.
 
 ## Weighing a change
 
+Pick a variant in the workbench and the design as it stands is solved alongside
+it and drawn on the same axes, dashed. A proposal is judged by the distance
+between two lines, and reading that off two charts on two screens is not
+something anybody does accurately.
+
+![The simulation view comparing a variant against the design it would replace, with the baseline drawn dashed and each quantity's movement beside it.](/screenshots/comparison.png)
+
+The badge on each quantity is how far it moved; the card in the header says
+whether the constraint the variant was aimed at still binds.
+
+From a script:
+
 ```sh
 optimist compare examples/checkout warm-cache
 ```
@@ -257,7 +286,10 @@ worth funding if the design is better after the promotion.
 | `--component` | all | Report or rank only one component. Short form `-c`. |
 
 The same controls are query parameters on the HTTP analysis endpoint, where
-`samples` is clamped to 64–20,000 and `horizon` to 1–500.
+`samples` is clamped to 64–20,000 and `horizon` to 1–500. The workbench exposes
+samples, horizon, step, and transient in its settings panel; they describe how
+hard the solver works rather than what is on screen, so they are deliberately
+not part of the URL a view is shared with.
 
 Relaxation itself is not exposed on the command line. The iteration cap is 1,500
 passes, the tolerance for "settled" is a relative movement of $10^{-6}$, and the
