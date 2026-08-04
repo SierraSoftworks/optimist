@@ -1,4 +1,4 @@
-use rand::seq::SliceRandom;
+use rand::seq::{IndexedRandom, SliceRandom};
 
 use crate::squiggle::{Diagnostic, Value, ast::Span};
 

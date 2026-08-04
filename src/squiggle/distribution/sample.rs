@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use super::{Distribution, Kind};
@@ -10,14 +10,14 @@ impl Distribution {
     }
 
     pub(crate) fn sample(&self, rng: &mut ChaCha20Rng) -> Result<f64, String> {
-        let probability = rng.gen_range(f64::EPSILON..(1.0 - f64::EPSILON));
+        let probability = rng.random_range(f64::EPSILON..(1.0 - f64::EPSILON));
         match &self.kind {
             Kind::Samples(samples) => {
                 if samples.is_empty() {
                     return Err("cannot sample an empty empirical distribution".into());
                 }
                 samples
-                    .get(rng.gen_range(0..samples.len()))
+                    .get(rng.random_range(0..samples.len()))
                     .copied()
                     .ok_or_else(|| "empirical sample index is out of bounds".into())
             }

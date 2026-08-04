@@ -76,7 +76,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use rand::RngCore;
+use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
 use super::{Distribution, Ensemble, Kind, indexed::Indexed};

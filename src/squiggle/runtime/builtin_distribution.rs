@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 
 use crate::squiggle::{Diagnostic, Distribution, Value, ast::Span};
 
@@ -188,7 +188,7 @@ fn mixture(runtime: &mut Runtime, arguments: &[Value], span: Span) -> Result<Val
     }
     let mut samples = Vec::with_capacity(runtime.config.sample_count);
     for _ in 0..runtime.config.sample_count {
-        let mut pick = runtime.rng.gen_range(0.0..total);
+        let mut pick = runtime.rng.random_range(0.0..total);
         let mut index = weights.len() - 1;
         for (candidate, weight) in weights.iter().enumerate() {
             pick -= weight;

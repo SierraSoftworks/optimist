@@ -349,7 +349,7 @@ mod tests {
     /// sampling noise it could never converge against.
     #[test]
     fn a_started_stream_matches_a_freshly_seeded_one() {
-        use rand::RngCore;
+        use rand::Rng;
 
         let mut seeded = ChaCha20Rng::seed_from_u64(90_210);
         let mut started = started(90_210);
