@@ -49,6 +49,7 @@ export default defineUserConfig({
         text: 'Guides',
         children: [
           '/guide/modelling.md',
+          '/guide/nalsd.md',
           '/guide/component-types.md',
           '/guide/language.md',
           '/guide/distributions.md',
@@ -87,6 +88,7 @@ export default defineUserConfig({
           children: [
             '/guide/README.md',
             '/guide/modelling.md',
+            '/guide/nalsd.md',
             '/guide/component-types.md',
             '/guide/collaboration.md',
           ],

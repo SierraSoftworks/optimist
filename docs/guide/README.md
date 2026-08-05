@@ -183,6 +183,7 @@ is the right client.
 ## Next steps
 
 - [Designing a system](./modelling.md) — components, relationships, signals, behaviours, scale units.
+- [NALSD modelling techniques](./nalsd.md) — saturation, amplification, routing, scaling, and reading proposals.
 - [Writing component types](./component-types.md) — adding a kind of component the catalogue does not have.
 - [The expression language](./language.md) — Squiggle syntax, builtins, and the names available inside a design.
 - [Choosing distributions](./distributions.md) — what to reach for per input, and sensible starting figures.
