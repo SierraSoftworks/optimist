@@ -181,7 +181,10 @@ is the right client.
 
 - [Designing a system](./modelling.md) — components, relationships, signals, behaviours, scale units.
 - [Writing component types](./component-types.md) — adding a kind of component the catalogue does not have.
-- [Uncertainty](./uncertainty.md) — Squiggle, sample sets, determinism, and the queueing builtins.
+- [The expression language](./language.md) — Squiggle syntax, builtins, and the names available inside a design.
+- [Choosing distributions](./distributions.md) — what to reach for per input, and sensible starting figures.
+- [Uncertainty](./uncertainty.md) — sample sets, determinism, and where spread belongs.
 - [Solving and bottlenecks](./analysis.md) — how the fixed point is found and what convergence means.
+- [Laws and models](../reference/laws.md) — the queueing, scaling, and reliability laws behind every figure.
 - [The workbench](./collaboration.md) — sessions, mutations, and the change feed.
 - [The worked examples](../examples/README.md) — including a design with two steady states.

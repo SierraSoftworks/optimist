@@ -314,7 +314,7 @@ Solves the design and ranks its constraints.
 | `seed` | `0` | |
 | `samples` | `1000` | Clamped to 64–20,000. |
 | `horizon` | `1` | Clamped to 1–500. |
-| `step` | `1.0` | Seconds. |
+| `step` | `1.0` | Length of one step: how far `t` advances each step, and how far a transient integration carries the backlog. |
 | `transient` | `false` | Advance queues through time rather than solving for balance. |
 | `series` | `false` | Return every step rather than only the one it settled on. |
 | `intervention` | none | Apply an intervention before solving. |

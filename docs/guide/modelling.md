@@ -311,17 +311,18 @@ Because scratchpad entries may refer to earlier ones, rebinding an early quantit
 carries through everything derived from it without any of those components being
 mentioned.
 
-A replacement is an ordinary expression and may depend on time, so a change that
-arrives gradually is written as one:
+A replacement is an ordinary expression and may depend on where the solve has
+reached, so a change that arrives partway through a run is written as one:
 
 ```yaml
 overrides:
   - name: peak_rate
-    expression: 'if t < 300 then 900 else 3600'
+    expression: 'if t >= 5 && t < 15 then 3600 else 900'
 ```
 
-The quantity was always a function of time; a constant was only the simplest
-case.
+`t` is the position on the simulation timeline, described in
+[solving and bottlenecks](./analysis.md#time). The quantity was always a function
+of it; a constant was only the simplest case.
 
 ## Choosing how much detail
 

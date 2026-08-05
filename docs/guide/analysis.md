@@ -90,24 +90,31 @@ only visible here.
 
 The cost is the step. Integration is faithful only while a step is short against
 the time a queue takes to drain, so shorten `--step` and lengthen `--horizon`
-together. A horizon that reads comfortably in seconds may need thousands of
-steps.
+together. A drain that takes a while to play out may need thousands of steps to
+follow.
 
 ## Time
 
-`--horizon` is the number of steps and `--step` their length in seconds. Time is
-visible to expressions as `t`, so a scratchpad quantity or an intervention
-override can depend on it:
+`--horizon` is the number of steps to advance and `--step` is the length of one
+of them, which sets how far `t` moves each step and how far a transient
+integration carries the backlog. Every expression may read `t`, so a scratchpad
+quantity or an intervention override can depend on it:
 
 ```yaml
 overrides:
   - name: peak_rate
-    expression: 'if t < 10 then 4000 else 900'
+    expression: 'if t >= 5 && t < 15 then 4000 else 900'
 ```
 
-That is a ten-second surge. Under steady solving each step is solved from rest
-and the surge leaves no trace; under transient solving the backlog it created has
-to drain, and whether it does is the whole question.
+`t` is a position on the simulation timeline rather than a wall clock: the step
+number scaled by the step length, starting at zero. It is there to stage
+behavioural shifts — when a surge starts and stops, when a dependency is
+withdrawn — and the shipped designs run over a horizon of roughly `t = 0` to
+`t = 20`, so thresholds are written at that scale.
+
+Under steady solving each step is solved from rest and the surge leaves no trace;
+under transient solving the backlog it created has to drain, and whether it does
+is the whole question.
 
 `prev.<channel>` gives a component its own values from the previous step, which
 is how a component type carries state of its own. `dt` is the step length, so an
