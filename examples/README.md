@@ -16,9 +16,9 @@ Browsers call an API, the API reads from a store, and that read is wrapped in
 the two policies every client library ships with — a timeout and a retry.
 
 ```sh
-cargo run -- solve   examples/saturation --horizon 10
-cargo run -- compare examples/saturation no-retries      --horizon 10
-cargo run -- compare examples/saturation patient-timeout --horizon 10
+optimist solve   examples/saturation --horizon 10
+optimist compare examples/saturation no-retries      --horizon 10
+optimist compare examples/saturation patient-timeout --horizon 10
 ```
 
 **Saturation has a closed form.** Serving λ operations each held for L seconds
@@ -47,9 +47,9 @@ The same shop front, plus a queue and a fulfilment worker drawing on the same
 store.
 
 ```sh
-cargo run -- solve   examples/queued-collapse --transient --horizon 280 --step 0.5
-cargo run -- compare examples/queued-collapse no-surge --transient --horizon 280 --step 0.5
-cargo run -- compare examples/queued-collapse shed     --transient --horizon 280 --step 0.5
+optimist solve   examples/queued-collapse --transient --horizon 280 --step 0.5
+optimist compare examples/queued-collapse no-surge --transient --horizon 280 --step 0.5
+optimist compare examples/queued-collapse shed     --transient --horizon 280 --step 0.5
 ```
 
 One addition makes the design second order. A queue holds tens of thousands of
@@ -84,9 +84,9 @@ the service at the bottom. Every hop has a timeout. Only one thing varies:
 whether giving up is passed on.
 
 ```sh
-cargo run -- solve   examples/deadlines --transient --horizon 25 --step 0.5
-cargo run -- compare examples/deadlines leaf-timeouts    --transient --horizon 25 --step 0.5
-cargo run -- compare examples/deadlines single-operation --transient --horizon 25 --step 0.5
+optimist solve   examples/deadlines --transient --horizon 25 --step 0.5
+optimist compare examples/deadlines leaf-timeouts    --transient --horizon 25 --step 0.5
+optimist compare examples/deadlines single-operation --transient --horizon 25 --step 0.5
 ```
 
 A timeout does two things that are usually confused for one. It bounds what the
@@ -113,8 +113,8 @@ readings comparable rather than two designs differing in untracked ways.
 A shop front where the binding constraint is the one nobody watches.
 
 ```sh
-cargo run -- bottlenecks examples/checkout
-cargo run -- compare     examples/checkout warm-cache
+optimist bottlenecks examples/checkout
+optimist compare     examples/checkout warm-cache
 ```
 
 Thirty days of retention overruns the store several times over, and the success
@@ -129,8 +129,8 @@ A checkout service whose workers are held for the whole of a downstream call,
 behind a retry policy, with two steady states over a band of load.
 
 ```sh
-cargo run -- compare examples/metastable no-surge       --horizon 25
-cargo run -- compare examples/metastable longer-timeout --horizon 25
+optimist compare examples/metastable no-surge       --horizon 25
+optimist compare examples/metastable longer-timeout --horizon 25
 ```
 
 Every part is drawn from the shipped catalogue; the trap emerges from three

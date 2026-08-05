@@ -48,7 +48,7 @@ Serve a directory of designs and open it in a browser. The diagram, what each
 component is sized against, and whether the design solves are all on one screen.
 
 ```sh
-cargo run --release -- serve --designs ./examples
+optimist serve --designs ./examples
 ```
 
 ![The design view with a component selected, showing the diagram, the component's properties, and the quantities its type derives.](docs/.vuepress/public/screenshots/design.png)
@@ -72,19 +72,31 @@ $$P(\text{bind}) = \frac{1}{n}\sum_{i=1}^{n} \mathbb{1}\{d_i \geq l_i\}$$
 Ranking by that rather than by mean utilisation puts the constraint most exposed
 to a bad draw at the top, which is the one worth spending on.
 
-## Run it
+## Install it
 
-Optimist currently runs from source with Rust 1.96 or newer and Node 20 or newer:
+On macOS and Linux, install with [Homebrew](https://brew.sh):
+
+```sh
+brew install sierrasoftworks/tap/optimist
+```
+
+Otherwise download a binary for your platform from the
+[latest release](https://github.com/SierraSoftworks/optimist/releases/latest).
+Windows, Linux, and macOS are published in both `amd64` and `arm64` variants.
+Put it on your `PATH` and run it directly:
+
+```sh
+optimist serve --designs ./examples
+```
+
+A released binary embeds the workbench, so nothing else is needed to serve one.
+To build from a checkout instead, with Rust 1.96 or newer and Node 20 or newer:
 
 ```sh
 npm --prefix workbench install
 npm --prefix workbench run build
-cargo run --release -- serve --designs ./examples
+cargo build --release              # target/release/optimist
 ```
-
-Release builds embed the frontend; debug builds look for `workbench/dist` beside
-the repository. Point elsewhere with `--web-root` or `OPTIMIST_WEB_ROOT`. Rust
-builds do not invoke Node; without a valid web root the server remains API-only.
 
 ## Ask it from a script
 
@@ -92,11 +104,11 @@ The same engine is a command-line tool, for continuous integration and
 automation:
 
 ```sh
-cargo run -- check       examples/checkout   # load and validate, without solving
-cargo run -- catalogue   examples/checkout   # what component types are available
-cargo run -- solve       examples/checkout   # the quantities flowing through it
-cargo run -- bottlenecks examples/checkout   # what it is closest to exhausting
-cargo run -- compare     examples/checkout warm-cache
+optimist check       examples/checkout   # load and validate, without solving
+optimist catalogue   examples/checkout   # what component types are available
+optimist solve       examples/checkout   # the quantities flowing through it
+optimist bottlenecks examples/checkout   # what it is closest to exhausting
+optimist compare     examples/checkout warm-cache
 ```
 
 ```text
@@ -113,7 +125,7 @@ Use `--output json` or `--output jsonl` for automation, and `--seed`,
 ## Serve a workspace
 
 ```sh
-cargo run -- serve --designs ./designs
+optimist serve --designs ./designs
 ```
 
 The server opens a directory of designs, applies typed mutations, streams every
@@ -128,6 +140,11 @@ clean `git diff`.
 Browser routes fall back to `index.html`; generated files under `/assets` use a
 one-year immutable cache while HTML revalidates on every load. `/api` and every
 `/api/*` path remain JSON-only and never fall back to the application.
+
+A released binary embeds the frontend; a build from a checkout looks for
+`workbench/dist` beside the repository. Point elsewhere with `--web-root` or
+`OPTIMIST_WEB_ROOT`. Rust builds do not invoke Node; without a valid web root the
+server remains API-only.
 
 For front-end work, run Vite's dev server, which proxies `/api` including the
 WebSocket upgrade:

@@ -4,17 +4,20 @@ This guide opens a shipped example in the workbench and asks it the four
 questions the tool can answer: what is in this design, what does it do, what
 constrains it, and would the proposed change help.
 
-## Prerequisites
+## Install Optimist
 
-- Rust 1.96 or newer
-- Node 20 or newer
-- A local checkout of Optimist
+On macOS and Linux you can install Optimist with [Homebrew](https://brew.sh):
 
 ```sh
-npm --prefix workbench install
-npm --prefix workbench run build
-cargo build --release
+brew install sierrasoftworks/tap/optimist
 ```
+
+Alternatively, download the latest version from our [GitHub releases][release]
+page. Pre-compiled binaries are published for Windows, Linux, and macOS in both
+`amd64` and `arm64` variants. Put the binary on your `PATH` and run it directly;
+it embeds the workbench, so nothing else needs installing.
+
+[release]: https://github.com/SierraSoftworks/optimist/releases/latest
 
 ## Open a workspace
 
@@ -22,7 +25,7 @@ A workspace is a directory whose subdirectories are designs. Point the server at
 one and it serves both the API and the workbench from the same process.
 
 ```sh
-cargo run --release -- serve --designs ./examples
+optimist serve --designs ./examples
 ```
 
 Open `http://127.0.0.1:3000` and every design in the directory is listed.
@@ -34,8 +37,8 @@ workers are held for the whole of a downstream call, behind a retry policy. It i
 chosen because a summary hides what matters about it.
 
 ::: tip Working on the front end
-Run Vite's dev server instead. It proxies `/api`, including the WebSocket upgrade
-the change feed needs.
+Working from a checkout of Optimist, run Vite's dev server instead. It proxies
+`/api`, including the WebSocket upgrade the change feed needs.
 
 ```sh
 npm --prefix workbench run dev     # http://127.0.0.1:5173

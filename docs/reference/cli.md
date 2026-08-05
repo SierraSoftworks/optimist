@@ -395,9 +395,9 @@ Serves a directory of designs to the workbench.
 Loaded designs are checked for settled edits every 100 ms and written back after
 a short quiet period; anything outstanding is written on shutdown.
 
-Release builds embed a frontend. Debug builds look for `workbench/dist` beside
-the repository. Without a valid web root the server remains API-only. See the
-[HTTP API reference](./http-api.md).
+A released binary embeds a frontend. A debug build from a checkout looks for
+`workbench/dist` beside the repository. Without a valid web root the server
+remains API-only. See the [HTTP API reference](./http-api.md).
 
 ---
 

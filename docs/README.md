@@ -117,6 +117,15 @@ variant and the distance between the two lines is the whole answer.
 
 ![The simulation view comparing a variant against the design it would replace, with the baseline drawn dashed and each constraint's movement beside it.](/screenshots/comparison.png)
 
+## Install
+
+```sh
+brew install sierrasoftworks/tap/optimist
+```
+
+Or download a binary for Windows, Linux, or macOS in `amd64` or `arm64` from the
+[latest release](https://github.com/SierraSoftworks/optimist/releases/latest).
+
 ## Example
 
 ```sh

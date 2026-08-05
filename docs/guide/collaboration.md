@@ -136,8 +136,8 @@ immutable cache while HTML revalidates on every load. `/api` and every `/api/*`
 path remain JSON-only and never fall back to the application, so a mistyped
 endpoint is a 404 with an advice field rather than a page of HTML.
 
-Release builds embed a frontend build. Debug builds look for `workbench/dist`
-beside the repository. Either can be overridden:
+A released binary embeds a frontend build. A debug build from a checkout looks
+for `workbench/dist` beside the repository. Either can be overridden:
 
 ```sh
 optimist serve --web-root /path/to/dist

@@ -271,7 +271,7 @@ channel.
 ## Checking your work
 
 ```sh
-cargo run -- catalogue ./design
+optimist catalogue ./design
 ```
 
 ```text
