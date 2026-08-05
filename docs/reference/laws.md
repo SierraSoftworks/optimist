@@ -161,14 +161,13 @@ exceeded capacity, not that a request will take that long.
 `saturated_queues_report_a_large_finite_delay` pins the behaviour.
 
 ::: warning Assumption: exponential service
-Exponential service is the important assumption, because it maximises
-variability among distributions with a given mean. A service time that is more
-regular than exponential queues **less** than these results predict, and one
-that is heavier-tailed queues **more**. A batch job with a fixed runtime is the
-first case, and a request whose cost depends on how much data it touches is
-usually the second. Neither is fatal — these are the right order of magnitude
-either way — but a design whose margin rests on the third significant figure of
-a queueing delay is resting on the wrong thing.
+Exponential service has a coefficient of variation of one. It is more variable
+than deterministic service, but it is not the most variable distribution for a
+given mean. Under the corresponding M/G/1 assumptions, more regular service
+queues less than this result predicts and service with a coefficient of
+variation above one queues more. The exact M/M formulas do not apply outside
+exponential service, so a design whose margin rests on the third significant
+figure of a queueing delay is resting on the wrong thing.
 :::
 
 ### Bounded queues: M/M/1/K
@@ -477,14 +476,13 @@ responses:
   success: signal.success * Reliability.deadlineSuccess(1, max(signal.latency, 1e-6), budget)
 ```
 
-::: warning Assumption: exponential steps make this conservative
-Exponential is the maximum-variability choice for a given mean, so
-`deadlineSuccess` **understates** the chance of meeting a deadline for any
-service whose latency is more regular than exponential. That is the safe
-direction to be wrong in, but it means the figure is a lower bound rather than a
-forecast. A service whose latency distribution is known should be modelled by
-making `service_time` a distribution and reading the share of draws under
-budget instead.
+::: warning Assumption: exponential steps
+Exponential service has a coefficient of variation of one, but it is not a
+universal conservative bound. Against deterministic service with the same mean,
+for example, it overstates success below the mean and understates it above the
+mean. Treat `deadlineSuccess` as the result of its stated model, not as a lower
+bound. When the latency distribution is known, model `service_time` with that
+distribution and read the share of draws under budget instead.
 :::
 
 ### Quorums
@@ -635,9 +633,10 @@ not the expected maximum of $n$ random response times. The order statistic is
 computed in exactly one place — `Reliability.quorumLatency` — because a quorum
 knows how many identical nodes it is waiting on and an aggregator's branches are
 different components with different distributions. If a design needs the
-distribution of the slowest of $n$ identical branches, express the branch
-latency as a distribution and read the resulting spread, or model the group as a
-`quorum` with $r = n$.
+distribution of the slowest of $n$ identical branches, represent those branches
+explicitly where practical or define a project-local component type with the
+appropriate maximum order statistic. The shipped `quorum` always waits for a
+strict majority and cannot be configured with $r = n$.
 :::
 
 ---
@@ -704,7 +703,7 @@ scratchpad:
 - name: contention
   expression: '0.03'
   unit: '1'
-  summary: USL alpha — the serialised share of each operation.
+  summary: USL alpha — the contention coefficient.
 - name: coherency
   expression: '0.0005'
   unit: '1'
@@ -876,7 +875,7 @@ output.
   the $\rho/(1-\rho)$ scaling holds for general arrival and service
   distributions, with variability entering as a separate factor.
 - A. K. Erlang, "Solution of some problems in the theory of probabilities of
-  significance in automatic telephone exchanges", *Elektrotkeknikeren* 13, 1917.
+  significance in automatic telephone exchanges", *Elektroteknikeren* 13, 1917.
 - ITU-T Recommendation E.521, *Calculation of load capacity in a local telephone
   network* — the numerically stable Erlang recursions.
 

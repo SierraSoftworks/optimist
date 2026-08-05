@@ -108,8 +108,8 @@ Fronts a backend fleet, forwarding demand to it and holding a connection open
 for every request in flight. A sharded scale unit around the backends divides
 forwarded demand between their replicas.
 
-A connection is held for the whole round trip, so backends slowing down consumes
-its connection limit without any change in demand at all.
+A connection is held for the whole round trip, so slower backends consume its
+connection limit without any change in demand at all.
 
 Refusing work is not a property of this component. Put an explicit `load-shed`
 behaviour on the relationship in front when the design deliberately refuses
@@ -272,8 +272,7 @@ that happens to be busy.
 
 Durable storage with independent limits on operation rate, transfer rate,
 resident volume, and simultaneous work. Reaching any one of them bottlenecks the
-system, and which one binds first depends on record size rather than on the store
-itself.
+system, and record size can determine which one binds first.
 
 Latency here is not a fixed property. It rises with how hard the store is being
 driven, and because that delay travels back to whoever called, a store near its

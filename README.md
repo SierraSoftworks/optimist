@@ -7,9 +7,9 @@ compute pools, datastores — wired together and annotated with the properties a
 engineer can measure. Optimist solves that graph with uncertainty carried through
 it and reports which resource limits the design is closest to exhausting.
 
-A design is a directory of YAML that belongs in the same repository as the system
-it describes, so answering a capacity question is a local operation and can run in
-the same continuous integration that builds the thing being designed.
+A design is a directory of YAML files that belongs in the same repository as the
+system it describes, so answering a capacity question is a local operation and can
+run in the same continuous integration that builds the thing being designed.
 
 > [!IMPORTANT]
 > Optimist is under active development. The modelling, solving, and ranking core
@@ -82,7 +82,8 @@ brew install sierrasoftworks/tap/optimist
 
 Otherwise download a binary for your platform from the
 [latest release](https://github.com/SierraSoftworks/optimist/releases/latest).
-Windows, Linux, and macOS are published in both `amd64` and `arm64` variants.
+Binaries are published for Windows, Linux, and macOS in both `amd64` and `arm64`
+variants.
 Put it on your `PATH` and run it directly:
 
 ```sh
@@ -90,18 +91,19 @@ optimist serve --designs ./examples
 ```
 
 A released binary embeds the workbench, so nothing else is needed to serve one.
-To build from a checkout instead, with Rust 1.96 or newer and Node 20 or newer:
+To build from a checkout instead, with Rust 1.96 or newer and Node 20.19+ or
+22.12+:
 
 ```sh
-npm --prefix workbench install
+npm --prefix workbench ci
 npm --prefix workbench run build
 cargo build --release              # target/release/optimist
 ```
 
 ## Ask it from a script
 
-The same engine is a command-line tool, for continuous integration and
-automation:
+The same engine is available as a command-line tool for continuous integration
+and automation:
 
 ```sh
 optimist check       examples/checkout   # load and validate, without solving
@@ -112,11 +114,13 @@ optimist compare     examples/checkout warm-cache
 ```
 
 ```text
-COMPONENT  CONSTRAINT          UTILISATION  P90      BINDS  REPLICAS  HEADROOM
-orders     volume              7.009        9.555    100%   1         -3004303674979.1333
-api        capacity            2.960        4.916    87%    1         -1063.2349
-browsers   success_objective   55.626       109.865  86%    1         -0.2731
-browsers   latency_objective   0.460        0.793    3%     1         0.4053
+╭─ Constraints ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT        LOAD            MEAN     P90  BINDS    HEADROOM │
+│ orders     volume            ████████████    7.01    9.56  99.9%   -3.006e12 │
+│ api        capacity          ████████████    2.92    4.82    87%  -1046.4185 │
+│ browsers   success_objecti…  ████████████   52.48     101    86%     -0.2574 │
+│ browsers   latency_objecti…  █████░░░░░░░  0.4525  0.7744     3%      0.4106 │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 Use `--output json` or `--output jsonl` for automation, and `--seed`,
@@ -146,7 +150,7 @@ A released binary embeds the frontend; a build from a checkout looks for
 `OPTIMIST_WEB_ROOT`. Rust builds do not invoke Node; without a valid web root the
 server remains API-only.
 
-For front-end work, run Vite's dev server, which proxies `/api` including the
+For frontend work, run Vite's dev server, which proxies `/api` including the
 WebSocket upgrade:
 
 ```sh
@@ -181,7 +185,7 @@ The full VuePress documentation lives in [docs](docs/README.md).
 
 ```sh
 cd docs
-npm install
+npm ci
 npm run dev
 ```
 
@@ -207,7 +211,7 @@ assert the conclusions they claim to teach:
 
 - **`saturation`** — where saturation comes from, and why retrying past the fold
   lowers the share of requests that succeed rather than protecting it.
-- **`queued-collapse`** — a queue makes the design second order: a ten second
+- **`queued-collapse`** — a queue makes the design second order: a ten-second
   surge costs seventy seconds of recovery, and leaves it in a second steady
   state that persists once the backlog has gone.
 - **`deadlines`** — a timeout bounds what the caller waits for; only a
@@ -221,7 +225,8 @@ assert the conclusions they claim to teach:
 ## Verify the core
 
 ```sh
-cargo test
+cargo nextest run
+cargo nextest run --features comprehensive_tests
 cargo test --doc
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 cargo clippy --all-targets -- -D warnings
@@ -230,7 +235,7 @@ cargo fmt --check
 npm --prefix workbench test
 npm --prefix workbench run build
 
-cd docs && npm install && npm run build
+cd docs && npm ci && npm run build
 ```
 
 The nested fuzz workspace can be checked with:
@@ -254,8 +259,6 @@ cargo +nightly clippy --manifest-path fuzz/Cargo.toml --all-targets -- -D warnin
   distribution is the signal that the design is near the fold.
 - Unit annotations are validated for syntax but are not yet used to reject a
   property supplied in the wrong dimension.
-
-The tracked implementation status is maintained in [TODO.md](TODO.md).
 
 ## Licence
 

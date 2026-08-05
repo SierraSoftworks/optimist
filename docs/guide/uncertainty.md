@@ -76,8 +76,8 @@ in words when it finds more than one mode.
 
 Control the draw count with `--samples`. A thousand is the default and is enough
 for a mean; ten thousand is more honest about a ninetieth percentile. The HTTP
-API clamps the request to between 64 and 20,000 draws, because draw count is the
-one control that costs the server rather than the caller.
+API clamps the request to between 64 and 20,000 draws and the horizon to between
+1 and 500 steps because both multiply the server's work.
 
 ## Determinism
 
@@ -170,8 +170,9 @@ Attempts against a saturated dependency fail together, so correlated failure has
 to be expressed through shared upstream uncertainty — a single scratchpad
 quantity that several components read — rather than by relying on these formulas.
 
-`deadlineSuccess` assumes exponential steps, which is the maximum-variability
-choice for a given mean, so it is a conservative estimate of meeting a deadline.
+`deadlineSuccess` assumes exponential steps, whose coefficient of variation is
+one. Whether that assumption is conservative depends on the real service-time
+distribution and deadline.
 
 The two quorum laws are the only place in the vocabulary where adding a
 dependency makes a design *better*. Needing a majority rather than all of them

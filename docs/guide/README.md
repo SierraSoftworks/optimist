@@ -36,7 +36,7 @@ The rest of this guide uses **Metastable saturation**: a checkout service whose
 workers are held for the whole of a downstream call, behind a retry policy. It is
 chosen because a summary hides what matters about it.
 
-::: tip Working on the front end
+::: tip Working on the frontend
 Working from a checkout of Optimist, run Vite's dev server instead. It proxies
 `/api`, including the WebSocket upgrade the change feed needs.
 
@@ -66,15 +66,15 @@ Three things are worth noticing.
   was authored; it comes from the shipped catalogue, described in
   [the catalogue reference](../reference/catalogue.md).
 
-Nothing in this design defines a component type of its own. Six types and eight
-behaviours are available regardless, and a design may
+Nothing in this design defines a component type of its own. Eight types and
+eleven behaviours are available regardless, and a design may
 [define its own](./component-types.md).
 
 ## See what it is sized against
 
 Shared quantities sit down the right-hand side. They are what the design is
-measured against, and they are the only things a variant can rebind, so anything
-you intend to vary belongs here.
+measured against, and they are the only things an intervention can rebind, so
+anything you intend to vary belongs here.
 
 ![A shared quantity being edited, with a flyout showing the density of the lognormal it evaluates to and its p10, median, and p90.](/screenshots/quantities.png)
 
@@ -102,16 +102,20 @@ names first.
 
 ## Watch it over time
 
+Enable **Transient** in the simulation settings before running this example. A
+steady-state solve has no memory of the surge and cannot reproduce the collapse
+described below.
+
 The **Simulation** view solves the design across a horizon and charts whatever
 you choose to watch. The cards along the top are the constraints under the most
 pressure, so the limit a chart is about is on the same screen as the chart.
 
-![The simulation view showing success rate and response time collapsing partway through the run, with the four most pressured constraints carded above.](/screenshots/simulation.png)
+![The simulation view showing success rate and response time collapsing partway through the run, with the four most pressured constraints shown as cards above.](/screenshots/simulation.png)
 
-This is the point of the example. Demand surges between t = 5 and t = 15 and then
-returns to a level the design served comfortably before — and the design does not
-return with it. Success falls to nothing and stays there. A steady-state answer
-would have reported the healthy branch and shown none of this; see
+This is the point of the example. Demand surges between `t = 5` and `t = 15` and
+then returns to a level the design served comfortably before — and the design
+does not return with it. Success falls to nothing and stays there. A steady-state
+answer would have reported the healthy branch and shown none of this; see
 [solving and bottlenecks](./analysis.md) for why.
 
 The shading around each line is the distribution across draws rather than a band
@@ -120,9 +124,9 @@ beside it.
 
 ## Weigh a proposed change
 
-A change is not an edit. A **variant** rebinds named quantities in the shared
-list and the design is solved again exactly as it stands, so whatever moves in
-the result moved because of the rebinding.
+A proposal is not an edit. An **intervention** rebinds named quantities in the
+shared list, producing a variant that is solved exactly as the design stands.
+Whatever moves in the result therefore moved because of the rebinding.
 
 ```yaml
 # _system.yaml
@@ -140,7 +144,7 @@ dashed, along with how far every quantity moved.
 
 ![The simulation view comparing the load-shedding variant against the design it would replace, with the baseline drawn dashed and each quantity's movement beside it.](/screenshots/comparison.png)
 
-Shedding load is the only one of these variants that keeps the service healthy
+Shedding load is the only one of these interventions that keeps the service healthy
 through the surge rather than merely surviving it, and it is not free: the
 callers it refuses are failures too. The badge on each quantity says how far it
 moved, and the card in the header says whether the constraint it was aimed at
@@ -158,7 +162,7 @@ made.
 
 ```text
 examples/metastable/
-  _system.yaml            name, shared quantities, scale units, variants
+  _system.yaml            name, shared quantities, scale units, interventions
   components/shoppers.yaml
   components/checkout.yaml
   components/inventory.yaml
@@ -169,7 +173,7 @@ adding a dependency touches one file rather than a shared list that everybody
 would have to agree on the ordering of.
 
 That is what makes a design reviewable: it lives beside the system it describes,
-and the same engine that answered the questions above can be run over it in
+and the same engine that answered the questions above can be run against it in
 continuous integration.
 
 ```sh

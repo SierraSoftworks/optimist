@@ -382,7 +382,7 @@ small set of reserved bindings the evaluator supplies.
 
 | Binding | Available in | Is |
 | --- | --- | --- |
-| `t` | channels, transforms | Position on the simulation timeline |
+| `t` | channels, transforms | Elapsed simulation time in seconds |
 | `dt` | channels, transforms | Length of one step |
 | `steady` | channels | `true` when the solve is asking where the design rests |
 | `prev` | channels | This component's channel values at the previous step |
@@ -394,17 +394,16 @@ small set of reserved bindings the evaluator supplies.
 
 `pi`, `e` and `infinity` are also always in scope.
 
-::: warning `t` is a position, not a wall clock
-`t` is the step index multiplied by the step length, which defaults to one. A
-shipped example runs roughly `t = 0` to `t = 20`, so stage a behavioural shift
-inside that range:
+::: warning `t` is elapsed simulation time
+`t` is the step index multiplied by the step length, measured in seconds from
+the start of the model. Stage behavioural shifts within the configured horizon:
 
 ```squiggle
 if t >= 5 && t < 15 then base_demand * surge_factor else base_demand
 ```
 
-Treat it as "where on the timeline", not "how many seconds in". Thresholds
-borrowed from a real clock — `3600`, `300` — will simply never be reached.
+Thresholds are elapsed seconds, not times of day. A threshold is reached only
+when it falls within `--horizon * --step`.
 :::
 
 A component cannot see what it publishes itself. `in.<port>.<signal>` is what
@@ -486,7 +485,7 @@ meet.
 | `mean('x')` | `no overload of 'mean' accepts (String)` |
 | `List.length([1], 2)` | `no overload of 'List.length'` |
 | `List.missing([1])` | `unknown builtin 'List.missing'` |
-| `f(x) = x; f(1, 2)` | `function expects 1 arguments, received 2` |
+| `f(x) = x; f(1, 2)` | `function expects 1 argument, received 2` |
 | `[3,5,8][1.8]` | `cannot index Array with Number` |
 | `[3,5,8][10]` | `array index is out of bounds` |
 | `{a: 1}.b` | `dictionary has no key 'b'` |

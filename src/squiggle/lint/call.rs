@@ -163,10 +163,16 @@ impl Checker {
 
     fn infer_user_call(&mut self, function: &FunctionType, arguments: &[Type], span: Span) -> Type {
         if function.parameters.len() != arguments.len() {
+            let noun = if function.parameters.len() == 1 {
+                "argument"
+            } else {
+                "arguments"
+            };
             self.report(
                 format!(
-                    "function expects {} arguments, received {}",
+                    "function expects {} {}, received {}",
                     function.parameters.len(),
+                    noun,
                     arguments.len()
                 ),
                 span,

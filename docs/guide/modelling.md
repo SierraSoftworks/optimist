@@ -65,9 +65,9 @@ outgoing:
 ```
 
 `capacity` is how many operations may wait on the wire, and defaults to `100` —
-the order of a network link between two services. Depth is not free. A queue
-absorbs a burst by making the caller wait for it, so a generous buffer converts a
-capacity problem into a latency one, and a caller with a deadline turns that
+on the order of a network link between two services. Depth is not free. A queue
+absorbs a burst by making the caller wait for it, so a generous buffer converts
+a capacity problem into a latency one, and a caller with a deadline turns that
 latency back into failure.
 
 It is also a link, once somebody says what kind. Both of these are absent by
@@ -119,11 +119,13 @@ small and each entry says how it behaves:
 | --- | --- | --- | --- |
 | `rate` | `op/s` | forward | sum |
 | `cancellation` | `op/s` | forward | sum |
+| `cancellation_effectiveness` | `share` | forward | mean |
 | `occupancy` | `op` | forward | sum |
 | `payload` | `B/op` | both | mean |
 | `latency` | `s` | backward | max |
 | `success` | `1` | backward | product |
 | `capacity` | `op/s` | backward | min |
+| `peers` | `1` | engine-supplied | sum |
 
 Two properties decide how the engine treats each one.
 
@@ -174,8 +176,9 @@ outgoing:
           budget: '1'
 ```
 
-The shipped behaviours are `retry`, `timeout`, `fan-out`, `batch`, `cache`,
-`load-shed`, `feature-flag`, and `ignores-cancellation`.
+The shipped behaviours are `retry`, `timeout`, `fallible`, `fan-out`, `batch`,
+`cache`, `load-shed`, `feature-flag`, `ignores-cancellation`,
+`cancellation-effectiveness`, and `message-size`.
 
 ### Order matters
 
@@ -341,5 +344,5 @@ Start with the smallest design that can answer the question:
 6. Add an intervention for each proposal you intend to weigh.
 
 A denser model is not a better one. Every property should be something an
-engineer can measure, look up, or defend, and the `summary` field beside it is
-where that defence belongs.
+engineer can measure, look up, or defend. Record that defence in the summary of
+the scratchpad entry, component, or relationship that supplies the assumption.

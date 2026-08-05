@@ -7,9 +7,9 @@ optimist serve --bind 127.0.0.1:3000 --designs ./designs
 ```
 
 Reads return the design as it stands; the one write endpoint takes the same
-mutations the session applies. There is no revision to send, nothing to retry,
-and no conflict to resolve, because a mutation names one entity and the last
-writer to touch it wins.
+mutations the session applies. There is no revision precondition or conflict
+response. A mutation names one entity, and concurrent writes to that entity
+resolve last-writer-wins.
 
 There is no authentication. Bind to loopback or run behind something that
 enforces access.
@@ -207,7 +207,7 @@ Applies a batch of changes in order.
 { "sequence": 43, "applied": 2 }
 ```
 
-Each mutation is applied atomically. The batch stops at the first failure, and
+Each mutation is atomic, but the batch is not. It stops at the first failure and
 earlier mutations stand; `applied` says how many landed.
 
 ### Mutation kinds
@@ -312,16 +312,16 @@ Solves the design and ranks its constraints.
 | Query parameter | Default | Notes |
 | --- | --- | --- |
 | `seed` | `0` | |
-| `samples` | `1000` | Clamped to 64–20,000. |
+| `samples` | `2000` | Clamped to 64–20,000. |
 | `horizon` | `1` | Clamped to 1–500. |
 | `step` | `1.0` | Length of one step: how far `t` advances each step, and how far a transient integration carries the backlog. |
 | `transient` | `false` | Advance queues through time rather than solving for balance. |
 | `series` | `false` | Return every step rather than only the one it settled on. |
 | `intervention` | none | Apply an intervention before solving. |
 
-Draw count is the one control that costs the server rather than the caller, which
-is why it is capped. Solving runs on the blocking pool, so a model that takes a
-moment delays only the client that asked for it.
+Sample count and horizon both multiply the server's work, which is why they are
+capped. Solving runs on the blocking pool, so a model that takes a moment delays
+only the client that asked for it.
 
 ```json
 {
@@ -436,9 +436,9 @@ which has no gap to reason about and costs one round trip rather than two.
 ```
 
 A socket opened at sequence *N* receives the snapshot at *N* and then every
-change with a sequence above it. A client that already has a change can
-recognise it by sequence and ignore it — which is how an editor handles its own
-edits arriving back.
+change with a sequence above it. A client applies every newer change through the
+same path, regardless of which editor originated it, and ignores changes already
+represented by its local snapshot.
 
 `lagged` means the listener fell more than 256 changes behind and the backlog was
 dropped. That is the one case where refetching the design is the right answer.

@@ -1,7 +1,7 @@
 # CLI reference
 
 ```text
-optimist [--output <FORMAT>] [--colour <WHEN>] <COMMAND>
+optimist [--output <FORMAT>] [--colour <WHEN>] [--progress <WHEN>] <COMMAND>
 ```
 
 > Design large systems and find what constrains them.
@@ -37,6 +37,7 @@ must be given the directory because the arguments after it are interventions.
 | --- | --- | --- | --- |
 | `--output` | `table`, `json`, `jsonl` | `table` | Report format. Accepted before or after the subcommand. |
 | `--colour` | `auto`, `always`, `never` | `auto` | Whether reports are coloured. `auto` colours a terminal and nothing else. |
+| `--progress` | `auto`, `always`, `never` | `auto` | Whether solve progress is drawn on standard error. `auto` draws only on a terminal. |
 | `--version` | | | Print the version and exit. |
 | `--help` | | | Print usage and exit. |
 
@@ -47,8 +48,9 @@ file, read aloud, or parsed by an agent loses nothing. Width is taken from
 `COLUMNS` when that is set and from the terminal otherwise, which is how a
 script pins a report to a known width.
 
-Use `--output json` when something other than a person is reading. Errors are
-rendered with recovery advice and exit with status `1`; success exits with `0`.
+Use `--output json` when something other than a person is reading. Runtime and
+design errors are rendered with recovery advice and exit with status `1`;
+invalid command-line arguments exit with status `2`. Success exits with `0`.
 
 ## Shared solve options
 
@@ -61,6 +63,7 @@ rendered with recovery advice and exit with status `1`; success exits with `0`.
 | `--horizon <N>` | `1` | Number of steps to advance. |
 | `--step <LENGTH>` | `1.0` | Length of one step: how far `t` advances each step, and how far a transient integration carries the backlog. |
 | `--transient` | off | Advance queues through time rather than solving for where they balance. |
+| `--shares <N>` | `4` | Divide draws into independently solved pieces. The result is exact; values do not depend on the number of shares. |
 
 `--transient` gives a design memory, so a queue filled by a surge has to drain
 before the design recovers. It is faithful only while the step is short against
@@ -175,15 +178,32 @@ optimist catalogue examples/checkout
 
 ```text
 ╭─ Component types ────────────────────────────────────────────────────────────╮
-│ TYPE           NAME            PROPERTIES  CHANNELS  LIMITS  IN USE          │
-│ ─────────────  ──────────────  ──────────  ────────  ──────  ──────          │
-│ aggregator     Aggregator               2         6       1       0          │
-│ client         Client                   4         9       2       1          │
-│ compute        Compute pool             4        14       1       1          │
-│ datastore      Datastore                8        12       4       1          │
-│ failover       Failover                 4        19       0       0          │
-│ load-balancer  Load balancer            2        11       1       0          │
-│ queue          Queue                    2         5       2       0          │
+│ TYPE           NAME           PROPERTIES  CHANNELS  LIMITS  IN USE           │
+│ ─────────────  ─────────────  ──────────  ────────  ──────  ──────           │
+│ aggregator     Aggregator              2        10       1       0           │
+│ client         Client                  4         4       2       1           │
+│ compute        Compute                 3        17       1       1           │
+│ datastore      Datastore               8        13       4       1           │
+│ failover       Failover                4        19       0       0           │
+│ load-balancer  Load balancer           2        11       1       0           │
+│ queue          Queue                   2         6       2       0           │
+│ quorum         Quorum                  1        14       1       0           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭─ Behaviours ─────────────────────────────────────────────────────────────────╮
+│ BEHAVIOUR              NAME                  PROPERTIES  REQUESTS  RESPONSES │
+│ ─────────────────────  ────────────────────  ──────────  ────────  ───────── │
+│ batch                  Batch                          2         2          1 │
+│ cache                  Cache                          1         1          0 │
+│ cancellation-effecti…  Cancellation effect…           1         1          0 │
+│ fallible               Fallible link                  2         1          1 │
+│ fan-out                Fan-out                        1         2          0 │
+│ feature-flag           Feature flag                   1         1          0 │
+│ ignores-cancellation   Ignores cancellation           0         1          0 │
+│ load-shed              Load shedding                  1         1          1 │
+│ message-size           Message size                   2         1          1 │
+│ retry                  Retry                          1         1          2 │
+│ timeout                Timeout                        1         1          2 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -326,8 +346,8 @@ optimist compare <DIRECTORY> <INTERVENTION>... [solve options]
 ```
 
 Weighs proposals against the design they would replace, solving each with the
-same seed and the same draws. Name several and they become as comparable with
-each other as each is with the baseline.
+same seed and the same draws. Name several and each is compared independently
+with the same baseline; the command does not compare interventions pairwise.
 
 ```sh
 optimist compare examples/checkout warm-cache bigger-pool
@@ -458,7 +478,8 @@ the sender or the recipient is the one who can fix it.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | The design could not be read, could not be solved, carried an error-level finding, or the arguments were invalid. |
+| `1` | The design could not be read, could not be solved, or carried an error-level finding. |
+| `2` | The command-line arguments were invalid. |
 
 Failures are printed to stderr with the file or component at fault named, and
 with advice on what to do about it. Reports always go to stdout.

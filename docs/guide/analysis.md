@@ -106,11 +106,10 @@ overrides:
     expression: 'if t >= 5 && t < 15 then 4000 else 900'
 ```
 
-`t` is a position on the simulation timeline rather than a wall clock: the step
-number scaled by the step length, starting at zero. It is there to stage
-behavioural shifts — when a surge starts and stops, when a dependency is
-withdrawn — and the shipped designs run over a horizon of roughly `t = 0` to
-`t = 20`, so thresholds are written at that scale.
+`t` is elapsed simulation time in seconds: the step index multiplied by
+`--step`, starting at zero. It is there to stage behavioural shifts — when a
+surge starts and stops, or when a dependency is withdrawn. Choose thresholds to
+fit the horizon and step length of the scenario being modelled.
 
 Under steady solving each step is solved from rest and the surge leaves no trace;
 under transient solving the backlog it created has to drain, and whether it does
@@ -159,10 +158,10 @@ is, and says what saturating it would mean.
 Only the worst constraint decides the colour. A component with one constraint at
 30% and another at 200% is in trouble, and averaging would hide it.
 
-The **Simulation** view cards the same ranking across the whole design, so the
-limit a chart is about sits above the chart.
+The **Simulation** view shows the same ranking in cards across the whole design,
+so the limit a chart is about sits above the chart.
 
-![The simulation view with the four most pressured constraints carded above the charts.](/screenshots/simulation.png)
+![The simulation view with the four most pressured constraints shown as cards above the charts.](/screenshots/simulation.png)
 
 The same ranking is available from a script:
 
@@ -225,15 +224,15 @@ rather than a figure an engineer has to assemble by hand.
 
 ## Weighing a change
 
-Pick a variant in the workbench and the design as it stands is solved alongside
-it and drawn on the same axes, dashed. A proposal is judged by the distance
-between two lines, and reading that off two charts on two screens is not
-something anybody does accurately.
+Pick an intervention in the workbench and its resulting variant is solved
+alongside the design as it stands, then drawn on the same axes with the baseline
+dashed. A proposal is judged by the distance between two lines, and reading that
+off two charts on two screens is not something anybody does accurately.
 
 ![The simulation view comparing a variant against the design it would replace, with the baseline drawn dashed and each quantity's movement beside it.](/screenshots/comparison.png)
 
 The badge on each quantity is how far it moved; the card in the header says
-whether the constraint the variant was aimed at still binds.
+whether the constraint the intervention was aimed at still binds.
 
 From a script:
 
@@ -262,7 +261,8 @@ optimist compare examples/checkout warm-cache
 `compare` solves the design twice — once as it stands, once with the
 intervention's rebindings applied — using the same seed and the same draws, and
 reports the movement of every constraint. Name several interventions at once and
-they become as comparable with each other as each is with the baseline.
+each is compared independently with the same baseline; the command does not make
+pairwise comparisons between interventions.
 
 | Effect | Meaning |
 | --- | --- |

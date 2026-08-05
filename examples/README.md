@@ -10,7 +10,7 @@ the build rather than the reader.
 
 The first three build on each other and are best read in order.
 
-## saturation
+## `saturation`
 
 Browsers call an API, the API reads from a store, and that read is wrapped in
 the two policies every client library ships with — a timeout and a retry.
@@ -41,7 +41,7 @@ requests and drains against a surplus of thousands per second, so a fivefold
 change in wire depth makes no difference to recovery at all. That is the
 property the next example does not have.
 
-## queued-collapse
+## `queued-collapse`
 
 The same shop front, plus a queue and a fulfilment worker drawing on the same
 store.
@@ -56,12 +56,12 @@ One addition makes the design second order. A queue holds tens of thousands of
 operations and what it holds it keeps, so the backlog is a state variable — and
 draining it is itself load on the store the user-facing path depends on.
 
-**Recovery outlasts the cause by an order of magnitude.** A ten second surge
+**Recovery outlasts the cause by an order of magnitude.** A ten-second surge
 builds a backlog of 6,700 jobs, 13 seconds of staleness, which is still being
 worked off seventy seconds later.
 
 **The design has two steady states at one level of demand.** Both readings below
-are at t=140s, at the same offered load, with the queue empty in each:
+are at `t = 140 s`, at the same offered load, with the queue empty in each:
 
 | | user latency | store latency | backlog |
 | --- | --- | --- | --- |
@@ -72,12 +72,12 @@ They differ only in what happened two minutes earlier. Nothing in the model
 asserts this; it emerges from draining being load.
 
 **Shedding at the edge is the only lever that works**, and its limit has to be
-set from what the consumer drains at rather than from what the front end could
-serve — which is why a limit chosen from the front end's headroom is always too
+set from what the consumer drains at rather than from what the frontend could
+serve — which is why a limit chosen from the frontend's headroom is always too
 high. It is charged for honestly: half the traffic is refused while the surge
 lasts, and the client's objective reports it.
 
-## deadlines
+## `deadlines`
 
 A search path three services deep, where one request becomes six operations in
 the service at the bottom. Every hop has a timeout. Only one thing varies:
@@ -102,13 +102,13 @@ holding requests whose answers have already been thrown away.
 **The penalty scales with follow-on work.** With one operation per request
 nothing congests at all; with six, the index is 58× slower. Work abandoned at
 the top has already become six times as much work at the bottom, and none of it
-is recalled unless the giving up reached there.
+is recalled unless cancellation reaches the dependency.
 
 This design defines its own behaviour in `mutators/`, because an intervention
 rebinds quantities rather than changing structure — which is what makes the two
 readings comparable rather than two designs differing in untracked ways.
 
-## checkout
+## `checkout`
 
 A shop front where the binding constraint is the one nobody watches.
 
@@ -123,7 +123,7 @@ worries about is third on the list. Neither proposed change fixes it: caching
 relieves the store and loads the pool, and a bigger pool pushes more traffic at
 a store that already could not cope.
 
-## metastable
+## `metastable`
 
 A checkout service whose workers are held for the whole of a downstream call,
 behind a retry policy, with two steady states over a band of load.

@@ -96,10 +96,10 @@ is declared by the signal itself and checked when the type loads, so a rate
 cannot be sent back to a caller and a `peers` count cannot be published at all.
 
 The same declaration says which signals a port *must* publish: every inbound port
-states a `latency` and a `success`, and every outbound port a `rate`. Omitting
-one is not an error the engine could otherwise report — the missing figure simply
-rests, and a component with no latency reads as one that answers instantly. The
-requirement is what makes two types substitutable for one another.
+states a `latency` and a `success`, and every outbound port a `rate`. Without
+that requirement, an omitted signal would silently use its resting value, and a
+component with no latency would read as one that answers instantly. The
+requirement also makes two types substitutable for one another.
 
 **Constraints** pair a demand channel with the limit it consumes, and are the
 whole point of the exercise. Every bottleneck the engine reports is a constraint
@@ -130,7 +130,7 @@ The surface is deliberately small. A channel expression may use:
 | `in.<port>.<signal>` | What arrived on an inbound port, aggregated across callers. |
 | `out.<port>.<signal>` | What came back on an outbound port, aggregated across dependencies. |
 | `prev.<channel>` | This component's channel values at the previous step. |
-| `t` | Position on the simulation timeline: the step number scaled by the step length. |
+| `t` | Elapsed simulation time in seconds: the step index multiplied by the step length. |
 | `dt` | Length of the current step, in seconds, as used when integrating a backlog. |
 | `steady` | Whether the solve is asking where the design rests rather than how it moves. |
 | *scratchpad names* | Shared quantities, when used in a component's properties. |
@@ -254,7 +254,7 @@ it would have carried a flow.
 
 ## Two things worth knowing before you start
 
-**Response ports and `rate`.** Signals flow along a relationship in one
+**Inbound ports and `rate`.** Signals flow along a relationship in one
 direction only, and an outbound port's `publishes` applies to every relationship
 leaving it. A component sitting on the response leg of a feedback loop that
 published `rate` would feed demand back into its own caller, which gives the loop
@@ -274,10 +274,19 @@ channel.
 optimist catalogue ./design
 ```
 
+Alongside the eight shipped component types and eleven shipped behaviours, the
+output includes project-local definitions in the same two sections:
+
 ```text
-KIND       ID             PROPERTIES  LIMITS
-component  token-bucket   2           1
-behaviour  hedged-request 2           2
+╭─ Component types ────────────────────────────────────────────────────────────╮
+│ TYPE          NAME          PROPERTIES  CHANNELS  LIMITS  IN USE            │
+│ token-bucket  Token bucket           2         3       1       0            │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+╭─ Behaviours ─────────────────────────────────────────────────────────────────╮
+│ BEHAVIOUR      NAME            PROPERTIES  REQUESTS  RESPONSES              │
+│ hedged-request Hedged request           2         1          1              │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 `catalogue` lists everything a design can reach, shipped and local together, and

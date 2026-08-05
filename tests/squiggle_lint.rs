@@ -26,7 +26,7 @@ fn valid_calculations_have_no_lint_findings(#[case] source: &str) {
 #[case::array_index("[1,2]['x']", "array index must be Number")]
 #[case::missing_dict_field("{a:1}.b", "dictionary has no known key 'b'")]
 #[case::condition_builtin("and(true,1)", "no overload of 'and'")]
-#[case::user_arity("f(x)=x; f(1,2)", "function expects 1 arguments, received 2")]
+#[case::user_arity("f(x)=x; f(1,2)", "function expects 1 argument, received 2")]
 #[case::parameter_annotation(
     "f(x:Number.rangeDomain(0,1))=x; f('x')",
     "argument 1 expects Number, received String"

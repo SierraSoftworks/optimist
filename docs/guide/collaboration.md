@@ -32,8 +32,8 @@ find a design they know exists has no way to discover that its file is malformed
 
 ## Editing is a stream of mutations
 
-There is no revision to send, nothing to retry, and no conflict to resolve. A
-mutation names exactly one entity, and the last writer to touch it wins.
+There is no revision precondition or conflict response. A mutation names exactly
+one entity, and concurrent writes to that entity resolve last-writer-wins.
 
 ```http
 POST /api/v1/designs/checkout/mutations
@@ -109,8 +109,8 @@ backlog:
 That is the one case where a client refetches, because the local copy cannot be
 repaired by replay.
 
-`sequence` increments on every applied change. An editor recognises its own
-edits arriving back by the sequence the write returned.
+`sequence` increments on every applied change. A client uses it to ignore any
+change already represented by its local snapshot.
 
 ## Persistence
 
@@ -147,7 +147,7 @@ OPTIMIST_WEB_ROOT=/path/to/dist optimist serve
 Rust builds do not invoke Node. If no valid web root is configured or discovered,
 the server remains API-only.
 
-For front-end work, run Vite's dev server instead. It proxies `/api`, including
+For frontend work, run Vite's dev server instead. It proxies `/api`, including
 the WebSocket upgrade the feed needs.
 
 ```sh

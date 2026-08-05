@@ -45,7 +45,7 @@ name that is not on this list is a lint error rather than a silent zero.
 | `normal(mean, stdev)` | mean, standard deviation | $(-\infty, \infty)$ |
 | `lognormal(mu, sigma)` | $\mu$ and $\sigma$ **of the log** | $(0, \infty)$ |
 | `uniform(low, high)` | bounds | $[a, b]$ |
-| `beta(alpha, beta)` | shape counts | $[0, 1]$ |
+| `beta(alpha, beta)` | positive shape parameters | $[0, 1]$ |
 | `triangular(low, mode, high)` | bounds and peak | $[a, b]$ |
 | `exponential(rate)` | rate $\lambda$ | $[0, \infty)$ |
 | `gamma(shape, scale)` | $k$, $\theta$ | $[0, \infty)$ |
@@ -57,7 +57,7 @@ name that is not on this list is a lint error rather than a silent zero.
 | `pointMass(value)` | a certainty | one atom |
 | `mixture(...)`, `mx(...)` | components and weights | union of components |
 | `a to b` | 5th and 95th percentiles | $(0, \infty)$, lognormal |
-| `truncate(d, low, high)` | conditioning | clipped |
+| `truncate(d, low, high)` | distribution and bounds | $[low, high]$, conditioned |
 
 ::: warning No Pareto, no Weibull
 Neither is implemented. When you need a genuinely heavy tail, raise $\sigma$ on
@@ -125,8 +125,8 @@ arrive together, cron fires together, a mobile client wakes a million sessions o
 the same minute boundary. Its variance is pinned to its mean, so it cannot
 express a burst.
 
-Model burstiness as uncertainty in the *rate* instead. Poisson counts over an
-uncertain rate is what an over-dispersed arrival process actually looks like.
+Model burstiness as uncertainty in the *rate* instead. A Poisson count with an
+uncertain rate produces an overdispersed mixed-Poisson process.
 :::
 
 ## Service time and latency
@@ -160,8 +160,9 @@ ratio between p90 and the median is $e^{1.28\sigma}$:
 `exponential(rate)` is the memoryless alternative: the time remaining is
 independent of how long you have already waited. That is a strong claim, usually
 wrong for application work and right for gaps between independent events. It is
-also the maximum-variability choice for a given mean, so it is the conservative
-option when you want an answer that will not flatter you.
+also broad, with a coefficient of variation of one. That makes its variability
+easy to interpret, but does not make it a conservative bound on every service
+time distribution with the same mean.
 
 ::: warning `normal` is almost always wrong for a latency
 Its support includes negative numbers, so `normal(0.05, 0.03)` produces draws in
@@ -248,10 +249,10 @@ wrong: nothing checks the bytes until somebody writes a number down.
 
 ## Hit ratios, success rates, and anything called a `share`
 
-Beta is the family on $[0, 1]$ and it is the only correct answer here. Its two
-parameters are counts, which makes it the easiest distribution in this whole
-document to elicit: if you saw $h$ hits out of $n$ requests, use
-$\alpha = h + 1$ and $\beta = n - h + 1$.
+Beta is a flexible continuous family on $[0, 1]$. Its two parameters are positive
+shapes; one useful way to derive them is from counts. If you saw $h$ hits out of
+$n$ requests and use a uniform prior, set $\alpha = h + 1$ and
+$\beta = n - h + 1$.
 
 ```yaml
 scratchpad:
@@ -398,14 +399,16 @@ There is no percentile form for `beta`. Give it counts, or give it a mean and a
 standard deviation — a percentile dictionary is a runtime error.
 :::
 
-So, working through "usually about 40ms, sometimes 200ms":
+So, working through "usually about 40 ms, sometimes 200 ms":
 
-1. **"Usually about 40ms"** is the median, not the mean. People quote what they
-   see most, which is the middle.
-2. **"Sometimes 200ms"** is a tail. If "sometimes" means one call in ten, it is
-   p90; if it means one in a hundred, the spread is much wider.
-3. A lognormal with median $m$ and p90 $q$ has $\sigma = \ln(q/m) / 1.2816$, so
-   here $\sigma = \ln(5) / 1.2816 \approx 1.26$. Write it either way:
+1. **Confirm what "usually about 40 ms" means.** If it describes the middle
+  observed call, treat 40 ms as the median; if it is an average, do not silently
+  reinterpret it.
+2. **"Sometimes 200 ms"** is a tail. If "sometimes" means one call in ten, it is
+  p90; if it means one in a hundred, the spread is much wider.
+3. If 40 ms is the median, a lognormal with median $m$ and p90 $q$ has
+  $\sigma = \ln(q/m) / 1.2816$, so here
+  $\sigma = \ln(5) / 1.2816 \approx 1.26$. Write it either way:
 
 ```squiggle
 0.04 * lognormal(0, 1.26)              // anchored on the median
@@ -704,6 +707,7 @@ properties:
   retention: '2592000'                       # thirty days
 ```
 
-Every one of those is a starting assumption. The `summary` field beside a
-property is where you record which ones you measured and which ones you borrowed,
-and the spread is where you record how much difference it makes.
+Every one of those is a starting assumption. Record which figures were measured
+and which were borrowed in the summary of the scratchpad entry, component, or
+relationship that supplies them; use the spread to record how much difference
+the uncertainty makes.

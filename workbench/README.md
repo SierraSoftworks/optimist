@@ -1,6 +1,6 @@
 # Workbench
 
-A Vue front end for the design server. It opens a directory of designs, edits
+A Vue frontend for the design server. It opens a directory of designs, edits
 them, solves them, and weighs the proposals attached to them.
 
 ## Running it
@@ -8,22 +8,22 @@ them, solves them, and weighs the proposals attached to them.
 The workbench is useless on its own; it needs a server holding designs.
 
 ```sh
-cargo run -- serve --designs ./designs        # in the repository root
+cargo run -- serve --designs ./examples       # in the repository root
 npm --prefix workbench run dev                # http://127.0.0.1:5173
 ```
 
 Point it somewhere else with `OPTIMIST_API_URL`. The dev server proxies `/api`,
-including the websocket upgrade the change feed needs.
+including the WebSocket upgrade the change feed needs.
 
 ```sh
-npm test          # unit tests
-npm run build     # type-check and bundle
+npm --prefix workbench test          # unit tests
+npm --prefix workbench run build     # type-check and bundle
 ```
 
 ## How it stays current
 
 Editing writes through `POST /mutations` and nothing is written into the local
-cache from the response. The same edit arrives back over the design's websocket
+cache from the response. The same edit arrives back over the design's WebSocket
 feed, and that is the path that updates the screen.
 
 Doing it that way means an edit made here and an edit made by somebody else in
@@ -45,9 +45,10 @@ The solver relaxes over aligned draws, so each draw settles on its own fixed
 point. A design near a fold therefore returns a genuine mixture — some draws
 healthy, some collapsed — and a mean, a median and a percentile pair describe
 that mixture exactly as they would describe one broad unimodal spread. The
-estimate in `domain/density.ts` is the only place the difference survives, and
+density estimate in `domain/density.ts` preserves this distinction visually, and
 when it finds more than one mode the chart says so in words rather than leaving
-it to a few pixels of dip.
+it to a few pixels of dip. The API's draws and mixture metadata preserve the
+same information for other clients.
 
 That module carries the reasoning for its bandwidth choice, including an approach
 that was tried, measured, and removed for reporting modes that were not there.
@@ -55,7 +56,7 @@ that was tried, measured, and removed for reporting modes that were not there.
 ## Layout
 
 ```
-src/api/          wire types, HTTP client, websocket feed
+src/api/          wire types, HTTP client, WebSocket feed
 src/composables/  query and mutation hooks
 src/components/   panels and the distribution chart
 src/domain/       density estimation, mutation replay, formatting

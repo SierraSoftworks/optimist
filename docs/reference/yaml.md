@@ -189,7 +189,7 @@ pinned to whatever an algorithm produced the first time it was opened.
 | `capacity` | no | Squiggle source for how many operations may wait on the wire. Defaults to `100`. |
 | `bandwidth` | no | Squiggle source for how fast the wire carries bytes, in `B/s`. Unlimited when omitted. |
 | `latency` | no | Squiggle source for how long a round trip over the wire takes, in `s`. Half of it carries the request and half the reply. Defaults to `0`. |
-| `mutators` | no | Behaviours applied to the flow, **in the order they take effect**. |
+| `mutators` | no | Behaviours applied in declaration order on requests and reverse declaration order on responses. |
 | `summary` | no | What this connection represents. |
 
 ### Attached behaviour
@@ -248,7 +248,7 @@ channels:
     summary: Demand passed on, capped per draw at the refill rate.
     expression: min(arriving, refill)
   admitted_ratio:
-    unit: '1'
+    unit: share
     emphasis: key
     summary: Share of callers served rather than refused.
     expression: min(admitted / max(arriving, 0.000001), 1)
@@ -294,7 +294,7 @@ name: Hedged request
 summary: Issues a duplicate once the first request is slow.
 properties:
   hedge_share:
-    unit: '1'
+    unit: share
     summary: Share of calls slow enough to be hedged.
 requests:
   rate:
@@ -323,13 +323,14 @@ the way back. Both accept a map of signal name to `{ unit, summary, expression }
 - Every project-local component type and behaviour passes the same validation as
   a shipped one, including the rejection of unknown fields.
 
-Order within the files carries no meaning; a design that has been through
-persistence is written back in canonical order — components by identifier,
-relationships by endpoint pair, scale units by identifier — so a model assembled
-by hand and one assembled by the workbench produce identical files.
+Map order carries no meaning, but list order can be semantic: scratchpad entries
+are evaluated in order, and behaviours compose in declaration order on requests
+and reverse order on responses. Persistence writes maps and unordered
+collections back in canonical order, so a model assembled by hand and one
+assembled by the workbench produce identical files without changing those lists.
 
 Run the checks without solving:
 
 ```sh
-optimist check ./design
+optimist check ./design --no-solve
 ```

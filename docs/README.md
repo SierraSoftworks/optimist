@@ -45,19 +45,19 @@ It exists for the questions a diagram cannot answer:
 - Does the design still meet its latency objective at the ninetieth percentile of demand?
 - Would the proposed change relieve the binding constraint, or only move it?
 
-::: tip It isn't guessing
-Nothing here is a hand-wavy simulation. Capacity comes from Little's Law, waiting
-time from M/M/1, M/M/c, and Erlang C, buffers from bounded M/M/1/K queues, and
-retry amplification and quorum availability from their closed forms — with
-uncertainty carried through all of it as real distributions rather than averages.
-Every figure traces back to a named law, and
+::: tip Named laws, stated assumptions
+Capacity comes from Little's Law, waiting time from M/M/1, M/M/c, and Erlang C,
+buffers from bounded M/M/1/K queues, and retry amplification and quorum
+availability from their closed forms. Transient solves integrate queue state
+numerically, and uncertainty is carried through the model as distributions
+rather than averages. Every figure traces back to a named law, and
 [Laws and models](./reference/laws.md) says which, where, and under what
 assumptions.
 :::
 
 ## Features
 
-- **Simulate a design before you build it.** A design is a directory of YAML that lives beside the system it describes, so a capacity question is answered locally, reviewed in a pull request, and checked by the same CI that builds the real thing.
+- **Simulate a design before you build it.** A design is a directory of YAML files that lives beside the system it describes, so a capacity question is answered locally, reviewed in a pull request, and checked by the same CI that builds the real thing.
 - **Model behaviour under load, not just at rest.** Solve for the steady state, or advance queues through time to find out whether an incident ends when its cause does.
 - **Rank bottlenecks by risk.** Constraints are ordered by the share of draws in which demand meets or exceeds the limit, per scale unit, so a variable constraint outranks a merely busy one.
 - **Weigh a proposal properly.** An intervention rebinds named quantities and the design is solved again exactly as it stands, on the same draws, so the distance between the two lines is the whole answer.
@@ -84,9 +84,9 @@ properties:
   parallelism: pool_size
 ```
 
-Every field is an expression rather than a number, so a quantity you're unsure
-about gets to say so. The preview beside the field you're typing into shows the
-spread you just authored.
+Every property value is an expression rather than a number, so a quantity you're
+unsure about gets to say so. The preview beside the field you're typing into
+shows the spread you just authored.
 
 ![A shared quantity being edited, with a flyout showing the density of the lognormal it evaluates to and its p10, median, and p90.](/screenshots/quantities.png)
 
@@ -146,11 +146,13 @@ optimist compare examples/checkout warm-cache
 ```
 
 ```text
-COMPONENT  CONSTRAINT          UTILISATION  P90      BINDS  REPLICAS  HEADROOM
-orders     volume              7.009        9.555    100%   1         -3004303674979.1333
-api        capacity            2.960        4.916    87%    1         -1063.2349
-browsers   success_objective   55.626       109.865  86%    1         -0.2731
-browsers   latency_objective   0.460        0.793    3%     1         0.4053
+╭─ Constraints ────────────────────────────────────────────────────────────────╮
+│ COMPONENT  CONSTRAINT        LOAD            MEAN     P90  BINDS    HEADROOM │
+│ orders     volume            ████████████    7.01    9.56  99.9%   -3.006e12 │
+│ api        capacity          ████████████    2.92    4.82    87%  -1046.4185 │
+│ browsers   success_objecti…  ████████████   52.48     101    86%     -0.2574 │
+│ browsers   latency_objecti…  █████░░░░░░░  0.4525  0.7744     3%      0.4106 │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 The server streams every edit over a WebSocket and serves the workbench from the
