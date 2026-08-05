@@ -28,7 +28,7 @@ rayon = "1.12.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 futures-util = "0.3.31"
 proptest = "1.7.0"
 reqwest = { version = "0.12.22", default-features = false, features = ["json", "rustls-tls"] }
