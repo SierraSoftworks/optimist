@@ -59,7 +59,7 @@ rendered with recovery advice and exit with status `1`; success exits with `0`.
 | `--seed <U64>` | `0` | Root of the deterministic random stream. |
 | `--samples <N>` | `1000` | Draws carried through every uncertain quantity. |
 | `--horizon <N>` | `1` | Number of steps to advance. |
-| `--step <SECONDS>` | `1.0` | Length of one step. |
+| `--step <LENGTH>` | `1.0` | Length of one step: how far `t` advances each step, and how far a transient integration carries the backlog. |
 | `--transient` | off | Advance queues through time rather than solving for where they balance. |
 
 `--transient` gives a design memory, so a queue filled by a surge has to drain

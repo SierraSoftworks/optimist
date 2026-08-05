@@ -130,8 +130,8 @@ The surface is deliberately small. A channel expression may use:
 | `in.<port>.<signal>` | What arrived on an inbound port, aggregated across callers. |
 | `out.<port>.<signal>` | What came back on an outbound port, aggregated across dependencies. |
 | `prev.<channel>` | This component's channel values at the previous step. |
-| `t` | Elapsed seconds since the run began. |
-| `dt` | Length of the current step, in seconds. |
+| `t` | Position on the simulation timeline: the step number scaled by the step length. |
+| `dt` | Length of the current step, in seconds, as used when integrating a backlog. |
 | `steady` | Whether the solve is asking where the design rests rather than how it moves. |
 | *scratchpad names* | Shared quantities, when used in a component's properties. |
 | Squiggle builtins | The whole standard library, including the queueing namespaces. |
@@ -221,7 +221,7 @@ A transform may refer to:
 | `signal.<name>` | The flow this transform is rewriting, as it arrived. |
 | `request.<name>` | The request travelling from caller to callee. |
 | `response.<name>` | The response returning from callee to caller. |
-| `t`, `dt` | Elapsed time and step length. |
+| `t`, `dt` | Position on the simulation timeline, and the length of one step. |
 
 Both directions are visible from either transform. That is deliberate: it is what
 lets a retry policy raise demand precisely when the response says attempts are

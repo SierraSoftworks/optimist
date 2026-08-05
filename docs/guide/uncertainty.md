@@ -20,11 +20,11 @@ property, a scratchpad entry, an intervention override, and a behaviour's
 settings.
 
 ```squiggle
-lognormal(-4.6, 0.35)          // a distribution
-0.02                            // a certainty
-mixture(0.02, 0.4, [0.9, 0.1])  // a bimodal service time
-peak_rate * 1.4                 // arithmetic over a shared quantity
-if t < 300 then 900 else 3600   // a function of time
+lognormal(-4.6, 0.35)                    // a distribution
+0.02                                     // a certainty
+mixture(0.02, 0.4, [0.9, 0.1])           // a bimodal service time
+peak_rate * 1.4                          // arithmetic over a shared quantity
+if t >= 5 && t < 15 then 3600 else 900   // a function of the timeline
 ```
 
 Blocks and named bindings work, which is how a long expression stays readable:
@@ -38,16 +38,23 @@ Blocks and named bindings work, which is how a long expression stays readable:
 ```
 
 Distributions are available symbolically under `Sym.` and as sampled values under
-`Dist.`: `Sym.lognormal`, `Sym.normal`, `Sym.beta`, `Sym.triangular`,
-`Sym.uniform`, `Sym.poisson`, `Sym.binomial`, `Sym.bernoulli`, `Sym.gamma`,
-`Sym.exponential`, `Sym.logistic`, `Sym.cauchy`, and `Sym.pointMass`. Symbolic
-families are preserved where the arithmetic allows and fall back to seeded
-empirical draws where it does not.
+`Dist.`. The symbolic families are `Sym.normal`, `Sym.lognormal`, `Sym.uniform`,
+`Sym.beta`, `Sym.cauchy`, `Sym.gamma`, `Sym.logistic`, `Sym.exponential`,
+`Sym.bernoulli`, and `Sym.triangular`; `poisson`, `binomial`, and `pointMass` are
+globals only. Symbolic families are preserved where the arithmetic allows and
+fall back to seeded empirical draws where it does not.
 
 The usual collection, dictionary, list, string, date, and duration namespaces are
 present. `optimist catalogue <design> --output json` includes a `builtins` list
 of every name an expression may call, which is the same list the workbench uses
 for completion.
+
+::: tip The whole language
+This page is about *where* uncertainty belongs. For the syntax, the operators,
+the precedence table, every builtin, and the names available inside a design, see
+[the expression language](./language.md). For which distribution to reach for and
+what to put in it, see [choosing distributions](./distributions.md).
+:::
 
 ## Sample sets and alignment
 
@@ -106,7 +113,8 @@ property before supplying it.
 ## Queueing and reliability
 
 The runtime ships domain namespaces so that a manifest states a law rather than
-reimplementing it.
+reimplementing it. The equations, assumptions, and limitations of each are in
+[laws and models](../reference/laws.md); what follows is the working summary.
 
 ### `Little`
 
