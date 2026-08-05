@@ -263,3 +263,16 @@ jobs:
         with:
           name: ${{ env.APP_NAME }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.extension }}
           path: target/${{ matrix.target }}/release/${{ env.APP_NAME }}${{ matrix.extension }}
+
+  tap:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    needs:
+      - build-app
+    steps:
+      - name: Update Homebrew Tap
+        uses: SierraSoftworks/actions-tap@v1
+        with:
+          app-id: ${{ secrets.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
