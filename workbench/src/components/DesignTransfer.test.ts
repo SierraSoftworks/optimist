@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { ApiError, api } from '../api/client'
+import type { Imported } from '../api/transport'
 import DesignTransfer from './DesignTransfer.vue'
 
 afterEach(() => {
@@ -25,38 +26,47 @@ async function settle(wrapper: { vm: { $nextTick: () => Promise<void> } }): Prom
   await wrapper.vm.$nextTick()
 }
 
-/** Drives the hidden file input the way choosing a file in the browser does. */
-async function choose(
-  wrapper: ReturnType<typeof transfer>,
-  name: string,
-): Promise<void> {
-  const input = wrapper.get('[data-test="import-file"]').element as HTMLInputElement
-  Object.defineProperty(input, 'files', {
-    configurable: true,
-    value: [new File(['archive'], name, { type: 'application/zip' })],
-  })
-  await wrapper.get('[data-test="import-file"]').trigger('change')
+async function importing(wrapper: ReturnType<typeof transfer>): Promise<void> {
+  await wrapper.get('[data-test="import-design"]').trigger('click')
   await settle(wrapper)
 }
 
-it('names the design after the file it was chosen from', async () => {
-  const importing = vi.spyOn(api, 'importArchive').mockResolvedValue({} as never)
+it('reports the design an archive was stored as', async () => {
+  vi.spyOn(api, 'importDesign').mockResolvedValue({
+    status: 'stored',
+    design: 'payments-ledger',
+  })
   const wrapper = transfer()
 
-  await choose(wrapper, 'Payments Ledger.ZIP')
+  await importing(wrapper)
 
-  expect(importing).toHaveBeenCalledWith('payments-ledger', expect.anything(), false)
   expect(wrapper.emitted('imported')).toEqual([['payments-ledger']])
 })
 
-it('asks before replacing a design, and only then sends it again', async () => {
-  const importing = vi
-    .spyOn(api, 'importArchive')
-    .mockRejectedValueOnce(new ApiError(409, 'A design named checkout already exists.', []))
-    .mockResolvedValueOnce({} as never)
+/** Changing your mind about a file is not something to be told about. */
+it('says nothing when no archive was chosen', async () => {
+  vi.spyOn(api, 'importDesign').mockResolvedValue(null)
   const wrapper = transfer()
 
-  await choose(wrapper, 'checkout.zip')
+  await importing(wrapper)
+
+  expect(wrapper.emitted('imported')).toBeUndefined()
+  expect(document.body.textContent).not.toContain('Replace this design?')
+})
+
+it('asks before replacing a design, and only then sends it again', async () => {
+  const replace = vi.fn<() => Promise<Imported>>().mockResolvedValue({
+    status: 'stored',
+    design: 'checkout',
+  })
+  vi.spyOn(api, 'importDesign').mockResolvedValue({
+    status: 'conflict',
+    design: 'checkout',
+    replace,
+  })
+  const wrapper = transfer()
+
+  await importing(wrapper)
 
   expect(wrapper.emitted('imported')).toBeUndefined()
   expect(document.body.textContent).toContain('Replace this design?')
@@ -64,21 +74,33 @@ it('asks before replacing a design, and only then sends it again', async () => {
   await wrapper.get('[data-test="import-replace"]').trigger('click')
   await settle(wrapper)
 
-  expect(importing).toHaveBeenLastCalledWith('checkout', expect.anything(), true)
+  expect(replace).toHaveBeenCalled()
   expect(wrapper.emitted('imported')).toEqual([['checkout']])
 })
 
 it('shows what was wrong with a refused archive and what to do about it', async () => {
-  vi.spyOn(api, 'importArchive').mockRejectedValue(
+  vi.spyOn(api, 'importDesign').mockRejectedValue(
     new ApiError(422, 'this file is not a readable archive', [
       'Check the file downloaded completely, then try again.',
     ]),
   )
   const wrapper = transfer()
 
-  await choose(wrapper, 'broken.zip')
+  await importing(wrapper)
 
   expect(document.body.textContent).toContain('this file is not a readable archive')
   expect(document.body.textContent).toContain('Check the file downloaded completely')
   expect(wrapper.emitted('imported')).toBeUndefined()
+})
+
+it('reports an export that could not be written', async () => {
+  vi.spyOn(api, 'exportDesign').mockRejectedValue(
+    new ApiError(500, 'the folder could not be written to', ['Choose somewhere else.']),
+  )
+  const wrapper = transfer()
+
+  await wrapper.get('[data-test="export-design"]').trigger('click')
+  await settle(wrapper)
+
+  expect(document.body.textContent).toContain('the folder could not be written to')
 })

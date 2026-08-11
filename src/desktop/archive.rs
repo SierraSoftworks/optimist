@@ -4,6 +4,12 @@
 //! where to put the file and reads the one it was handed. Only those two ends
 //! differ, so both still go through the API, and a design imported here is
 //! stored exactly as one imported over HTTP would be.
+//!
+//! Nothing but a path crosses the IPC boundary. The file is read and written
+//! where it lives, rather than being copied through JSON on its way to a process
+//! that could have opened it directly.
+
+use std::path::{Path, PathBuf};
 
 use axum::{
     body::Body,
@@ -12,7 +18,7 @@ use axum::{
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, FilePath};
 
 use crate::{session::DesignId, system::MAX_ARCHIVE_BYTES};
 
@@ -21,15 +27,15 @@ use super::{Desktop, Failure, bridge};
 /// What a filter in a file dialog is called.
 const KIND: &str = "Design archive";
 
-/// An archive on its way in, and what the file it came from was called.
+/// An archive somebody chose, named by where it is rather than by its bytes.
 #[derive(Debug, Serialize)]
 pub(super) struct Chosen {
     name: String,
-    contents: Vec<u8>,
+    path: PathBuf,
 }
 
 #[tauri::command]
-pub(super) async fn save_archive(
+pub(super) async fn export_design(
     app: AppHandle,
     desktop: State<'_, Desktop>,
     design: String,
@@ -48,12 +54,7 @@ pub(super) async fn save_archive(
         return Ok(());
     };
 
-    let path = chosen.into_path().map_err(|error| {
-        Failure::fault(
-            format!("The chosen file could not be reached: {error}"),
-            "Choose somewhere on this machine rather than a location the system only describes.",
-        )
-    })?;
+    let path = located(chosen)?;
     std::fs::write(&path, archive).map_err(|error| {
         Failure::fault(
             format!("{} could not be written: {error}", path.display()),
@@ -64,61 +65,43 @@ pub(super) async fn save_archive(
 
 #[tauri::command]
 pub(super) async fn choose_archive(app: AppHandle) -> Result<Option<Chosen>, Failure> {
-    let Some(chosen) = app.dialog().file().add_filter(KIND, &["zip"]).blocking_pick_file() else {
+    let Some(chosen) = app
+        .dialog()
+        .file()
+        .add_filter(KIND, &["zip"])
+        .blocking_pick_file()
+    else {
         return Ok(None);
     };
 
-    let path = chosen.into_path().map_err(|error| {
-        Failure::fault(
-            format!("The chosen file could not be reached: {error}"),
-            "Choose a file on this machine rather than one the system only describes.",
-        )
-    })?;
-
-    // Refused before it is read rather than after, so that a file far too large
-    // to be a design costs nothing to turn down.
-    let size = std::fs::metadata(&path).map(|file| file.len()).unwrap_or(0);
-    if size > MAX_ARCHIVE_BYTES {
-        return Err(Failure::refused(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            format!("{} is larger than a design archive may be.", path.display()),
-            "Check that this is a design archive rather than some other zip.",
-        ));
-    }
-
-    let contents = std::fs::read(&path).map_err(|error| {
-        Failure::fault(
-            format!("{} could not be read: {error}", path.display()),
-            "Check that the file is still there and can be read, then choose it again.",
-        )
-    })?;
-
+    let path = located(chosen)?;
     Ok(Some(Chosen {
         name: path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default(),
-        contents,
+        path,
     }))
 }
 
 #[tauri::command]
-pub(super) async fn import_archive(
+pub(super) async fn import_design(
     desktop: State<'_, Desktop>,
+    path: PathBuf,
     design: String,
     replace: bool,
-    contents: Vec<u8>,
 ) -> Result<Value, Failure> {
-    store(desktop.inner(), design, replace, contents).await
+    store(desktop.inner(), &path, design, replace).await
 }
 
 async fn store(
     desktop: &Desktop,
+    path: &Path,
     design: String,
     replace: bool,
-    contents: Vec<u8>,
 ) -> Result<Value, Failure> {
     let id = identifier(design)?;
+    let contents = read(path)?;
     let query = if replace { "?replace=true" } else { "" };
     let request = Request::builder()
         .method(Method::PUT)
@@ -148,6 +131,34 @@ async fn packed(desktop: &Desktop, design: String) -> Result<(DesignId, Vec<u8>)
     Ok((id, archive))
 }
 
+/// Reads an archive, refusing one too large to be a design before reading it.
+fn read(path: &Path) -> Result<Vec<u8>, Failure> {
+    let size = std::fs::metadata(path).map(|file| file.len()).unwrap_or(0);
+    if size > MAX_ARCHIVE_BYTES {
+        return Err(Failure::refused(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("{} is larger than a design archive may be.", path.display()),
+            "Check that this is a design archive rather than some other zip.",
+        ));
+    }
+    std::fs::read(path).map_err(|error| {
+        Failure::fault(
+            format!("{} could not be read: {error}", path.display()),
+            "Check that the file is still there and can be read, then choose it again.",
+        )
+    })
+}
+
+/// A dialog may name something the system only describes, such as a cloud file.
+fn located(chosen: FilePath) -> Result<PathBuf, Failure> {
+    chosen.into_path().map_err(|error| {
+        Failure::fault(
+            format!("The chosen file could not be reached: {error}"),
+            "Choose a file on this machine rather than one only the system can name.",
+        )
+    })
+}
+
 /// Checks the name before it reaches a path.
 ///
 /// Everything above builds a URI by writing the identifier into it, and only an
@@ -168,34 +179,38 @@ mod tests {
 
     use super::*;
 
+    /// Writes an archive out the way the save dialog would have.
+    async fn exported(desktop: &Desktop, design: &str, into: &Path) -> PathBuf {
+        let (id, archive) = packed(desktop, design.to_owned())
+            .await
+            .expect("packs the design");
+        let path = into.join(format!("{id}.zip"));
+        std::fs::write(&path, archive).expect("writes the archive");
+        path
+    }
+
     /// A design exported from the window is one the window can take back.
     #[tokio::test]
     async fn packs_a_design_it_can_store_again() {
-        let (desktop, _root) = workspace();
+        let (desktop, root) = workspace();
         bridge::tests::create(&desktop, "checkout").await;
 
-        let (id, archive) = packed(&desktop, "checkout".to_owned())
-            .await
-            .expect("packs it");
-        assert_eq!(id.as_str(), "checkout");
-        assert!(!archive.is_empty());
-
-        let stored = store(&desktop, "billing".to_owned(), false, archive)
+        let path = exported(&desktop, "checkout", root.path()).await;
+        let stored = store(&desktop, &path, "billing".to_owned(), false)
             .await
             .expect("stores it");
+
         assert_eq!(stored["name"], "checkout");
     }
 
     /// Replacing a design loses what it held, so it is never done by accident.
     #[tokio::test]
     async fn refuses_to_replace_a_design_unless_it_is_told_to() {
-        let (desktop, _root) = workspace();
+        let (desktop, root) = workspace();
         bridge::tests::create(&desktop, "checkout").await;
-        let (_, archive) = packed(&desktop, "checkout".to_owned())
-            .await
-            .expect("packs it");
+        let path = exported(&desktop, "checkout", root.path()).await;
 
-        let failure = store(&desktop, "checkout".to_owned(), false, archive.clone())
+        let failure = store(&desktop, &path, "checkout".to_owned(), false)
             .await
             .expect_err("is refused");
         assert_eq!(
@@ -203,16 +218,17 @@ mod tests {
             409
         );
 
-        store(&desktop, "checkout".to_owned(), true, archive)
+        store(&desktop, &path, "checkout".to_owned(), true)
             .await
             .expect("replaces it when asked to");
     }
 
     #[tokio::test]
     async fn refuses_a_name_that_could_not_be_a_directory() {
-        let (desktop, _root) = workspace();
+        let (desktop, root) = workspace();
+        let path = root.path().join("anything.zip");
 
-        let failure = store(&desktop, "../elsewhere".to_owned(), false, Vec::new())
+        let failure = store(&desktop, &path, "../elsewhere".to_owned(), false)
             .await
             .expect_err("is refused");
         assert_eq!(
@@ -223,13 +239,28 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_something_that_is_not_an_archive() {
-        let (desktop, _root) = workspace();
+        let (desktop, root) = workspace();
+        let path = root.path().join("broken.zip");
+        std::fs::write(&path, b"not a zip").expect("writes the file");
 
-        let failure = store(&desktop, "checkout".to_owned(), false, b"not a zip".to_vec())
+        let failure = store(&desktop, &path, "checkout".to_owned(), false)
             .await
             .expect_err("is refused");
+
         let reported = serde_json::to_value(&failure).expect("serialises");
         assert_eq!(reported["status"], 422);
         assert!(!reported["advice"].as_array().expect("advice").is_empty());
+    }
+
+    #[tokio::test]
+    async fn reports_a_file_it_cannot_read() {
+        let (desktop, root) = workspace();
+        let path = root.path().join("missing.zip");
+
+        assert!(
+            store(&desktop, &path, "checkout".to_owned(), false)
+                .await
+                .is_err()
+        );
     }
 }

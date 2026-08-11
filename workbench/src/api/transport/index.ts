@@ -2,7 +2,13 @@ import type { Transport } from './contract'
 import { http } from './http'
 import { tauri } from './tauri'
 
-export type { Archive, FeedConnection, FeedListener, Transport } from './contract'
+export type {
+  FeedConnection,
+  FeedListener,
+  Imported,
+  Transport,
+  WorkspaceFolder,
+} from './contract'
 
 /**
  * Which one is in front of us.

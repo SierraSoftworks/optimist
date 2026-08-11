@@ -65,24 +65,24 @@ export const api = {
     request<Catalogue>('GET', `/designs/${encodeURIComponent(design)}/catalogue`),
 
   /** Puts the design's archive somewhere the person asking for it can find it. */
-  saveArchive: (design: string) => transport.saveArchive(design),
+  exportDesign: (design: string) => transport.exportDesign(design),
 
   /**
-   * Asks for an archive with the platform's own picker.
+   * Asks for an archive and stores it under the name its file suggests.
    *
-   * Absent in a browser, where choosing a file means an `<input>` in the
-   * document rather than something this client can ask for.
+   * Resolves with nothing when the person changes their mind, and reports a
+   * design of that name already existing as a conflict to put to them rather
+   * than as a failure.
    */
-  chooseArchive: transport.chooseArchive,
+  importDesign: () => transport.importDesign(),
 
   /**
-   * Stores an archive as a design.
+   * The folder designs are kept in, where that is a person's to decide.
    *
-   * Refuses to overwrite unless `replace` says otherwise, so an archive named
-   * after a design somebody else is working on cannot quietly take its place.
+   * Absent in a browser: the folder belongs to whoever ran the server, and a
+   * page changing it would change it for everybody else looking at the same one.
    */
-  importArchive: (design: string, archive: Blob, replace = false) =>
-    transport.putArchive(design, archive, replace),
+  workspace: transport.workspace,
 
   /**
    * Applies edits in order, stopping at the first that will not apply.

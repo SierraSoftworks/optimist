@@ -1,6 +1,7 @@
 import { ApiError, adviceLines } from '../errors'
-import type { FeedMessage, Snapshot } from '../types'
-import type { FeedConnection, FeedListener, Transport } from './contract'
+import type { FeedMessage } from '../types'
+import type { FeedConnection, FeedListener, Imported, Transport } from './contract'
+import { designNamed, stored } from './transfer'
 
 /** Where a design's archive is fetched from, and where one is sent. */
 function archive(design: string): string {
@@ -75,20 +76,54 @@ export const http: Transport = {
    * The server already says what the file is called and that it is a download,
    * so it streams to disk rather than being assembled in this tab first.
    */
-  async saveArchive(design: string): Promise<void> {
+  async exportDesign(design: string): Promise<void> {
     const link = document.createElement('a')
     link.href = archive(design)
     link.download = `${design}.zip`
     link.click()
   },
 
-  async putArchive(design: string, contents: Blob, replace: boolean): Promise<Snapshot> {
-    const response = await fetch(`${archive(design)}${replace ? '?replace=true' : ''}`, {
-      method: 'PUT',
-      body: contents,
-      headers: { Accept: 'application/json', 'Content-Type': 'application/zip' },
-    })
-    if (!response.ok) throw await refusal(response)
-    return (await response.json()) as Snapshot
+  async importDesign(): Promise<Imported | null> {
+    const file = await chosen()
+    if (!file) return null
+    const design = designNamed(file.name)
+    return stored(design, (replace) => put(design, file, replace))
   },
+}
+
+/**
+ * Asks for a file the only way a browser offers to.
+ *
+ * The input is made here and thrown away again rather than living in the page,
+ * because it is a way of asking a question and not part of what the page shows.
+ * A picker that is dismissed resolves with nothing, and one that is dismissed
+ * without saying so leaves this pending, which is the same as nothing having
+ * happened.
+ */
+function chosen(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.zip,application/zip'
+    input.hidden = true
+    // Attached because some browsers do not fire `change` on a detached input.
+    document.body.append(input)
+
+    const answer = (file: File | null) => {
+      input.remove()
+      resolve(file)
+    }
+    input.addEventListener('change', () => answer(input.files?.[0] ?? null))
+    input.addEventListener('cancel', () => answer(null))
+    input.click()
+  })
+}
+
+async function put(design: string, contents: Blob, replace: boolean): Promise<void> {
+  const response = await fetch(`${archive(design)}${replace ? '?replace=true' : ''}`, {
+    method: 'PUT',
+    body: contents,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/zip' },
+  })
+  if (!response.ok) throw await refusal(response)
 }

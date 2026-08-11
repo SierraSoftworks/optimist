@@ -1,13 +1,14 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 
 import { ApiError, adviceLines } from '../errors'
-import type { FeedMessage, Snapshot } from '../types'
-import type { Archive, FeedConnection, FeedListener, Transport } from './contract'
+import type { FeedMessage } from '../types'
+import type { FeedConnection, FeedListener, Imported, Transport } from './contract'
+import { designNamed, stored } from './transfer'
 
-/** An archive as it crosses the IPC boundary. */
+/** An archive somebody chose, named by where it is rather than by its bytes. */
 interface Chosen {
   name: string
-  contents: number[]
+  path: string
 }
 
 /**
@@ -70,21 +71,22 @@ export const tauri: Transport = {
     }
   },
 
-  async saveArchive(design: string): Promise<void> {
-    await call('save_archive', { design })
+  async exportDesign(design: string): Promise<void> {
+    await call('export_design', { design })
   },
 
-  async chooseArchive(): Promise<Archive | null> {
+  async importDesign(): Promise<Imported | null> {
     const chosen = await call<Chosen | null>('choose_archive')
     if (!chosen) return null
-    return {
-      name: chosen.name,
-      data: new Blob([new Uint8Array(chosen.contents)], { type: 'application/zip' }),
-    }
+    const design = designNamed(chosen.name)
+    // Only the path crosses the boundary: the file is read where it is stored.
+    return stored(design, (replace) =>
+      call('import_design', { path: chosen.path, design, replace }),
+    )
   },
 
-  async putArchive(design: string, contents: Blob, replace: boolean): Promise<Snapshot> {
-    const bytes = Array.from(new Uint8Array(await contents.arrayBuffer()))
-    return call<Snapshot>('import_archive', { design, replace, contents: bytes })
+  workspace: {
+    current: () => call<string>('workspace_folder'),
+    choose: () => call<string | null>('choose_workspace'),
   },
 }

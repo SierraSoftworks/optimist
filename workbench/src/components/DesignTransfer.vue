@@ -1,113 +1,74 @@
 <script setup lang="ts">
 import { useQueryClient } from '@tanstack/vue-query'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { ApiError, api } from '../api/client'
+import type { Imported } from '../api/transport'
 
 const props = defineProps<{ design: string | null }>()
 const emit = defineEmits<{ imported: [design: string] }>()
 
 const client = useQueryClient()
-const file = ref<HTMLInputElement | null>(null)
 
 /**
- * The archive waiting on an answer, kept so the same bytes can be sent again.
+ * The archive waiting on an answer, which knows how to send itself again.
  *
  * Asking somebody to find the file a second time in order to answer a question
- * about it would be a strange thing to do to them.
+ * about it would be a strange thing to do to them, and what has to be held on
+ * to differs between a browser and a window.
  */
-const pending = ref<{ id: string; archive: Blob } | null>(null)
-const conflict = ref(false)
+const conflict = ref<Extract<Imported, { status: 'conflict' }> | null>(null)
 const failure = ref<{ message: string; advice: string[] } | null>(null)
 const busy = ref(false)
 
-/** A directory name, matching the rule the server enforces. */
-function slug(value: string): string {
-  return value
-    .replace(/\.zip$/i, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 128)
-}
+const asking = computed({
+  get: () => conflict.value !== null,
+  set: (open: boolean) => {
+    if (!open) conflict.value = null
+  },
+})
 
-/**
- * Leaves saving the file to whatever the person is running this in.
- *
- * A browser streams it to disk from the server that already named it; the
- * desktop application asks where to put it and writes it there.
- */
 function exportDesign() {
-  if (!props.design) return
-  void api.saveArchive(props.design)
+  if (props.design) void attempt(() => api.exportDesign(props.design as string).then(() => null))
 }
 
-async function choose() {
-  failure.value = null
-  // A browser has no picker to ask for, so the hidden input below does the job.
-  if (!api.chooseArchive) {
-    file.value?.click()
-    return
-  }
-  try {
-    const picked = await api.chooseArchive()
-    if (picked) await accept(picked.name, picked.data)
-  } catch (error) {
-    report(error)
-  }
-}
-
-async function chosen(event: Event) {
-  const input = event.target as HTMLInputElement
-  const archive = input.files?.[0]
-  // Clearing it means choosing the same file twice still fires a change.
-  input.value = ''
-  if (archive) await accept(archive.name, archive)
-}
-
-async function accept(name: string, archive: Blob) {
-  const id = slug(name)
-  if (!id) {
-    failure.value = {
-      message: `'${name}' cannot name a design.`,
-      advice: ['Rename the file using letters and digits, then choose it again.'],
-    }
-    return
-  }
-  await send({ id, archive }, false)
-}
-
-function report(error: unknown) {
-  failure.value = {
-    message: (error as Error).message,
-    advice: error instanceof ApiError ? error.advice : [],
-  }
-}
-
-async function send(request: { id: string; archive: Blob }, replace: boolean) {
-  busy.value = true
-  try {
-    await api.importArchive(request.id, request.archive, replace)
-    await client.invalidateQueries({ queryKey: ['designs'] })
-    pending.value = null
-    conflict.value = false
-    emit('imported', request.id)
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      pending.value = request
-      conflict.value = true
-      return
-    }
-    pending.value = null
-    conflict.value = false
-    report(error)
-  } finally {
-    busy.value = false
-  }
+function importDesign() {
+  void attempt(() => api.importDesign())
 }
 
 function replace() {
-  if (pending.value) void send(pending.value, true)
+  const pending = conflict.value
+  if (pending) void attempt(() => pending.replace())
+}
+
+/**
+ * Runs one transfer and reports whatever it turns out to be.
+ *
+ * Nothing at all means the person changed their mind, which is not something to
+ * tell them about.
+ */
+async function attempt(action: () => Promise<Imported | null>) {
+  failure.value = null
+  busy.value = true
+  try {
+    const result = await action()
+    if (!result) return
+    if (result.status === 'conflict') {
+      conflict.value = result
+      return
+    }
+    conflict.value = null
+    await client.invalidateQueries({ queryKey: ['designs'] })
+    emit('imported', result.design)
+  } catch (error) {
+    conflict.value = null
+    failure.value = {
+      message: (error as Error).message,
+      advice: error instanceof ApiError ? error.advice : [],
+    }
+  } finally {
+    busy.value = false
+  }
 }
 </script>
 
@@ -117,7 +78,7 @@ function replace() {
     design is something somebody does while looking at it, and a design that
     cannot leave the machine it was written on is one nobody else reviews.
   -->
-  <el-tooltip content="Download this design as a .zip" placement="bottom">
+  <el-tooltip content="Save this design as a .zip" placement="bottom">
     <button
       class="action"
       aria-label="Export design"
@@ -130,32 +91,28 @@ function replace() {
   </el-tooltip>
 
   <el-tooltip content="Import a design from a .zip" placement="bottom">
-    <button class="action" aria-label="Import design" data-test="import-design" @click="choose">
+    <button
+      class="action"
+      aria-label="Import design"
+      data-test="import-design"
+      @click="importDesign"
+    >
       <el-icon :size="15"><i-upload /></el-icon>
     </button>
   </el-tooltip>
-
-  <input
-    ref="file"
-    type="file"
-    accept=".zip,application/zip"
-    class="hidden"
-    data-test="import-file"
-    @change="chosen"
-  />
 
   <!--
     Only ever the one question worth asking. Replacing a design loses whatever
     it held, so it is something a person says rather than something a file name
     decides on their behalf.
   -->
-  <el-dialog v-model="conflict" title="Replace this design?" width="440px">
+  <el-dialog v-model="asking" title="Replace this design?" width="440px">
     <p class="body" data-test="import-conflict">
-      A design called <strong>{{ pending?.id }}</strong> is already here. Importing over it
-      discards everything it holds, and cannot be undone.
+      A design called <strong>{{ conflict?.design }}</strong> is already here. Importing over
+      it discards everything it holds, and cannot be undone.
     </p>
     <template #footer>
-      <el-button size="small" @click="conflict = false">Cancel</el-button>
+      <el-button size="small" @click="asking = false">Cancel</el-button>
       <el-button
         type="danger"
         size="small"
@@ -186,7 +143,7 @@ function replace() {
     </ul>
     <template #footer>
       <el-button size="small" @click="failure = null">Close</el-button>
-      <el-button type="primary" size="small" data-test="import-retry" @click="choose">
+      <el-button type="primary" size="small" data-test="import-retry" @click="importDesign">
         Choose another file
       </el-button>
     </template>

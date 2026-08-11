@@ -1,4 +1,4 @@
-import type { FeedMessage, Snapshot } from '../types'
+import type { FeedMessage } from '../types'
 
 /** What a watcher of one design is told, whatever is carrying it. */
 export interface FeedListener {
@@ -13,10 +13,28 @@ export interface FeedConnection {
   close: () => void
 }
 
-/** An archive somebody chose, and what they called it. */
-export interface Archive {
-  name: string
-  data: Blob
+/** What became of an archive somebody chose. */
+export type Imported =
+  | { status: 'stored'; design: string }
+  | {
+      status: 'conflict'
+      design: string
+      /** Sends the same archive again, over the design already there. */
+      replace: () => Promise<Imported>
+    }
+
+/** Where designs are kept, on hosts where that is a person's to decide. */
+export interface WorkspaceFolder {
+  /** The folder currently open. */
+  current: () => Promise<string>
+  /**
+   * Asks for another and opens it there and then.
+   *
+   * Resolves with nothing when the person changes their mind. Designs in the
+   * folder that was open are not designs in the one that is, so a caller must
+   * treat everything it was holding as gone.
+   */
+  choose: () => Promise<string | null>
 }
 
 /**
@@ -32,16 +50,24 @@ export interface Transport {
   request: <T>(method: string, path: string, body?: unknown) => Promise<T>
   /** Subscribes to a design's changes. Reconnection belongs to the caller. */
   connect: (design: string, listener: FeedListener) => FeedConnection
-  /** Puts a design's archive somewhere the person asking for it can find it. */
-  saveArchive: (design: string) => Promise<void>
-  /** Stores an archive under a design, refusing to replace unless told to. */
-  putArchive: (design: string, archive: Blob, replace: boolean) => Promise<Snapshot>
   /**
-   * Asks for an archive with the platform's own picker.
+   * Puts a design's archive somewhere the person asking for it can find it.
    *
-   * Absent in a browser, which has none to offer: choosing a file there means
-   * an `<input>` in the document, and the component doing the importing already
-   * owns one.
+   * A browser and a window disagree about what that means and about how a file
+   * is chosen, so each owns the whole exchange rather than handing bytes back
+   * to be moved by code that would then have to know which host it was in.
    */
-  chooseArchive?: () => Promise<Archive | null>
+  exportDesign: (design: string) => Promise<void>
+  /**
+   * Asks for an archive and stores it under the name its file suggests.
+   *
+   * Resolves with nothing when the person changes their mind, which is not a
+   * failure and has nothing to report.
+   */
+  importDesign: () => Promise<Imported | null>
+  /**
+   * Absent in a browser, where the folder belongs to whoever ran the server
+   * and is not this page's to change.
+   */
+  workspace?: WorkspaceFolder
 }

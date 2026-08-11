@@ -135,3 +135,52 @@ describe('connect', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+describe('importDesign', () => {
+  /**
+   * The archive never crosses the boundary, only the path to it.
+   *
+   * Reading the file in the process that is going to store it saves copying it
+   * through JSON on its way to somewhere it could have been opened from.
+   */
+  it('names the design after the file and stores it from where it is', async () => {
+    invoked
+      .mockResolvedValueOnce({ name: 'Payments Ledger.ZIP', path: '/tmp/ledger.zip' })
+      .mockResolvedValueOnce({})
+
+    await expect(tauri.importDesign()).resolves.toEqual({
+      status: 'stored',
+      design: 'payments-ledger',
+    })
+    expect(invoked).toHaveBeenLastCalledWith('import_design', {
+      path: '/tmp/ledger.zip',
+      design: 'payments-ledger',
+      replace: false,
+    })
+  })
+
+  it('reports nothing when the picker was dismissed', async () => {
+    invoked.mockResolvedValue(null)
+
+    await expect(tauri.importDesign()).resolves.toBeNull()
+    expect(invoked).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers to replace a design that is already there', async () => {
+    invoked
+      .mockResolvedValueOnce({ name: 'checkout.zip', path: '/tmp/checkout.zip' })
+      .mockRejectedValueOnce({ status: 409, message: 'already here', advice: [] })
+      .mockResolvedValueOnce({})
+
+    const result = await tauri.importDesign()
+    expect(result?.status).toBe('conflict')
+    if (result?.status !== 'conflict') return
+
+    await expect(result.replace()).resolves.toEqual({ status: 'stored', design: 'checkout' })
+    expect(invoked).toHaveBeenLastCalledWith('import_design', {
+      path: '/tmp/checkout.zip',
+      design: 'checkout',
+      replace: true,
+    })
+  })
+})
