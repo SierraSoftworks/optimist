@@ -26,6 +26,15 @@ indicatif = "0.18.6"
 mimalloc = { version = "0.1.52", default-features = false }
 rayon = "1.12.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tauri = { version = "2.11.5", optional = true }
+tauri-plugin-dialog = { version = "2.7.2", optional = true }
+tower = { version = "0.5.3", features = ["util"], optional = true }
+dirs = { version = "6.0.0", optional = true }
+
+# Reattaches the desktop build to whatever console launched it. A window app on
+# Windows is compiled without one, and the same binary still runs the CLI.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
@@ -45,6 +54,18 @@ profiling = []
 # put together, so they are opt-in: run them when the solver, the statistics, or
 # the language changed, and before signing work off.
 comprehensive_tests = []
+
+# The desktop application: the workbench in a native window, reaching the same
+# API over Tauri's IPC rather than over a socket. Off by default, because a CLI
+# build has no use for a webview and every platform's is expensive to link.
+desktop = [
+    "dep:dirs",
+    "dep:tauri",
+    "dep:tauri-build",
+    "dep:tauri-plugin-dialog",
+    "dep:tower",
+    "dep:windows-sys",
+]
 
 # A solve is thousands of passes through the same short expressions, so whether
 # the small functions making up a pass get inlined across module boundaries
@@ -70,3 +91,6 @@ harness = false
 [[bench]]
 name = "squiggle"
 harness = false
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", optional = true }

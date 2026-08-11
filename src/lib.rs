@@ -22,6 +22,8 @@ mod profile;
 pub mod api;
 /// Command-line argument types and dispatch used by the `optimist` binary.
 pub mod cli;
+#[cfg(feature = "desktop")]
+mod desktop;
 /// Designs held in memory and shared by everyone editing them.
 pub mod session;
 /// Squiggle-compatible probabilistic language parsing and evaluation.

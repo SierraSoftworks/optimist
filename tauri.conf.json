@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Optimist",
+  "identifier": "com.sierrasoftworks.optimist",
+  "build": {
+    "frontendDist": "workbench/dist",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "workbench" },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "workbench" },
+    "features": ["desktop"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Optimist",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'",
+      "capabilities": [
+        {
+          "identifier": "workbench",
+          "description": "The window reaches Rust through this application's own commands and needs nothing else.",
+          "windows": ["main"],
+          "permissions": ["core:default"]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Design large systems and find what constrains them",
+    "longDescription": "Optimist describes a system as a graph of typed components, solves it with uncertainty carried through, and reports which resource it runs out of first.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -4,6 +4,8 @@
 /docs/.vuepress/.temp
 /docs/.vuepress/dist
 .optimist/
+# Written by tauri-build from tauri.conf.json on every desktop build.
+/gen
 # A scratch workspace for running the server locally. Seeded from examples/ and
 # edited freely by whoever is driving the workbench, so it is not history.
 /designs

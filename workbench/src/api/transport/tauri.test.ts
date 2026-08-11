@@ -19,6 +19,17 @@ const invoked = vi.mocked(invoke)
 /** Lets the subscription promise settle the way an awaited command would. */
 const settle = () => new Promise((resolve) => setTimeout(resolve))
 
+/** The channel handed to the command, which stands in for the window. */
+function subscribed(): FakeChannel<string> {
+  const [, args] = invoked.mock.calls[0] as [string, { channel: FakeChannel<string> }]
+  return args.channel
+}
+
+/** The refusal a call produced, rather than the value it did not return. */
+async function refused(call: Promise<unknown>): Promise<ApiError> {
+  return (await call.catch((error: unknown) => error)) as ApiError
+}
+
 beforeEach(() => {
   invoked.mockReset()
 })
@@ -32,7 +43,11 @@ describe('request', () => {
     invoked.mockResolvedValue({ ok: true })
 
     await expect(tauri.request(method, path, body)).resolves.toEqual({ ok: true })
-    expect(invoked).toHaveBeenCalledWith('api_call', { method, path, body: body ?? null })
+    expect(invoked).toHaveBeenCalledWith('api_call', {
+      method,
+      path: `/api/v1${path}`,
+      body: body ?? null,
+    })
   })
 
   /**
@@ -49,7 +64,7 @@ describe('request', () => {
       advice: ['Open the existing design, or choose another identifier.'],
     })
 
-    const failure = await tauri.request('GET', '/designs/checkout').catch((error) => error)
+    const failure = await refused(tauri.request('GET', '/designs/checkout'))
 
     expect(failure).toBeInstanceOf(ApiError)
     expect(failure.status).toBe(409)
@@ -59,7 +74,7 @@ describe('request', () => {
   it('treats a failure with nothing to say as a fault in this process', async () => {
     invoked.mockRejectedValue('the command panicked')
 
-    const failure = await tauri.request('GET', '/designs').catch((error) => error)
+    const failure = await refused(tauri.request('GET', '/designs'))
 
     expect(failure).toBeInstanceOf(ApiError)
     expect(failure.status).toBe(500)
@@ -76,8 +91,7 @@ describe('connect', () => {
     await settle()
 
     expect(onOpen).toHaveBeenCalled()
-    const channel = invoked.mock.calls[0][1].channel as FakeChannel<string>
-    channel.onmessage?.(JSON.stringify({ type: 'lagged', missed: 2 }))
+    subscribed().onmessage?.(JSON.stringify({ type: 'lagged', missed: 2 }))
     expect(onMessage).toHaveBeenCalledWith({ type: 'lagged', missed: 2 })
 
     connection.close()
@@ -92,10 +106,9 @@ describe('connect', () => {
     tauri.connect('checkout', { onOpen: vi.fn(), onMessage, onClose: vi.fn() })
     await settle()
 
-    const channel = invoked.mock.calls[0][1].channel as FakeChannel<string>
+    const channel = subscribed()
     expect(() => channel.onmessage?.('not json')).not.toThrow()
-    expect(onMessage).not.toHaveBeenCalled()
-  })
+    expect(onMessage).not.toHaveBeenCalled()  })
 
   /**
    * Watchers come and go faster than a command round trip.

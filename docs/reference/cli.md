@@ -1,7 +1,7 @@
 # CLI reference
 
 ```text
-optimist [--output <FORMAT>] [--colour <WHEN>] [--progress <WHEN>] <COMMAND>
+optimist [--output <FORMAT>] [--colour <WHEN>] [--progress <WHEN>] [COMMAND]
 ```
 
 > Design large systems and find what constrains them.
@@ -11,9 +11,10 @@ explore a design. The CLI is for the cases where a script is the right client:
 validating a design in continuous integration, producing a machine-readable
 answer, and serving the workbench in the first place.
 
-There are two things to do with a design: read one from disk and ask it
-questions, or serve a directory of them so the workbench and other editors can
-work together. Every command is one of those.
+There are three things to do with a design: open the workbench over a folder of
+them, serve that folder so the workbench and other editors can work together, or
+read one from disk and ask it questions. Every command is one of those, and
+running `optimist` with nothing to say does the first.
 
 The questions come in an order, and it is worth following:
 
@@ -395,6 +396,41 @@ relieve one limit and leave the design just as short as it was.
 
 Every movement names the proposal it belongs to, so several proposals share one
 flat list. `--output jsonl` emits one per line.
+
+---
+
+## `app`
+
+```text
+optimist app [--designs <DIR>]
+```
+
+Opens the workbench in a window. This is what running `optimist` with no
+arguments does, so a packaged application starts here when it is launched from a
+desktop rather than a terminal.
+
+| Option | Environment variable | Default | Effect |
+| --- | --- | --- | --- |
+| `--designs` | `OPTIMIST_DESIGNS` | remembered, else `~/Documents/optimist` | Directory holding the designs to open. |
+
+The first launch says where designs are going and offers somewhere else to put
+them; the answer is remembered, and changing it later restarts the application
+so that nothing on screen is left describing the previous folder. Passing
+`--designs` opens that folder for this launch without changing what is
+remembered.
+
+The answer is kept in `settings.json` under the platform's configuration
+directory — `%APPDATA%\optimist` on Windows, `~/Library/Application
+Support/optimist` on macOS, and `$XDG_CONFIG_HOME/optimist` on Linux. Deleting
+it makes the next launch ask again.
+
+There is no server and no port. The window reaches the same handlers `serve`
+puts behind HTTP through Tauri's IPC, which nothing outside the process can
+reach, so a design open in the application is not exposed to anything else
+running on the machine.
+
+Only builds made with the `desktop` feature have a window. Everything else in
+this reference works the same in either.
 
 ---
 

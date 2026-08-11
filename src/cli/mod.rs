@@ -1,8 +1,10 @@
 //! The `optimist` command line.
 //!
-//! There are two things to do with a design: serve a directory of them so the
-//! workbench and other editors can work together, or read one from disk and ask
-//! it questions. Everything the tool does is reachable through one of those.
+//! There are three things to do with a design: open the workbench over a folder
+//! of them, serve that folder so the workbench and other editors can work
+//! together, or read one from disk and ask it questions. Everything the tool
+//! does is reachable through one of those, and running it with nothing to say
+//! does the first.
 //!
 //! The questions come in an order. `check` says whether a design means what its
 //! author wrote; `solve` says what flows through it; `bottlenecks` says what it
@@ -23,7 +25,9 @@ mod server;
 mod system;
 mod transfer;
 
-use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand};
 
 use output::{ColourChoice, OutputFormat};
 use progress::ProgressChoice;
@@ -55,16 +59,30 @@ pub struct Cli {
     /// When to draw a progress bar on standard error while solving.
     #[arg(long, global = true, value_enum, default_value_t = ProgressChoice::Auto)]
     progress: ProgressChoice,
+    /// Left out to open the workbench in a window.
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Opens the workbench in a window.
+    App(AppArgs),
     /// Serves a directory of designs to the workbench.
     Serve(ServerArgs),
     #[command(flatten)]
     Design(SystemCommand),
+}
+
+/// Options for the desktop application.
+#[derive(Debug, Default, Args)]
+struct AppArgs {
+    /// Directory holding the designs to open.
+    ///
+    /// Remembered from the last launch when it is left out, and put under
+    /// Documents on the first.
+    #[arg(long, env = "OPTIMIST_DESIGNS")]
+    designs: Option<PathBuf>,
 }
 
 /// Executes a parsed command.
@@ -76,16 +94,52 @@ enum Command {
 /// use clap::Parser;
 /// use optimist::cli::{Cli, run};
 ///
-/// # async fn example() -> Result<(), human_errors::Error> {
-/// run(Cli::parse()).await
+/// # fn example() -> Result<(), human_errors::Error> {
+/// run(Cli::parse())
 /// # }
 /// ```
-pub async fn run(cli: Cli) -> Result<(), human_errors::Error> {
+pub fn run(cli: Cli) -> Result<(), human_errors::Error> {
     cli.colour.apply();
     match cli.command {
-        Command::Serve(args) => server::run(args).await,
-        Command::Design(command) => system::run(command, cli.output, cli.progress),
+        Some(Command::App(args)) => app(args),
+        Some(Command::Serve(args)) => runtime()?.block_on(server::run(args)),
+        Some(Command::Design(command)) => system::run(command, cli.output, cli.progress),
+        None => app(AppArgs::default()),
     }
+}
+
+/// Somewhere for the API's timers, solves and handlers to run.
+///
+/// Built here rather than around `main`, because the desktop application needs
+/// the main thread for its event loop and can only be given a runtime that is
+/// already running elsewhere.
+fn runtime() -> Result<tokio::runtime::Runtime, human_errors::Error> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| {
+            human_errors::system(
+                format!("The runtime could not be started: {error}"),
+                &["Check that this process is allowed to create threads."],
+            )
+        })
+}
+
+#[cfg(feature = "desktop")]
+fn app(args: AppArgs) -> Result<(), human_errors::Error> {
+    crate::desktop::run(args.designs, runtime()?)
+}
+
+/// Says what this build can do instead, rather than doing nothing at all.
+#[cfg(not(feature = "desktop"))]
+fn app(_args: AppArgs) -> Result<(), human_errors::Error> {
+    Err(human_errors::user(
+        "This build of optimist has no window to open.".to_owned(),
+        &[
+            "Run `optimist serve` and open the workbench in a browser.",
+            "Run `optimist --help` to see what this build can answer.",
+        ],
+    ))
 }
 
 #[cfg(test)]
@@ -114,7 +168,7 @@ mod tests {
         ] {
             let cli = Cli::try_parse_from(&arguments)
                 .unwrap_or_else(|error| panic!("{arguments:?}: {error}"));
-            assert!(matches!(cli.command, Command::Design(_)));
+            assert!(matches!(cli.command, Some(Command::Design(_))));
         }
     }
 
@@ -122,7 +176,21 @@ mod tests {
     fn parses_the_serve_command() {
         let cli =
             Cli::try_parse_from(["optimist", "serve", "--designs", "./designs"]).expect("parses");
-        assert!(matches!(cli.command, Command::Serve(_)));
+        assert!(matches!(cli.command, Some(Command::Serve(_))));
+    }
+
+    /// Somebody who double-clicked the application said nothing at all.
+    #[test]
+    fn nothing_at_all_opens_the_workbench() {
+        let cli = Cli::try_parse_from(["optimist"]).expect("parses");
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn parses_the_app_command() {
+        let cli = Cli::try_parse_from(["optimist", "app", "--designs", "./designs"])
+            .expect("parses");
+        assert!(matches!(cli.command, Some(Command::App(_))));
     }
 
     #[test]
@@ -131,7 +199,7 @@ mod tests {
             "optimist", "--output", "json", "--colour", "never", "check", "./design",
         ])
         .expect("parses");
-        assert!(matches!(cli.command, Command::Design(_)));
+        assert!(matches!(cli.command, Some(Command::Design(_))));
     }
 
     #[test]

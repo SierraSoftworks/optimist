@@ -34,7 +34,7 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 /** The workbench inside the desktop application, with no server to talk to. */
 export const tauri: Transport = {
   request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    return call<T>('api_call', { method, path, body: body ?? null })
+    return call<T>('api_call', { method, path: `/api/v1${path}`, body: body ?? null })
   },
 
   connect(design: string, listener: FeedListener): FeedConnection {

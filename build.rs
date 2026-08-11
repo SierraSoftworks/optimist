@@ -20,4 +20,14 @@ fn main() {
     // Rebuild when the frontend does, so a fresh `npm run build` reaches the
     // binary without a `cargo clean`.
     println!("cargo:rerun-if-changed=workbench/dist");
+    desktop();
 }
+
+/// Generates what the window build needs from `tauri.conf.json`.
+#[cfg(feature = "desktop")]
+fn desktop() {
+    tauri_build::build();
+}
+
+#[cfg(not(feature = "desktop"))]
+fn desktop() {}

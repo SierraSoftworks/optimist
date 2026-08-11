@@ -20,6 +20,19 @@ npm --prefix workbench test          # unit tests
 npm --prefix workbench run build     # type-check and bundle
 ```
 
+## The two hosts it runs in
+
+The same bundle runs in a browser served by `optimist serve` and inside the
+desktop application, which has no server and reaches Rust over Tauri's IPC.
+Everything that differs is in `src/api/transport`: `http.ts` uses `fetch`, a
+WebSocket and a download link; `tauri.ts` uses `invoke`, a channel and the
+platform's file dialogs. `index.ts` picks one at load, and nothing above the
+transport knows which.
+
+Adding a call means adding it to `client.ts` in terms of `transport.request`.
+Anything that cannot be expressed that way — a file leaving or arriving —
+belongs on the transport itself, with an implementation for both.
+
 ## How it stays current
 
 Editing writes through `POST /mutations` and nothing is written into the local

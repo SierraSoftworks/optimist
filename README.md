@@ -126,6 +126,31 @@ optimist compare     examples/checkout warm-cache
 Use `--output json` or `--output jsonl` for automation, and `--seed`,
 `--samples`, `--horizon`, `--step`, and `--transient` to control the solve.
 
+## Open it in a window
+
+Releases also carry an installer for a desktop application: the same workbench
+in a native window, with everything it needs already inside it.
+
+```sh
+optimist                           # or double-click the application
+optimist app --designs ./designs   # open a particular folder for this launch
+```
+
+The first launch says that designs are going in `~/Documents/optimist` and
+offers somewhere else to put them; the answer is remembered.
+
+There is no server and no port. The window reaches the same handlers `serve`
+puts behind HTTP through Tauri's IPC, which nothing outside the process can
+speak, so a design open in the application is not exposed to anything else
+running on the machine.
+
+To build one from a checkout, with the Tauri CLI installed:
+
+```sh
+cargo tauri dev                    # the window, against a live frontend
+cargo tauri build                  # installers under target/release/bundle
+```
+
 ## Serve a workspace
 
 ```sh
