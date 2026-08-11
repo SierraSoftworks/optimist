@@ -1,3 +1,5 @@
+import { transport } from './transport'
+import type { FeedConnection } from './transport'
 import type { FeedMessage } from './types'
 
 /**
@@ -39,13 +41,20 @@ const MAX_RETRY_MS = 10_000
 const LINGER_MS = 2_000
 
 interface Feed {
-  socket: WebSocket | null
+  connection: FeedConnection | null
   watchers: Set<FeedHandlers>
   status: FeedStatus
   retry: number
   reconnect: ReturnType<typeof setTimeout> | null
   linger: ReturnType<typeof setTimeout> | null
   stopped: boolean
+  /**
+   * Which attempt is the live one.
+   *
+   * A connection that has been replaced or shut down can still report itself,
+   * and acting on that would reconnect a feed nobody is watching.
+   */
+  generation: number
 }
 
 const feeds = new Map<string, Feed>()
@@ -74,60 +83,43 @@ function announce(feed: Feed, status: FeedStatus) {
 function connect(design: string, feed: Feed) {
   feed.reconnect = null
   if (feed.stopped || leaving) return
+  const generation = ++feed.generation
+  const live = () => feed.generation === generation && !feed.stopped && !leaving
   announce(feed, 'connecting')
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = new WebSocket(
-    `${protocol}//${location.host}/api/v1/designs/${encodeURIComponent(design)}/feed`,
-  )
-  feed.socket = socket
 
-  socket.onopen = () => {
-    feed.retry = FIRST_RETRY_MS
-    announce(feed, 'open')
-  }
+  feed.connection = transport.connect(design, {
+    onOpen: () => {
+      if (!live()) return
+      feed.retry = FIRST_RETRY_MS
+      announce(feed, 'open')
+    },
 
-  socket.onmessage = (event) => {
-    // A message this client cannot parse is one the server should not have
-    // sent. Dropping it keeps the feed alive for the messages that follow.
-    let message: FeedMessage
-    try {
-      message = JSON.parse(event.data as string) as FeedMessage
-    } catch {
-      return
-    }
-    // Over a copy, because being told is what makes a watcher leave.
-    for (const watcher of [...feed.watchers]) watcher.onMessage(message)
-  }
+    onMessage: (message) => {
+      if (!live()) return
+      // Over a copy, because being told is what makes a watcher leave.
+      for (const watcher of [...feed.watchers]) watcher.onMessage(message)
+    },
 
-  socket.onclose = () => {
-    if (feed.socket !== socket) return
-    feed.socket = null
-    announce(feed, 'closed')
-    if (feed.stopped || leaving) return
-    feed.reconnect = setTimeout(() => connect(design, feed), feed.retry)
-    feed.retry = Math.min(feed.retry * 2, MAX_RETRY_MS)
-  }
-
-  // An error is always followed by a close, so recovery is handled there
-  // rather than in both places.
-  socket.onerror = () => socket.close()
+    onClose: () => {
+      if (!live()) return
+      feed.connection = null
+      announce(feed, 'closed')
+      feed.reconnect = setTimeout(() => connect(design, feed), feed.retry)
+      feed.retry = Math.min(feed.retry * 2, MAX_RETRY_MS)
+    },
+  })
 }
 
 function shutdown(feed: Feed) {
   feed.stopped = true
+  feed.generation += 1
   if (feed.reconnect) clearTimeout(feed.reconnect)
   if (feed.linger) clearTimeout(feed.linger)
   feed.reconnect = null
   feed.linger = null
-  const socket = feed.socket
-  feed.socket = null
-  if (socket) {
-    // Detached first: this close is deliberate, and the handler would otherwise
-    // schedule a reconnect for a feed nobody is watching.
-    socket.onclose = null
-    socket.onerror = null
-    socket.close()
-  }
+  const connection = feed.connection
+  feed.connection = null
+  connection?.close()
 }
 
 /**
@@ -140,13 +132,14 @@ export function watchDesign(design: string, handlers: FeedHandlers): () => void 
   let feed = feeds.get(design)
   if (!feed || feed.stopped) {
     feed = {
-      socket: null,
+      connection: null,
       watchers: new Set(),
       status: 'closed',
       retry: FIRST_RETRY_MS,
       reconnect: null,
       linger: null,
       stopped: false,
+      generation: 0,
     }
     feeds.set(design, feed)
   }
@@ -158,7 +151,7 @@ export function watchDesign(design: string, handlers: FeedHandlers): () => void 
   }
   joined.watchers.add(handlers)
 
-  if (joined.socket === null && joined.reconnect === null) {
+  if (joined.connection === null && joined.reconnect === null) {
     connect(design, joined)
   } else {
     // A watcher that arrives after the socket opened would otherwise never be

@@ -1,3 +1,5 @@
+import { ApiError } from './errors'
+import { transport } from './transport'
 import type {
   Analysis,
   Applied,
@@ -9,24 +11,7 @@ import type {
   Snapshot,
 } from './types'
 
-/**
- * A refusal from the server, carrying the advice it offered.
- *
- * The server explains what to do about a problem as well as what the problem
- * was, and discarding that advice on the way through the client would leave the
- * interface to invent its own worse version.
- */
-export class ApiError extends Error {
-  readonly status: number
-  readonly advice: string[]
-
-  constructor(status: number, message: string, advice: string[]) {
-    super(message)
-    this.name = 'ApiError'
-    this.status = status
-    this.advice = advice
-  }
-}
+export { ApiError }
 
 /** Controls a caller may vary without editing the design. */
 export interface SolveControls {
@@ -60,58 +45,35 @@ function query(controls: SolveControls): string {
   return rendered ? `?${rendered}` : ''
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
-  })
-  if (response.ok) {
-    // A deletion succeeds with no body, and asking for JSON that was never sent
-    // would turn it into a failure.
-    return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
-  }
-  // A refusal is expected to be JSON, but a proxy or a crash can produce
-  // something else, and the status is worth reporting either way.
-  const failure = await response.json().catch(() => null)
-  throw new ApiError(
-    response.status,
-    failure?.message ?? `The request failed with status ${response.status}.`,
-    adviceLines(failure?.advice),
-  )
-}
-
-function adviceLines(advice: unknown): string[] {
-  if (typeof advice === 'string') return [advice]
-  if (Array.isArray(advice)) return advice.filter((line): line is string => typeof line === 'string')
-  return []
+function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return transport.request<T>(method, path, body)
 }
 
 export const api = {
-  designs: () => request<DesignSummary[]>('/designs'),
+  designs: () => request<DesignSummary[]>('GET', '/designs'),
 
   create: (id: string, name: string, summary: string) =>
-    request<Snapshot>('/designs', {
-      method: 'POST',
-      body: JSON.stringify({ id, name, summary }),
-    }),
+    request<Snapshot>('POST', '/designs', { id, name, summary }),
 
-  design: (design: string) => request<Snapshot>(`/designs/${encodeURIComponent(design)}`),
+  design: (design: string) => request<Snapshot>('GET', `/designs/${encodeURIComponent(design)}`),
 
   /** Deletes a design and everything stored under it. */
   remove: (design: string) =>
-    request<void>(`/designs/${encodeURIComponent(design)}`, { method: 'DELETE' }),
+    request<void>('DELETE', `/designs/${encodeURIComponent(design)}`),
 
   catalogue: (design: string) =>
-    request<Catalogue>(`/designs/${encodeURIComponent(design)}/catalogue`),
+    request<Catalogue>('GET', `/designs/${encodeURIComponent(design)}/catalogue`),
+
+  /** Puts the design's archive somewhere the person asking for it can find it. */
+  saveArchive: (design: string) => transport.saveArchive(design),
 
   /**
-   * Where a design's archive can be fetched from.
+   * Asks for an archive with the platform's own picker.
    *
-   * Given to the browser to download rather than read here, so a large design
-   * streams to disk instead of being assembled in memory first, and the file
-   * name the server chose is the one that lands.
+   * Absent in a browser, where choosing a file means an `<input>` in the
+   * document rather than something this client can ask for.
    */
-  archiveUrl: (design: string) => `/api/v1/designs/${encodeURIComponent(design)}/archive`,
+  chooseArchive: transport.chooseArchive,
 
   /**
    * Stores an archive as a design.
@@ -120,10 +82,7 @@ export const api = {
    * after a design somebody else is working on cannot quietly take its place.
    */
   importArchive: (design: string, archive: Blob, replace = false) =>
-    request<Snapshot>(
-      `/designs/${encodeURIComponent(design)}/archive${replace ? '?replace=true' : ''}`,
-      { method: 'PUT', body: archive, headers: { 'Content-Type': 'application/zip' } },
-    ),
+    transport.putArchive(design, archive, replace),
 
   /**
    * Applies edits in order, stopping at the first that will not apply.
@@ -132,13 +91,10 @@ export const api = {
    * is complete on its own. The returned count says how many landed.
    */
   mutate: (design: string, mutations: Mutation[]) =>
-    request<Applied>(`/designs/${encodeURIComponent(design)}/mutations`, {
-      method: 'POST',
-      body: JSON.stringify({ mutations }),
-    }),
+    request<Applied>('POST', `/designs/${encodeURIComponent(design)}/mutations`, { mutations }),
 
   analysis: (design: string, controls: SolveControls = {}) =>
-    request<Analysis>(`/designs/${encodeURIComponent(design)}/analysis${query(controls)}`),
+    request<Analysis>('GET', `/designs/${encodeURIComponent(design)}/analysis${query(controls)}`),
 
   /**
    * Evaluates one expression the way the solver would, for a preview.
@@ -148,13 +104,14 @@ export const api = {
    * figure the solver is going to refuse.
    */
   preview: (design: string, expression: string, entry: string | null = null) =>
-    request<Quantity>(`/designs/${encodeURIComponent(design)}/preview`, {
-      method: 'POST',
-      body: JSON.stringify({ expression, entry }),
+    request<Quantity>('POST', `/designs/${encodeURIComponent(design)}/preview`, {
+      expression,
+      entry,
     }),
 
   comparison: (design: string, intervention: string, controls: SolveControls = {}) =>
     request<Comparison>(
+      'GET',
       `/designs/${encodeURIComponent(design)}/comparisons/${encodeURIComponent(intervention)}${query(
         controls,
       )}`,

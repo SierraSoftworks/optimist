@@ -16,7 +16,7 @@ const file = ref<HTMLInputElement | null>(null)
  * Asking somebody to find the file a second time in order to answer a question
  * about it would be a strange thing to do to them.
  */
-const pending = ref<{ id: string; archive: File } | null>(null)
+const pending = ref<{ id: string; archive: Blob } | null>(null)
 const conflict = ref(false)
 const failure = ref<{ message: string; advice: string[] } | null>(null)
 const busy = ref(false)
@@ -32,22 +32,29 @@ function slug(value: string): string {
 }
 
 /**
- * Hands the archive to the browser rather than fetching it here.
+ * Leaves saving the file to whatever the person is running this in.
  *
- * The server already says what the file is called and that it is a download, so
- * it streams to disk rather than being assembled in this tab first.
+ * A browser streams it to disk from the server that already named it; the
+ * desktop application asks where to put it and writes it there.
  */
 function exportDesign() {
   if (!props.design) return
-  const link = document.createElement('a')
-  link.href = api.archiveUrl(props.design)
-  link.download = `${props.design}.zip`
-  link.click()
+  void api.saveArchive(props.design)
 }
 
-function choose() {
+async function choose() {
   failure.value = null
-  file.value?.click()
+  // A browser has no picker to ask for, so the hidden input below does the job.
+  if (!api.chooseArchive) {
+    file.value?.click()
+    return
+  }
+  try {
+    const picked = await api.chooseArchive()
+    if (picked) await accept(picked.name, picked.data)
+  } catch (error) {
+    report(error)
+  }
 }
 
 async function chosen(event: Event) {
@@ -55,12 +62,14 @@ async function chosen(event: Event) {
   const archive = input.files?.[0]
   // Clearing it means choosing the same file twice still fires a change.
   input.value = ''
-  if (!archive) return
+  if (archive) await accept(archive.name, archive)
+}
 
-  const id = slug(archive.name)
+async function accept(name: string, archive: Blob) {
+  const id = slug(name)
   if (!id) {
     failure.value = {
-      message: `'${archive.name}' cannot name a design.`,
+      message: `'${name}' cannot name a design.`,
       advice: ['Rename the file using letters and digits, then choose it again.'],
     }
     return
@@ -68,7 +77,14 @@ async function chosen(event: Event) {
   await send({ id, archive }, false)
 }
 
-async function send(request: { id: string; archive: File }, replace: boolean) {
+function report(error: unknown) {
+  failure.value = {
+    message: (error as Error).message,
+    advice: error instanceof ApiError ? error.advice : [],
+  }
+}
+
+async function send(request: { id: string; archive: Blob }, replace: boolean) {
   busy.value = true
   try {
     await api.importArchive(request.id, request.archive, replace)
@@ -84,10 +100,7 @@ async function send(request: { id: string; archive: File }, replace: boolean) {
     }
     pending.value = null
     conflict.value = false
-    failure.value = {
-      message: (error as Error).message,
-      advice: error instanceof ApiError ? error.advice : [],
-    }
+    report(error)
   } finally {
     busy.value = false
   }
