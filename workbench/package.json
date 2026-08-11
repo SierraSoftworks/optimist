@@ -30,9 +30,9 @@
     "@vue/devtools-api": "^8.2.1",
     "codemirror": "^6.0.2",
     "cytoscape": "^3.34.0",
-    "element-plus": "^2.14.3",
+    "element-plus": "^2.14.4",
     "pinia": "^4.0.2",
-    "vue": "^3.5.39",
+    "vue": "^3.5.41",
     "vue-router": "^5.2.0"
   },
   "devDependencies": {
