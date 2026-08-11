@@ -47,6 +47,8 @@ use serde::Serialize;
 use tokio::net::TcpListener;
 
 pub use error::ApiError;
+#[cfg(feature = "desktop")]
+pub(crate) use feed::Feed;
 
 use crate::session::Workspace;
 
@@ -132,7 +134,12 @@ pub fn router(workspace: Arc<Workspace>) -> Router {
 /// API route claimed. That ordering is what keeps an unknown `/api` path a JSON
 /// error rather than a page of HTML.
 pub fn routes(workspace: Arc<Workspace>, web_root: Option<PathBuf>) -> Router {
-    let api = Router::new()
+    web::attach(api(ApiState::new(workspace)), web::Assets::new(web_root))
+}
+
+/// Every route the API answers, with no frontend behind them.
+fn api(state: ApiState) -> Router {
+    Router::new()
         .route("/api/v1/health", get(health))
         .merge(designs::router())
         .merge(archive::router())
@@ -144,8 +151,47 @@ pub fn routes(workspace: Arc<Workspace>, web_root: Option<PathBuf>) -> Router {
         // 404 it is, and owning the refusal here means that holds whether or
         // not a frontend is being served at all.
         .route("/api/{*rest}", any(unknown_endpoint))
-        .with_state(ApiState::new(workspace));
-    web::attach(api, web::Assets::new(web_root))
+        .with_state(state)
+}
+
+/// The API as something a caller drives itself, rather than over a socket.
+///
+/// The desktop application has no listener. It routes the requests its webview
+/// makes through the router below and reads a design's feed from the same state
+/// those routes are built over, so the two ways to reach a workspace cannot
+/// answer differently.
+#[cfg(feature = "desktop")]
+pub(crate) struct Service {
+    state: ApiState,
+    router: Router,
+}
+
+#[cfg(feature = "desktop")]
+impl Service {
+    /// Builds the API over a workspace.
+    pub(crate) fn new(workspace: Arc<Workspace>) -> Self {
+        let state = ApiState::new(workspace);
+        let router = api(state.clone());
+        Self { state, router }
+    }
+
+    /// A router requests may be driven through, cheap to clone per request.
+    pub(crate) fn router(&self) -> Router {
+        self.router.clone()
+    }
+
+    /// Watches a design, or reports the refusal as the response it would be.
+    ///
+    /// A rejection arrives already rendered so that a caller with no HTTP in
+    /// front of it still reports what a client of the server would have read.
+    pub(crate) fn feed(&self, design: &str) -> Result<Feed, axum::response::Response> {
+        feed::watch(&self.state, design).map_err(axum::response::IntoResponse::into_response)
+    }
+
+    /// The workspace the API is answering about.
+    pub(crate) fn workspace(&self) -> &Arc<Workspace> {
+        &self.state.workspace
+    }
 }
 
 async fn unknown_endpoint() -> impl axum::response::IntoResponse {
@@ -187,16 +233,7 @@ pub async fn serve(config: ApiConfig) -> Result<(), ApiError> {
             source,
         })?;
 
-    let sweeping = Arc::clone(&workspace);
-    let sweep = tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(SWEEP_INTERVAL);
-        loop {
-            ticker.tick().await;
-            if let Err(error) = sweeping.persist_due() {
-                eprintln!("a design could not be written: {error}");
-            }
-        }
-    });
+    let sweeping = sweep(Arc::clone(&workspace));
 
     let served = Arc::clone(&workspace);
     let result = axum::serve(listener, routes(workspace, config.web_root))
@@ -204,11 +241,28 @@ pub async fn serve(config: ApiConfig) -> Result<(), ApiError> {
         .await
         .map_err(|source| ApiError::Serve { source });
 
-    sweep.abort();
+    sweeping.abort();
     if let Err(error) = served.persist_all() {
         eprintln!("unsaved designs could not be written on shutdown: {error}");
     }
     result
+}
+
+/// Writes designs that have settled, until the returned task is dropped.
+///
+/// An edit is held briefly so that a burst of keystrokes becomes one write, and
+/// this is what notices that the burst has ended. Whoever starts it owns writing
+/// out what is still pending when it stops.
+pub(crate) fn sweep(workspace: Arc<Workspace>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(SWEEP_INTERVAL);
+        loop {
+            ticker.tick().await;
+            if let Err(error) = workspace.persist_due() {
+                eprintln!("a design could not be written: {error}");
+            }
+        }
+    })
 }
 
 async fn shutdown() {

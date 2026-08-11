@@ -16,8 +16,6 @@
 //! through a long solve is told about it by the same message that tells them
 //! what the design says.
 
-use std::sync::Arc;
-
 use axum::{
     Router,
     extract::{
@@ -28,7 +26,7 @@ use axum::{
     routing::get,
 };
 use serde::Serialize;
-use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::broadcast::{Receiver, error::RecvError};
 
 use crate::session::{Change, Session, Snapshot};
 
@@ -73,76 +71,97 @@ enum Update {
     },
 }
 
+/// Everything a watcher of one design will be told, in order.
+///
+/// Each message is already JSON. Both transports that carry a feed send text,
+/// so encoding here means an update is serialised once wherever it is bound.
+pub(crate) struct Feed {
+    changes: Receiver<Change>,
+    notices: Receiver<Notice>,
+    /// What the feed opens with, reversed so the snapshot is taken first.
+    opening: Vec<Update>,
+    /// Where the design stood when the snapshot was taken.
+    opened: u64,
+}
+
+impl Feed {
+    /// Subscribes to a design and takes the snapshot the feed opens with.
+    ///
+    /// Subscribing before taking the snapshot is what removes the gap. A change
+    /// landing between the two is delivered rather than lost, and a client that
+    /// receives one it already has can tell from the sequence and ignore it. The
+    /// same holds for the solves: one that finishes between subscribing and
+    /// listing is reported finished rather than left on the page.
+    fn open(session: &Session, solves: &Solves) -> Self {
+        let changes = session.watch();
+        let notices = solves.watch();
+        let snapshot = session.snapshot();
+        let opened = snapshot.sequence;
+        Self {
+            changes,
+            notices,
+            opening: vec![
+                Update::Active {
+                    solves: solves.active(),
+                },
+                Update::Snapshot(snapshot),
+            ],
+            opened,
+        }
+    }
+
+    /// The next message, or nothing once the design can send no more.
+    pub(crate) async fn next(&mut self) -> Option<String> {
+        let update = match self.opening.pop() {
+            Some(update) => update,
+            None => self.awaited().await?,
+        };
+        serde_json::to_string(&update).ok()
+    }
+
+    async fn awaited(&mut self) -> Option<Update> {
+        loop {
+            return Some(tokio::select! {
+                change = self.changes.recv() => match change {
+                    Ok(change) if change.sequence <= self.opened => continue,
+                    Ok(change) => Update::Change(change),
+                    Err(RecvError::Lagged(missed)) => Update::Lagged { missed },
+                    Err(RecvError::Closed) => return None,
+                },
+                notice = self.notices.recv() => match notice {
+                    Ok(Notice::Progress(solve)) => Update::Solving { solve },
+                    Ok(Notice::Done(solve)) => Update::Solved { solve },
+                    // Progress is disposable. Whatever a slow watcher missed has
+                    // been superseded by the frame that comes next, and telling it
+                    // to refetch the design would answer a question it did not ask.
+                    Err(RecvError::Lagged(_)) => continue,
+                    Err(RecvError::Closed) => return None,
+                },
+            });
+        }
+    }
+}
+
+/// Opens a feed over a design named by a client.
+pub(super) fn watch(state: &ApiState, design: &str) -> Result<Feed, Rejected> {
+    let session = open(&state.workspace, design)?;
+    let solves = state.solving.design(design);
+    Ok(Feed::open(&session, &solves))
+}
+
 async fn subscribe(
     State(state): State<ApiState>,
     Path(design): Path<String>,
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, Rejected> {
-    let session = open(&state.workspace, &design)?;
-    let solves = state.solving.design(&design);
-    Ok(upgrade.on_upgrade(move |socket| stream(socket, session, solves)))
+    let feed = watch(&state, &design)?;
+    Ok(upgrade.on_upgrade(move |socket| stream(socket, feed)))
 }
 
-/// Sends the design and what is being solved, then everything that follows.
-///
-/// Subscribing before taking the snapshot is what removes the gap. A change
-/// landing between the two is delivered rather than lost, and a client that
-/// receives one it already has can tell from the sequence and ignore it. The
-/// same holds for the solves: one that finishes between subscribing and listing
-/// is reported finished rather than left on the page.
-async fn stream(mut socket: WebSocket, session: Arc<Session>, solves: Arc<Solves>) {
-    let mut changes = session.watch();
-    let mut notices = solves.watch();
-    let snapshot = session.snapshot();
-    let opened = snapshot.sequence;
-    if send(&mut socket, &Update::Snapshot(snapshot))
-        .await
-        .is_err()
-    {
-        return;
-    }
-    if send(
-        &mut socket,
-        &Update::Active {
-            solves: solves.active(),
-        },
-    )
-    .await
-    .is_err()
-    {
-        return;
-    }
-
-    loop {
-        let update = tokio::select! {
-            change = changes.recv() => match change {
-                Ok(change) if change.sequence <= opened => continue,
-                Ok(change) => Update::Change(change),
-                Err(RecvError::Lagged(missed)) => Update::Lagged { missed },
-                Err(RecvError::Closed) => return,
-            },
-            notice = notices.recv() => match notice {
-                Ok(Notice::Progress(solve)) => Update::Solving { solve },
-                Ok(Notice::Done(solve)) => Update::Solved { solve },
-                // Progress is disposable. Whatever a slow watcher missed has
-                // been superseded by the frame that comes next, and telling it
-                // to refetch the design would answer a question it did not ask.
-                Err(RecvError::Lagged(_)) => continue,
-                Err(RecvError::Closed) => return,
-            },
-        };
-        if send(&mut socket, &update).await.is_err() {
+async fn stream(mut socket: WebSocket, mut feed: Feed) {
+    while let Some(message) = feed.next().await {
+        if socket.send(Message::Text(message.into())).await.is_err() {
             return;
         }
     }
-}
-
-async fn send(socket: &mut WebSocket, update: &Update) -> Result<(), ()> {
-    let Ok(rendered) = serde_json::to_string(update) else {
-        return Err(());
-    };
-    socket
-        .send(Message::Text(rendered.into()))
-        .await
-        .map_err(|_| ())
 }
