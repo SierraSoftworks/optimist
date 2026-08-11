@@ -27,7 +27,7 @@ async fn subscribe(
     design: &str,
     channel: Channel<String>,
 ) -> Result<u32, Failure> {
-    let mut feed = match desktop.service.feed(design) {
+    let mut feed = match desktop.service().feed(design) {
         Ok(feed) => feed,
         Err(refusal) => return Err(Failure::read(refusal).await),
     };
@@ -54,7 +54,7 @@ fn unsubscribe(desktop: &Desktop, id: u32) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::sync::{Arc, Mutex};
 
     use serde_json::Value;
@@ -63,6 +63,13 @@ mod tests {
     use crate::desktop::{bridge, tests::workspace};
 
     use super::*;
+
+    /// Watches a design and throws away what it says.
+    pub(crate) async fn watching(desktop: &Desktop, design: &str) {
+        subscribe(desktop, design, Channel::new(|_| Ok(())))
+            .await
+            .expect("subscribes");
+    }
 
     /// Collects what the window would have been sent.
     fn recorder() -> (Channel<String>, Arc<Mutex<Vec<Value>>>) {

@@ -137,7 +137,8 @@ optimist app --designs ./designs   # open a particular folder for this launch
 ```
 
 The first launch says that designs are going in `~/Documents/optimist` and
-offers somewhere else to put them; the answer is remembered.
+offers somewhere else to put them; the answer is remembered, and the folder in
+the title bar changes it again at any time without restarting.
 
 There is no server and no port. The window reaches the same handlers `serve`
 puts behind HTTP through Tauri's IPC, which nothing outside the process can
@@ -147,7 +148,8 @@ running on the machine.
 To build one from a checkout, with the Tauri CLI installed:
 
 ```sh
-cargo tauri dev                    # the window, against a live frontend
+npm --prefix workbench run build   # the window reads this build
+cargo run --features desktop       # the window, over that build
 cargo tauri build                  # installers under target/release/bundle
 ```
 

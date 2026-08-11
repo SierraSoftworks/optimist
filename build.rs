@@ -12,22 +12,39 @@
 
 use std::{fs, path::PathBuf};
 
+/// What the window build embeds in place of the workbench.
+///
+/// Tauri wants a frontend to compile into the binary, and the binary already
+/// carries one for the server to serve. This stands in its place so that the
+/// same files are not embedded twice, and is replaced at startup by the copy
+/// the server uses. Seeing it means that replacement did not happen.
+const PLACEHOLDER: &str = concat!(
+    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
+    "<title>Optimist</title></head><body>The workbench was not built.</body></html>\n"
+);
+
 fn main() {
-    let dist = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("workbench/dist");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let dist = root.join("workbench/dist");
     if !dist.is_dir() {
         let _ = fs::create_dir_all(&dist);
     }
     // Rebuild when the frontend does, so a fresh `npm run build` reaches the
     // binary without a `cargo clean`.
     println!("cargo:rerun-if-changed=workbench/dist");
-    desktop();
+    desktop(&root);
 }
 
 /// Generates what the window build needs from `tauri.conf.json`.
 #[cfg(feature = "desktop")]
-fn desktop() {
+fn desktop(root: &std::path::Path) {
+    let placeholder = root.join("gen/frontend");
+    fs::create_dir_all(&placeholder).expect("a directory for the placeholder frontend");
+    fs::write(placeholder.join("index.html"), PLACEHOLDER).expect("the placeholder frontend");
     tauri_build::build();
 }
 
 #[cfg(not(feature = "desktop"))]
-fn desktop() {}
+fn desktop(_root: &std::path::Path) {
+    let _ = PLACEHOLDER;
+}

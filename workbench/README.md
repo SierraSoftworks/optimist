@@ -30,8 +30,15 @@ platform's file dialogs. `index.ts` picks one at load, and nothing above the
 transport knows which.
 
 Adding a call means adding it to `client.ts` in terms of `transport.request`.
-Anything that cannot be expressed that way — a file leaving or arriving —
-belongs on the transport itself, with an implementation for both.
+Anything a browser and a window would go about differently — a file leaving or
+arriving, the folder designs are kept in — belongs on the transport itself, and
+owns the whole exchange rather than handing back a step for somebody else to
+finish. `importDesign` asks for a file, names the design after it, stores it,
+and offers to replace what is already there, because doing any of that outside
+the transport would mean knowing which host it was running in.
+
+The desktop application serves this build too: it is embedded once, and the
+window reads it through the same code the server does.
 
 ## How it stays current
 

@@ -3,9 +3,7 @@
   "productName": "Optimist",
   "identifier": "com.sierrasoftworks.optimist",
   "build": {
-    "frontendDist": "workbench/dist",
-    "devUrl": "http://127.0.0.1:5173",
-    "beforeDevCommand": { "script": "npm run dev", "cwd": "workbench" },
+    "frontendDist": "gen/frontend",
     "beforeBuildCommand": { "script": "npm run build", "cwd": "workbench" },
     "features": ["desktop"]
   },

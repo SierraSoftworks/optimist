@@ -67,7 +67,7 @@ pub(super) async fn call(
 /// the same way and only success reaches the code that knows what to do with it.
 pub(super) async fn route(desktop: &Desktop, request: Request<Body>) -> Result<Response, Failure> {
     let response = desktop
-        .service
+        .service()
         .router()
         .into_service::<Body>()
         .oneshot(request)
@@ -160,6 +160,11 @@ pub(crate) mod tests {
         )
         .await
         .expect("starts a design");
+    }
+
+    /// Watches a design the way an open window would.
+    pub(crate) async fn watch(desktop: &Desktop, design: &str) {
+        crate::desktop::feed::tests::watching(desktop, design).await;
     }
 
     #[rstest]

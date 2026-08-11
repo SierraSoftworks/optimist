@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import NewDesignDialog from './components/NewDesignDialog.vue'
 import DesignTransfer from './components/DesignTransfer.vue'
+import WorkspaceFolder from './components/WorkspaceFolder.vue'
 import { useDesign, useDesigns } from './composables/useDesign'
 import { useWorkbenchStore } from './stores/workbench'
 
@@ -35,6 +36,16 @@ function go(next: 'design' | 'review') {
 function open(id: string) {
   void router.push({ name: mode.value, params: { design: id } })
 }
+
+/**
+ * Nothing on screen survives the folder changing.
+ *
+ * The design in the URL is a name in the folder that was open, and the one that
+ * is now open has its own.
+ */
+function opened() {
+  void router.push({ name: 'welcome' })
+}
 </script>
 
 <template>
@@ -44,6 +55,12 @@ function open(id: string) {
         <el-icon :size="17"><i-data-analysis /></el-icon>
         <span>Optimist</span>
       </button>
+
+      <!--
+        Only where the folder is a person's to decide. In a browser it belongs
+        to whoever ran the server, and to everybody else looking at the same one.
+      -->
+      <WorkspaceFolder @changed="opened" />
 
       <template v-if="design">
         <el-divider direction="vertical" />

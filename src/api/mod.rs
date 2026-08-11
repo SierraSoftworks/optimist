@@ -34,7 +34,9 @@ mod designs;
 mod error;
 mod feed;
 mod solving;
-mod web;
+// Read by the desktop window as well as by the server, so that a binary which
+// can do both carries the frontend once.
+pub(crate) mod web;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 

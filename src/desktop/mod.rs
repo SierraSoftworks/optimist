@@ -11,26 +11,32 @@
 //! Requests therefore arrive over Tauri's IPC, which nothing outside this
 //! process can speak, and are put through the same router the server exposes.
 //! Nothing about a design is answered twice: [`bridge`] routes requests,
-//! [`feed`] carries the change feed a socket would have carried, and [`archive`]
-//! swaps a browser's download and upload for the platform's own file dialogs.
+//! [`feed`] carries the change feed a socket would have carried, [`archive`]
+//! swaps a browser's download and upload for the platform's own file dialogs,
+//! and [`workspace`] lets somebody say where their designs live.
 
 mod archive;
 mod bridge;
 mod failure;
 mod feed;
+mod frontend;
 mod settings;
+mod workspace;
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard, PoisonError,
+        Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard,
         atomic::{AtomicU32, Ordering},
     },
 };
 
-use tauri::{AppHandle, Manager, RunEvent, async_runtime::JoinHandle};
-use tokio::runtime::Runtime;
+use tauri::{Manager, RunEvent, async_runtime::JoinHandle};
+use tokio::{
+    runtime::{Handle, Runtime},
+    task::JoinHandle as Sweeping,
+};
 
 use crate::{
     api::{self, Service},
@@ -40,20 +46,68 @@ use crate::{
 use failure::Failure;
 
 /// Everything the commands share.
+///
+/// The folder can be changed while the window is open, because somebody who
+/// keeps their designs elsewhere should not have to restart to say so.
+/// Everything derived from it — the caches, the solve board, the feeds, the
+/// sweep that writes edits out — belongs to the folder that produced it and is
+/// replaced along with it.
 pub(crate) struct Desktop {
-    service: Service,
+    open: RwLock<Open>,
     /// What each subscription is running, so that it can be ended by number.
     feeds: Mutex<HashMap<u32, JoinHandle<()>>>,
     subscriptions: AtomicU32,
+    /// Where the sweep for a newly opened folder is started.
+    runtime: Handle,
+}
+
+/// One folder, and everything the application has built over it.
+struct Open {
+    folder: PathBuf,
+    service: Arc<Service>,
+    sweeping: Sweeping<()>,
 }
 
 impl Desktop {
-    fn new(workspace: Arc<Workspace>) -> Self {
+    /// Opens a folder. Needs a runtime available for the sweep to run on.
+    fn new(folder: PathBuf) -> Self {
         Self {
-            service: Service::new(workspace),
+            open: RwLock::new(Open::over(folder)),
             feeds: Mutex::default(),
             subscriptions: AtomicU32::new(0),
+            runtime: Handle::current(),
         }
+    }
+
+    fn read(&self) -> RwLockReadGuard<'_, Open> {
+        self.open.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The API over the folder currently open.
+    fn service(&self) -> Arc<Service> {
+        Arc::clone(&self.read().service)
+    }
+
+    /// Where designs are being read from and written to.
+    fn folder(&self) -> PathBuf {
+        self.read().folder.clone()
+    }
+
+    /// Opens another folder in place of the one in use.
+    ///
+    /// What the old folder still held is written out first, and everything
+    /// watching it is stopped, because a feed over a design that is no longer on
+    /// screen would go on reporting changes nobody asked about.
+    fn open(&self, folder: PathBuf) -> std::io::Result<()> {
+        prepare(&folder)?;
+        let mut open = self.open.write().unwrap_or_else(PoisonError::into_inner);
+        for (_, watching) in self.feeds().drain() {
+            watching.abort();
+        }
+        open.close();
+        let _running = self.runtime.enter();
+        *open = Open::over(folder);
+        Ok(())
     }
 
     /// A number no live subscription is using.
@@ -64,6 +118,26 @@ impl Desktop {
     /// A poisoned registry is still a correct list of what is running.
     fn feeds(&self) -> MutexGuard<'_, HashMap<u32, JoinHandle<()>>> {
         self.feeds.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl Open {
+    fn over(folder: PathBuf) -> Self {
+        let workspace = Arc::new(Workspace::new(&folder));
+        let sweeping = api::sweep(Arc::clone(&workspace));
+        Self {
+            folder,
+            service: Arc::new(Service::new(workspace)),
+            sweeping,
+        }
+    }
+
+    /// Writes out everything still unsaved and stops writing anything more.
+    fn close(&self) {
+        self.sweeping.abort();
+        if let Err(error) = self.service.workspace().persist_all() {
+            eprintln!("unsaved designs could not be written: {error}");
+        }
     }
 }
 
@@ -78,33 +152,42 @@ pub(crate) fn run(designs: Option<PathBuf>, runtime: Runtime) -> Result<(), huma
     let folder = designs
         .or(remembered.designs)
         .unwrap_or_else(settings::default_designs);
-    settings::prepare(&folder)?;
+    prepare(&folder).map_err(|error| {
+        human_errors::user(
+            format!("{} could not be created: {error}", folder.display()),
+            &[
+                "Choose a folder you can write to with --designs.",
+                "Check that the path is not a file, and that the disk is not full.",
+            ],
+        )
+    })?;
 
     tauri::async_runtime::set(runtime.handle().clone());
     let _running = runtime.enter();
 
-    let workspace = Arc::new(Workspace::new(&folder));
-    let sweeping = Arc::clone(&workspace);
+    let mut context = tauri::generate_context!();
+    context.set_assets(Box::new(frontend::Workbench::new(None)));
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Desktop::new(workspace))
+        .manage(Desktop::new(folder.clone()))
         .invoke_handler(tauri::generate_handler![
             bridge::api_call,
             feed::feed_subscribe,
             feed::feed_unsubscribe,
-            archive::save_archive,
+            archive::export_design,
             archive::choose_archive,
-            archive::import_archive,
+            archive::import_design,
+            workspace::workspace_folder,
+            workspace::choose_workspace,
         ])
         .setup(move |app| {
-            api::sweep(sweeping);
             if unasked {
                 settings::offer(app.handle().clone(), folder.clone());
             }
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .map_err(|error| {
             human_errors::system(
                 format!("The application could not start: {error}"),
@@ -119,27 +202,30 @@ pub(crate) fn run(designs: Option<PathBuf>, runtime: Runtime) -> Result<(), huma
         // An edit is held briefly before it is written, and closing the window
         // is exactly the moment somebody stops waiting for that.
         if matches!(event, RunEvent::Exit) {
-            persist(app);
+            app.state::<Desktop>().read().close();
         }
     });
     Ok(())
 }
 
-/// Writes out everything still unsaved.
-fn persist(app: &AppHandle) {
-    if let Err(error) = app.state::<Desktop>().service.workspace().persist_all() {
-        eprintln!("unsaved designs could not be written: {error}");
-    }
+/// Makes sure a folder exists before anything is asked of it.
+fn prepare(folder: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(folder)
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
-    /// A workspace directory that takes itself away again.
+    /// A scratch directory that takes itself away again.
     pub(crate) struct Scratch(PathBuf);
+
+    impl Scratch {
+        /// Somewhere to put files a test needs, beside the workspace itself.
+        pub(crate) fn path(&self) -> &Path {
+            &self.0
+        }
+    }
 
     impl Drop for Scratch {
         fn drop(&mut self) {
@@ -152,13 +238,21 @@ pub(crate) mod tests {
     /// The directory is returned rather than kept, because it lives exactly as
     /// long as the test binding it does.
     pub(crate) fn workspace() -> (Desktop, Scratch) {
+        let root = scratch();
+        let designs = root.path().join("designs");
+        std::fs::create_dir_all(&designs).expect("a scratch workspace");
+        (Desktop::new(designs), root)
+    }
+
+    /// A directory of its own, for a test that needs somewhere to put files.
+    pub(crate) fn scratch() -> Scratch {
         static NEXT: AtomicU32 = AtomicU32::new(0);
         let root = std::env::temp_dir().join(format!(
             "optimist-desktop-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir_all(&root).expect("a scratch workspace");
-        (Desktop::new(Arc::new(Workspace::new(&root))), Scratch(root))
+        std::fs::create_dir_all(&root).expect("a scratch directory");
+        Scratch(root)
     }
 }

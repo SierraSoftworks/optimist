@@ -65,7 +65,7 @@ impl Assets {
     }
 
     /// Reads one file, by its path within the build.
-    fn read(&self, path: &str) -> Option<Cow<'static, [u8]>> {
+    pub(crate) fn read(&self, path: &str) -> Option<Cow<'static, [u8]>> {
         if let Some(root) = &self.root {
             // `..` in a request must not climb out of the build directory. Each
             // segment is checked rather than the joined path, because a check
@@ -123,28 +123,40 @@ pub(super) fn attach(router: Router, assets: Assets) -> Router {
 
 async fn serve(assets: Assets, uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
-
-    if let Some(body) = assets.read(path) {
-        return file(path, body);
-    }
-
-    // A request for something that looks like a file and is not there is a
-    // missing file, not a browser route. Answering it with the page would turn
-    // a broken asset reference into a silent one.
-    if looks_like_a_file(path) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-
-    match assets.read("index.html") {
-        Some(body) => file("index.html", body),
+    let direct = assets.read(path);
+    let name = if direct.is_some() { path } else { "index.html" };
+    match direct.or_else(|| fallback(&assets, path)) {
+        Some(body) => file(name, body),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// The page, for a path that is a browser route rather than a missing file.
+///
+/// A request for something that looks like a file and is not there is a missing
+/// file, not a route. Answering it with the page would turn a broken asset
+/// reference into a silent one.
+fn fallback(assets: &Assets, path: &str) -> Option<Cow<'static, [u8]>> {
+    if looks_like_a_file(path) {
+        return None;
+    }
+    assets.read("index.html")
 }
 
 fn looks_like_a_file(path: &str) -> bool {
     path.rsplit('/')
         .next()
         .is_some_and(|name| name.contains('.'))
+}
+
+/// What to answer a request for `path` with, whatever is doing the answering.
+///
+/// The desktop window reads the frontend through this rather than carrying its
+/// own copy, so a binary that can both serve the workbench and show it embeds
+/// those files once.
+#[cfg(feature = "desktop")]
+pub(crate) fn page(assets: &Assets, path: &str) -> Option<Cow<'static, [u8]>> {
+    assets.read(path).or_else(|| fallback(assets, path))
 }
 
 fn file(path: &str, body: Cow<'static, [u8]>) -> Response {

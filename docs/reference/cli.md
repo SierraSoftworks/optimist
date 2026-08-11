@@ -414,9 +414,10 @@ desktop rather than a terminal.
 | `--designs` | `OPTIMIST_DESIGNS` | remembered, else `~/Documents/optimist` | Directory holding the designs to open. |
 
 The first launch says where designs are going and offers somewhere else to put
-them; the answer is remembered, and changing it later restarts the application
-so that nothing on screen is left describing the previous folder. Passing
-`--designs` opens that folder for this launch without changing what is
+them; the answer is remembered, and the folder shown beside the title changes it
+again at any time. Changing it writes out whatever the old folder still held,
+stops watching it, and opens the new one in place, so nothing has to restart.
+Passing `--designs` opens that folder for this launch without changing what is
 remembered.
 
 The answer is kept in `settings.json` under the platform's configuration

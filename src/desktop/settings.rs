@@ -5,10 +5,7 @@
 //! share what they have written. It is offered rather than imposed: the first
 //! launch says where designs are going and gives them somewhere else to say.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -62,27 +59,12 @@ pub(super) fn default_designs() -> PathBuf {
         .join(NAME)
 }
 
-/// Makes sure the folder exists before anything is asked of it.
-pub(super) fn prepare(designs: &Path) -> Result<(), human_errors::Error> {
-    fs::create_dir_all(designs).map_err(|error| {
-        human_errors::user(
-            format!("{} could not be created: {error}", designs.display()),
-            &[
-                "Choose a folder you can write to with --designs.",
-                "Check that the path is not a file, and that the disk is not full.",
-            ],
-        )
-    })
-}
-
 /// Says where designs are going, and offers somewhere else to put them.
 ///
 /// Asked once, on the launch that had nothing remembered. Accepting the folder
-/// remembers it so the question is not asked again; changing it restarts the
-/// application rather than swapping the workspace underneath the window,
-/// because everything on screen is about the designs in the old one. Somebody
-/// who opens the picker and then changes their mind is asked again next time,
-/// having answered nothing.
+/// remembers it so the question is not asked again; changing it opens the other
+/// one there and then. Somebody who opens the picker and changes their mind is
+/// asked again next time, having answered nothing.
 pub(super) fn offer(app: AppHandle, current: PathBuf) {
     // Off the main thread, which is where the event loop the dialog needs runs.
     std::thread::spawn(move || {
@@ -109,15 +91,14 @@ pub(super) fn offer(app: AppHandle, current: PathBuf) {
             .file()
             .blocking_pick_folder()
             .and_then(|folder| folder.into_path().ok());
-        let Some(chosen) = chosen else { return };
-
-        remember(chosen);
-        super::persist(&app);
-        app.restart();
+        if let Some(chosen) = chosen {
+            super::workspace::adopted(&app, chosen);
+        }
     });
 }
 
-fn remember(designs: PathBuf) {
+/// Records the folder to open next time.
+pub(super) fn remember(designs: PathBuf) {
     Settings {
         designs: Some(designs),
     }
