@@ -29,7 +29,7 @@
     "@types/cytoscape": "^3.31.0",
     "@vue/devtools-api": "^8.2.1",
     "codemirror": "^6.0.2",
-    "cytoscape": "^3.34.0",
+    "cytoscape": "^3.34.1",
     "element-plus": "^2.14.4",
     "pinia": "^4.0.3",
     "vue": "^3.5.41",
