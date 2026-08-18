@@ -87,7 +87,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: cargo-nextest
 
@@ -134,7 +134,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: cargo-nextest
 
@@ -175,7 +175,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: cargo-nextest
 
@@ -388,7 +388,7 @@ jobs:
           name: cargofile
 
       - name: Install the Tauri CLI
-        uses: taiki-e/install-action@v2.85.11
+        uses: taiki-e/install-action@v2.86.1
         with:
           tool: tauri-cli
 
