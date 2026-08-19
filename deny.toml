@@ -1,0 +1,44 @@
+# The advisory policy for this repository, checked nightly and on any change to a
+# manifest or lockfile by .github/workflows/security_audit.yml.
+
+[graph]
+# A release builds these five triples, and the desktop installers ship the Linux
+# webview stack, so the graph has to include it rather than pretend a CLI-only
+# build is everything we distribute.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+]
+
+# `desktop` is off by default and on in every installer, so the check has to see
+# what it pulls in. The remaining features gate tests and counters, not crates.
+all-features = true
+
+[advisories]
+# Vulnerabilities and unsound advisories keep cargo-deny's defaults, which fail.
+#
+# An unmaintained crate is a maintenance signal rather than a live defect, and it
+# is only actionable where we pick the dependency ourselves. Every unmaintained
+# advisory against this tree reaches us through Tauri: the gtk-rs GTK3 bindings
+# under wry/tao/muda, which no released version of any of them has moved off
+# because WebKitGTK 4.1 is itself GTK3, and the unic crates under tauri-utils'
+# urlpattern, which upstream has already replaced with icu_properties and not yet
+# published. Neither is resolvable here short of dropping the desktop
+# application, so failing on them trains us to ignore the check.
+#
+# `workspace` fails only for crates optimist depends on directly, which is
+# exactly the set we can do something about, and it needs no list of advisory
+# identifiers to prune as upstreams move. It silences the rest entirely rather
+# than reporting them, so set it to "all" for a run when you want to read what
+# the tree is carrying.
+unmaintained = "workspace"
+
+[sources]
+# Everything comes from crates.io. This is what makes a `[patch.crates-io]` fork
+# or a git dependency a decision we take deliberately rather than one that
+# arrives inside a pull request.
+unknown-registry = "deny"
+unknown-git = "deny"
