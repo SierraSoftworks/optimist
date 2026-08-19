@@ -320,6 +320,7 @@ jobs:
 
     needs:
       - version
+      - build-workbench
 
     permissions:
       contents: write
@@ -364,19 +365,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # The bundler builds the frontend itself through `beforeBuildCommand`, so
-      # that what ships is the frontend belonging to the commit being released.
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "lts/*"
-          cache: npm
-          cache-dependency-path: workbench/package-lock.json
-
-      - name: Install Frontend Dependencies
-        run: npm ci
-        working-directory: workbench
-
       - name: Setup Cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -386,6 +374,15 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: cargofile
+
+      # The window serves this through the same handlers the server does, so it
+      # ships the frontend every other job in this release was built against
+      # rather than one the bundler built for itself.
+      - name: Fetch workbench build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: workbench-dist
+          path: ./workbench/dist
 
       - name: Install the Tauri CLI
         uses: taiki-e/install-action@v2.85.11

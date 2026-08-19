@@ -4,7 +4,6 @@
   "identifier": "com.sierrasoftworks.optimist",
   "build": {
     "frontendDist": "workbench/placeholder",
-    "beforeBuildCommand": { "script": "npm run build", "cwd": "workbench" },
     "features": ["desktop"]
   },
   "app": {
