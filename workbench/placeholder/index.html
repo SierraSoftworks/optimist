@@ -1,0 +1,22 @@
+<!doctype html>
+<!--
+  What the window build embeds in place of the workbench.
+
+  Tauri wants a frontend to compile into the binary, and the binary already
+  carries one for the server to serve. This stands in its place so that the same
+  files are not embedded twice, and is replaced at startup by the copy the
+  server uses. Seeing it means that replacement did not happen.
+
+  It is in version control rather than generated, because the bundler checks
+  that `frontendDist` exists before it invokes Cargo, so a build script could
+  never write it early enough.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Optimist</title>
+  </head>
+  <body>
+    The workbench was not built.
+  </body>
+</html>

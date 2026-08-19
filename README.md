@@ -129,12 +129,25 @@ Use `--output json` or `--output jsonl` for automation, and `--seed`,
 ## Open it in a window
 
 Releases also carry an installer for a desktop application: the same workbench
-in a native window, with everything it needs already inside it.
+in a native window, with everything it needs already inside it. Each release
+publishes `optimist-darwin-amd64.dmg` and `optimist-darwin-arm64.dmg`,
+`optimist-windows-amd64.msi` and `optimist-windows-amd64.exe`, and
+`optimist-linux-amd64.deb`, `.rpm`, and `.AppImage`.
 
 ```sh
 optimist                           # or double-click the application
 optimist app --designs ./designs   # open a particular folder for this launch
 ```
+
+The installers are not code-signed, so each platform refuses them once before
+letting you say otherwise:
+
+- **macOS** — open the application, dismiss the warning, then allow it under
+  System Settings → Privacy & Security → Open Anyway. Removing the flag by hand
+  works too: `xattr -d com.apple.quarantine /Applications/Optimist.app`.
+- **Windows** — SmartScreen offers *More info* → *Run anyway*.
+- **Linux** — the AppImage needs `chmod +x` before it will run. The `.deb` and
+  `.rpm` install without complaint.
 
 The first launch says that designs are going in `~/Documents/optimist` and
 offers somewhere else to put them; the answer is remembered, and the folder in

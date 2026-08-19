@@ -9,19 +9,11 @@
 //! no interest in the frontend. The binary then reports that it is serving the
 //! API alone, which is a true statement about what was built rather than a
 //! compile error about a directory.
+//!
+//! A window has no such thing to report, so a release build of one refuses an
+//! empty directory rather than opening blank.
 
 use std::{fs, path::PathBuf};
-
-/// What the window build embeds in place of the workbench.
-///
-/// Tauri wants a frontend to compile into the binary, and the binary already
-/// carries one for the server to serve. This stands in its place so that the
-/// same files are not embedded twice, and is replaced at startup by the copy
-/// the server uses. Seeing it means that replacement did not happen.
-const PLACEHOLDER: &str = concat!(
-    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
-    "<title>Optimist</title></head><body>The workbench was not built.</body></html>\n"
-);
 
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -32,19 +24,22 @@ fn main() {
     // Rebuild when the frontend does, so a fresh `npm run build` reaches the
     // binary without a `cargo clean`.
     println!("cargo:rerun-if-changed=workbench/dist");
-    desktop(&root);
+    desktop(&dist);
 }
 
 /// Generates what the window build needs from `tauri.conf.json`.
 #[cfg(feature = "desktop")]
-fn desktop(root: &std::path::Path) {
-    let placeholder = root.join("gen/frontend");
-    fs::create_dir_all(&placeholder).expect("a directory for the placeholder frontend");
-    fs::write(placeholder.join("index.html"), PLACEHOLDER).expect("the placeholder frontend");
+fn desktop(dist: &std::path::Path) {
+    // Matches the switch `api::web` embeds on, rather than the build profile.
+    let embedding = std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_none();
+    if embedding && !dist.join("index.html").is_file() {
+        panic!(
+            "no workbench build at {}; run `npm --prefix workbench run build` first",
+            dist.display()
+        );
+    }
     tauri_build::build();
 }
 
 #[cfg(not(feature = "desktop"))]
-fn desktop(_root: &std::path::Path) {
-    let _ = PLACEHOLDER;
-}
+fn desktop(_dist: &std::path::Path) {}
