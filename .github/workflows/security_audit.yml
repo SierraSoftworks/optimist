@@ -30,6 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # cargo-deny resolves the graph by shelling out to `cargo metadata`, so
+      # the job needs a toolchain rather than whatever the runner image ships.
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Install cargo-deny
         uses: taiki-e/install-action@v2.86.1
         with:
