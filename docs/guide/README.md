@@ -19,6 +19,24 @@ it embeds the workbench, so nothing else needs installing.
 
 [release]: https://github.com/SierraSoftworks/optimist/releases/latest
 
+## Or install the desktop application
+
+The same release carries installers for the workbench in a native window: a
+`.dmg` for macOS, an `.msi` or `.exe` for Windows, and a `.deb`, `.rpm`, or
+`.AppImage` for Linux. There is no server and no port; see
+[the workbench](./collaboration.md) for what that changes.
+
+::: warning The installers are not code-signed
+Each platform refuses an unsigned application once before letting you say
+otherwise.
+
+- **macOS** — open it, dismiss the warning, then allow it under System Settings
+  → Privacy & Security → Open Anyway. Or remove the flag yourself with
+  `xattr -d com.apple.quarantine /Applications/Optimist.app`.
+- **Windows** — SmartScreen offers *More info* → *Run anyway*.
+- **Linux** — the AppImage needs `chmod +x` before it will run.
+:::
+
 ## Open a workspace
 
 A workspace is a directory whose subdirectories are designs. Point the server at
