@@ -3,7 +3,7 @@
   "productName": "Optimist",
   "identifier": "com.sierrasoftworks.optimist",
   "build": {
-    "frontendDist": "gen/frontend",
+    "frontendDist": "workbench/placeholder",
     "beforeBuildCommand": { "script": "npm run build", "cwd": "workbench" },
     "features": ["desktop"]
   },

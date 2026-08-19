@@ -428,3 +428,7 @@ jobs:
         with:
           app-id: ${{ secrets.TAP_APP_ID }}
           private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          # Without a token the action reads this repository's description
+          # unauthenticated, which a shared runner is routinely rate-limited out
+          # of, and it refuses to write a formula with no description.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
