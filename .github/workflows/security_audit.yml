@@ -2,16 +2,43 @@ name: Security Audit
 on:
   schedule:
     - cron: '0 0 * * *'
+  workflow_dispatch: {}
+
+  # cargo-deny reddens a workflow rather than filing an issue, so a dependency
+  # change is gated where it is introduced instead of a day later on main.
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - deny.toml
+      - .github/workflows/security_audit.yml
+  push:
+    branches:
+      - main
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - deny.toml
+      - .github/workflows/security_audit.yml
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions-rs/audit-check@v1.2.0
+
+      # cargo-deny resolves the graph by shelling out to `cargo metadata`, so
+      # the job needs a toolchain rather than whatever the runner image ships.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2.86.1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tool: cargo-deny
+
+      # The policy, and the reasoning behind it, lives in deny.toml.
+      - name: Check Advisories
+        run: cargo deny check advisories sources

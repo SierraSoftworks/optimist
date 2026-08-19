@@ -47,3 +47,9 @@ Run the comprehensive suite when the change touched the solver, the statistics, 
 - For every statistical algorithm, document the equations, parameterization, assumptions, support, numerical method, convergence/error criteria, limitations, and authoritative references.
 - Distinguish exact analytical results from approximations and Monte Carlo estimates. Record random seeds and diagnostics required for reproducibility.
 - Back mathematical claims with law-based, property, differential, and edge-case tests. Never multiply generic confidence scores or silently assume independence.
+
+## Dependency Advisories
+
+- `cargo deny check advisories sources` is what CI runs. Run it after adding or bumping a dependency, not on every iteration.
+- Vulnerabilities and unsound advisories fail the check. Unmaintained ones fail only for crates we depend on directly, because a transitive one is not something this repository can act on.
+- `deny.toml` carries the policy and the reasoning for it. When an advisory fires, change the dependency rather than the policy.
