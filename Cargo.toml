@@ -29,7 +29,7 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2
 tauri = { version = "2.11.5", optional = true }
 tauri-plugin-dialog = { version = "2.7.2", optional = true }
 tower = { version = "0.5.3", features = ["util"], optional = true }
-dirs = { version = "6.0.0", optional = true }
+dirs = { version = "7.0.0", optional = true }
 
 # Reattaches the desktop build to whatever console launched it. A window app on
 # Windows is compiled without one, and the same binary still runs the CLI.
