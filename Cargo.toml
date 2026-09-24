@@ -13,7 +13,7 @@ colored = "3.1.1"
 include_dir = "0.7.4"
 human-errors = { version = "0.2.4", features = ["pretty"] }
 mime_guess = "2.0.5"
-rand = "=0.10.2"
+rand = "=0.10.3"
 rand_chacha = "=0.10.0"
 rust-embed = "8.7.2"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
