@@ -48,15 +48,24 @@ const shown = computed(() => {
     (entry) =>
       entry.probability_of_binding > 0 ||
       entry.utilisation >= worst * SHOULDER ||
-      (movementOf(entry)?.bound_before ?? 0) > 0,
+      relieved(entry),
   )
 })
 
-const visible = computed(() => shown.value.slice(0, props.limit ?? 4))
+/** The cap counts only constraints still under pressure; every relieved one follows them. */
+const visible = computed(() => [
+  ...shown.value.filter((entry) => !relieved(entry)).slice(0, props.limit ?? 4),
+  ...shown.value.filter(relieved),
+])
 const hidden = computed(() => shown.value.length - visible.value.length)
 
 function movementOf(entry: Bottleneck): Movement | undefined {
   return props.movements?.[`${entry.component}/${entry.constraint}`]
+}
+
+function relieved(entry: Bottleneck): boolean {
+  const movement = movementOf(entry)
+  return !!movement && movement.bound_before > 0 && movement.bound_after === 0
 }
 
 function serviceLevelOf(entry: Bottleneck): ServiceLevelReading | undefined {
@@ -67,12 +76,11 @@ function serviceLevelOf(entry: Bottleneck): ServiceLevelReading | undefined {
 function shift(entry: Bottleneck) {
   const movement = movementOf(entry)
   const serviceLevel = serviceLevelOf(entry)
-  const relieved = !!movement && movement.bound_before > 0 && movement.bound_after === 0
   const introduced = !!movement && movement.bound_before === 0 && movement.bound_after > 0
   const before = serviceLevel ? serviceLevel.baseline : movement?.before
   const after = serviceLevel?.current ?? movement?.after
   if (before === undefined || after === undefined || before === after) {
-    return relieved || introduced ? { relieved, introduced } : null
+    return relieved(entry) || introduced ? { relieved: relieved(entry), introduced } : null
   }
   const difference = after - before
   return {
@@ -80,7 +88,7 @@ function shift(entry: Bottleneck) {
       ? difference > 0 ? 'better' : 'worse'
       : difference > 0 ? 'worse' : 'better',
     label: serviceLevel ? signedPercent(difference) : signedRatio(difference),
-    relieved,
+    relieved: relieved(entry),
     introduced,
   }
 }
