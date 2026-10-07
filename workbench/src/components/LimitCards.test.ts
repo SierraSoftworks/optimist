@@ -72,3 +72,19 @@ it('waits for the SLI baseline before showing its shift', () => {
 
   expect(wrapper.find('.shift').exists()).toBe(false)
 })
+it('keeps a constraint the variant relieved, however far it has fallen', () => {
+  const pressing: Bottleneck = { ...bottleneck, constraint: 'concurrency', utilisation: 2 }
+  const relieved: Bottleneck = { ...bottleneck, utilisation: 0.01, probability_of_binding: 0, headroom: 99 }
+  const wrapper = mount(LimitCards, {
+    props: {
+      bottlenecks: [pressing, relieved],
+      movements: {
+        'browsers/throughput': { ...movement, before: 1.14, after: 0.01, bound_before: 1, bound_after: 0 },
+      },
+    },
+  })
+
+  const card = wrapper.get('[data-test="limit-browsers-throughput"]')
+  expect(card.get('.note').text()).toBe('no longer binds')
+  expect(card.get('.shift').text()).toBe('\u22121.13x')
+})
