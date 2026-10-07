@@ -42,7 +42,13 @@ const shown = computed(() => {
     // Anything that binds in any draw is kept whatever its mean says. A
     // constraint bound in a tenth of draws has a mean that looks comfortable and
     // an outage that does not.
-    (entry) => entry.probability_of_binding > 0 || entry.utilisation >= worst * SHOULDER,
+    // A constraint the variant relieved is kept too, because once it stops
+    // binding its utilisation falls below the shoulder, and dropping it would
+    // hide the one thing the proposal was for.
+    (entry) =>
+      entry.probability_of_binding > 0 ||
+      entry.utilisation >= worst * SHOULDER ||
+      (movementOf(entry)?.bound_before ?? 0) > 0,
   )
 })
 
