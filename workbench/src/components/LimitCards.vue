@@ -52,10 +52,11 @@ const shown = computed(() => {
   )
 })
 
-/** Relieved constraints rank last by utilisation, so they are exempt from the cap. */
-const visible = computed(() =>
-  shown.value.filter((entry, rank) => rank < (props.limit ?? 4) || relieved(entry)),
-)
+/** The cap counts only constraints still under pressure; every relieved one follows them. */
+const visible = computed(() => [
+  ...shown.value.filter((entry) => !relieved(entry)).slice(0, props.limit ?? 4),
+  ...shown.value.filter(relieved),
+])
 const hidden = computed(() => shown.value.length - visible.value.length)
 
 function movementOf(entry: Bottleneck): Movement | undefined {

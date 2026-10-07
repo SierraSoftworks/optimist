@@ -109,3 +109,29 @@ it('shows a relieved constraint even when more pressing ones fill the cards', ()
   expect(wrapper.get('[data-test="limit-browsers-throughput"] .note').text()).toBe('no longer binds')
   expect(wrapper.find('.rest').exists()).toBe(false)
 })
+
+it('does not let a relieved constraint take a slot from a pressing one', () => {
+  const pressing = [0.8, 0.7, 0.6, 0.5].map((utilisation, index) => ({
+    ...bottleneck,
+    constraint: `pressing_${index}`,
+    utilisation,
+  }))
+  const relieved: Bottleneck = { ...bottleneck, utilisation: 0.95, probability_of_binding: 0 }
+  const wrapper = mount(LimitCards, {
+    props: {
+      bottlenecks: [relieved, ...pressing],
+      movements: {
+        'browsers/throughput': { ...movement, before: 1.14, after: 0.95, bound_before: 1, bound_after: 0 },
+      },
+    },
+  })
+
+  expect(wrapper.findAll('.limit').map((card) => card.attributes('data-test'))).toEqual([
+    'limit-browsers-pressing_0',
+    'limit-browsers-pressing_1',
+    'limit-browsers-pressing_2',
+    'limit-browsers-pressing_3',
+    'limit-browsers-throughput',
+  ])
+  expect(wrapper.find('.rest').exists()).toBe(false)
+})
