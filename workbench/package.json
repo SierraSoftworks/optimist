@@ -14,10 +14,10 @@
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.11.1",
-    "@codemirror/language": "^6.12.4",
+    "@codemirror/language": "^6.13.1",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.6",
-    "@codemirror/view": "^6.43.13",
+    "@codemirror/view": "^6.43.14",
     "@element-plus/icons-vue": "^2.3.2",
     "@fontsource-variable/fira-code": "^5.3.0",
     "@fontsource-variable/montserrat": "^5.3.0",
