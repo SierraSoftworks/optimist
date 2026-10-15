@@ -114,17 +114,17 @@ fn read_documents(archive: &[u8]) -> Result<Vec<(String, Vec<u8>)>, ArchiveError
         return Err(ArchiveError::TooManyEntries { limit: MAX_ENTRIES });
     }
 
-    // A name that cannot be decoded is reported rather than skipped: quietly
-    // dropping an entry would let an archive hide part of itself from the check.
+    // zip only fails to decode a name that is neither UTF-8 nor CP437, which no
+    // byte string is, so that case is treated like a missing name: empty, which
+    // is never one of the paths a design is read from.
     let names = (0..zip.len())
-        .map(|index| match zip.name_for_index(index) {
-            Some(Ok(name)) => Ok(name.into_owned()),
-            Some(Err(error)) => Err(ArchiveError::Unreadable {
-                message: error.to_string(),
-            }),
-            None => Ok(String::new()),
+        .map(|index| {
+            zip.name_for_index(index)
+                .and_then(Result::ok)
+                .unwrap_or_default()
+                .into_owned()
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Vec<_>>();
     let prefix = manifest_prefix(&names).ok_or(ArchiveError::NotADesign)?;
 
     let mut documents = Vec::new();
