@@ -114,9 +114,17 @@ fn read_documents(archive: &[u8]) -> Result<Vec<(String, Vec<u8>)>, ArchiveError
         return Err(ArchiveError::TooManyEntries { limit: MAX_ENTRIES });
     }
 
+    // A name that cannot be decoded is reported rather than skipped: quietly
+    // dropping an entry would let an archive hide part of itself from the check.
     let names = (0..zip.len())
-        .map(|index| zip.name_for_index(index).unwrap_or_default().to_owned())
-        .collect::<Vec<_>>();
+        .map(|index| match zip.name_for_index(index) {
+            Some(Ok(name)) => Ok(name.into_owned()),
+            Some(Err(error)) => Err(ArchiveError::Unreadable {
+                message: error.to_string(),
+            }),
+            None => Ok(String::new()),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let prefix = manifest_prefix(&names).ok_or(ArchiveError::NotADesign)?;
 
     let mut documents = Vec::new();
