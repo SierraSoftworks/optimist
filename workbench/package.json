@@ -30,7 +30,7 @@
     "@vue/devtools-api": "^8.2.1",
     "codemirror": "^6.0.2",
     "cytoscape": "^3.34.4",
-    "element-plus": "^2.14.7",
+    "element-plus": "^2.14.8",
     "pinia": "^4.1.0",
     "vue": "^3.5.45",
     "vue-router": "^5.4.0"
