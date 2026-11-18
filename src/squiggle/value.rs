@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
 };
 
-use chrono::{DateTime, Datelike, NaiveDate, Utc};
+use jiff::{Timestamp, civil::Date, fmt::strtime, tz::Offset};
 
 use crate::profile::count;
 
@@ -212,22 +212,26 @@ impl DateValue {
 
     /// Creates a midnight UTC date from Gregorian components.
     pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, String> {
-        let date = NaiveDate::from_ymd_opt(year, month, day)
-            .ok_or_else(|| "invalid Gregorian date".to_owned())?;
-        let midnight = date
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| "failed to construct midnight for Gregorian date".to_owned())?;
-        Ok(Self(midnight.and_utc().timestamp_millis() as f64))
+        let invalid = || "invalid Gregorian date".to_owned();
+        let year = i16::try_from(year).map_err(|_| invalid())?;
+        let month = i8::try_from(month).map_err(|_| invalid())?;
+        let day = i8::try_from(day).map_err(|_| invalid())?;
+        let date = Date::new(year, month, day).map_err(|_| invalid())?;
+        let midnight = Offset::UTC
+            .to_timestamp(date.to_datetime(jiff::civil::Time::midnight()))
+            .map_err(|_| "failed to construct midnight for Gregorian date".to_owned())?;
+        Ok(Self(midnight.as_millisecond() as f64))
     }
 
     /// Parses an ISO `YYYY-MM-DD` date.
     pub fn parse(value: &str) -> Result<Self, String> {
-        let date =
-            NaiveDate::parse_from_str(value, "%Y-%m-%d").map_err(|error| error.to_string())?;
+        let date = strtime::parse("%Y-%m-%d", value)
+            .and_then(|parsed| parsed.to_date())
+            .map_err(|error| format!("invalid date {value:?}, expected YYYY-MM-DD: {error}"))?;
         Self::from_ymd(
-            chrono::Datelike::year(&date),
-            chrono::Datelike::month(&date),
-            chrono::Datelike::day(&date),
+            date.year().into(),
+            date.month().unsigned_abs().into(),
+            date.day().unsigned_abs().into(),
         )
     }
 
@@ -247,10 +251,10 @@ impl DateValue {
 
 impl fmt::Display for DateValue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Some(date) = DateTime::<Utc>::from_timestamp_millis(self.0 as i64) else {
+        let Ok(timestamp) = Timestamp::from_millisecond(self.0 as i64) else {
             return formatter.write_str("invalid date");
         };
-        let date = date.date_naive();
+        let date = Offset::UTC.to_datetime(timestamp).date();
         write!(
             formatter,
             "{:04}-{:02}-{:02}",
@@ -485,5 +489,46 @@ fn copied(value: &Value) -> u64 {
         Value::Dictionary(entries) => entries.values().map(copied).sum::<u64>() + 1,
         Value::Array(items) => items.iter().map(copied).sum::<u64>() + 1,
         _ => 1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::DateValue;
+
+    #[rstest]
+    #[case::epoch("1970-01-01", 0.0)]
+    #[case::leap_day("2020-02-29", 1_582_934_400.0)]
+    #[case::before_the_epoch("1969-12-31", -86_400.0)]
+    fn parses_an_iso_date_as_utc_midnight(#[case] text: &str, #[case] seconds: f64) {
+        let date = DateValue::parse(text).expect("a valid date");
+        assert_eq!(date.unix_seconds(), seconds);
+        assert_eq!(date.to_string(), text);
+    }
+
+    #[rstest]
+    #[case::not_a_date("not-a-date")]
+    #[case::no_such_day("2021-02-29")]
+    #[case::no_such_month("2020-13-01")]
+    #[case::trailing_input("2020-01-01T00:00")]
+    fn rejects_what_is_not_a_calendar_date(#[case] text: &str) {
+        assert!(DateValue::parse(text).is_err(), "{text} parsed");
+    }
+
+    #[rstest]
+    #[case::midnight(0.0, "1970-01-01")]
+    #[case::late_in_the_day(86_399.0, "1970-01-01")]
+    #[case::just_before_the_epoch(-0.5, "1969-12-31")]
+    fn displays_the_utc_calendar_day(#[case] seconds: f64, #[case] expected: &str) {
+        let date = DateValue::from_unix_seconds(seconds).expect("a finite time");
+        assert_eq!(date.to_string(), expected);
+    }
+
+    #[test]
+    fn rejects_gregorian_components_that_name_no_day() {
+        assert!(DateValue::from_ymd(2021, 2, 29).is_err());
+        assert!(DateValue::from_ymd(2020, 0, 1).is_err());
     }
 }

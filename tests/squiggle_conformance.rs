@@ -132,7 +132,7 @@ fn upstream_numeric_cases(
 #[case::bad_dict_entries("Dict.fromList([['a',1],[2,3]])", "[String, value]")]
 #[case::bad_sample_set_values("SampleSet.fromList([1,'two'])", "[Number]")]
 #[case::bad_list_callback("List.filter([1,2],{|x|x})", "Boolean callback result")]
-#[case::bad_date("Date.make('not-a-date')", "input contains invalid characters")]
+#[case::bad_date("Date.make('not-a-date')", "expected YYYY-MM-DD")]
 fn upstream_error_cases(#[case] source: &str, #[case] message: &str) -> Result<(), String> {
     let diagnostics = Runtime::new()
         .evaluate(source)
