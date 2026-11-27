@@ -2,7 +2,7 @@ import { defineUserConfig } from 'vuepress'
 import { viteBundler } from '@vuepress/bundler-vite'
 import { markdownMathPlugin } from '@vuepress/plugin-markdown-math'
 import { registerComponentsPlugin } from '@vuepress/plugin-register-components'
-import { defaultTheme } from '@vuepress/theme-default'
+import { themeClassic } from '@vuepress/theme-classic'
 import { path } from '@vuepress/utils'
 
 export default defineUserConfig({
@@ -34,7 +34,7 @@ export default defineUserConfig({
     }),
   ],
 
-  theme: defaultTheme({
+  theme: themeClassic({
     logo: 'https://cdn.sierrasoftworks.com/logos/icon.png',
     logoDark: 'https://cdn.sierrasoftworks.com/logos/icon_light.png',
     repo: 'SierraSoftworks/optimist',
